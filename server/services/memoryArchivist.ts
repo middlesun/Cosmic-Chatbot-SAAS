@@ -1,19 +1,9 @@
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
-
-let sharedClient: GoogleGenAI | null = null;
-
-function getMemoryClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  if (!sharedClient) {
-    sharedClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-    });
-  }
-  return sharedClient;
-}
+import {
+  createOpenRouterCompletion,
+  getUtilityModel,
+  isOpenRouterConfigured,
+} from './openrouter';
 
 /**
  * Incrementally summarizes the latest consultation exchange into `profiles.profile_memory_summary`
@@ -35,8 +25,7 @@ export async function rebuildProfileMemory(
   userId: string
 ): Promise<void> {
   const supabaseAdmin = getSupabaseAdmin();
-  const ai = getMemoryClient();
-  if (!supabaseAdmin || !ai) return;
+  if (!supabaseAdmin || !isOpenRouterConfigured()) return;
 
   try {
     const { data: profile } = await supabaseAdmin
@@ -86,9 +75,13 @@ export async function rebuildProfileMemory(
       .map((m) => `${m.role === 'user' ? 'USER' : 'COUNCIL'}: ${String(m.content).slice(0, 600)}`)
       .join('\n\n');
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-4-hydrogen',
-      contents: `Summarize the longitudinal consultation memory for profile "${profile.name}" from these recent active consultation excerpts.
+    const completion = await createOpenRouterCompletion({
+      model: getUtilityModel(),
+      temperature: 0.3,
+      messages: [
+        {
+          role: 'user',
+          content: `Summarize the longitudinal consultation memory for profile "${profile.name}" from these recent active consultation excerpts.
 Focus strictly on:
 - Key life events, goals, or decisions the user shared (e.g., marriage, career change, relocation, health focus).
 - Major astrological themes and Dasha/transit periods already explored so future sessions remain coherent without repeating basics.
@@ -96,12 +89,11 @@ Keep the summary under 220 words in concise bullet points.
 
 TRANSCRIPT EXCERPTS:
 ${transcript}`,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-      },
+        },
+      ],
     });
 
-    const summary = response.text?.trim() || null;
+    const summary = completion.text.trim() || null;
     await supabaseAdmin
       .from('profiles')
       .update({

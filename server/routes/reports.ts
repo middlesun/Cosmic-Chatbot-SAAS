@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { isGeminiConfigured } from '../services/geminiOrchestrator';
+import { isOpenRouterConfigured } from '../services/openrouter';
 import { generateReportPdfBuffer } from '../services/pdfGenerator';
 import { ensureReportCatalogSeeded } from '../services/reportDefaults';
 import { enqueueReportOrder } from '../workers/reportWorker';
@@ -64,7 +64,7 @@ router.get('/catalog', requireAuth, async (req: AuthenticatedRequest, res) => {
     catalog: safeCatalog,
     profiles: profiles || [],
     orders: orders || [],
-    geminiConfigured: isGeminiConfigured(),
+    openrouterConfigured: isOpenRouterConfigured(),
   });
 });
 
@@ -76,8 +76,8 @@ router.post('/orders', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  if (!isGeminiConfigured()) {
-    res.status(503).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
+  if (!isOpenRouterConfigured()) {
+    res.status(503).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' });
     return;
   }
 

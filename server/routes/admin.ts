@@ -1,14 +1,13 @@
+import {
+  createOpenRouterCompletion,
+  getConsultationModel,
+  isOpenRouterConfigured,
+} from '../services/openrouter';
 import crypto from 'crypto';
-import { ThinkingLevel } from '@google/genai';
 import { Router } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { requireAdmin, requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { sendClientInviteEmail } from '../services/email';
-import {
-  getConsultationModel,
-  getGeminiClient,
-  isGeminiConfigured,
-} from '../services/geminiOrchestrator';
 import {
   ALL_DEFAULT_PROMPTS,
   CORE_COUNCIL_CONSTITUTION,
@@ -454,10 +453,10 @@ router.post('/prompts/:id/rollback', async (req: AuthenticatedRequest, res) => {
   res.json({ prompt: updated });
 });
 
-// Live Prompt Test Sandbox (Server-side Gemini evaluation)
+// Live Prompt Test Sandbox (Server-side OpenRouter evaluation)
 router.post('/prompts/test', async (req: AuthenticatedRequest, res) => {
-  if (!isGeminiConfigured()) {
-    res.status(503).json({ error: 'GEMINI_API_KEY not configured on server' });
+  if (!isOpenRouterConfigured()) {
+    res.status(503).json({ error: 'OPENROUTER_API_KEY not configured on server' });
     return;
   }
 
@@ -468,22 +467,19 @@ router.post('/prompts/test', async (req: AuthenticatedRequest, res) => {
   }
 
   try {
-    const ai = getGeminiClient();
-    const response = await ai.models.generateContent({
+    const completion = await createOpenRouterCompletion({
       model: getConsultationModel(),
-      contents: String(testQuestion).trim(),
-      config: {
-        systemInstruction: `${CORE_COUNCIL_CONSTITUTION}\n\n${String(promptBody).trim()}${
-          chartContext ? `\n\nTEST CHART CONTEXT:\n${String(chartContext).trim()}` : ''
-        }`,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-      },
+      system: `${CORE_COUNCIL_CONSTITUTION}\n\n${String(promptBody).trim()}${
+        chartContext ? `\n\nTEST CHART CONTEXT:\n${String(chartContext).trim()}` : ''
+      }`,
+      messages: [{ role: 'user', content: String(testQuestion).trim() }],
+      temperature: 0.4,
     });
 
     res.json({
-      output: (response.text ?? '').trim(),
-      tokensIn: response.usageMetadata?.promptTokenCount || 0,
-      tokensOut: response.usageMetadata?.candidatesTokenCount || 0,
+      output: completion.text.trim(),
+      tokensIn: completion.tokensIn,
+      tokensOut: completion.tokensOut,
     });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Sandbox failed' });

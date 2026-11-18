@@ -453,7 +453,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
         </div>
       </div>
 
-      {/* Right Editor + Rollback History + Live Gemini Sandbox */}
+      {/* Right Editor + Rollback History + Live OpenRouter Sandbox */}
       <div className="lg:col-span-8 space-y-5">
         {showNewPromptForm && (
           <form
@@ -581,7 +581,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
             <div className="rounded-3xl bg-[#1F2229] text-[#F4EFE6] p-6 space-y-4">
               <div className="flex items-center gap-2 text-xs text-[#B8965A]">
                 <Sparkles className="h-4 w-4" />
-                <span>Live Gemini Prompt Sandbox</span>
+                <span>Live OpenRouter Prompt Sandbox</span>
               </div>
               <textarea
                 rows={2}

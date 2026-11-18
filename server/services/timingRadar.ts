@@ -1,4 +1,3 @@
-import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import type { CompiledChartData } from './chartCompiler';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './astrologyApi';
 import type { DashaNode, PlanetPosition } from './jyotishMath';
@@ -64,6 +63,13 @@ export interface TimingRadarSnapshot {
 }
 
 // In-memory brief cache keyed by (profileId + date/month) so page reloads do not burn Gemini tokens
+import {
+  createOpenRouterCompletion,
+  getUtilityModel,
+  isOpenRouterConfigured,
+  safeExtractJson,
+} from './openrouter';
+
 const dailyBriefCache = new Map<
   string,
   { headline: string; guidance: string; focusAction: string }
@@ -72,20 +78,6 @@ const monthlyBriefCache = new Map<
   string,
   { headline: string; guidance: string; themeWatch: string }
 >();
-
-let radarAiClient: GoogleGenAI | null = null;
-
-function getRadarAiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  if (!radarAiClient) {
-    radarAiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-    });
-  }
-  return radarAiClient;
-}
 
 function computeDateProgress(startISO: string, endISO: string, nowMs: number): {
   percentElapsed: number;
@@ -317,45 +309,29 @@ async function generateCachedBriefs(params: {
   let daily = dailyBriefCache.get(dailyKey);
   let monthly = monthlyBriefCache.get(monthlyKey);
 
-  const ai = getRadarAiClient();
-  if (ai && (!daily || !monthly)) {
+  if (isOpenRouterConfigured() && (!daily || !monthly)) {
     try {
       const transitSummary = params.shifts
         .map((s) => `${s.planet} in ${s.sign} (H${s.houseFromLagna} Lagna, H${s.houseFromMoon} Moon, SAV ${s.savBindus})`)
         .join('; ');
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents: `Create a calm, Oura-inspired Vedic Timing Radar brief for ${params.profileName} (${params.ascendantSign} Lagna, ${params.moonSign} Moon).
+      const completion = await createOpenRouterCompletion({
+        model: getUtilityModel(),
+        jsonMode: true,
+        temperature: 0.35,
+        messages: [
+          {
+            role: 'user',
+            content: `Create a calm, Oura-inspired Vedic Timing Radar brief for ${params.profileName} (${params.ascendantSign} Lagna, ${params.moonSign} Moon).
 Active Dasha: ${md} MD -> ${ad} AD -> ${pd} PD.
 Current Transits: ${transitSummary || 'Standard daily pacing'}.
-Return crisp, non-fatalistic, deeply specific guidance (no mysticism clichés).`,
-        config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              dailyHeadline: { type: Type.STRING },
-              dailyGuidance: { type: Type.STRING },
-              dailyAction: { type: Type.STRING },
-              monthlyHeadline: { type: Type.STRING },
-              monthlyGuidance: { type: Type.STRING },
-              monthlyWatch: { type: Type.STRING },
-            },
-            required: [
-              'dailyHeadline',
-              'dailyGuidance',
-              'dailyAction',
-              'monthlyHeadline',
-              'monthlyGuidance',
-              'monthlyWatch',
-            ],
+Return crisp, non-fatalistic, deeply specific guidance (no mysticism clichés) strictly as JSON with keys:
+dailyHeadline, dailyGuidance, dailyAction, monthlyHeadline, monthlyGuidance, monthlyWatch.`,
           },
-        },
+        ],
       });
 
-      const parsed = JSON.parse((response.text ?? '{}').trim()) as Record<string, string>;
+      const parsed = safeExtractJson<Record<string, string>>(completion.text, {});
       if (parsed.dailyHeadline && parsed.dailyGuidance) {
         daily = {
           headline: parsed.dailyHeadline,

@@ -33,9 +33,9 @@ View your app in AI Studio: https://ai.studio/apps/fa5bb618-3a87-4d31-972d-09847
    - `VITE_WEB3FORMS_ACCESS_KEY` *(optional, for legacy contact form)*
 5. Add **Runtime Worker Secrets** (in **Worker Settings → Variables and Secrets**):
    - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-   - `GEMINI_API_KEY` *(optional: `GEMINI_CONSULTATION_MODEL`)*
+   - `OPENROUTER_API_KEY` *(optional: `OPENROUTER_CONSULTATION_MODEL`, `OPENROUTER_UTILITY_MODEL`)*
    - `FREE_ASTROLOGY_API_KEY`
    - `DODO_API_KEY`, `DODO_WEBHOOK_SECRET`
    - `RESEND_API_KEY`
    - `SANITY_PROJECT_ID`, `SANITY_DATASET` *(optional)*
-6. Note: Because multi-pass Gemini Deep Research reports & PDF synthesis run asynchronously, Cloudflare's **Workers Paid** plan is recommended to avoid Free-tier 10ms CPU limits.
+6. Note: Make sure to deploy via **Cloudflare Workers** (`Import a repository` under Workers — NOT Cloudflare Pages without build command), and use the **Workers Paid ($5/mo)** plan if running multi-pass Deep Research reports and on-demand PDF synthesis.

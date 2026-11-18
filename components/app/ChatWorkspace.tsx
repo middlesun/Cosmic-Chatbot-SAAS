@@ -370,7 +370,7 @@ const ChatWorkspace: React.FC = () => {
         conversation_id: activeConversation?.id || 'preview-conv-1',
         parent_message_id: null,
         role: 'assistant',
-        content: `### Design Preview Response\nYou tested sending a prompt using **${expertSlug}** in **${modeSlug}** mode (${outputSlug} · ${languageSlug}).\n\nOnce Supabase credentials are connected and you sign in, this studio streams live Gemini multi-system Vedic readings grounded in your activated chart & daily Gochar transits.`,
+        content: `### Design Preview Response\nYou tested sending a prompt using **${expertSlug}** in **${modeSlug}** mode (${outputSlug} · ${languageSlug}).\n\nOnce Supabase credentials and your OpenRouter key are connected and you sign in, this studio streams live multi-system Vedic readings grounded in your activated chart & daily Gochar transits.`,
         word_count: 42,
         expert_used: expertSlug,
         mode_used: modeSlug,

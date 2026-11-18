@@ -9,7 +9,7 @@ interface HealthStatus {
   integrations: {
     supabaseServer: boolean;
     supabaseClient: boolean;
-    gemini: boolean;
+    openrouter: boolean;
     freeAstrologyApi: boolean;
     dodoPayments: boolean;
     resend: boolean;
@@ -206,9 +206,9 @@ const AppDashboardHome: React.FC = () => {
               </span>
             </div>
             <div className="flex items-center justify-between border-b border-[#3D3830]/10 pb-1.5">
-              <span className="text-[#5C5449]">Gemini AI Council</span>
+              <span className="text-[#5C5449]">OpenRouter AI Council</span>
               <span className="font-['JetBrains_Mono',monospace] text-[#3D3830]">
-                {health?.integrations.gemini ? 'Ready' : 'Phase 3'}
+                {health?.integrations.openrouter ? 'Ready' : 'Pending Key'}
               </span>
             </div>
             <div className="flex items-center justify-between border-b border-[#3D3830]/10 pb-1.5">

@@ -1,35 +1,20 @@
-import { GoogleGenAI, ThinkingLevel, Type, type Content } from '@google/genai';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './astrologyApi';
+import {
+  createOpenRouterCompletion,
+  getConsultationModel,
+  getUtilityModel,
+  isOpenRouterConfigured,
+  safeExtractJson,
+  streamOpenRouterCompletion,
+  type OpenRouterMessage,
+} from './openrouter';
 import {
   CORE_COUNCIL_CONSTITUTION,
   resolvePromptBodies,
 } from './promptDefaults';
 
-let aiClient: GoogleGenAI | null = null;
-
-export function getGeminiClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not configured on the server.');
-  }
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-    });
-  }
-  return aiClient;
-}
-
-export function isGeminiConfigured(): boolean {
-  return Boolean(process.env.GEMINI_API_KEY);
-}
-
-// Primary reasoning model defaults to gemini-4-hydrogen with HIGH thinking (or configurable to gemini-4-argon when paid key is attached)
-export function getConsultationModel(): string {
-  return process.env.GEMINI_CONSULTATION_MODEL || 'gemini-4-hydrogen';
-}
+export { getConsultationModel, isOpenRouterConfigured };
 
 export function countWords(text: string): number {
   const trimmed = text.trim();
@@ -42,8 +27,6 @@ export function calculateCreditsFromUsage(
   tokensOut: number,
   responseText: string
 ): number {
-  // Transparent, user-friendly credit rate (10,000 credits per ₹1,000 minimum pack)
-  // Minimum 25 credits per turn; scales fairly with output depth + prompt context
   const estimatedOut = tokensOut > 0 ? tokensOut : Math.ceil(responseText.length / 4);
   const estimatedIn = tokensIn > 0 ? tokensIn : 600;
   const weighted = Math.ceil(estimatedOut * 0.25 + estimatedIn * 0.015);
@@ -98,9 +81,6 @@ export interface StreamConsultationResult {
   aborted: boolean;
 }
 
-// Lightweight in-memory tracking for Gemini Explicit Context Caches per (profileId + promptKey)
-const contextCacheRegistry = new Map<string, { name: string; expiresAtMs: number }>();
-
 async function buildStaticSystemInstruction(params: {
   expertSlug: string;
   modeSlug: string;
@@ -139,48 +119,9 @@ Note: Full planetary ephemeris calculations have not been activated yet for this
   return sections.join('\n\n---\n\n');
 }
 
-async function tryGetOrCreateContextCache(
-  ai: GoogleGenAI,
-  model: string,
-  cacheKey: string,
-  systemInstruction: string
-): Promise<string | null> {
-  // Gemini Explicit Context Caching requires >= 32,768 tokens (~130k chars).
-  // For typical 2k-8k char prompts + charts, Gemini implicit caching handles it cleanly via systemInstruction.
-  if (systemInstruction.length < 120_000) {
-    return null;
-  }
-
-  const existing = contextCacheRegistry.get(cacheKey);
-  if (existing && existing.expiresAtMs > Date.now() + 60_000) {
-    return existing.name;
-  }
-
-  try {
-    const created = await ai.caches.create({
-      model,
-      config: {
-        systemInstruction,
-        ttl: '1800s',
-      },
-    });
-    if (created?.name) {
-      contextCacheRegistry.set(cacheKey, {
-        name: created.name,
-        expiresAtMs: Date.now() + 25 * 60_000,
-      });
-      return created.name;
-    }
-  } catch {
-    // Graceful fallback to standard systemInstruction
-  }
-  return null;
-}
-
 export async function streamConsultationResponse(
   params: StreamConsultationParams
 ): Promise<StreamConsultationResult> {
-  const ai = getGeminiClient();
   const model = getConsultationModel();
 
   const staticSystemInstruction = await buildStaticSystemInstruction({
@@ -202,7 +143,6 @@ export async function streamConsultationResponse(
     }
   }
 
-  // Dynamic runtime context injected alongside conversation history
   const dynamicContextBlocks: string[] = [];
   if (gocharContext) {
     dynamicContextBlocks.push(gocharContext);
@@ -225,9 +165,9 @@ export async function streamConsultationResponse(
 
   // Filter out messages excluded from context
   const activeHistory = params.historyMessages.filter((m) => !m.excluded_from_context);
-  const contents: Content[] = activeHistory.slice(-24).map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
+  const messages: OpenRouterMessage[] = activeHistory.slice(-24).map((m) => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: m.content,
   }));
 
   let finalUserText = params.userPrompt.trim();
@@ -241,67 +181,31 @@ ${snippet}
 User's specific question: ${finalUserText}`;
   }
 
-  contents.push({
+  messages.push({
     role: 'user',
-    parts: [{ text: finalUserText }],
+    content: finalUserText,
   });
 
-  const cacheKey = `${params.profile?.id || 'general'}:${params.expertSlug}:${params.modeSlug}:${params.outputSlug}:${params.languageSlug}`;
-  const cachedContentName = await tryGetOrCreateContextCache(
-    ai,
+  const streamResult = await streamOpenRouterCompletion({
     model,
-    cacheKey,
-    staticSystemInstruction
+    system: systemInstructionWithDynamic,
+    messages,
+    abortSignal: params.abortSignal,
+    onChunk: params.onChunk,
+  });
+
+  const creditsCharged = calculateCreditsFromUsage(
+    streamResult.tokensIn,
+    streamResult.tokensOut,
+    streamResult.fullText
   );
 
-  const responseStream = await ai.models.generateContentStream({
-    model,
-    contents,
-    config: {
-      ...(cachedContentName
-        ? { cachedContent: cachedContentName }
-        : { systemInstruction: systemInstructionWithDynamic }),
-      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
-      abortSignal: params.abortSignal,
-    },
-  });
-
-  let fullText = '';
-  let tokensIn = 0;
-  let tokensOut = 0;
-  let aborted = false;
-
-  try {
-    for await (const chunk of responseStream) {
-      if (params.abortSignal.aborted) {
-        aborted = true;
-        break;
-      }
-      const chunkText = chunk.text ?? '';
-      if (chunkText) {
-        fullText += chunkText;
-        params.onChunk(chunkText);
-      }
-      if (chunk.usageMetadata) {
-        tokensIn = chunk.usageMetadata.promptTokenCount ?? tokensIn;
-        tokensOut = chunk.usageMetadata.candidatesTokenCount ?? tokensOut;
-      }
-    }
-  } catch (err) {
-    if (params.abortSignal.aborted) {
-      aborted = true;
-    } else {
-      throw err;
-    }
-  }
-
-  const creditsCharged = calculateCreditsFromUsage(tokensIn, tokensOut, fullText);
   return {
-    fullText,
-    tokensIn,
-    tokensOut,
+    fullText: streamResult.fullText,
+    tokensIn: streamResult.tokensIn,
+    tokensOut: streamResult.tokensOut,
     creditsCharged,
-    aborted,
+    aborted: streamResult.aborted,
   };
 }
 
@@ -313,38 +217,40 @@ export async function generateFollowUpQuestions(params: {
   hasProfile: boolean;
 }): Promise<string[]> {
   try {
-    const ai = getGeminiClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-4-hydrogen',
-      contents: `Based on this Vedic Astrology consultation exchange, propose 5 to 6 insightful, specific follow-up questions the user would naturally want to explore next.
+    const completion = await createOpenRouterCompletion({
+      model: getUtilityModel(),
+      jsonMode: true,
+      temperature: 0.4,
+      messages: [
+        {
+          role: 'user',
+          content: `Based on this Vedic Astrology consultation exchange, propose 5 to 6 insightful, specific follow-up questions the user would naturally want to explore next.
 - Match the language: ${params.languageSlug}.
 - Mode focus: ${params.modeSlug}.
 - ${params.hasProfile ? 'Reference Dasha timing, divisional charts (D9/D10), KP sub-lords, or Gochar transits naturally.' : 'Focus on clarifying Jyotish concepts or applying them step by step.'}
 - Keep each question concise (10-18 words), sharp, and actionable. Do NOT prefix with numbers.
+- Return STRICTLY a JSON object with shape: { "questions": ["...", "..."] }
 
 USER QUESTION:
 ${params.userQuestion.slice(0, 600)}
 
 COUNCIL ANSWER EXCERPT:
 ${params.assistantAnswer.slice(0, 1800)}`,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING },
         },
-      },
+      ],
     });
 
-    const parsed = JSON.parse((response.text ?? '[]').trim());
-    if (Array.isArray(parsed)) {
-      return parsed
-        .map((q) => String(q).replace(/^\d+[\).\s-]+/, '').trim())
-        .filter(Boolean)
-        .slice(0, 6);
-    }
-    return [];
+    const parsed = safeExtractJson<{ questions?: unknown } | unknown[]>(completion.text, {});
+    const rawList = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { questions?: unknown })?.questions)
+      ? ((parsed as { questions: unknown[] }).questions)
+      : [];
+
+    return rawList
+      .map((q) => String(q).replace(/^\d+[\).\s-]+/, '').trim())
+      .filter(Boolean)
+      .slice(0, 6);
   } catch {
     return [];
   }
@@ -355,17 +261,19 @@ export async function generateConversationTitle(
   profileName?: string | null
 ): Promise<string> {
   try {
-    const ai = getGeminiClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-4-hydrogen',
-      contents: `Generate a refined 3-to-5-word title for this Vedic astrology consultation thread${profileName ? ` for ${profileName}` : ''}. No quotes, no punctuation at the end, Title Case.
+    const completion = await createOpenRouterCompletion({
+      model: getUtilityModel(),
+      temperature: 0.3,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate a refined 3-to-5-word title for this Vedic astrology consultation thread${profileName ? ` for ${profileName}` : ''}. No quotes, no punctuation at the end, Title Case.
 
 Question: ${firstQuestion.slice(0, 400)}`,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-      },
+        },
+      ],
     });
-    const cleaned = (response.text ?? '').replace(/["'*#]/g, '').trim();
+    const cleaned = completion.text.replace(/["'*#]/g, '').trim();
     return cleaned ? cleaned.slice(0, 70) : 'Consultation Insight';
   } catch {
     return firstQuestion.trim().slice(0, 48) || 'Consultation Insight';
@@ -380,7 +288,6 @@ export async function runQuickTool(params: {
   profileId?: string | null;
   userId: string;
 }): Promise<{ items?: string[]; resultText: string }> {
-  const ai = getGeminiClient();
   const supabaseAdmin = getSupabaseAdmin();
   const promptBodies = await resolvePromptBodies([params.toolSlug]);
   const toolInstruction = promptBodies[params.toolSlug] || '';
@@ -402,45 +309,57 @@ export async function runQuickTool(params: {
   }
 
   if (params.toolSlug === 'question_generator') {
-    const response = await ai.models.generateContent({
-      model: 'gemini-4-hydrogen',
-      contents: `${profileContext ? profileContext + '\n\n' : ''}Topic / Goal: ${params.inputText || 'General life & career strategy'}
+    const completion = await createOpenRouterCompletion({
+      model: getUtilityModel(),
+      system: toolInstruction,
+      jsonMode: true,
+      temperature: 0.5,
+      messages: [
+        {
+          role: 'user',
+          content: `${profileContext ? profileContext + '\n\n' : ''}Topic / Goal: ${params.inputText || 'General life & career strategy'}
 Mode: ${params.modeSlug || 'life'}
-Language: ${params.languageSlug || 'English'}`,
-      config: {
-        systemInstruction: toolInstruction,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING },
+Language: ${params.languageSlug || 'English'}
+Return STRICTLY a JSON object with shape: { "items": ["question 1", "question 2", ...] }`,
         },
-      },
+      ],
     });
 
-    const parsed = JSON.parse((response.text ?? '[]').trim());
-    const items = Array.isArray(parsed)
-      ? parsed.map((q) => String(q).trim()).filter(Boolean).slice(0, 6)
+    const parsed = safeExtractJson<{ items?: unknown; questions?: unknown } | unknown[]>(
+      completion.text,
+      {}
+    );
+    const rawItems = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { items?: unknown }).items)
+      ? (parsed as { items: unknown[] }).items
+      : Array.isArray((parsed as { questions?: unknown }).questions)
+      ? (parsed as { questions: unknown[] }).questions
       : [];
+
+    const items = rawItems.map((q) => String(q).trim()).filter(Boolean).slice(0, 6);
     return {
       items,
       resultText: items.join('\n'),
     };
   }
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-4-hydrogen',
-    contents: `${profileContext ? profileContext + '\n\n' : ''}Draft Input: ${params.inputText}
+  const completion = await createOpenRouterCompletion({
+    model: getUtilityModel(),
+    system: toolInstruction,
+    temperature: 0.4,
+    messages: [
+      {
+        role: 'user',
+        content: `${profileContext ? profileContext + '\n\n' : ''}Draft Input: ${params.inputText}
 Mode: ${params.modeSlug || 'life'}
 Language: ${params.languageSlug || 'English'}
 Return ONLY the refined prompt text ready to send—no preamble or meta-commentary.`,
-    config: {
-      systemInstruction: toolInstruction,
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-    },
+      },
+    ],
   });
 
   return {
-    resultText: (response.text ?? '').trim(),
+    resultText: completion.text.trim(),
   };
 }

@@ -1,14 +1,15 @@
-import { ThinkingLevel } from '@google/genai';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from '../services/astrologyApi';
 import { sendReportReadyEmail } from '../services/email';
 import {
   countWords,
   generateFollowUpQuestions,
-  getConsultationModel,
-  getGeminiClient,
-  isGeminiConfigured,
 } from '../services/geminiOrchestrator';
+import {
+  createOpenRouterCompletion,
+  getConsultationModel,
+  isOpenRouterConfigured,
+} from '../services/openrouter';
 import { generateReportPdfBuffer } from '../services/pdfGenerator';
 import { CORE_COUNCIL_CONSTITUTION } from '../services/promptDefaults';
 import type { ReportPromptStep } from '../services/reportDefaults';
@@ -71,8 +72,8 @@ async function processReportOrder(orderId: string, appOrigin?: string): Promise<
     }
   };
 
-  if (!isGeminiConfigured()) {
-    await refundOrderOnFailure('GEMINI_API_KEY is not configured on the server.');
+  if (!isOpenRouterConfigured()) {
+    await refundOrderOnFailure('OPENROUTER_API_KEY is not configured on the server.');
     return;
   }
 
@@ -124,7 +125,6 @@ async function processReportOrder(orderId: string, appOrigin?: string): Promise<
       }
     }
 
-    const ai = getGeminiClient();
     const model = getConsultationModel();
     const languagePref = userRow?.default_language || 'English';
     const userQuestionsText = order.user_questions?.trim()
@@ -170,21 +170,19 @@ ${
     : `Produce a dense, accurate technical & strategic working brief for this pass with exact planetary signs, houses, degrees, Nakshatras, KP sub-lords, and Dasha dates.`
 }`;
 
-      const response = await ai.models.generateContent({
+      const completion = await createOpenRouterCompletion({
         model,
-        contents: prompt,
-        config: {
-          systemInstruction: `${CORE_COUNCIL_CONSTITUTION}
+        system: `${CORE_COUNCIL_CONSTITUTION}
 
 ACTIVE NATAL CHART CONTEXT:
 ${profile.chart_text_context}
 
 ${gocharText ? `\n${gocharText}` : ''}`,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
-        },
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.4,
       });
 
-      const passText = (response.text ?? '').trim();
+      const passText = completion.text.trim();
       if (!passText) {
         throw new Error(`Empty response on ${step.title}`);
       }

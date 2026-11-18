@@ -5,7 +5,7 @@ import {
   countWords,
   generateConversationTitle,
   generateFollowUpQuestions,
-  isGeminiConfigured,
+  isOpenRouterConfigured,
   runQuickTool,
   streamConsultationResponse,
 } from '../services/geminiOrchestrator';
@@ -23,7 +23,7 @@ const MIN_CREDITS_TO_CHAT = 25;
 router.get('/config', requireAuth, (_req: AuthenticatedRequest, res) => {
   res.json({
     catalog: getPublicChatCatalog(),
-    geminiConfigured: isGeminiConfigured(),
+    openrouterConfigured: isOpenRouterConfigured(),
     minCreditsRequired: MIN_CREDITS_TO_CHAT,
   });
 });
@@ -305,8 +305,8 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     return;
   }
 
-  if (!isGeminiConfigured()) {
-    res.status(503).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
+  if (!isOpenRouterConfigured()) {
+    res.status(503).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' });
     return;
   }
 
@@ -453,7 +453,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       (streamResult.aborted ? '*(Generation stopped by user.)*' : '');
 
     if (!finalAssistantText) {
-      sendEvent({ type: 'error', error: 'No response generated from Gemini.' });
+      sendEvent({ type: 'error', error: 'No response generated from OpenRouter.' });
       res.end();
       return;
     }
@@ -667,8 +667,8 @@ router.post('/tools', requireAuth, async (req: AuthenticatedRequest, res) => {
     res.status(503).json({ error: 'Backend unavailable' });
     return;
   }
-  if (!isGeminiConfigured()) {
-    res.status(503).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
+  if (!isOpenRouterConfigured()) {
+    res.status(503).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' });
     return;
   }
 

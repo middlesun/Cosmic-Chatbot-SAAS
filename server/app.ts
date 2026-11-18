@@ -26,7 +26,7 @@ export function createExpressApp(): Express {
       integrations: {
         supabaseServer: isSupabaseServerConfigured(),
         supabaseClient: Boolean(process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY),
-        gemini: Boolean(process.env.GEMINI_API_KEY),
+        openrouter: Boolean(process.env.OPENROUTER_API_KEY),
         freeAstrologyApi: Boolean(process.env.FREE_ASTROLOGY_API_KEY),
         dodoPayments: Boolean(process.env.DODO_API_KEY),
         resend: Boolean(process.env.RESEND_API_KEY),
