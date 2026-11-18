@@ -1,0 +1,6 @@
+{
+  "name": "CosmicCouncil.pro",
+  "description": "A luxury mobile-first astrology consultation platform offering strategic timing and psychological clarity for life's pivotal moments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,41 @@
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
+
+# Run and deploy your AI Studio app
+
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/fa5bb618-3a87-4d31-972d-098473e95762
+
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Copy `.env.example` to `.env` and populate your Supabase, Gemini, FreeAstrologyAPI, Dodo Payments, and Resend keys.
+3. Run locally:
+   `npm run dev`
+
+## Deploy on Cloudflare via GitHub (Workers + Static Assets)
+
+1. Push this repository to GitHub.
+2. In the **Cloudflare Dashboard**, go to **Compute (Workers) → Create → Import a repository** and select your GitHub repo.
+3. Configure the build settings:
+   - **Build command:** `npm run build`
+   - **Deploy command:** `npx wrangler deploy`
+   - **Root directory:** `/`
+4. Add **Build environment variables** (needed during `vite build`):
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_WEB3FORMS_ACCESS_KEY` *(optional, for legacy contact form)*
+5. Add **Runtime Worker Secrets** (in **Worker Settings → Variables and Secrets**):
+   - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+   - `GEMINI_API_KEY` *(optional: `GEMINI_CONSULTATION_MODEL`)*
+   - `FREE_ASTROLOGY_API_KEY`
+   - `DODO_API_KEY`, `DODO_WEBHOOK_SECRET`
+   - `RESEND_API_KEY`
+   - `SANITY_PROJECT_ID`, `SANITY_DATASET` *(optional)*
+6. Note: Because multi-pass Gemini Deep Research reports & PDF synthesis run asynchronously, Cloudflare's **Workers Paid** plan is recommended to avoid Free-tier 10ms CPU limits.

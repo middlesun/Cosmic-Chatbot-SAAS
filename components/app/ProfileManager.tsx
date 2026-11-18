@@ -1,0 +1,527 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { Plus, Search, Trash2, Eye, Sparkles, Loader2, ArrowLeft, AlertCircle } from 'lucide-react';
+import { useAuth } from './AuthContext';
+import ChartViewer, { type CompiledChartJson } from './ChartViewer';
+
+interface ProfileSummary {
+  id: string;
+  name: string;
+  birth_date: string;
+  birth_time: string;
+  birth_city: string;
+  birth_state: string | null;
+  birth_country: string;
+  gender: string | null;
+  relationship: string | null;
+  birth_chart_pdf_url: string | null;
+  is_activated: boolean;
+  activated_at: string | null;
+  chart_json?: CompiledChartJson | null;
+}
+
+const ProfileManager: React.FC = () => {
+  const { getAccessToken, refreshUser } = useAuth();
+  const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
+  const [tierLimit, setTierLimit] = useState(5);
+  const [activationCost, setActivationCost] = useState(2000);
+  const [astrologyApiConfigured, setAstrologyApiConfigured] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  // Create form state
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [formState, setFormState] = useState({
+    name: '',
+    birth_date: '',
+    birth_time: '',
+    birth_city: '',
+    birth_state: '',
+    birth_country: 'India',
+    gender: 'male',
+    relationship: 'Self',
+    birth_chart_pdf_url: '',
+  });
+
+  // Activation & Detail Inspection state
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [activationStepText, setActivationStepText] = useState('');
+  const [selectedProfile, setSelectedProfile] = useState<ProfileSummary | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const loadProfiles = useCallback(async () => {
+    const token = await getAccessToken();
+    if (!token) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/profiles', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to load profiles.');
+      } else {
+        setProfiles(data.profiles || []);
+        setTierLimit(data.tierLimit ?? 5);
+        setActivationCost(data.activationCost ?? 2000);
+        setAstrologyApiConfigured(Boolean(data.astrologyApiConfigured));
+        setError(null);
+      }
+    } catch {
+      setError('Network error loading profiles.');
+    } finally {
+      setLoading(false);
+    }
+  }, [getAccessToken]);
+
+  useEffect(() => {
+    loadProfiles();
+  }, [loadProfiles]);
+
+  const handleCreateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const token = await getAccessToken();
+    if (!token) return;
+
+    setCreating(true);
+    try {
+      const res = await fetch('/api/profiles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(formState),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Could not save profile.');
+      } else {
+        setShowCreateForm(false);
+        setFormState({
+          name: '',
+          birth_date: '',
+          birth_time: '',
+          birth_city: '',
+          birth_state: '',
+          birth_country: 'India',
+          gender: 'male',
+          relationship: 'Self',
+          birth_chart_pdf_url: '',
+        });
+        await loadProfiles();
+        await refreshUser();
+      }
+    } catch {
+      setError('Failed to save profile.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleActivate = async (profile: ProfileSummary) => {
+    setError(null);
+    const token = await getAccessToken();
+    if (!token) return;
+
+    setActivatingId(profile.id);
+    setActivationStepText('Resolving coordinates & historical timezone...');
+    const stepTimer1 = setTimeout(() => {
+      setActivationStepText('Computing Sidereal Lahiri positions & D1–D60 Vargas...');
+    }, 3000);
+    const stepTimer2 = setTimeout(() => {
+      setActivationStepText('Calculating KP Placidus Sub-Lords, Jaimini & Ashtakavarga...');
+    }, 6500);
+
+    try {
+      const res = await fetch(`/api/profiles/${profile.id}/activate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Activation failed.');
+      } else {
+        await loadProfiles();
+        await refreshUser();
+        setSelectedProfile(data.profile);
+      }
+    } catch {
+      setError('Network error during chart activation.');
+    } finally {
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
+      setActivatingId(null);
+      setActivationStepText('');
+    }
+  };
+
+  const handleInspectChart = async (profileId: string) => {
+    const token = await getAccessToken();
+    if (!token) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/profiles/${profileId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.profile) {
+        setSelectedProfile(data.profile);
+      } else {
+        setError(data.error || 'Could not load chart details.');
+      }
+    } catch {
+      setError('Failed to load chart.');
+    }
+  };
+
+  const handleDelete = async (profileId: string) => {
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/profiles/${profileId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setConfirmDeleteId(null);
+        if (selectedProfile?.id === profileId) setSelectedProfile(null);
+        await loadProfiles();
+        await refreshUser();
+      }
+    } catch {
+      setError('Failed to delete profile.');
+    }
+  };
+
+  const filtered = profiles.filter((p) =>
+    `${p.name} ${p.birth_city} ${p.relationship || ''}`.toLowerCase().includes(search.toLowerCase())
+  );
+
+  if (selectedProfile?.chart_json) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setSelectedProfile(null)}
+            className="inline-flex items-center gap-2 text-xs font-medium text-[#5C5449] hover:text-[#3D3830]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>Back to Saved Profiles</span>
+          </button>
+          <span className="text-xs text-[#8B8275]">
+            {selectedProfile.birth_date} · {selectedProfile.birth_time} · {selectedProfile.birth_city}
+          </span>
+        </div>
+
+        <ChartViewer chart={selectedProfile.chart_json} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-[#3D3830]/10 pb-6">
+        <div>
+          <p className="text-xs text-[#8B8275] mb-1 font-['JetBrains_Mono',monospace] tabular-nums">
+            {profiles.length} / {tierLimit} saved profile slots
+          </p>
+          <h1 className="font-serif text-3xl md:text-4xl font-medium text-[#3D3830]">
+            Birth Profiles & Charts
+          </h1>
+          <p className="mt-1.5 text-sm text-[#5C5449]">
+            Save birth details and activate complete AstroSage-calibrated Parashari, KP, Jaimini, and Ashtakavarga charts.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowCreateForm(!showCreateForm)}
+          disabled={profiles.length >= tierLimit}
+          className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 whitespace-nowrap shrink-0"
+        >
+          <Plus className="h-4 w-4" />
+          <span>{showCreateForm ? 'Close Form' : 'New Birth Profile'}</span>
+        </button>
+      </div>
+
+      {!astrologyApiConfigured && (
+        <div className="rounded-2xl bg-[#F1ECE3] p-4 border border-[#3D3830]/15 flex items-start gap-3 text-xs text-[#5C5449]">
+          <AlertCircle className="h-4 w-4 shrink-0 text-[#3D3830] mt-0.5" />
+          <div>
+            <span className="font-semibold text-[#3D3830]">FREE_ASTROLOGY_API_KEY not configured yet.</span>{' '}
+            You can save birth profiles now; add your FreeAstrologyAPI key to <code className="font-['JetBrains_Mono',monospace]">.env</code> to enable automated chart activation.
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-2xl bg-[#A94438]/10 px-4 py-3 text-xs font-medium text-[#A94438]">
+          {error}
+        </div>
+      )}
+
+      {activatingId && (
+        <div className="rounded-3xl bg-[#1F2229] text-[#F4EFE6] p-6 flex items-center gap-4">
+          <Loader2 className="h-5 w-5 animate-spin text-[#B8965A] shrink-0" />
+          <div>
+            <p className="font-serif text-lg">Activating Astrological Chart</p>
+            <p className="text-xs text-[#F4EFE6]/70 mt-0.5">{activationStepText}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Add Profile Form */}
+      {showCreateForm && (
+        <form
+          onSubmit={handleCreateProfile}
+          className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 md:p-8 space-y-5"
+        >
+          <h2 className="font-serif text-2xl font-medium text-[#3D3830]">Save Birth Details</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Full Name</label>
+              <input
+                type="text"
+                required
+                value={formState.name}
+                onChange={(e) => setFormState({ ...formState, name: e.target.value })}
+                placeholder="e.g. Aarav Mehta"
+                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Birth Date</label>
+              <input
+                type="date"
+                required
+                value={formState.birth_date}
+                onChange={(e) => setFormState({ ...formState, birth_date: e.target.value })}
+                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Birth Time (24h)</label>
+              <input
+                type="time"
+                step="1"
+                required
+                value={formState.birth_time}
+                onChange={(e) => setFormState({ ...formState, birth_time: e.target.value })}
+                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Birth City</label>
+              <input
+                type="text"
+                required
+                value={formState.birth_city}
+                onChange={(e) => setFormState({ ...formState, birth_city: e.target.value })}
+                placeholder="e.g. Mumbai"
+                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">State / Province</label>
+              <input
+                type="text"
+                value={formState.birth_state}
+                onChange={(e) => setFormState({ ...formState, birth_state: e.target.value })}
+                placeholder="e.g. Maharashtra"
+                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Country</label>
+              <input
+                type="text"
+                required
+                value={formState.birth_country}
+                onChange={(e) => setFormState({ ...formState, birth_country: e.target.value })}
+                placeholder="e.g. India"
+                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Gender</label>
+              <select
+                value={formState.gender}
+                onChange={(e) => setFormState({ ...formState, gender: e.target.value })}
+                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+              >
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="non-binary">Non-Binary</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Relationship</label>
+              <input
+                type="text"
+                value={formState.relationship}
+                onChange={(e) => setFormState({ ...formState, relationship: e.target.value })}
+                placeholder="Self, Partner, Client..."
+                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Chart PDF URL (Optional)</label>
+              <input
+                type="url"
+                value={formState.birth_chart_pdf_url}
+                onChange={(e) => setFormState({ ...formState, birth_chart_pdf_url: e.target.value })}
+                placeholder="https://..."
+                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowCreateForm(false)}
+              className="rounded-full px-5 py-2.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830]"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={creating}
+              className="rounded-full bg-[#4A453D] px-6 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50"
+            >
+              {creating ? 'Saving...' : 'Save Profile'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Search Filter */}
+      {profiles.length > 0 && (
+        <div className="relative max-w-sm">
+          <Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-[#8B8275]" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filter saved profiles..."
+            className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] pl-10 pr-4 py-2.5 text-xs text-[#3D3830] placeholder:text-[#8B8275] focus:border-[#4A453D] focus:outline-none"
+          />
+        </div>
+      )}
+
+      {/* Profile List */}
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2].map((n) => (
+            <div key={n} className="h-24 rounded-3xl bg-[#F1ECE3] animate-pulse" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-10 text-center">
+          <h2 className="font-serif text-2xl font-medium text-[#3D3830]">No Birth Profiles Yet</h2>
+          <p className="mt-2 text-sm text-[#5C5449] max-w-md mx-auto">
+            Add your birth details or a client’s chart to calculate complete D1–D60 Vargas, KP Sub-Lords, Jaimini Karakas, and Vimshottari Dashas.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowCreateForm(true)}
+            className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-6 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E]"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Create First Profile</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {filtered.map((profile) => (
+            <div
+              key={profile.id}
+              className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 flex flex-col justify-between gap-5"
+            >
+              <div>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs text-[#8B8275] mb-1">
+                      {profile.relationship || 'Profile'} · {profile.is_activated ? 'Chart Activated' : 'Pending Activation'}
+                    </p>
+                    <h3 className="font-serif text-2xl font-medium text-[#3D3830]">{profile.name}</h3>
+                  </div>
+
+                  {confirmDeleteId === profile.id ? (
+                    <div className="flex items-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(profile.id)}
+                        className="font-medium text-[#A94438] hover:underline"
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="text-[#8B8275] hover:text-[#3D3830]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(profile.id)}
+                      title="Delete Profile"
+                      className="text-[#8B8275] hover:text-[#A94438] p-1.5"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                <p className="mt-2 font-['JetBrains_Mono',monospace] tabular-nums text-xs text-[#5C5449]">
+                  {profile.birth_date} · {profile.birth_time}
+                </p>
+                <p className="mt-1 text-xs text-[#8B8275]">
+                  {[profile.birth_city, profile.birth_state, profile.birth_country].filter(Boolean).join(', ')}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-[#3D3830]/10">
+                {profile.is_activated ? (
+                  <button
+                    type="button"
+                    onClick={() => handleInspectChart(profile.id)}
+                    className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E]"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    <span>Inspect Chart & Dashas</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={activatingId !== null}
+                    onClick={() => handleActivate(profile)}
+                    className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>
+                      {activationCost === 0
+                        ? 'Activate Chart (Included)'
+                        : `Activate · ${activationCost.toLocaleString()} Credits`}
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ProfileManager;
