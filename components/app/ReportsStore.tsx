@@ -226,7 +226,7 @@ const ReportsStore: React.FC = () => {
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2 text-[11px] text-[#8B8275]">
                       <span>{prof?.name || 'Birth Profile'}</span>
-                      <span className="font-['JetBrains_Mono',monospace] tabular-nums">
+                      <span className="font-['DM_Sans',sans-serif] tabular-nums">
                         {new Date(ord.created_at).toLocaleDateString()}
                       </span>
                     </div>
@@ -294,7 +294,7 @@ const ReportsStore: React.FC = () => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-[11px] text-[#8B8275]">
                     <span>{item.category}</span>
-                    <span className="inline-flex items-center gap-1 font-['JetBrains_Mono',monospace]">
+                    <span className="inline-flex items-center gap-1 font-['DM_Sans',sans-serif]">
                       <Layers className="h-3 w-3" />
                       {item.pass_count}-Pass Deep Synthesis
                     </span>
@@ -312,7 +312,7 @@ const ReportsStore: React.FC = () => {
                 <div className="pt-4 border-t border-[#3D3830]/10 flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[10px] text-[#8B8275]">Dossier Fee</p>
-                    <p className="font-['JetBrains_Mono',monospace] tabular-nums text-base font-medium text-[#3D3830]">
+                    <p className="font-['DM_Sans',sans-serif] tabular-nums text-base font-medium text-[#3D3830]">
                       {item.price_credits.toLocaleString()} Credits
                     </p>
                   </div>
@@ -433,7 +433,7 @@ const ReportsStore: React.FC = () => {
               <div className="pt-3 border-t border-[#3D3830]/10 flex items-center justify-between gap-4">
                 <div className="text-xs">
                   <span className="text-[#8B8275]">Balance after order: </span>
-                  <span className="font-['JetBrains_Mono',monospace] text-[#3D3830]">
+                  <span className="font-['DM_Sans',sans-serif] text-[#3D3830]">
                     {(
                       (appUser?.credits_balance ?? 0) - selectedReport.price_credits
                     ).toLocaleString()}{' '}

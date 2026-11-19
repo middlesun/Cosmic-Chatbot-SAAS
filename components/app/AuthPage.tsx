@@ -340,7 +340,7 @@ const AuthPage: React.FC = () => {
                       value={referralCode}
                       onChange={(e) => setReferralCode(e.target.value)}
                       placeholder="CC-XXXXXX"
-                      className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-4 py-2.5 text-sm font-['JetBrains_Mono',monospace] text-[#3D3830] placeholder:text-[#8B8275]/70 focus:border-[#4A453D] focus:outline-none uppercase"
+                      className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-4 py-2.5 text-sm font-['DM_Sans',sans-serif] text-[#3D3830] placeholder:text-[#8B8275]/70 focus:border-[#4A453D] focus:outline-none uppercase"
                     />
                   </div>
                 )}

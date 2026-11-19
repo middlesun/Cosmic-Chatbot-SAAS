@@ -13,10 +13,12 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import { useAppShell } from './AppLayout';
 import ChatSidebar from './ChatSidebar';
 import MessageThread from './MessageThread';
 import ChatComposer from './ChatComposer';
 import Tooltip from './Tooltip';
+import UserAvatar from './UserAvatar';
 import MyPromptsModal from './MyPromptsModal';
 import ChatSettingsModal, { type ChatFontSize } from './ChatSettingsModal';
 import type {
@@ -67,6 +69,7 @@ const ChatWorkspace: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { appUser, isPreviewMode, exitPreviewMode, signOut, getAccessToken, refreshUser } = useAuth();
+  const { openAccountSettings } = useAppShell();
 
   const [catalog, setCatalog] = useState<ChatCatalog | null>(null);
   const [profiles, setProfiles] = useState<ChatProfile[]>([]);
@@ -884,7 +887,7 @@ const ChatWorkspace: React.FC = () => {
                     <span className="text-[11px] font-medium text-[#5C5449] truncate">
                       {headerProfileName} · Last chatted
                     </span>
-                    <span className="text-[10px] font-['JetBrains_Mono',monospace] text-[#8B8275]">
+                    <span className="text-[10px] font-['DM_Sans',sans-serif] text-[#8B8275]">
                       {sameProfileConversations.length}
                     </span>
                   </div>
@@ -915,7 +918,7 @@ const ChatWorkspace: React.FC = () => {
                               <p className="text-xs font-medium text-[#3D3830] truncate">
                                 {conv.title}
                               </p>
-                              <p className="text-[10px] text-[#8B8275] font-['JetBrains_Mono',monospace]">
+                              <p className="text-[10px] text-[#8B8275] font-['DM_Sans',sans-serif]">
                                 {formatLastChatted(conv.updated_at || conv.created_at)}
                               </p>
                             </div>
@@ -989,6 +992,35 @@ const ChatWorkspace: React.FC = () => {
             >
               <Settings2 className="h-4 w-4" />
             </button>
+
+            <Tooltip
+              content={
+                isPreviewMode
+                  ? 'Design Preview Mode'
+                  : appUser?.email
+                  ? `Signed in as ${appUser.email}`
+                  : 'Account'
+              }
+              placement="bottom"
+            >
+              <button
+                type="button"
+                onClick={openAccountSettings}
+                aria-label={
+                  isPreviewMode
+                    ? 'Account preview settings'
+                    : appUser?.email
+                    ? `Signed in as ${appUser.email}`
+                    : 'Open account settings'
+                }
+                className="inline-flex items-center gap-2 rounded-full border border-[#3D3830]/12 bg-[#FDFBF7] p-0.5 md:pr-2.5 text-[#3D3830] hover:border-[#8B7355]/45 active:scale-[0.97] transition-all cursor-pointer"
+              >
+                <UserAvatar size="xs" />
+                <span className="hidden md:inline max-w-[160px] lg:max-w-[200px] truncate text-[11px] font-medium text-[#5C5449]">
+                  {isPreviewMode ? 'Preview' : appUser?.email || 'Signed in'}
+                </span>
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -1009,7 +1041,7 @@ const ChatWorkspace: React.FC = () => {
             />
 
             {inChatQuery.trim() && (
-              <span className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#8B8275] shrink-0">
+              <span className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] shrink-0">
                 {matchedMessageIds.length > 0
                   ? `${(activeMatchIdx % matchedMessageIds.length) + 1} of ${matchedMessageIds.length}`
                   : '0 matches'}

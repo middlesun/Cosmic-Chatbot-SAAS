@@ -228,7 +228,7 @@ const QuickToolsModal: React.FC<QuickToolsModalProps> = ({
                   className="flex items-start justify-between gap-3 rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-3.5"
                 >
                   <p className="text-xs text-[#3D3830] leading-relaxed">
-                    <span className="font-['JetBrains_Mono',monospace] text-[#8B8275] mr-2">
+                    <span className="font-['DM_Sans',sans-serif] text-[#8B8275] mr-2">
                       0{idx + 1}
                     </span>
                     {item}

@@ -1225,7 +1225,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                     )}
                     <div className="min-w-0 max-w-[130px]">
                       <p className="truncate font-medium leading-tight">{att.name}</p>
-                      <p className="text-[9px] text-[#8B8275] font-['JetBrains_Mono',monospace]">
+                      <p className="text-[9px] text-[#8B8275] font-['DM_Sans',sans-serif]">
                         {formatBytes(att.sizeBytes)}
                       </p>
                     </div>

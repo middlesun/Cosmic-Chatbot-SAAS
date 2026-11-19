@@ -334,7 +334,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         </blockquote>
       ),
       code: ({ children }: { children?: React.ReactNode }) => (
-        <code className="font-['JetBrains_Mono',monospace] text-xs bg-[#F1ECE3] px-1.5 py-0.5 rounded text-[#3D3830]">
+        <code className="font-['DM_Sans',sans-serif] text-xs bg-[#F1ECE3] px-1.5 py-0.5 rounded text-[#3D3830]">
           {children}
         </code>
       ),
@@ -652,7 +652,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   <div className="pt-4 space-y-2">
                     <div className="flex items-center justify-between text-[11px] text-[#8B8275]">
                       <span>Continue exploring</span>
-                      <span className="font-['JetBrains_Mono',monospace]">
+                      <span className="font-['DM_Sans',sans-serif]">
                         Click or type 1–{msg.followups_json.length} + Enter
                       </span>
                     </div>
@@ -664,7 +664,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                           onClick={() => onSelectFollowUp(q)}
                           className="group flex items-start gap-2.5 rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 px-3.5 py-2.5 text-left text-xs text-[#3D3830] hover:bg-[#F1ECE3] active:scale-[0.99] transition-all"
                         >
-                          <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[11px] text-[#8B8275] pt-0.5 shrink-0">
+                          <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#8B8275] pt-0.5 shrink-0">
                             {qIdx + 1}.
                           </span>
                           <span className="leading-relaxed flex-1">{q}</span>

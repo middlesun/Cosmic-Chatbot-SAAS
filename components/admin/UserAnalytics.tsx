@@ -126,7 +126,7 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({
               </span>
             </button>
           )}
-          <span className="text-xs font-['JetBrains_Mono',monospace] tabular-nums text-[#8B8275]">
+          <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
             {visibleUsers.length} member accounts shown
           </span>
         </div>
@@ -161,14 +161,14 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                       <p className="font-medium text-[#3D3830]">
                         {u.full_name || 'Seeker'}
                         {u.is_admin && (
-                          <span className="ml-2 text-[10px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
+                          <span className="ml-2 text-[10px] font-['DM_Sans',sans-serif] text-[#8B7355]">
                             [ADMIN]
                           </span>
                         )}
                       </p>
                       <p className="text-[11px] text-[#8B8275]">{u.email}</p>
                       {((u.ip_cluster_size || 0) >= 2 || (u.duplicate_chart_count || 0) > 0) && (
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-['JetBrains_Mono',monospace] text-[#7A3E36]">
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-['DM_Sans',sans-serif] text-[#7A3E36]">
                           {(u.ip_cluster_size || 0) >= 2 && (
                             <span>
                               IP cluster: {u.ip_cluster_size} accts
@@ -217,11 +217,11 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                       />
                     </td>
 
-                    <td className="px-5 py-3.5 text-right font-['JetBrains_Mono',monospace] tabular-nums font-medium text-[#3D3830]">
+                    <td className="px-5 py-3.5 text-right font-['DM_Sans',sans-serif] tabular-nums font-medium text-[#3D3830]">
                       {u.credits_balance.toLocaleString()}
                     </td>
 
-                    <td className="px-5 py-3.5 text-right font-['JetBrains_Mono',monospace] tabular-nums text-[#5C5449]">
+                    <td className="px-5 py-3.5 text-right font-['DM_Sans',sans-serif] tabular-nums text-[#5C5449]">
                       {u.activated_profile_count}/{u.profile_count} · {u.conversation_count} chats
                     </td>
 
@@ -279,7 +279,7 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                             value={creditDelta}
                             onChange={(e) => setCreditDelta(e.target.value)}
                             placeholder="+5000 or -1000"
-                            className="w-36 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-1.5 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830]"
+                            className="w-36 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-1.5 text-xs font-['DM_Sans',sans-serif] text-[#3D3830]"
                           />
                           <input
                             type="text"

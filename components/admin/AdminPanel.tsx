@@ -116,37 +116,37 @@ const AdminPanel: React.FC = () => {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">
             <div>
               <p className="text-[11px] text-[#F4EFE6]/60">Members</p>
-              <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-2xl font-medium">
+              <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium">
                 {metrics.totalUsers.toLocaleString()}
               </p>
             </div>
             <div>
               <p className="text-[11px] text-[#F4EFE6]/60">Activated Charts</p>
-              <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-2xl font-medium">
+              <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium">
                 {metrics.activatedProfiles}/{metrics.totalProfiles}
               </p>
             </div>
             <div>
               <p className="text-[11px] text-[#F4EFE6]/60">Consultations</p>
-              <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-2xl font-medium">
+              <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium">
                 {metrics.totalConversations.toLocaleString()}
               </p>
             </div>
             <div>
               <p className="text-[11px] text-[#F4EFE6]/60">User Questions</p>
-              <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-2xl font-medium">
+              <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium">
                 {metrics.totalQuestionsAsked.toLocaleString()}
               </p>
             </div>
             <div>
               <p className="text-[11px] text-[#F4EFE6]/60">Report Orders</p>
-              <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-2xl font-medium">
+              <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium">
                 {metrics.totalReportOrders.toLocaleString()}
               </p>
             </div>
             <div>
               <p className="text-[11px] text-[#F4EFE6]/60">Credits Active</p>
-              <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-2xl font-medium">
+              <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium">
                 {metrics.totalCreditsCirculating.toLocaleString()}
               </p>
             </div>
@@ -174,7 +174,7 @@ const AdminPanel: React.FC = () => {
                     {item.label}
                   </span>
                   <span
-                    className={`text-[11px] font-['JetBrains_Mono',monospace] ${
+                    className={`text-[11px] font-['DM_Sans',sans-serif] ${
                       ready ? 'text-[#2D6A4F]' : 'text-[#7A3E36]'
                     }`}
                   >

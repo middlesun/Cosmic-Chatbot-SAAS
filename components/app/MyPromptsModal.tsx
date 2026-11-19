@@ -110,7 +110,7 @@ const MyPromptsModal: React.FC<MyPromptsModalProps> = ({
           <form onSubmit={handleSave} className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-[#3D3830]">Create Reusable Prompt</span>
-              <span className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B8275]">
+              <span className="text-[11px] font-['DM_Sans',sans-serif] text-[#8B8275]">
                 {prompts.length}/{maxLimit}
               </span>
             </div>

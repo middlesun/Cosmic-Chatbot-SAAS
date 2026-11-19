@@ -261,7 +261,7 @@ const TimingRadarDashboard: React.FC = () => {
                 </p>
               </div>
               {radar.upcomingShift && (
-                <span className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#B8965A]">
+                <span className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#B8965A]">
                   Next {radar.upcomingShift.type.slice(0, 2)}: {radar.upcomingShift.toLord} ({radar.upcomingShift.transitionDate})
                 </span>
               )}
@@ -281,7 +281,7 @@ const TimingRadarDashboard: React.FC = () => {
                         · {DASHA_LEVEL_HINTS[item.level]}
                       </span>
                     </div>
-                    <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[#F4EFE6]/80 shrink-0">
+                    <span className="font-['DM_Sans',sans-serif] tabular-nums text-[#F4EFE6]/80 shrink-0">
                       {item.daysRemaining.toLocaleString()}d left · {item.percentElapsed}%
                     </span>
                   </div>
@@ -293,7 +293,7 @@ const TimingRadarDashboard: React.FC = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between text-[10px] font-['JetBrains_Mono',monospace] tabular-nums text-[#F4EFE6]/50">
+                  <div className="flex items-center justify-between text-[10px] font-['DM_Sans',sans-serif] tabular-nums text-[#F4EFE6]/50">
                     <span>{item.startDate}</span>
                     <span>{item.endDate}</span>
                   </div>
@@ -339,7 +339,7 @@ const TimingRadarDashboard: React.FC = () => {
 
               {briefView === 'daily' ? (
                 <div className="space-y-3">
-                  <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#F4EFE6]/50">
+                  <p className="text-[11px] font-['DM_Sans',sans-serif] text-[#F4EFE6]/50">
                     {radar.dailyBrief.date}
                   </p>
                   <h4 className="font-serif text-2xl font-medium text-[#F4EFE6]">
@@ -354,7 +354,7 @@ const TimingRadarDashboard: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#F4EFE6]/50">
+                  <p className="text-[11px] font-['DM_Sans',sans-serif] text-[#F4EFE6]/50">
                     {radar.monthlyBrief.month}
                   </p>
                   <h4 className="font-serif text-2xl font-medium text-[#F4EFE6]">
@@ -388,7 +388,7 @@ const TimingRadarDashboard: React.FC = () => {
                 key={idx}
                 className="rounded-2xl bg-[#F4EFE6]/5 border border-[#F4EFE6]/10 p-4 space-y-1.5"
               >
-                <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#B8965A]">
+                <p className="text-[11px] font-['DM_Sans',sans-serif] text-[#B8965A]">
                   {win.windowRange}
                 </p>
                 <p className="text-sm font-medium text-[#F4EFE6]">{win.label}</p>
@@ -425,7 +425,7 @@ const TimingRadarDashboard: React.FC = () => {
                       {t.planet}
                       {t.isRetrograde ? ' (R)' : ''}
                     </span>
-                    <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[11px] text-[#F4EFE6]/75">
+                    <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#F4EFE6]/75">
                       {t.sign} · H{t.houseFromLagna} Lagna
                     </span>
                   </div>

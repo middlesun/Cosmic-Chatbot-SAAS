@@ -183,7 +183,7 @@ const ClientBulkImport: React.FC<ClientBulkImportProps> = ({
             setResults([]);
           }}
           placeholder="Paste CSV rows: email,full_name,credits_grant,birth_name,birth_date,birth_time,birth_city,birth_country,gender"
-          className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830] focus:outline-none focus:border-[#3D3830]/40"
+          className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 text-xs font-['DM_Sans',sans-serif] text-[#3D3830] focus:outline-none focus:border-[#3D3830]/40"
         />
 
         <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
@@ -240,7 +240,7 @@ const ClientBulkImport: React.FC<ClientBulkImportProps> = ({
                   <tr key={i}>
                     <td className="px-5 py-2.5 text-[#3D3830]">{r.email}</td>
                     <td className="px-5 py-2.5 text-[#5C5449]">{r.full_name || '—'}</td>
-                    <td className="px-5 py-2.5 font-['JetBrains_Mono',monospace] tabular-nums">
+                    <td className="px-5 py-2.5 font-['DM_Sans',sans-serif] tabular-nums">
                       {(r.credits_grant || 0).toLocaleString()}
                     </td>
                     <td className="px-5 py-2.5 text-[#5C5449]">
@@ -277,7 +277,7 @@ const ClientBulkImport: React.FC<ClientBulkImportProps> = ({
                 <span className="text-[#5C5449]">— {r.message}</span>
               </div>
               {r.inviteSent && (
-                <span className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
+                <span className="text-[11px] font-['DM_Sans',sans-serif] text-[#8B7355]">
                   Invite Emailed
                 </span>
               )}

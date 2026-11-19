@@ -61,20 +61,20 @@ const AppDashboardHome: React.FC = () => {
           <div className="grid grid-cols-3 gap-6 md:gap-10">
             <div>
               <p className="text-xs text-[#8B8275] mb-1">Credits</p>
-              <p className="font-['JetBrains_Mono',monospace] tabular-nums text-2xl md:text-3xl font-medium text-[#3D3830]">
+              <p className="font-['DM_Sans',sans-serif] tabular-nums text-2xl md:text-3xl font-medium text-[#3D3830]">
                 {(appUser?.credits_balance ?? 0).toLocaleString()}
               </p>
             </div>
             <div>
               <p className="text-xs text-[#8B8275] mb-1">Saved Profiles</p>
-              <p className="font-['JetBrains_Mono',monospace] tabular-nums text-2xl md:text-3xl font-medium text-[#3D3830]">
+              <p className="font-['DM_Sans',sans-serif] tabular-nums text-2xl md:text-3xl font-medium text-[#3D3830]">
                 {stats.savedProfiles}
                 <span className="text-sm text-[#8B8275]">/{tierProfileLimit}</span>
               </p>
             </div>
             <div>
               <p className="text-xs text-[#8B8275] mb-1">Referrals</p>
-              <p className="font-['JetBrains_Mono',monospace] tabular-nums text-2xl md:text-3xl font-medium text-[#3D3830]">
+              <p className="font-['DM_Sans',sans-serif] tabular-nums text-2xl md:text-3xl font-medium text-[#3D3830]">
                 {stats.successfulReferrals}
               </p>
             </div>

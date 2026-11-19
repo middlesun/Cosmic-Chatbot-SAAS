@@ -209,7 +209,7 @@ const ReportOrderDetail: React.FC = () => {
           <span>Back to Reports Store</span>
         </Link>
 
-        <span className="text-xs font-['JetBrains_Mono',monospace] tabular-nums text-[#8B8275]">
+        <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
           Order {order.id.slice(0, 8)} · {order.credits_charged.toLocaleString()} Credits
         </span>
       </div>
@@ -284,7 +284,7 @@ const ReportOrderDetail: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-['JetBrains_Mono',monospace] text-[10px]">
+                      <span className="font-['DM_Sans',sans-serif] text-[10px]">
                         0{idx + 1}
                       </span>
                       {isDone && <CheckCircle2 className="h-3.5 w-3.5 text-[#B8965A]" />}

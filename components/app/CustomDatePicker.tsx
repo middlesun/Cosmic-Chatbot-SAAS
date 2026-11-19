@@ -192,7 +192,7 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
           <span
             className={`truncate ${
               value
-                ? "font-['JetBrains_Mono',monospace] tabular-nums text-[#3D3830]"
+                ? "font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]"
                 : 'text-[#8B8275]'
             }`}
           >
@@ -241,7 +241,7 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
               <button
                 type="button"
                 onClick={() => setViewMode((m) => (m === 'years' ? 'days' : 'years'))}
-                className={`rounded-lg px-2 py-1 text-xs font-['JetBrains_Mono',monospace] tabular-nums font-medium transition-colors ${
+                className={`rounded-lg px-2 py-1 text-xs font-['DM_Sans',sans-serif] tabular-nums font-medium transition-colors ${
                   viewMode === 'years'
                     ? 'bg-[#4A453D] text-[#FAF7F2]'
                     : 'bg-[#F1ECE3] text-[#3D3830] hover:bg-[#EAE3D7]'
@@ -312,7 +312,7 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                       setViewYear(yr);
                       setViewMode('months');
                     }}
-                    className={`rounded-xl py-1.5 text-xs font-['JetBrains_Mono',monospace] tabular-nums transition-colors ${
+                    className={`rounded-xl py-1.5 text-xs font-['DM_Sans',sans-serif] tabular-nums transition-colors ${
                       active
                         ? 'bg-[#4A453D] text-[#FAF7F2] font-medium'
                         : 'text-[#3D3830] hover:bg-[#F1ECE3]'
@@ -355,7 +355,7 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                         setIsOpen(false);
                         setViewMode('days');
                       }}
-                      className={`h-8 w-full rounded-xl text-xs font-['JetBrains_Mono',monospace] tabular-nums transition-colors ${
+                      className={`h-8 w-full rounded-xl text-xs font-['DM_Sans',sans-serif] tabular-nums transition-colors ${
                         isSelected
                           ? 'bg-[#4A453D] text-[#FAF7F2] font-medium'
                           : isToday

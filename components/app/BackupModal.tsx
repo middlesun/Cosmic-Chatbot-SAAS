@@ -298,7 +298,7 @@ const BackupModal: React.FC<BackupModalProps> = ({ isOpen, onClose }) => {
             {parsedBackup && (
               <div className="rounded-xl border border-[#3D3830]/10 bg-[#FAF7F2] p-3 text-xs text-[#5C5449] space-y-1">
                 <p className="font-medium text-[#3D3830] truncate">{parsedBackup.fileName}</p>
-                <p className="font-['JetBrains_Mono',monospace] text-[11px]">
+                <p className="font-['DM_Sans',sans-serif] text-[11px]">
                   {parsedBackup.profilesCount} profile(s) · {parsedBackup.promptsCount} prompt(s) ·{' '}
                   {parsedBackup.conversationsCount} chat(s) in archive
                 </p>

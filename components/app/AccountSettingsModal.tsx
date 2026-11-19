@@ -3,6 +3,7 @@ import { Check, KeyRound, Loader2, Settings2, X } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { getSupabaseClient } from '../../lib/supabaseClient';
 import CustomSelect from './CustomSelect';
+import UserAvatar from './UserAvatar';
 import type { ChatCatalog } from './chatTypes';
 import type { ChatFontSize } from './ChatSettingsModal';
 
@@ -341,12 +342,15 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
 
           {/* Account Security strip */}
           <div className="rounded-2xl bg-[#F1ECE3]/75 border border-[#3D3830]/10 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="text-xs text-[#5C5449] min-w-0">
-              <p className="font-medium text-[#3D3830] truncate">{appUser?.email}</p>
-              <p className="font-['JetBrains_Mono',monospace] text-[11px]">
-                Referral: {appUser?.referral_code}
-              </p>
-              {resetMessage && <p className="mt-1 text-[#3D3830]">{resetMessage}</p>}
+            <div className="flex items-center gap-3 min-w-0">
+              <UserAvatar size="md" />
+              <div className="text-xs text-[#5C5449] min-w-0">
+                <p className="font-medium text-[#3D3830] truncate">{appUser?.email}</p>
+                <p className="font-['DM_Sans',sans-serif] text-[11px]">
+                  Referral: {appUser?.referral_code}
+                </p>
+                {resetMessage && <p className="mt-1 text-[#3D3830]">{resetMessage}</p>}
+              </div>
             </div>
             <button
               type="button"

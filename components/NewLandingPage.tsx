@@ -952,7 +952,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                 <Reveal direction="left" delay={60}>
                   <div className="space-y-2 pb-6 border-b border-[#3D3830]/10">
                     <h3 className="font-serif text-xl font-medium text-[#3D3830]">
-                      <span className="font-['JetBrains_Mono',monospace] text-xs text-[#8B8275] mr-2.5 tabular-nums">
+                      <span className="font-['DM_Sans',sans-serif] text-xs text-[#8B8275] mr-2.5 tabular-nums">
                         01.
                       </span>
                       Surface-Level Indicators
@@ -966,7 +966,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                 <Reveal direction="left" delay={140}>
                   <div className="space-y-2 pb-6 border-b border-[#3D3830]/10">
                     <h3 className="font-serif text-xl font-medium text-[#3D3830]">
-                      <span className="font-['JetBrains_Mono',monospace] text-xs text-[#8B8275] mr-2.5 tabular-nums">
+                      <span className="font-['DM_Sans',sans-serif] text-xs text-[#8B8275] mr-2.5 tabular-nums">
                         02.
                       </span>
                       Purely Textbook Knowledge
@@ -980,7 +980,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                 <Reveal direction="left" delay={220}>
                   <div className="space-y-2">
                     <h3 className="font-serif text-xl font-medium text-[#3D3830]">
-                      <span className="font-['JetBrains_Mono',monospace] text-xs text-[#8B8275] mr-2.5 tabular-nums">
+                      <span className="font-['DM_Sans',sans-serif] text-xs text-[#8B8275] mr-2.5 tabular-nums">
                         03.
                       </span>
                       Single-System Over-Reliance
@@ -1057,7 +1057,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                       >
                         <div className="min-w-0">
                           <p
-                            className={`font-['JetBrains_Mono',monospace] text-[11px] tabular-nums transition-colors duration-200 ${
+                            className={`font-['DM_Sans',sans-serif] text-[11px] tabular-nums transition-colors duration-200 ${
                               isActive ? 'text-[#B8965A]' : 'text-[#8B8275]'
                             }`}
                           >
@@ -1086,7 +1086,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                 <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-8 md:p-10 min-h-[380px] flex flex-col justify-between overflow-hidden">
                   <div key={activeLayer} className="space-y-5 animate-cc-tab-panel">
                     <div className="space-y-2">
-                      <p className="font-['JetBrains_Mono',monospace] text-xs text-[#B8965A]">
+                      <p className="font-['DM_Sans',sans-serif] text-xs text-[#B8965A]">
                         {READING_LAYERS[activeLayer].title}
                       </p>
                       <h3 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830] leading-tight">
@@ -1155,7 +1155,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
               <Reveal direction="up" delay={0}>
                 <div className="h-full rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/10 p-7 md:p-8 space-y-3 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1 hover:border-[#3D3830]/25">
-                  <p className="font-['JetBrains_Mono',monospace] text-xs text-[#8B8275]">
+                  <p className="font-['DM_Sans',sans-serif] text-xs text-[#8B8275]">
                     01 · Primary Layer
                   </p>
                   <h3 className="font-serif text-2xl font-medium text-[#3D3830]">Parashari Jyotish</h3>
@@ -1167,7 +1167,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
 
               <Reveal direction="up" delay={100}>
                 <div className="h-full rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/10 p-7 md:p-8 space-y-3 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1 hover:border-[#3D3830]/25">
-                  <p className="font-['JetBrains_Mono',monospace] text-xs text-[#8B8275]">
+                  <p className="font-['DM_Sans',sans-serif] text-xs text-[#8B8275]">
                     02 · Verification Layer
                   </p>
                   <h3 className="font-serif text-2xl font-medium text-[#3D3830]">Jaimini Jyotish</h3>
@@ -1179,7 +1179,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
 
               <Reveal direction="up" delay={200}>
                 <div className="h-full rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/10 p-7 md:p-8 space-y-3 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1 hover:border-[#3D3830]/25">
-                  <p className="font-['JetBrains_Mono',monospace] text-xs text-[#8B8275]">
+                  <p className="font-['DM_Sans',sans-serif] text-xs text-[#8B8275]">
                     03 · Timing Precision
                   </p>
                   <h3 className="font-serif text-2xl font-medium text-[#3D3830]">KP Astrology</h3>
@@ -1238,7 +1238,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                   <Reveal key={item.number} direction="right" delay={idx * 65}>
                     <div className="py-7 space-y-2 transition-transform duration-200 hover:translate-x-1">
                       <h3 className="font-serif text-xl font-medium text-[#3D3830]">
-                        <span className="font-['JetBrains_Mono',monospace] text-xs text-[#B8965A] mr-3 tabular-nums">
+                        <span className="font-['DM_Sans',sans-serif] text-xs text-[#B8965A] mr-3 tabular-nums">
                           {item.number}
                         </span>
                         {item.title}
@@ -1290,7 +1290,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                   <Reveal key={item.number} direction="right" delay={idx * 65}>
                     <div className="py-7 space-y-2 transition-transform duration-200 hover:translate-x-1">
                       <h3 className="font-serif text-xl font-medium text-[#3D3830]">
-                        <span className="font-['JetBrains_Mono',monospace] text-xs text-[#B8965A] mr-3 tabular-nums">
+                        <span className="font-['DM_Sans',sans-serif] text-xs text-[#B8965A] mr-3 tabular-nums">
                           {item.number}
                         </span>
                         {item.title}
@@ -1335,7 +1335,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                       type="button"
                       key={curr}
                       onClick={() => setCurrency(curr)}
-                      className={`rounded-full px-3.5 py-1.5 text-xs font-['JetBrains_Mono',monospace] transition-all duration-200 active:scale-95 cursor-pointer ${
+                      className={`rounded-full px-3.5 py-1.5 text-xs font-['DM_Sans',sans-serif] transition-all duration-200 active:scale-95 cursor-pointer ${
                         currency === curr
                           ? 'bg-[#4A453D] text-[#FAF7F2] font-medium shadow-sm'
                           : 'text-[#5C5449] hover:text-[#3D3830]'
@@ -1377,7 +1377,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                           </div>
 
                           <div className="flex items-baseline gap-1.5">
-                            <span className="font-['JetBrains_Mono',monospace] tabular-nums text-4xl font-medium text-[#3D3830]">
+                            <span className="font-['DM_Sans',sans-serif] tabular-nums text-4xl font-medium text-[#3D3830]">
                               {prices.personal}
                             </span>
                             <span className="text-xs text-[#8B8275]">/ month</span>
@@ -1447,7 +1447,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                           </div>
 
                           <div className="flex items-baseline gap-1.5">
-                            <span className="font-['JetBrains_Mono',monospace] tabular-nums text-4xl font-medium text-[#F4EFE6]">
+                            <span className="font-['DM_Sans',sans-serif] tabular-nums text-4xl font-medium text-[#F4EFE6]">
                               {prices.professional}
                             </span>
                             <span className="text-xs text-[#F4EFE6]/60">/ month</span>
@@ -1501,7 +1501,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                       <p className="text-xs md:text-sm text-[#5C5449] leading-relaxed">
                         Credits cover consultation chat and research usage and{' '}
                         <span className="font-medium text-[#3D3830]">never expire</span>. Optional pay-as-you-go top-up packs start at{' '}
-                        <span className="font-['JetBrains_Mono',monospace] tabular-nums font-medium text-[#3D3830]">
+                        <span className="font-['DM_Sans',sans-serif] tabular-nums font-medium text-[#3D3830]">
                           {prices.topUp}
                         </span>{' '}
                         for 10,000 credits.
@@ -1535,7 +1535,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                       type="button"
                       key={curr}
                       onClick={() => setCurrency(curr)}
-                      className={`rounded-full px-3.5 py-1.5 text-xs font-['JetBrains_Mono',monospace] transition-all duration-200 active:scale-95 cursor-pointer ${
+                      className={`rounded-full px-3.5 py-1.5 text-xs font-['DM_Sans',sans-serif] transition-all duration-200 active:scale-95 cursor-pointer ${
                         currency === curr
                           ? 'bg-[#FAF7F2] text-[#1F2229] font-medium shadow-sm'
                           : 'text-[#F4EFE6]/70 hover:text-[#F4EFE6]'
@@ -1636,7 +1636,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                     >
                       <div>
                         <div className="flex items-center justify-between gap-3 mb-4">
-                          <div className="flex items-center gap-2 text-xs font-['JetBrains_Mono',monospace] text-[#F4EFE6]/55">
+                          <div className="flex items-center gap-2 text-xs font-['DM_Sans',sans-serif] text-[#F4EFE6]/55">
                             <span>ID: {product.id}</span>
                             <button
                               type="button"
@@ -1686,7 +1686,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                         </p>
 
                         <div className="flex items-center justify-between gap-4">
-                          <div className="font-['JetBrains_Mono',monospace] tabular-nums text-xl font-medium text-[#F4EFE6]">
+                          <div className="font-['DM_Sans',sans-serif] tabular-nums text-xl font-medium text-[#F4EFE6]">
                             {formatCurrencyPrice(product.priceINR, currency)}
                           </div>
 
@@ -1761,7 +1761,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                       <div className="flex items-center gap-2 text-xs text-[#8B8275]">
                         <span className="font-medium text-[#5C5449]">{art.category}</span>
                         <span aria-hidden="true">·</span>
-                        <span className="font-['JetBrains_Mono',monospace] tabular-nums">
+                        <span className="font-['DM_Sans',sans-serif] tabular-nums">
                           {art.readingTime}
                         </span>
                       </div>

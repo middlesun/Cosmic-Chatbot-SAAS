@@ -358,7 +358,7 @@ const ProfileManager: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-[#3D3830]/10 pb-6">
         <div>
-          <p className="text-xs text-[#8B8275] mb-1 font-['JetBrains_Mono',monospace] tabular-nums">
+          <p className="text-xs text-[#8B8275] mb-1 font-['DM_Sans',sans-serif] tabular-nums">
             {profiles.length} / {tierLimit} saved profile slots
           </p>
           <h1 className="font-serif text-3xl md:text-4xl font-medium text-[#3D3830]">
@@ -391,7 +391,7 @@ const ProfileManager: React.FC = () => {
           <AlertCircle className="h-4 w-4 shrink-0 text-[#3D3830] mt-0.5" />
           <div>
             <span className="font-semibold text-[#3D3830]">FREE_ASTROLOGY_API_KEY not configured yet.</span>{' '}
-            You can save birth profiles now; add your FreeAstrologyAPI key to <code className="font-['JetBrains_Mono',monospace]">.env</code> to enable automated chart activation.
+            You can save birth profiles now; add your FreeAstrologyAPI key to <code className="font-['DM_Sans',sans-serif]">.env</code> to enable automated chart activation.
           </div>
         </div>
       )}
@@ -736,7 +736,7 @@ const ProfileManager: React.FC = () => {
                   )}
                 </div>
 
-                <p className="mt-2 font-['JetBrains_Mono',monospace] tabular-nums text-xs text-[#5C5449]">
+                <p className="mt-2 font-['DM_Sans',sans-serif] tabular-nums text-xs text-[#5C5449]">
                   {profile.birth_date} · {profile.birth_time}
                 </p>
                 <p className="mt-1 text-xs text-[#8B8275]">

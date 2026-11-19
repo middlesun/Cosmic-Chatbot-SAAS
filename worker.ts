@@ -23,7 +23,7 @@ export default {
     // Sync Worker environment variables & secrets into process.env for Node-compatible modules
     if (env && typeof env === 'object') {
       for (const [key, value] of Object.entries(env)) {
-        if (typeof value === 'string' && process.env[key] === undefined) {
+        if (typeof value === 'string' && value.length > 0 && !process.env[key]) {
           process.env[key] = value;
         }
       }

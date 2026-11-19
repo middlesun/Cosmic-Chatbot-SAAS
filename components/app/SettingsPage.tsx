@@ -292,7 +292,7 @@ const SettingsPage: React.FC = () => {
           </h2>
           <p className="text-xs text-[#5C5449]">
             Signed in as <span className="font-medium text-[#3D3830]">{appUser?.email}</span> · Referral Code:{' '}
-            <span className="font-['JetBrains_Mono',monospace] text-[#3D3830]">
+            <span className="font-['DM_Sans',sans-serif] text-[#3D3830]">
               {appUser?.referral_code}
             </span>
           </p>

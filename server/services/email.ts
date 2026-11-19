@@ -4,7 +4,7 @@ export interface SendEmailResult {
   reason?: string;
 }
 
-const FROM_EMAIL =
+const getFromEmail = (): string =>
   process.env.RESEND_FROM_EMAIL || 'Cosmic Council PRO <concierge@cosmiccouncil.pro>';
 
 export function isResendConfigured(): boolean {
@@ -29,7 +29,7 @@ async function sendResendEmail(params: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: FROM_EMAIL,
+        from: getFromEmail(),
         to: [params.to],
         subject: params.subject,
         html: params.html,
@@ -231,7 +231,7 @@ export async function sendSupportInquiryEmail(params: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: FROM_EMAIL,
+        from: getFromEmail(),
         to: [supportTarget],
         reply_to: params.fromEmail,
         subject: `[Support · ${params.category}] ${params.subject}`,

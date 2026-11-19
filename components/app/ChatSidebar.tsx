@@ -162,7 +162,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               {conv.title}
             </span>
           </div>
-          <div className="mt-0.5 text-[10px] text-[#8B8275] font-['JetBrains_Mono',monospace] tabular-nums">
+          <div className="mt-0.5 text-[10px] text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
             {new Date(conv.updated_at).toLocaleDateString()}
           </div>
         </button>
@@ -419,7 +419,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                         <ChevronRight className="h-3.5 w-3.5 text-[#5C5449] shrink-0" />
                       )}
                       <span className="truncate">{displayLabel}</span>
-                      <span className="text-[10px] font-medium text-[#8B8275] font-['JetBrains_Mono',monospace] tabular-nums">
+                      <span className="text-[10px] font-medium text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
                         ({items.length})
                       </span>
                     </button>
@@ -465,7 +465,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                     <ChevronRight className="h-3.5 w-3.5 text-[#5C5449] shrink-0" />
                   )}
                   <span className="truncate">General &amp; Learn Astrology</span>
-                  <span className="text-[10px] font-medium text-[#8B8275] font-['JetBrains_Mono',monospace] tabular-nums">
+                  <span className="text-[10px] font-medium text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
                     ({groupedConversations.general.length})
                   </span>
                 </button>
@@ -562,7 +562,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
           <Link
             to="/app/billing"
             onClick={onCloseMobileDrawer}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F2] border border-[#3D3830]/10 px-2.5 py-1 text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#3D3830]"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F2] border border-[#3D3830]/10 px-2.5 py-1 text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]"
           >
             <Coins className="h-3 w-3 text-[#8B7355]" />
             <span>{creditsBalance.toLocaleString()}</span>

@@ -250,7 +250,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
               size="sm"
               align="right"
               minMenuWidth={190}
-              triggerClassName="font-['JetBrains_Mono',monospace] bg-white/10 border-white/15"
+              triggerClassName="font-['DM_Sans',sans-serif] bg-white/10 border-white/15"
               options={DIVISIONS.filter((d) => chart.vargas[d]).map((d) => ({
                 value: d,
                 label: `${d}${
@@ -298,7 +298,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                         dominantBaseline="middle"
                         fill="rgba(184,150,90,0.85)"
                         fontSize="11"
-                        fontFamily="JetBrains Mono, monospace"
+                        fontFamily="DM Sans, sans-serif"
                       >
                         {signNum}
                       </text>
@@ -354,7 +354,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                       {isAsc && (
                         <line x1={x} y1={y + 18} x2={x + 18} y2={y} stroke="rgba(184,150,90,0.8)" strokeWidth="1.2" />
                       )}
-                      <text x={x + 8} y={y + 18} fill="rgba(184,150,90,0.7)" fontSize="9.5" fontFamily="JetBrains Mono, monospace">
+                      <text x={x + 8} y={y + 18} fill="rgba(184,150,90,0.7)" fontSize="9.5" fontFamily="DM Sans, sans-serif">
                         {SIGN_NAMES_SHORT[sIdx]}
                       </text>
                       <text x={x + 48} y={y + 54} textAnchor="middle" fill="#F4EFE6" fontSize="12" fontWeight="500">
@@ -381,21 +381,21 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                   <div>
                     <p className="text-xs text-[#F4EFE6]/55">Mahadasha</p>
                     <p className="font-serif text-xl text-[#F4EFE6]">{chart.vimshottari.currentStack.mahadasha}</p>
-                    <p className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#B8965A]">
+                    <p className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#B8965A]">
                       → {chart.vimshottari.currentStack.mdEnd}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-[#F4EFE6]/55">Antardasha</p>
                     <p className="font-serif text-xl text-[#F4EFE6]">{chart.vimshottari.currentStack.antardasha}</p>
-                    <p className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#B8965A]">
+                    <p className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#B8965A]">
                       → {chart.vimshottari.currentStack.adEnd}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-[#F4EFE6]/55">Pratyantar</p>
                     <p className="font-serif text-xl text-[#F4EFE6]">{chart.vimshottari.currentStack.pratyantardasha}</p>
-                    <p className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#B8965A]">
+                    <p className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#B8965A]">
                       → {chart.vimshottari.currentStack.pdEnd}
                     </p>
                   </div>
@@ -409,7 +409,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                 <p className="font-serif text-lg text-[#F4EFE6]">
                   {chart.planets.find((p) => p.name === 'Ascendant')?.sign || '—'}
                 </p>
-                <p className="font-['JetBrains_Mono',monospace] tabular-nums text-[#F4EFE6]/70 mt-0.5">
+                <p className="font-['DM_Sans',sans-serif] tabular-nums text-[#F4EFE6]/70 mt-0.5">
                   {chart.planets.find((p) => p.name === 'Ascendant')?.dms || ''}
                 </p>
               </div>
@@ -418,7 +418,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                 <p className="font-serif text-lg text-[#F4EFE6]">
                   {chart.planets.find((p) => p.name === 'Moon')?.nakshatra || '—'}
                 </p>
-                <p className="font-['JetBrains_Mono',monospace] tabular-nums text-[#F4EFE6]/70 mt-0.5">
+                <p className="font-['DM_Sans',sans-serif] tabular-nums text-[#F4EFE6]/70 mt-0.5">
                   Pada {chart.planets.find((p) => p.name === 'Moon')?.pada || '—'} · Karakamsha {chart.jaimini.karakamshaSign}
                 </p>
               </div>
@@ -477,11 +477,11 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                   <td className="py-3 px-5 font-medium text-[#3D3830]">
                     {p.name} {p.isRetrograde ? '(R)' : ''}
                   </td>
-                  <td className="py-3 px-4 font-['JetBrains_Mono',monospace] tabular-nums text-[#5C5449]">
+                  <td className="py-3 px-4 font-['DM_Sans',sans-serif] tabular-nums text-[#5C5449]">
                     H{p.house}
                   </td>
                   <td className="py-3 px-4 text-[#3D3830]">{p.sign}</td>
-                  <td className="py-3 px-4 font-['JetBrains_Mono',monospace] tabular-nums text-[#5C5449]">
+                  <td className="py-3 px-4 font-['DM_Sans',sans-serif] tabular-nums text-[#5C5449]">
                     {p.dms}
                   </td>
                   <td className="py-3 px-4 text-[#5C5449]">
@@ -514,10 +514,10 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
               <tbody className="divide-y divide-[#3D3830]/10">
                 {chart.kp.cusps.map((c) => (
                   <tr key={c.house} className="hover:bg-[#F1ECE3]/50">
-                    <td className="py-2.5 px-4 font-['JetBrains_Mono',monospace] tabular-nums font-medium">
+                    <td className="py-2.5 px-4 font-['DM_Sans',sans-serif] tabular-nums font-medium">
                       H{c.house}
                     </td>
-                    <td className="py-2.5 px-4 font-['JetBrains_Mono',monospace] tabular-nums text-[#5C5449]">
+                    <td className="py-2.5 px-4 font-['DM_Sans',sans-serif] tabular-nums text-[#5C5449]">
                       {c.sign.slice(0, 3)} {c.dms}
                     </td>
                     <td className="py-2.5 px-4 text-[#5C5449]">
@@ -549,7 +549,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                     <td className="py-2.5 px-4 text-[#5C5449]">
                       {s.starLord} · {s.subLord}
                     </td>
-                    <td className="py-2.5 px-4 font-['JetBrains_Mono',monospace] tabular-nums text-[#3D3830]">
+                    <td className="py-2.5 px-4 font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]">
                       {s.signifiesHouses.join(', ')}
                     </td>
                   </tr>
@@ -581,7 +581,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                       <span className="text-xs font-medium text-[#B8965A]">Current Phase</span>
                     )}
                   </div>
-                  <span className="font-['JetBrains_Mono',monospace] tabular-nums text-xs text-[#5C5449]">
+                  <span className="font-['DM_Sans',sans-serif] tabular-nums text-xs text-[#5C5449]">
                     {md.startDate} → {md.endDate}
                   </span>
                 </button>
@@ -602,7 +602,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                             <span className="font-medium text-[#3D3830]">
                               {md.lord} / {ad.lord} {isCurrentAD ? '· Active' : ''}
                             </span>
-                            <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[#5C5449]">
+                            <span className="font-['DM_Sans',sans-serif] tabular-nums text-[#5C5449]">
                               {ad.startDate} → {ad.endDate}
                             </span>
                           </button>
@@ -621,7 +621,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                                     }`}
                                   >
                                     <div className="font-medium text-[#3D3830]">{pd.lord} PD</div>
-                                    <div className="font-['JetBrains_Mono',monospace] tabular-nums text-[10px] mt-0.5">
+                                    <div className="font-['DM_Sans',sans-serif] tabular-nums text-[10px] mt-0.5">
                                       {pd.startDate} → {pd.endDate}
                                     </div>
                                   </div>
@@ -662,7 +662,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                       {k.code} · {k.title}
                     </td>
                     <td className="py-2.5 px-4 text-[#3D3830]">{k.planet}</td>
-                    <td className="py-2.5 px-4 font-['JetBrains_Mono',monospace] tabular-nums text-[#5C5449]">
+                    <td className="py-2.5 px-4 font-['DM_Sans',sans-serif] tabular-nums text-[#5C5449]">
                       {k.sign} {k.dms}
                     </td>
                   </tr>
@@ -674,7 +674,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
           <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-serif text-xl font-medium text-[#3D3830]">Sarvashtakavarga</h3>
-              <span className="font-['JetBrains_Mono',monospace] tabular-nums text-xs text-[#8B8275]">
+              <span className="font-['DM_Sans',sans-serif] tabular-nums text-xs text-[#8B8275]">
                 Total {chart.ashtakavarga.totalBindus} bindus
               </span>
             </div>
@@ -685,7 +685,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
                   className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-3 text-center"
                 >
                   <p className="text-[11px] text-[#8B8275]">{SIGN_NAMES_SHORT[idx]}</p>
-                  <p className="font-['JetBrains_Mono',monospace] tabular-nums text-lg font-medium text-[#3D3830] mt-0.5">
+                  <p className="font-['DM_Sans',sans-serif] tabular-nums text-lg font-medium text-[#3D3830] mt-0.5">
                     {bindus}
                   </p>
                 </div>
@@ -699,7 +699,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart }) => {
         <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6">
           <h3 className="font-serif text-xl font-medium text-[#3D3830] mb-3">Shad Bala Summary</h3>
           {chart.shadBalaSummary ? (
-            <pre className="overflow-x-auto rounded-2xl bg-[#FAF7F2] p-4 text-xs font-['JetBrains_Mono',monospace] text-[#5C5449]">
+            <pre className="overflow-x-auto rounded-2xl bg-[#FAF7F2] p-4 text-xs font-['DM_Sans',sans-serif] text-[#5C5449]">
               {JSON.stringify(chart.shadBalaSummary, null, 2)}
             </pre>
           ) : (

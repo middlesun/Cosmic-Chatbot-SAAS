@@ -134,7 +134,7 @@ const OpenRouterModelField: React.FC<OpenRouterModelFieldProps> = ({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="provider/model-slug (e.g., qwen/qwen-2.5-72b-instruct)"
-          className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830] placeholder:text-[#8B8275] focus:outline-none focus:border-[#3D3830]/40"
+          className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['DM_Sans',sans-serif] text-[#3D3830] placeholder:text-[#8B8275] focus:outline-none focus:border-[#3D3830]/40"
         />
       )}
     </div>
@@ -572,13 +572,13 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                     {r.category}
                     {!r.is_active ? ' · Hidden' : ''}
                   </span>
-                  <span className="font-['JetBrains_Mono',monospace]">
+                  <span className="font-['DM_Sans',sans-serif]">
                     {r.price_credits.toLocaleString()} Cr
                   </span>
                 </div>
                 <p className="mt-1 font-medium text-sm text-[#3D3830]">{r.name}</p>
                 {r.model_id && (
-                  <p className="mt-1 text-[10px] font-['JetBrains_Mono',monospace] text-[#8B7355] truncate">
+                  <p className="mt-1 text-[10px] font-['DM_Sans',sans-serif] text-[#8B7355] truncate">
                     Model: {r.model_id}
                   </p>
                 )}
@@ -620,7 +620,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                     value={newReportSlug}
                     onChange={(e) => setNewReportSlug(e.target.value)}
                     placeholder="sade-sati-navigation"
-                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830]"
+                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['DM_Sans',sans-serif] text-[#3D3830]"
                   />
                 </div>
               </div>
@@ -650,7 +650,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                     required
                     value={newReportPrice}
                     onChange={(e) => setNewReportPrice(Number(e.target.value))}
-                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830]"
+                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['DM_Sans',sans-serif] text-[#3D3830]"
                   />
                 </div>
                 <div>
@@ -661,7 +661,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                     type="number"
                     value={newReportSortOrder}
                     onChange={(e) => setNewReportSortOrder(Number(e.target.value))}
-                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830]"
+                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['DM_Sans',sans-serif] text-[#3D3830]"
                   />
                 </div>
               </div>
@@ -728,7 +728,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
             <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-6 space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#3D3830]/10 pb-4">
                 <div>
-                  <span className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B8275]">
+                  <span className="text-[11px] font-['DM_Sans',sans-serif] text-[#8B8275]">
                     {activeReport.slug}
                   </span>
                 </div>
@@ -794,7 +794,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                         price_credits: Number(e.target.value),
                       })
                     }
-                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830]"
+                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['DM_Sans',sans-serif] text-[#3D3830]"
                   />
                 </div>
                 <div className="md:col-span-1">
@@ -810,7 +810,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                         sort_order: Number(e.target.value),
                       })
                     }
-                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-2.5 py-2 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830]"
+                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-2.5 py-2 text-xs font-['DM_Sans',sans-serif] text-[#3D3830]"
                   />
                 </div>
               </div>
@@ -877,7 +877,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                     className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4 space-y-2.5"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B8275] shrink-0">
+                      <span className="text-[11px] font-['DM_Sans',sans-serif] text-[#8B8275] shrink-0">
                         #{sIdx + 1}
                       </span>
                       <input
@@ -999,7 +999,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                   : 'bg-[#FDFBF7] border-[#3D3830]/10 hover:bg-[#F1ECE3]/50'
               }`}
             >
-              <div className="flex items-center justify-between text-[10px] text-[#8B8275] font-['JetBrains_Mono',monospace]">
+              <div className="flex items-center justify-between text-[10px] text-[#8B8275] font-['DM_Sans',sans-serif]">
                 <span className="uppercase">
                   {p.category}
                   {!p.is_active ? ' · INACTIVE' : ''}
@@ -1010,11 +1010,11 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                 {p.display_name}
               </p>
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] text-[#8B8275] font-['JetBrains_Mono',monospace] truncate">
+                <p className="text-[10px] text-[#8B8275] font-['DM_Sans',sans-serif] truncate">
                   {p.slug}
                 </p>
                 {p.model_id && (
-                  <span className="text-[10px] font-['JetBrains_Mono',monospace] text-[#8B7355] truncate max-w-[130px]">
+                  <span className="text-[10px] font-['DM_Sans',sans-serif] text-[#8B7355] truncate max-w-[130px]">
                     {p.model_id.split('/')[1] || p.model_id}
                   </span>
                 )}
@@ -1041,7 +1041,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                 value={newSlug}
                 onChange={(e) => setNewSlug(e.target.value)}
                 placeholder="slug_identifier"
-                className="rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['JetBrains_Mono',monospace]"
+                className="rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-['DM_Sans',sans-serif]"
               />
               <CustomSelect
                 value={newCategory}
@@ -1117,7 +1117,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
             <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-6 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex-1 min-w-[220px]">
-                  <span className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B8275]">
+                  <span className="text-[11px] font-['DM_Sans',sans-serif] text-[#8B8275]">
                     {activePrompt.slug} · Version {activePrompt.version}
                   </span>
                   <input
@@ -1170,7 +1170,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                 rows={10}
                 value={draftBody}
                 onChange={(e) => setDraftBody(e.target.value)}
-                className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 text-xs font-['JetBrains_Mono',monospace] leading-relaxed text-[#3D3830] focus:outline-none focus:border-[#3D3830]/40"
+                className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 text-xs font-['DM_Sans',sans-serif] leading-relaxed text-[#3D3830] focus:outline-none focus:border-[#3D3830]/40"
               />
 
               {feedback && (
@@ -1200,7 +1200,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                   <Sparkles className="h-4 w-4" />
                   <span>Live OpenRouter Prompt Sandbox</span>
                 </div>
-                <span className="font-['JetBrains_Mono',monospace] text-[11px] text-[#F4EFE6]/65">
+                <span className="font-['DM_Sans',sans-serif] text-[11px] text-[#F4EFE6]/65">
                   Model: {sandboxModelUsed || draftModelId.trim() || 'Platform Default'}
                 </span>
               </div>
@@ -1243,7 +1243,7 @@ const PromptChainEditor: React.FC<PromptChainEditorProps> = ({
                         className="flex items-center justify-between gap-3 rounded-2xl bg-[#FDFBF7] px-4 py-2.5 text-xs"
                       >
                         <div className="min-w-0 flex-1">
-                          <span className="font-['JetBrains_Mono',monospace] font-medium text-[#3D3830] mr-2">
+                          <span className="font-['DM_Sans',sans-serif] font-medium text-[#3D3830] mr-2">
                             v{v.version}
                           </span>
                           <span className="text-[#8B8275] truncate">

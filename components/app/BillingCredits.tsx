@@ -239,7 +239,7 @@ const BillingCredits: React.FC = () => {
                 key={curr}
                 type="button"
                 onClick={() => void handleCurrencySwitch(curr)}
-                className={`rounded-xl px-3 py-1.5 text-xs font-medium font-['JetBrains_Mono',monospace] transition-colors ${
+                className={`rounded-xl px-3 py-1.5 text-xs font-medium font-['DM_Sans',sans-serif] transition-colors ${
                   currency === curr
                     ? 'bg-[#4A453D] text-[#FAF7F2]'
                     : 'text-[#5C5449] hover:text-[#3D3830]'
@@ -257,13 +257,13 @@ const BillingCredits: React.FC = () => {
         <div className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-6 text-[#F4EFE6] flex flex-col justify-between min-h-[156px]">
           <div className="flex items-center justify-between">
             <Coins className="h-5 w-5 text-[#B8965A]" />
-            <span className="text-[11px] font-['JetBrains_Mono',monospace] text-[#F4EFE6]/60">
+            <span className="text-[11px] font-['DM_Sans',sans-serif] text-[#F4EFE6]/60">
               {currency}
             </span>
           </div>
           <div>
             <p className="text-xs text-[#F4EFE6]/65">Available Balance</p>
-            <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-2xl font-medium text-[#F4EFE6]">
+            <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium text-[#F4EFE6]">
               {(appUser?.credits_balance ?? 0).toLocaleString()}
             </p>
             <p className="mt-1 text-xs text-[#F4EFE6]/60">Credits ready to use</p>
@@ -287,7 +287,7 @@ const BillingCredits: React.FC = () => {
           <Gift className="h-5 w-5 text-[#5C5449]" />
           <div>
             <p className="text-xs text-[#8B8275]">Referrals Earned</p>
-            <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-2xl font-medium text-[#3D3830]">
+            <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium text-[#3D3830]">
               {rewardedReferralsCount}{' '}
               <span className="font-sans text-sm font-normal text-[#5C5449]">rewarded</span>
             </p>
@@ -301,7 +301,7 @@ const BillingCredits: React.FC = () => {
           <Sparkles className="h-5 w-5 text-[#5C5449]" />
           <div>
             <p className="text-xs text-[#8B8275]">Chart Activation Rate</p>
-            <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-xl font-medium text-[#3D3830]">
+            <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-xl font-medium text-[#3D3830]">
               {currentActivationRate}
             </p>
             <p className="mt-1 text-xs text-[#5C5449]">
@@ -356,14 +356,14 @@ const BillingCredits: React.FC = () => {
                 <h3 className="font-serif text-2xl font-medium text-[#3D3830]">
                   {pack.name}
                 </h3>
-                <p className="font-['JetBrains_Mono',monospace] tabular-nums text-lg font-medium text-[#3D3830]">
+                <p className="font-['DM_Sans',sans-serif] tabular-nums text-lg font-medium text-[#3D3830]">
                   {pack.credits.toLocaleString()} Credits
                 </p>
                 <p className="text-xs text-[#5C5449] leading-relaxed">{pack.subtitle}</p>
               </div>
 
               <div className="pt-4 border-t border-[#3D3830]/10 flex items-center justify-between gap-4">
-                <span className="font-['JetBrains_Mono',monospace] tabular-nums text-xl font-medium text-[#3D3830]">
+                <span className="font-['DM_Sans',sans-serif] tabular-nums text-xl font-medium text-[#3D3830]">
                   {formatPrice(pack.prices[currency])}
                 </span>
                 <button
@@ -420,7 +420,7 @@ const BillingCredits: React.FC = () => {
                     <h3 className="font-serif text-2xl font-medium text-[#3D3830]">
                       {tier.name}
                     </h3>
-                    <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-xl font-medium text-[#3D3830]">
+                    <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-xl font-medium text-[#3D3830]">
                       {formatPrice(tier.prices[currency])}
                       {tier.prices[currency] > 0 && (
                         <span className="text-xs font-normal text-[#8B8275]"> / month</span>
@@ -491,7 +491,7 @@ const BillingCredits: React.FC = () => {
               </p>
             </div>
           </div>
-          <div className="font-['JetBrains_Mono',monospace] tabular-nums text-xs text-[#3D3830] shrink-0">
+          <div className="font-['DM_Sans',sans-serif] tabular-nums text-xs text-[#3D3830] shrink-0">
             {rewardedReferralsCount} Rewarded · {pendingReferralsCount} Pending
           </div>
         </div>
@@ -502,7 +502,7 @@ const BillingCredits: React.FC = () => {
             readOnly
             value={referralUrl}
             aria-label="Your personal referral link"
-            className="flex-1 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830]"
+            className="flex-1 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs font-['DM_Sans',sans-serif] text-[#3D3830]"
           />
           <button
             type="button"
@@ -544,7 +544,7 @@ const BillingCredits: React.FC = () => {
                 <tbody className="divide-y divide-[#3D3830]/8">
                   {transactions.map((tx) => (
                     <tr key={tx.id}>
-                      <td className="px-5 py-3 font-['JetBrains_Mono',monospace] tabular-nums text-[#8B8275] whitespace-nowrap">
+                      <td className="px-5 py-3 font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] whitespace-nowrap">
                         {new Date(tx.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-5 py-3 capitalize text-[#3D3830] whitespace-nowrap">
@@ -554,13 +554,13 @@ const BillingCredits: React.FC = () => {
                         {tx.description || '—'}
                       </td>
                       <td
-                        className={`px-5 py-3 text-right font-['JetBrains_Mono',monospace] tabular-nums whitespace-nowrap ${
+                        className={`px-5 py-3 text-right font-['DM_Sans',sans-serif] tabular-nums whitespace-nowrap ${
                           tx.amount >= 0 ? 'text-[#2D6A4F]' : 'text-[#3D3830]'
                         }`}
                       >
                         {tx.amount >= 0 ? `+${tx.amount.toLocaleString()}` : tx.amount.toLocaleString()}
                       </td>
-                      <td className="px-5 py-3 text-right font-['JetBrains_Mono',monospace] tabular-nums text-[#3D3830] whitespace-nowrap">
+                      <td className="px-5 py-3 text-right font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830] whitespace-nowrap">
                         {tx.balance_after.toLocaleString()}
                       </td>
                     </tr>
@@ -612,7 +612,7 @@ const BillingCredits: React.FC = () => {
 
             <div className="rounded-2xl bg-[#F1ECE3] px-4 py-3 flex items-center justify-between text-xs text-[#3D3830]">
               <span>Referral Status</span>
-              <span className="font-['JetBrains_Mono',monospace] tabular-nums">
+              <span className="font-['DM_Sans',sans-serif] tabular-nums">
                 {rewardedReferralsCount} Rewarded · {pendingReferralsCount} Pending
               </span>
             </div>
@@ -623,7 +623,7 @@ const BillingCredits: React.FC = () => {
                 readOnly
                 value={referralUrl}
                 aria-label="Your personal referral link"
-                className="flex-1 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830]"
+                className="flex-1 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs font-['DM_Sans',sans-serif] text-[#3D3830]"
               />
               <button
                 type="button"

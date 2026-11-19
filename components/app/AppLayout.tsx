@@ -22,6 +22,8 @@ import SupportModal from './SupportModal';
 import BackupModal from './BackupModal';
 import AccountSettingsModal from './AccountSettingsModal';
 import FloatingScrollControls from '../FloatingScrollControls';
+import Tooltip from './Tooltip';
+import UserAvatar from './UserAvatar';
 
 const APP_SIDEBAR_LOCK_KEY = 'cc_app_sidebar_locked';
 const APP_SIDEBAR_OPEN_KEY = 'cc_app_sidebar_open';
@@ -220,7 +222,7 @@ const AppLayout: React.FC = () => {
               {isDesktopSidebarOpen && (
                 <div className="flex flex-1 items-center justify-between gap-2 min-w-0">
                   <span>Credits</span>
-                  <span className="rounded-full bg-[#EAE3D7] px-2 py-0.5 text-[10px] font-['JetBrains_Mono',monospace] tabular-nums text-[#3D3830]">
+                  <span className="rounded-full bg-[#EAE3D7] px-2 py-0.5 text-[10px] font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]">
                     {appUser ? appUser.credits_balance.toLocaleString() : '0'}
                   </span>
                 </div>
@@ -240,17 +242,54 @@ const AppLayout: React.FC = () => {
 
           {/* Bottom Anchored Utility Controls: Settings, Backup, Sign Out */}
           <div className="mt-auto border-t border-[#3D3830]/10 px-2.5 py-3 space-y-1">
-            {isPreviewMode && isDesktopSidebarOpen && (
-              <div className="mb-2 rounded-xl bg-[#FDFBF7] border border-[#3D3830]/12 px-3 py-2 text-[11px] text-[#5C5449]">
-                <p className="font-medium text-[#3D3830]">Design Preview Mode</p>
+            {isPreviewMode ? (
+              isDesktopSidebarOpen && (
+                <div className="mb-2 rounded-xl bg-[#FDFBF7] border border-[#3D3830]/12 px-3 py-2 text-[11px] text-[#5C5449]">
+                  <p className="font-medium text-[#3D3830]">Design Preview Mode</p>
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="mt-1 font-medium text-[#3D3830] underline underline-offset-4"
+                  >
+                    Go to Sign In
+                  </button>
+                </div>
+              )
+            ) : (
+              <Tooltip
+                content={
+                  !isDesktopSidebarOpen && appUser?.email
+                    ? `Signed in as ${appUser.email}`
+                    : undefined
+                }
+                placement="right"
+                className="w-full"
+              >
                 <button
                   type="button"
-                  onClick={handleSignOut}
-                  className="mt-1 font-medium text-[#3D3830] underline underline-offset-4"
+                  onClick={() => setShowAccountSettingsModal(true)}
+                  aria-label={
+                    appUser?.email ? `Account: ${appUser.email}` : 'Account settings'
+                  }
+                  className={`w-full flex items-center ${
+                    isDesktopSidebarOpen ? 'gap-2.5 px-2.5 py-2' : 'justify-center px-0 py-1.5'
+                  } rounded-xl text-left hover:bg-[#FAF7F2]/65 transition-colors cursor-pointer`}
                 >
-                  Go to Sign In
+                  <UserAvatar size="sm" />
+                  {isDesktopSidebarOpen && (
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-[#3D3830]">
+                        {appUser?.preferred_call_name?.trim() ||
+                          appUser?.full_name?.trim() ||
+                          'Signed In'}
+                      </p>
+                      <p className="truncate text-[10px] text-[#8B8275]">
+                        {appUser?.email || ''}
+                      </p>
+                    </div>
+                  )}
                 </button>
-              </div>
+              </Tooltip>
             )}
 
             <button
@@ -311,13 +350,24 @@ const AppLayout: React.FC = () => {
                 </Link>
               </div>
 
-              <Link
-                to="/app/billing"
-                className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-1.5 text-xs font-['JetBrains_Mono',monospace] tabular-nums text-[#3D3830]"
-              >
-                <Coins className="h-3.5 w-3.5 text-[#8B7355]" />
-                <span>{appUser ? appUser.credits_balance.toLocaleString() : '0'}</span>
-              </Link>
+              <div className="flex items-center gap-2 shrink-0">
+                <Link
+                  to="/app/billing"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-1.5 text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]"
+                >
+                  <Coins className="h-3.5 w-3.5 text-[#8B7355]" />
+                  <span>{appUser ? appUser.credits_balance.toLocaleString() : '0'}</span>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAccountSettingsModal(true)}
+                  aria-label="Open account settings"
+                  className="inline-flex items-center justify-center rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] p-0.5 active:scale-[0.97] transition-all cursor-pointer"
+                >
+                  <UserAvatar size="sm" />
+                </button>
+              </div>
             </header>
           )}
 
