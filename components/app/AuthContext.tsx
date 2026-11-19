@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { Session, User as SupabaseAuthUser } from '@supabase/supabase-js';
-import { getSupabaseClient, isSupabaseClientConfigured } from '../../lib/supabaseClient';
+import {
+  getSupabaseClient,
+  isSupabaseClientConfigured,
+  loadSupabasePublicConfig,
+} from '../../lib/supabaseClient';
 import { PREVIEW_APP_USER } from './previewFixtures';
 
 export interface AppUser {
@@ -13,6 +17,8 @@ export interface AppUser {
   default_expert: string;
   default_output: string;
   default_language: string;
+  preferred_call_name?: string | null;
+  chat_font_size?: 'sm' | 'base' | 'lg' | null;
   referral_code: string;
   referred_by: string | null;
   must_change_password: boolean;
@@ -63,7 +69,7 @@ export const clearPendingReferral = () => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const isConfigured = isSupabaseClientConfigured();
+  const [isConfigured, setIsConfigured] = useState<boolean>(() => isSupabaseClientConfigured());
   const [isLoading, setIsLoading] = useState(true);
   const [previewRequested, setPreviewRequested] = useState<boolean>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -144,32 +150,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       storePendingReferral(refParam);
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      setIsLoading(false);
-      return;
-    }
-
     let mounted = true;
+    let unsubscribe: (() => void) | null = null;
 
-    supabase.auth.getSession().then(({ data }) => {
+    const initAuth = async () => {
+      if (!isSupabaseClientConfigured()) {
+        const loaded = await loadSupabasePublicConfig();
+        if (!mounted) return;
+        setIsConfigured(loaded);
+      }
+
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        if (mounted) setIsLoading(false);
+        return;
+      }
+
+      const { data } = await supabase.auth.getSession();
       if (!mounted) return;
       setSession(data.session);
-      fetchAppUser(data.session);
-    });
+      await fetchAppUser(data.session);
 
-    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
-      if (!mounted) return;
-      if (event === 'PASSWORD_RECOVERY') {
-        setIsPasswordRecovery(true);
-      }
-      setSession(nextSession);
-      fetchAppUser(nextSession);
-    });
+      const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+        if (!mounted) return;
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsPasswordRecovery(true);
+        }
+        setSession(nextSession);
+        void fetchAppUser(nextSession);
+      });
+      unsubscribe = () => listener.subscription.unsubscribe();
+    };
+
+    void initAuth();
 
     return () => {
       mounted = false;
-      listener.subscription.unsubscribe();
+      unsubscribe?.();
     };
   }, [fetchAppUser]);
 

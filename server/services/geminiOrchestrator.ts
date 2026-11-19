@@ -11,7 +11,7 @@ import {
 } from './openrouter';
 import {
   CORE_COUNCIL_CONSTITUTION,
-  resolvePromptBodies,
+  resolvePromptModules,
 } from './promptDefaults';
 
 export { getConsultationModel, isOpenRouterConfigured };
@@ -69,6 +69,7 @@ export interface StreamConsultationParams {
   modeSlug: string;
   outputSlug: string;
   languageSlug: string;
+  preferredCallName?: string | null;
   abortSignal: AbortSignal;
   onChunk: (chunkText: string) => void;
 }
@@ -86,14 +87,22 @@ async function buildStaticSystemInstruction(params: {
   modeSlug: string;
   outputSlug: string;
   languageSlug: string;
+  preferredCallName?: string | null;
   profile: StreamConsultationParams['profile'];
-}): Promise<string> {
-  const promptBodies = await resolvePromptBodies([
+}): Promise<{ systemInstruction: string; modelOverride: string | null }> {
+  const { bodies: promptBodies, models: promptModels } = await resolvePromptModules([
     params.expertSlug,
     params.modeSlug,
     params.outputSlug,
     params.languageSlug,
   ]);
+
+  const modelOverride =
+    promptModels[params.expertSlug] ||
+    promptModels[params.modeSlug] ||
+    promptModels[params.outputSlug] ||
+    promptModels[params.languageSlug] ||
+    null;
 
   const sections: string[] = [
     CORE_COUNCIL_CONSTITUTION,
@@ -102,6 +111,10 @@ async function buildStaticSystemInstruction(params: {
     promptBodies[params.outputSlug] || '',
     promptBodies[params.languageSlug] || '',
   ].filter(Boolean);
+
+  if (params.preferredCallName?.trim()) {
+    sections.push(`USER ADDRESS PREFERENCE: Address the user warmly and naturally as "${params.preferredCallName.trim()}" when appropriate.`);
+  }
 
   if (params.profile) {
     if (params.profile.is_activated && params.profile.chart_text_context) {
@@ -116,21 +129,26 @@ Note: Full planetary ephemeris calculations have not been activated yet for this
     sections.push(`SESSION SCOPE: GENERAL / LEARN ASTROLOGY (No specific natal chart attached).`);
   }
 
-  return sections.join('\n\n---\n\n');
+  return {
+    systemInstruction: sections.join('\n\n---\n\n'),
+    modelOverride,
+  };
 }
 
 export async function streamConsultationResponse(
   params: StreamConsultationParams
 ): Promise<StreamConsultationResult> {
-  const model = getConsultationModel();
+  const { systemInstruction: staticSystemInstruction, modelOverride } =
+    await buildStaticSystemInstruction({
+      expertSlug: params.expertSlug,
+      modeSlug: params.modeSlug,
+      outputSlug: params.outputSlug,
+      languageSlug: params.languageSlug,
+      preferredCallName: params.preferredCallName,
+      profile: params.profile,
+    });
 
-  const staticSystemInstruction = await buildStaticSystemInstruction({
-    expertSlug: params.expertSlug,
-    modeSlug: params.modeSlug,
-    outputSlug: params.outputSlug,
-    languageSlug: params.languageSlug,
-    profile: params.profile,
-  });
+  const model = modelOverride || getConsultationModel();
 
   // Fetch today's cached Gochar transits (max 1 API call/day across platform)
   let gocharContext = '';
@@ -289,8 +307,11 @@ export async function runQuickTool(params: {
   userId: string;
 }): Promise<{ items?: string[]; resultText: string }> {
   const supabaseAdmin = getSupabaseAdmin();
-  const promptBodies = await resolvePromptBodies([params.toolSlug]);
+  const { bodies: promptBodies, models: promptModels } = await resolvePromptModules([
+    params.toolSlug,
+  ]);
   const toolInstruction = promptBodies[params.toolSlug] || '';
+  const toolModel = promptModels[params.toolSlug] || getUtilityModel();
 
   let profileContext = '';
   if (params.profileId && supabaseAdmin) {
@@ -310,7 +331,7 @@ export async function runQuickTool(params: {
 
   if (params.toolSlug === 'question_generator') {
     const completion = await createOpenRouterCompletion({
-      model: getUtilityModel(),
+      model: toolModel,
       system: toolInstruction,
       jsonMode: true,
       temperature: 0.5,
@@ -318,7 +339,7 @@ export async function runQuickTool(params: {
         {
           role: 'user',
           content: `${profileContext ? profileContext + '\n\n' : ''}Topic / Goal: ${params.inputText || 'General life & career strategy'}
-Mode: ${params.modeSlug || 'life'}
+Mode: ${params.modeSlug || 'general'}
 Language: ${params.languageSlug || 'English'}
 Return STRICTLY a JSON object with shape: { "items": ["question 1", "question 2", ...] }`,
         },
@@ -345,14 +366,14 @@ Return STRICTLY a JSON object with shape: { "items": ["question 1", "question 2"
   }
 
   const completion = await createOpenRouterCompletion({
-    model: getUtilityModel(),
+    model: toolModel,
     system: toolInstruction,
     temperature: 0.4,
     messages: [
       {
         role: 'user',
         content: `${profileContext ? profileContext + '\n\n' : ''}Draft Input: ${params.inputText}
-Mode: ${params.modeSlug || 'life'}
+Mode: ${params.modeSlug || 'general'}
 Language: ${params.languageSlug || 'English'}
 Return ONLY the refined prompt text ready to send—no preamble or meta-commentary.`,
       },

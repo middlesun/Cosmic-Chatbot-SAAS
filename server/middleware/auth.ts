@@ -11,6 +11,8 @@ export interface AppUserRecord {
   default_expert: string;
   default_output: string;
   default_language: string;
+  preferred_call_name?: string | null;
+  chat_font_size?: 'sm' | 'base' | 'lg' | null;
   referral_code: string;
   referred_by: string | null;
   must_change_password: boolean;

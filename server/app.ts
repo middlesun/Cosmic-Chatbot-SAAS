@@ -18,14 +18,24 @@ export function createExpressApp(): Express {
 
   app.use(express.json({ limit: '2mb' }));
 
+  // Public client-safe Supabase config fallback for static builds without compile-time VITE_* env injection
+  app.get('/api/config/public', (_req, res) => {
+    const supabaseUrl = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
+    const supabaseAnonKey = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json({ supabaseUrl, supabaseAnonKey });
+  });
+
   // Health & Environment readiness check (never exposes secret values)
   app.get('/api/health', (_req, res) => {
+    const hasPublicUrl = Boolean(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL);
+    const hasPublicAnon = Boolean(process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY);
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
       integrations: {
         supabaseServer: isSupabaseServerConfigured(),
-        supabaseClient: Boolean(process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY),
+        supabaseClient: hasPublicUrl && hasPublicAnon,
         openrouter: Boolean(process.env.OPENROUTER_API_KEY),
         freeAstrologyApi: Boolean(process.env.FREE_ASTROLOGY_API_KEY),
         dodoPayments: Boolean(process.env.DODO_API_KEY),
@@ -87,8 +97,16 @@ export function createExpressApp(): Express {
       return;
     }
 
-    const { full_name, currency_pref, default_expert, default_output, default_language } = req.body || {};
-    const updates: Record<string, string> = {};
+    const {
+      full_name,
+      currency_pref,
+      default_expert,
+      default_output,
+      default_language,
+      preferred_call_name,
+      chat_font_size,
+    } = req.body || {};
+    const updates: Record<string, string | null> = {};
 
     if (typeof full_name === 'string' && full_name.trim()) {
       updates.full_name = full_name.trim().slice(0, 100);
@@ -105,6 +123,12 @@ export function createExpressApp(): Express {
     if (typeof default_language === 'string' && default_language.trim()) {
       updates.default_language = default_language.trim();
     }
+    if (typeof preferred_call_name === 'string') {
+      updates.preferred_call_name = preferred_call_name.trim().slice(0, 60) || null;
+    }
+    if (['sm', 'base', 'lg'].includes(chat_font_size)) {
+      updates.chat_font_size = chat_font_size;
+    }
 
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ error: 'No valid preference fields supplied' });
@@ -119,6 +143,25 @@ export function createExpressApp(): Express {
       .single();
 
     if (error) {
+      // Safe fallback if 002_v2_foundations.sql columns aren't migrated yet
+      const baseUpdates = { ...updates };
+      delete baseUpdates.preferred_call_name;
+      delete baseUpdates.chat_font_size;
+
+      if (Object.keys(baseUpdates).length > 0) {
+        const fallback = await supabaseAdmin
+          .from('users')
+          .update({ ...baseUpdates, updated_at: new Date().toISOString() })
+          .eq('id', req.appUser.id)
+          .select('*')
+          .single();
+
+        if (!fallback.error && fallback.data) {
+          res.json({ user: fallback.data });
+          return;
+        }
+      }
+
       res.status(500).json({ error: 'Failed to update preferences' });
       return;
     }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowUpRight, Check, Coins, Gift, Receipt, Shield } from 'lucide-react';
+import { ArrowUpRight, Check, Coins, Copy, Gift, Plus, Receipt, Shield, Sparkles } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 type SupportedCurrency = 'INR' | 'USD' | 'AED' | 'EUR';
@@ -61,6 +61,7 @@ const BillingCredits: React.FC = () => {
   const [checkoutLoadingSlug, setCheckoutLoadingSlug] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [copiedReferral, setCopiedReferral] = useState(false);
 
   useEffect(() => {
     if (appUser?.currency_pref) {
@@ -158,10 +159,44 @@ const BillingCredits: React.FC = () => {
   const pendingReferralsCount = referrals.filter((r) => r.status === 'pending').length;
   const rewardedReferralsCount = referrals.filter((r) => r.status === 'rewarded').length;
 
+  const referralUrl = appUser?.referral_code
+    ? `${window.location.origin}/app/login?ref=${appUser.referral_code}`
+    : `${window.location.origin}/app/login`;
+
+  const tierProfileLimit =
+    appUser?.tier === 'guru' ? 200 : appUser?.tier === 'pro' ? 50 : 5;
+
+  const currentTierLabel =
+    appUser?.tier === 'guru'
+      ? 'Guru Plan'
+      : appUser?.tier === 'pro'
+      ? 'Professional Plan'
+      : 'Personal Plan';
+
+  const currentActivationRate =
+    appUser?.tier === 'guru'
+      ? 'Free'
+      : appUser?.tier === 'pro'
+      ? '1,000 Credits'
+      : '2,000 Credits';
+
+  const scrollToSection = (sectionId: string) => {
+    const el = document.getElementById(sectionId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleCopyReferral = async () => {
+    await navigator.clipboard.writeText(referralUrl);
+    setCopiedReferral(true);
+    setTimeout(() => setCopiedReferral(false), 2000);
+  };
+
   return (
     <div className="space-y-10">
-      {/* Editorial Header + Currency Switcher */}
-      <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-[#3D3830]/10 pb-8">
+      {/* Editorial Header + Action Buttons + Currency Switcher */}
+      <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-[#3D3830]/10 pb-8">
         <div>
           <p className="text-xs text-[#8B8275] mb-2">
             Credits & Membership · Transparent Usage Ledger
@@ -174,52 +209,98 @@ const BillingCredits: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 rounded-2xl bg-[#F1ECE3] p-1.5 border border-[#3D3830]/10 shrink-0">
-          {(['INR', 'USD', 'AED', 'EUR'] as SupportedCurrency[]).map((curr) => (
-            <button
-              key={curr}
-              type="button"
-              onClick={() => void handleCurrencySwitch(curr)}
-              className={`rounded-xl px-3.5 py-1.5 text-xs font-medium font-['JetBrains_Mono',monospace] transition-colors ${
-                currency === curr
-                  ? 'bg-[#4A453D] text-[#FAF7F2]'
-                  : 'text-[#5C5449] hover:text-[#3D3830]'
-              }`}
-            >
-              {curr}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={() => scrollToSection('add-credits')}
+            className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-sm font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors whitespace-nowrap"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add credits</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => scrollToSection('refer-and-earn')}
+            className="inline-flex items-center gap-2 rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-5 py-2.5 text-sm font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap"
+          >
+            <Gift className="h-4 w-4 text-[#8B7355]" />
+            <span>Refer & Earn</span>
+          </button>
+
+          <div className="flex items-center gap-1 rounded-2xl bg-[#F1ECE3] p-1.5 border border-[#3D3830]/10">
+            {(['INR', 'USD', 'AED', 'EUR'] as SupportedCurrency[]).map((curr) => (
+              <button
+                key={curr}
+                type="button"
+                onClick={() => void handleCurrencySwitch(curr)}
+                className={`rounded-xl px-3 py-1.5 text-xs font-medium font-['JetBrains_Mono',monospace] transition-colors ${
+                  currency === curr
+                    ? 'bg-[#4A453D] text-[#FAF7F2]'
+                    : 'text-[#5C5449] hover:text-[#3D3830]'
+                }`}
+              >
+                {curr}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* Current Balance Snapshot */}
-      <section className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-7 text-[#F4EFE6] flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-xs text-[#F4EFE6]/65">
-            <Coins className="h-4 w-4 text-[#B8965A]" />
-            <span>Available Balance</span>
+      {/* Rounded-Corner Square Key Highlights Grid */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-6 text-[#F4EFE6] flex flex-col justify-between min-h-[156px]">
+          <div className="flex items-center justify-between">
+            <Coins className="h-5 w-5 text-[#B8965A]" />
+            <span className="text-[11px] font-['JetBrains_Mono',monospace] text-[#F4EFE6]/60">
+              {currency}
+            </span>
           </div>
-          <p className="font-['JetBrains_Mono',monospace] tabular-nums text-3xl md:text-4xl font-medium">
-            {(appUser?.credits_balance ?? 0).toLocaleString()}{' '}
-            <span className="text-base font-normal text-[#F4EFE6]/65">Credits</span>
-          </p>
+          <div>
+            <p className="text-xs text-[#F4EFE6]/65">Available Balance</p>
+            <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-2xl font-medium text-[#F4EFE6]">
+              {(appUser?.credits_balance ?? 0).toLocaleString()}
+            </p>
+            <p className="mt-1 text-xs text-[#F4EFE6]/60">Credits ready to use</p>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-6 text-xs">
+        <div className="rounded-3xl bg-[#FDFBF7] p-6 border border-[#3D3830]/10 flex flex-col justify-between min-h-[156px]">
+          <Shield className="h-5 w-5 text-[#5C5449]" />
           <div>
-            <p className="text-[#F4EFE6]/55">Current Tier</p>
-            <p className="mt-0.5 font-medium text-sm capitalize text-[#F4EFE6]">
-              {appUser?.tier === 'guru'
-                ? 'Guru Plan'
-                : appUser?.tier === 'pro'
-                ? 'Professional Plan'
-                : 'Personal Plan'}
+            <p className="text-xs text-[#8B8275]">Current Plan</p>
+            <h2 className="mt-1 font-serif text-xl font-medium text-[#3D3830]">
+              {currentTierLabel}
+            </h2>
+            <p className="mt-1 text-xs text-[#5C5449]">
+              Up to {tierProfileLimit} saved birth profiles
             </p>
           </div>
+        </div>
+
+        <div className="rounded-3xl bg-[#FDFBF7] p-6 border border-[#3D3830]/10 flex flex-col justify-between min-h-[156px]">
+          <Gift className="h-5 w-5 text-[#5C5449]" />
           <div>
-            <p className="text-[#F4EFE6]/55">Referrals Rewarded</p>
-            <p className="mt-0.5 font-['JetBrains_Mono',monospace] text-sm text-[#F4EFE6]">
-              {rewardedReferralsCount} rewarded · {pendingReferralsCount} pending
+            <p className="text-xs text-[#8B8275]">Referrals Earned</p>
+            <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-2xl font-medium text-[#3D3830]">
+              {rewardedReferralsCount}{' '}
+              <span className="font-sans text-sm font-normal text-[#5C5449]">rewarded</span>
+            </p>
+            <p className="mt-1 text-xs text-[#5C5449]">
+              {pendingReferralsCount} pending · +5,000 credits each
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-3xl bg-[#FDFBF7] p-6 border border-[#3D3830]/10 flex flex-col justify-between min-h-[156px]">
+          <Sparkles className="h-5 w-5 text-[#5C5449]" />
+          <div>
+            <p className="text-xs text-[#8B8275]">Chart Activation Rate</p>
+            <p className="mt-1 font-['JetBrains_Mono',monospace] tabular-nums text-xl font-medium text-[#3D3830]">
+              {currentActivationRate}
+            </p>
+            <p className="mt-1 text-xs text-[#5C5449]">
+              Per birth chart activation on your plan
             </p>
           </div>
         </div>
@@ -244,13 +325,13 @@ const BillingCredits: React.FC = () => {
       )}
 
       {/* Credit Packs */}
-      <section className="space-y-4">
+      <section id="add-credits" className="space-y-4 scroll-mt-8">
         <div>
           <h2 className="font-serif text-2xl font-medium text-[#3D3830]">
             Top-Up Credit Packs
           </h2>
           <p className="text-xs text-[#5C5449]">
-            Credits never expire and work across Chat Studio consultations, chart activations, and Deep Research reports.
+            Credits never expire and work across Chat consultations, chart activations, and Deep Research reports.
           </p>
         </div>
 
@@ -388,21 +469,44 @@ const BillingCredits: React.FC = () => {
         </div>
       </section>
 
-      {/* Referral Tracking Note */}
-      <section className="rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/10 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <Gift className="h-5 w-5 text-[#8B7355] shrink-0 mt-0.5" />
-          <div>
-            <h3 className="font-serif text-xl font-medium text-[#3D3830]">
-              Payment-Gated Referral Rewards (+5,000 Credits Each)
-            </h3>
-            <p className="text-xs text-[#5C5449] mt-1 leading-relaxed">
-              Your referral bonus unlocks automatically for both you and your invited friend as soon as they complete their first real credit purchase or paid profile activation.
-            </p>
+      {/* Interactive Refer & Earn (+5,000 Credits) Section */}
+      <section
+        id="refer-and-earn"
+        className="rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/10 p-6 md:p-7 space-y-4 scroll-mt-8"
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Gift className="h-5 w-5 text-[#8B7355] shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-serif text-2xl font-medium text-[#3D3830]">
+                Invite & Earn 5,000 Credits
+              </h3>
+              <p className="text-xs text-[#5C5449] mt-1 leading-relaxed max-w-2xl">
+                Share your personal referral link. When a friend signs up and completes their first paid credit purchase or chart activation, you both receive 5,000 credits.
+              </p>
+            </div>
+          </div>
+          <div className="font-['JetBrains_Mono',monospace] tabular-nums text-xs text-[#3D3830] shrink-0">
+            {rewardedReferralsCount} Rewarded · {pendingReferralsCount} Pending
           </div>
         </div>
-        <div className="font-['JetBrains_Mono',monospace] tabular-nums text-xs text-[#3D3830] shrink-0">
-          {rewardedReferralsCount} Rewarded · {pendingReferralsCount} Pending
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
+          <input
+            type="text"
+            readOnly
+            value={referralUrl}
+            aria-label="Your personal referral link"
+            className="flex-1 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830]"
+          />
+          <button
+            type="button"
+            onClick={() => void handleCopyReferral()}
+            className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors whitespace-nowrap shrink-0"
+          >
+            {copiedReferral ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            <span>{copiedReferral ? 'Copied' : 'Copy Link'}</span>
+          </button>
         </div>
       </section>
 

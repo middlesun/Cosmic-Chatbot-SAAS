@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Compass, CalendarClock, Sparkles } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { PREVIEW_RADAR_SNAPSHOT } from './previewFixtures';
-import CustomSelect from './CustomSelect';
 
 interface DashaProgressItem {
   level: 'Mahadasha' | 'Antardasha' | 'Pratyantardasha';
@@ -68,6 +67,8 @@ interface TimingRadarSnapshot {
 interface ProfileOption {
   id: string;
   name: string;
+  short_name?: string | null;
+  is_default?: boolean;
   birth_date?: string;
   birth_city?: string;
 }
@@ -85,7 +86,14 @@ const TimingRadarDashboard: React.FC = () => {
     async (profileId?: string) => {
       if (isPreviewMode) {
         setHasActivated(true);
-        setProfiles([{ id: PREVIEW_RADAR_SNAPSHOT.profileId, name: PREVIEW_RADAR_SNAPSHOT.profileName }]);
+        setProfiles([
+          {
+            id: PREVIEW_RADAR_SNAPSHOT.profileId,
+            name: PREVIEW_RADAR_SNAPSHOT.profileName,
+            short_name: 'Aarav',
+            is_default: true,
+          },
+        ]);
         setRadar(PREVIEW_RADAR_SNAPSHOT);
         setSelectedProfileId(PREVIEW_RADAR_SNAPSHOT.profileId);
         setIsLoading(false);
@@ -179,26 +187,41 @@ const TimingRadarDashboard: React.FC = () => {
             </h2>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {profiles.length > 1 && (
-              <CustomSelect
-                value={selectedProfileId}
-                onChange={(nextId) => void fetchRadar(nextId)}
-                ariaLabel="Select profile for Timing Radar"
-                variant="dark"
-                size="sm"
-                align="right"
-                minMenuWidth={200}
-                options={profiles.map((p) => ({
-                  value: p.id,
-                  label: p.name,
-                }))}
-              />
+          <div className="flex flex-wrap items-center gap-3 min-w-0">
+            {profiles.length > 0 && (
+              <div
+                role="tablist"
+                aria-label="Switch birth profile for Timing Radar"
+                className="inline-flex items-center gap-1 rounded-full bg-[#F4EFE6]/8 border border-[#F4EFE6]/12 p-1 overflow-x-auto no-scrollbar max-w-full"
+              >
+                {profiles.map((p) => {
+                  const isActive = p.id === selectedProfileId;
+                  const label = p.is_default ? 'You' : p.short_name?.trim() || p.name;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => {
+                        if (!isActive) void fetchRadar(p.id);
+                      }}
+                      className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs transition-colors ${
+                        isActive
+                          ? 'bg-[#F4EFE6] text-[#1F2229] font-medium'
+                          : 'text-[#F4EFE6]/70 hover:text-[#F4EFE6] hover:bg-[#F4EFE6]/10'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             )}
 
             <Link
               to="/app/chat"
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#F4EFE6]/12 border border-[#F4EFE6]/15 px-4 py-2 text-xs font-medium text-[#F4EFE6] hover:bg-[#F4EFE6]/20 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#F4EFE6]/12 border border-[#F4EFE6]/15 px-4 py-2 text-xs font-medium text-[#F4EFE6] hover:bg-[#F4EFE6]/20 transition-colors shrink-0"
             >
               <Sparkles className="h-3.5 w-3.5 text-[#B8965A]" />
               <span>Discuss Timing in Chat</span>

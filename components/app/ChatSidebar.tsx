@@ -1,17 +1,24 @@
 import React, { useMemo, useState } from 'react';
+import { Link, NavLink } from 'react-router-dom';
 import {
   Bookmark,
   ChevronDown,
   ChevronRight,
+  Coins,
   FolderOpen,
+  LayoutDashboard,
   Lock,
+  LogOut,
   MessageSquarePlus,
   PanelLeftClose,
+  ScrollText,
   Search,
+  Settings,
   Sparkles,
   Star,
   Trash2,
   Unlock,
+  Users,
   X,
 } from 'lucide-react';
 import type {
@@ -31,6 +38,9 @@ interface ChatSidebarProps {
   isLocked: boolean;
   isCollapsed: boolean;
   showMobileDrawer: boolean;
+  isPreviewMode?: boolean;
+  creditsBalance?: number;
+  onSignOut?: () => void;
   onCloseMobileDrawer: () => void;
   onToggleCollapse: () => void;
   onToggleLock: () => void;
@@ -43,6 +53,14 @@ interface ChatSidebarProps {
   onLoadFavorites: (profileId?: string) => void;
 }
 
+const getProfileDisplayLabel = (p: ChatProfile): string => {
+  const short = p.short_name?.trim();
+  if (p.is_default) {
+    return short ? `You (${short})` : 'You';
+  }
+  return short || p.name;
+};
+
 const ChatSidebar: React.FC<ChatSidebarProps> = ({
   profiles,
   conversations,
@@ -53,6 +71,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   isLocked,
   isCollapsed,
   showMobileDrawer,
+  isPreviewMode = false,
+  creditsBalance = 0,
+  onSignOut,
   onCloseMobileDrawer,
   onToggleCollapse,
   onToggleLock,
@@ -115,10 +136,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return (
       <div
         key={conv.id}
-        className={`group flex items-start justify-between gap-2 rounded-xl px-3 py-2 text-left transition-colors ${
+        className={`group flex items-start justify-between gap-2 rounded-xl px-3 py-2 text-left transition-all ${
           isActive
             ? 'bg-[#FAF7F2] text-[#3D3830] shadow-xs border border-[#3D3830]/12'
-            : 'text-[#5C5449] hover:bg-[#EAE3D7]/60'
+            : 'text-[#5C5449] hover:bg-[#FAF7F2]/60'
         }`}
       >
         <button
@@ -137,10 +158,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               {conv.title}
             </span>
           </div>
-          <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[#8B8275] font-['JetBrains_Mono',monospace] tabular-nums">
-            <span>{conv.total_word_count.toLocaleString()} w</span>
-            <span>·</span>
-            <span>{new Date(conv.updated_at).toLocaleDateString()}</span>
+          <div className="mt-0.5 text-[10px] text-[#8B8275] font-['JetBrains_Mono',monospace] tabular-nums">
+            {new Date(conv.updated_at).toLocaleDateString()}
           </div>
         </button>
 
@@ -192,22 +211,29 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     );
   };
 
+  const mobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
+      isActive
+        ? 'bg-[#FAF7F2] text-[#3D3830] border border-[#3D3830]/10'
+        : 'text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830]'
+    }`;
+
   const sidebarBody = (
     <aside className="flex h-full w-full flex-col bg-[#F1ECE3] border-r border-[#3D3830]/10">
       {/* Header Controls */}
       <div className="flex items-center justify-between gap-2 px-4 py-3.5 border-b border-[#3D3830]/10">
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-w-0">
           <button
             type="button"
             onClick={() => setShowNewMenu((v) => !v)}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-3.5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors"
+            className="w-full inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-3.5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] active:scale-[0.98] transition-all"
           >
-            <MessageSquarePlus className="h-3.5 w-3.5" />
-            <span>New Consultation</span>
+            <MessageSquarePlus className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">New Consultation</span>
           </button>
 
           {showNewMenu && (
-            <div className="absolute left-0 right-0 top-11 z-30 rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/15 shadow-lg p-2 space-y-1 max-h-72 overflow-y-auto">
+            <div className="animate-cc-dropdown-down absolute left-0 right-0 top-11 z-30 rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/15 shadow-lg p-2 space-y-1 max-h-72 overflow-y-auto">
               <p className="px-2.5 py-1 text-[10px] font-medium text-[#8B8275]">
                 Choose Profile Folder
               </p>
@@ -248,7 +274,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       }}
                       className="w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left text-xs text-[#3D3830] hover:bg-[#F1ECE3]"
                     >
-                      <span className="truncate font-medium">{p.name}</span>
+                      <span className="truncate font-medium">
+                        {getProfileDisplayLabel(p)}
+                      </span>
                       <span className="text-[10px] text-[#8B8275] shrink-0">
                         {p.is_activated ? 'Chart Ready' : 'Draft'}
                       </span>
@@ -363,26 +391,32 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
           </div>
 
           {/* Profile-Grouped Folders */}
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
             {/* Profile Folders */}
             {profiles.map((profile) => {
               const items = groupedConversations.byProfile[profile.id] || [];
               const open = isFolderOpen(profile.id);
+              const displayLabel = getProfileDisplayLabel(profile);
+
               return (
-                <div key={profile.id} className="space-y-1">
-                  <div className="flex items-center justify-between px-1.5">
+                <div
+                  key={profile.id}
+                  className="rounded-2xl bg-[#EAE3D7]/60 border border-[#3D3830]/10 p-2 space-y-1.5"
+                >
+                  <div className="flex items-center justify-between px-1">
                     <button
                       type="button"
                       onClick={() => toggleFolder(profile.id)}
-                      className="flex items-center gap-1.5 text-left min-w-0 flex-1 py-1 text-xs font-medium text-[#3D3830] hover:text-[#5C5449]"
+                      title={profile.name}
+                      className="flex items-center gap-1.5 text-left min-w-0 flex-1 py-1 text-xs font-semibold text-[#3D3830] hover:text-[#5C5449]"
                     >
                       {open ? (
-                        <ChevronDown className="h-3.5 w-3.5 text-[#8B8275] shrink-0" />
+                        <ChevronDown className="h-3.5 w-3.5 text-[#5C5449] shrink-0" />
                       ) : (
-                        <ChevronRight className="h-3.5 w-3.5 text-[#8B8275] shrink-0" />
+                        <ChevronRight className="h-3.5 w-3.5 text-[#5C5449] shrink-0" />
                       )}
-                      <span className="truncate">{profile.name}</span>
-                      <span className="text-[10px] text-[#8B8275] font-['JetBrains_Mono',monospace]">
+                      <span className="truncate">{displayLabel}</span>
+                      <span className="text-[10px] font-medium text-[#8B8275] font-['JetBrains_Mono',monospace] tabular-nums">
                         ({items.length})
                       </span>
                     </button>
@@ -392,7 +426,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                         onCreateConversation(profile.id, 'reading');
                         onCloseMobileDrawer();
                       }}
-                      title={`New consultation for ${profile.name}`}
+                      title={`New consultation for ${displayLabel}`}
                       className="p-1 text-[#8B8275] hover:text-[#3D3830] rounded"
                     >
                       <MessageSquarePlus className="h-3.5 w-3.5" />
@@ -400,7 +434,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   </div>
 
                   {open && (
-                    <div className="space-y-1 pl-2">
+                    <div className="space-y-1 pl-1">
                       {items.length === 0 ? (
                         <p className="px-3 py-1.5 text-[11px] text-[#8B8275]">
                           No consultations yet.
@@ -415,20 +449,20 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             })}
 
             {/* General & Learn Astrology Folder */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between px-1.5">
+            <div className="rounded-2xl bg-[#EAE3D7]/60 border border-[#3D3830]/10 p-2 space-y-1.5">
+              <div className="flex items-center justify-between px-1">
                 <button
                   type="button"
                   onClick={() => toggleFolder('general')}
-                  className="flex items-center gap-1.5 text-left min-w-0 flex-1 py-1 text-xs font-medium text-[#3D3830] hover:text-[#5C5449]"
+                  className="flex items-center gap-1.5 text-left min-w-0 flex-1 py-1 text-xs font-semibold text-[#3D3830] hover:text-[#5C5449]"
                 >
                   {isFolderOpen('general') ? (
-                    <ChevronDown className="h-3.5 w-3.5 text-[#8B8275] shrink-0" />
+                    <ChevronDown className="h-3.5 w-3.5 text-[#5C5449] shrink-0" />
                   ) : (
-                    <ChevronRight className="h-3.5 w-3.5 text-[#8B8275] shrink-0" />
+                    <ChevronRight className="h-3.5 w-3.5 text-[#5C5449] shrink-0" />
                   )}
-                  <span className="truncate">General & Learn Astrology</span>
-                  <span className="text-[10px] text-[#8B8275] font-['JetBrains_Mono',monospace]">
+                  <span className="truncate">General &amp; Learn Astrology</span>
+                  <span className="text-[10px] font-medium text-[#8B8275] font-['JetBrains_Mono',monospace] tabular-nums">
                     ({groupedConversations.general.length})
                   </span>
                 </button>
@@ -446,7 +480,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               </div>
 
               {isFolderOpen('general') && (
-                <div className="space-y-1 pl-2">
+                <div className="space-y-1 pl-1">
                   {groupedConversations.general.length === 0 ? (
                     <p className="px-3 py-1.5 text-[11px] text-[#8B8275]">
                       Start a general reading or Jyotish lesson.
@@ -478,7 +512,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 { value: 'general', label: 'General & Learn Astrology' },
                 ...profiles.map((p) => ({
                   value: p.id,
-                  label: p.name,
+                  label: getProfileDisplayLabel(p),
                 })),
               ]}
             />
@@ -515,6 +549,79 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
           </div>
         </div>
       )}
+
+      {/* Mobile Workspace Navigation Footer (replaces outer mobile bar inside full-screen mobile Chat) */}
+      <div className="md:hidden border-t border-[#3D3830]/12 bg-[#EAE3D7]/55 px-3 py-3 space-y-2">
+        <div className="flex items-center justify-between px-2">
+          <span className="font-serif text-base font-medium text-[#3D3830]">
+            Cosmic Council
+          </span>
+          <Link
+            to="/app/billing"
+            onClick={onCloseMobileDrawer}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F2] border border-[#3D3830]/10 px-2.5 py-1 text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#3D3830]"
+          >
+            <Coins className="h-3 w-3 text-[#8B7355]" />
+            <span>{creditsBalance.toLocaleString()}</span>
+          </Link>
+        </div>
+
+        <nav className="grid grid-cols-2 gap-1">
+          <NavLink
+            to="/app/dashboard"
+            onClick={onCloseMobileDrawer}
+            className={mobileNavLinkClass}
+          >
+            <LayoutDashboard className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Overview</span>
+          </NavLink>
+          <NavLink
+            to="/app/profiles"
+            onClick={onCloseMobileDrawer}
+            className={mobileNavLinkClass}
+          >
+            <Users className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Profiles</span>
+          </NavLink>
+          <NavLink
+            to="/app/reports"
+            onClick={onCloseMobileDrawer}
+            className={mobileNavLinkClass}
+          >
+            <ScrollText className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Reports</span>
+          </NavLink>
+          <NavLink
+            to="/app/billing"
+            onClick={onCloseMobileDrawer}
+            className={mobileNavLinkClass}
+          >
+            <Coins className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Credits</span>
+          </NavLink>
+          <NavLink
+            to="/app/settings"
+            onClick={onCloseMobileDrawer}
+            className={mobileNavLinkClass}
+          >
+            <Settings className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Settings</span>
+          </NavLink>
+          {onSignOut && (
+            <button
+              type="button"
+              onClick={() => {
+                onCloseMobileDrawer();
+                onSignOut();
+              }}
+              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#7A3E36] hover:bg-[#FAF7F2]/70 transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span>{isPreviewMode ? 'Exit Preview' : 'Sign Out'}</span>
+            </button>
+          )}
+        </nav>
+      </div>
     </aside>
   );
 
@@ -523,7 +630,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
       {/* Desktop Rail */}
       <div className="hidden lg:block w-80 shrink-0 h-full">{sidebarBody}</div>
 
-      {/* Mobile Slide-Over Drawer */}
+      {/* Mobile & Tablet Slide-Over Drawer */}
       {showMobileDrawer && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
           <div

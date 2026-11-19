@@ -13,16 +13,22 @@ import {
   rebuildProfileMemory,
   updateProfileMemoryAfterTurn,
 } from '../services/memoryArchivist';
-import { getPublicChatCatalog } from '../services/promptDefaults';
+import { getPublicChatCatalogCached } from '../services/promptDefaults';
 
 const router = Router();
 
 const MIN_CREDITS_TO_CHAT = 25;
+const CONVERSATION_LIST_COLUMNS =
+  'id, user_id, profile_id, linked_report_id, title, mode_type, is_bookmarked, total_word_count, use_full_profile_memory, updated_at, created_at';
+const MESSAGE_SELECT_COLUMNS =
+  'id, conversation_id, parent_message_id, role, content, word_count, expert_used, mode_used, output_format_used, language_used, is_starred, excluded_from_context, followups_json, credits_charged, created_at';
 
 // 1. Public-safe Chat Catalog (Experts, Modes, Output Formats, Languages, Quick Tools — never raw prompts)
-router.get('/config', requireAuth, (_req: AuthenticatedRequest, res) => {
+router.get('/config', requireAuth, async (_req: AuthenticatedRequest, res) => {
+  const catalog = await getPublicChatCatalogCached();
+  res.setHeader('Cache-Control', 'private, no-cache');
   res.json({
-    catalog: getPublicChatCatalog(),
+    catalog,
     openrouterConfigured: isOpenRouterConfigured(),
     minCreditsRequired: MIN_CREDITS_TO_CHAT,
   });
@@ -41,7 +47,7 @@ router.get('/conversations', requireAuth, async (req: AuthenticatedRequest, res)
 
   let convQuery = supabaseAdmin
     .from('conversations')
-    .select('*')
+    .select(CONVERSATION_LIST_COLUMNS)
     .eq('user_id', req.appUser.id);
 
   if (queryText) {
@@ -59,23 +65,41 @@ router.get('/conversations', requireAuth, async (req: AuthenticatedRequest, res)
       .order('updated_at', { ascending: false });
   }
 
-  const [{ data: conversations, error: convErr }, { data: profiles }] = await Promise.all([
+  const [convRes, primaryProfRes] = await Promise.all([
     convQuery,
     supabaseAdmin
       .from('profiles')
-      .select('id, name, birth_date, birth_city, birth_country, relationship, is_activated, profile_memory_summary')
+      .select('id, name, short_name, is_default, birth_date, birth_city, birth_country, relationship, is_activated')
       .eq('user_id', req.appUser.id)
       .order('created_at', { ascending: false }),
   ]);
 
-  if (convErr) {
+  if (convRes.error) {
     res.status(500).json({ error: 'Failed to load consultations' });
     return;
   }
 
+  let profileRows = primaryProfRes.data;
+  if (primaryProfRes.error) {
+    const fallbackProfRes = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, birth_date, birth_city, birth_country, relationship, is_activated')
+      .eq('user_id', req.appUser.id)
+      .order('created_at', { ascending: false });
+    profileRows = (fallbackProfRes.data || []).map((r) => ({
+      ...r,
+      short_name: null,
+      is_default: false,
+    }));
+  }
+
+  const sortedProfiles = [...(profileRows || [])].sort((a, b) => {
+    return (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0);
+  });
+
   res.json({
-    conversations: conversations || [],
-    profiles: profiles || [],
+    conversations: convRes.data || [],
+    profiles: sortedProfiles,
   });
 });
 
@@ -213,7 +237,7 @@ router.delete('/conversations/:id', requireAuth, async (req: AuthenticatedReques
   res.json({ deleted: true });
 });
 
-// 6. Get messages for a conversation
+// 6. Get paginated messages for a conversation (supports ?limit=40&before=<ISO>)
 router.get('/conversations/:id/messages', requireAuth, async (req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin || !req.appUser) {
@@ -223,7 +247,7 @@ router.get('/conversations/:id/messages', requireAuth, async (req: Authenticated
 
   const { data: conversation } = await supabaseAdmin
     .from('conversations')
-    .select('*')
+    .select(CONVERSATION_LIST_COLUMNS)
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
@@ -233,18 +257,38 @@ router.get('/conversations/:id/messages', requireAuth, async (req: Authenticated
     return;
   }
 
-  const { data: messages, error } = await supabaseAdmin
+  const parsedLimit = Number(req.query.limit);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(Math.max(Math.trunc(parsedLimit), 10), 100)
+    : 40;
+  const before = typeof req.query.before === 'string' && req.query.before.trim()
+    ? req.query.before.trim()
+    : '';
+
+  let msgQuery = supabaseAdmin
     .from('messages')
-    .select('*')
-    .eq('conversation_id', conversation.id)
-    .order('created_at', { ascending: true });
+    .select(MESSAGE_SELECT_COLUMNS)
+    .eq('conversation_id', conversation.id);
+
+  if (before) {
+    msgQuery = msgQuery.lt('created_at', before);
+  }
+
+  const { data: rows, error } = await msgQuery
+    .order('created_at', { ascending: false })
+    .limit(limit + 1);
 
   if (error) {
     res.status(500).json({ error: 'Failed to load messages' });
     return;
   }
 
-  res.json({ conversation, messages: messages || [] });
+  const rawRows = rows || [];
+  const hasMore = rawRows.length > limit;
+  const pageDesc = hasMore ? rawRows.slice(0, limit) : rawRows;
+  const messages = [...pageDesc].reverse();
+
+  res.json({ conversation, messages, hasMore });
 });
 
 // 7. Starred Favorites across conversations (filterable by profileId)
@@ -359,7 +403,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   }
 
   const expertSlug = typeof expert === 'string' && expert ? expert : req.appUser.default_expert || 'council_synthesis';
-  const modeSlug = typeof mode === 'string' && mode ? mode : (conversation.mode_type === 'learn_astrology' ? 'learn_astrology' : 'life');
+  const modeSlug = typeof mode === 'string' && mode ? mode : (conversation.mode_type === 'learn_astrology' ? 'learn_astrology' : 'general');
   const outputSlug = typeof outputFormat === 'string' && outputFormat ? outputFormat : req.appUser.default_output || 'detailed';
   const languageSlug = typeof language === 'string' && language ? language : req.appUser.default_language || 'English';
 
@@ -440,6 +484,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       modeSlug,
       outputSlug,
       languageSlug,
+      preferredCallName: req.appUser.preferred_call_name || req.appUser.full_name || null,
       abortSignal: abortController.signal,
       onChunk: (chunkText) => {
         sendEvent({ type: 'chunk', text: chunkText });
@@ -691,7 +736,7 @@ router.post('/tools', requireAuth, async (req: AuthenticatedRequest, res) => {
     const result = await runQuickTool({
       toolSlug,
       inputText: String(inputText || ''),
-      modeSlug: typeof modeSlug === 'string' ? modeSlug : 'life',
+      modeSlug: typeof modeSlug === 'string' ? modeSlug : 'general',
       languageSlug: typeof languageSlug === 'string' ? languageSlug : req.appUser.default_language,
       profileId: typeof profileId === 'string' ? profileId : null,
       userId: req.appUser.id,

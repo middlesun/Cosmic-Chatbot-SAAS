@@ -11,6 +11,7 @@ import { sendClientInviteEmail } from '../services/email';
 import {
   ALL_DEFAULT_PROMPTS,
   CORE_COUNCIL_CONSTITUTION,
+  invalidatePromptCache,
 } from '../services/promptDefaults';
 import { ensureReportCatalogSeeded } from '../services/reportDefaults';
 
@@ -20,6 +21,17 @@ const router = Router();
 router.use(requireAuth, requireAdmin);
 
 let defaultPromptsSeeded = false;
+
+function isMissingColumnError(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err) return false;
+  const msg = String(err.message || '').toLowerCase();
+  return (
+    err.code === '42703' ||
+    err.code === 'PGRST204' ||
+    msg.includes('column') ||
+    msg.includes('schema cache')
+  );
+}
 
 async function ensureDefaultPromptsSeeded(): Promise<void> {
   if (defaultPromptsSeeded) return;
@@ -35,17 +47,32 @@ async function ensureDefaultPromptsSeeded(): Promise<void> {
     const missing = ALL_DEFAULT_PROMPTS.filter((p) => !existingSlugs.has(p.slug));
 
     if (missing.length > 0) {
-      await supabaseAdmin.from('system_prompts').insert(
+      const withSubRes = await supabaseAdmin.from('system_prompts').insert(
         missing.map((p) => ({
           slug: p.slug,
           category: p.category,
           display_name: p.display_name,
+          subtitle: p.subtitle,
           prompt_body: p.prompt_body,
           version: 1,
           previous_versions: [],
           is_active: true,
         }))
       );
+
+      if (withSubRes.error && isMissingColumnError(withSubRes.error)) {
+        await supabaseAdmin.from('system_prompts').insert(
+          missing.map((p) => ({
+            slug: p.slug,
+            category: p.category,
+            display_name: p.display_name,
+            prompt_body: p.prompt_body,
+            version: 1,
+            previous_versions: [],
+            is_active: true,
+          }))
+        );
+      }
     }
     defaultPromptsSeeded = true;
   } catch (err) {
@@ -295,7 +322,7 @@ router.post('/prompts', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const { slug, category, display_name, prompt_body } = req.body || {};
+  const { slug, category, display_name, subtitle, prompt_body, model_id } = req.body || {};
   const validCategories = ['expert', 'mode', 'output', 'language', 'tool', 'report_step', 'learn'];
 
   if (!slug?.trim() || !validCategories.includes(category) || !display_name?.trim() || !prompt_body?.trim()) {
@@ -308,13 +335,20 @@ router.post('/prompts', async (req: AuthenticatedRequest, res) => {
     .toLowerCase()
     .replace(/[^a-z0-9_]+/g, '_');
 
-  const { data, error } = await supabaseAdmin
+  const normalizedSubtitle =
+    typeof subtitle === 'string' && subtitle.trim() ? subtitle.trim() : null;
+  const normalizedModelId =
+    typeof model_id === 'string' && model_id.trim() ? model_id.trim() : null;
+
+  let insertRes = await supabaseAdmin
     .from('system_prompts')
     .insert({
       slug: normalizedSlug,
       category,
       display_name: display_name.trim(),
+      subtitle: normalizedSubtitle,
       prompt_body: prompt_body.trim(),
+      model_id: normalizedModelId,
       version: 1,
       previous_versions: [],
       is_active: true,
@@ -322,12 +356,29 @@ router.post('/prompts', async (req: AuthenticatedRequest, res) => {
     .select('*')
     .single();
 
-  if (error) {
-    res.status(400).json({ error: error.message || 'Could not create prompt' });
+  if (insertRes.error && isMissingColumnError(insertRes.error)) {
+    insertRes = await supabaseAdmin
+      .from('system_prompts')
+      .insert({
+        slug: normalizedSlug,
+        category,
+        display_name: display_name.trim(),
+        prompt_body: prompt_body.trim(),
+        version: 1,
+        previous_versions: [],
+        is_active: true,
+      })
+      .select('*')
+      .single();
+  }
+
+  if (insertRes.error || !insertRes.data) {
+    res.status(400).json({ error: insertRes.error?.message || 'Could not create prompt' });
     return;
   }
 
-  res.status(201).json({ prompt: data });
+  invalidatePromptCache();
+  res.status(201).json({ prompt: insertRes.data });
 });
 
 router.patch('/prompts/:id', async (req: AuthenticatedRequest, res) => {
@@ -348,7 +399,7 @@ router.patch('/prompts/:id', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const { display_name, prompt_body, is_active } = req.body || {};
+  const { display_name, subtitle, prompt_body, model_id, is_active } = req.body || {};
   const prevHistory = Array.isArray(existing.previous_versions)
     ? existing.previous_versions
     : [];
@@ -367,28 +418,50 @@ router.patch('/prompts/:id', async (req: AuthenticatedRequest, res) => {
       ].slice(0, 20)
     : prevHistory;
 
-  const { data: updated, error } = await supabaseAdmin
+  const basePayload: Record<string, unknown> = {
+    ...(typeof display_name === 'string' && display_name.trim()
+      ? { display_name: display_name.trim() }
+      : {}),
+    ...(typeof prompt_body === 'string' ? { prompt_body: prompt_body.trim() } : {}),
+    ...(typeof is_active === 'boolean' ? { is_active } : {}),
+    version: bodyChanged ? existing.version + 1 : existing.version,
+    previous_versions: nextHistory,
+    updated_at: new Date().toISOString(),
+  };
+
+  const extendedPayload: Record<string, unknown> = {
+    ...basePayload,
+    ...(subtitle !== undefined
+      ? { subtitle: typeof subtitle === 'string' && subtitle.trim() ? subtitle.trim() : null }
+      : {}),
+    ...(model_id !== undefined
+      ? { model_id: typeof model_id === 'string' && model_id.trim() ? model_id.trim() : null }
+      : {}),
+  };
+
+  let updateRes = await supabaseAdmin
     .from('system_prompts')
-    .update({
-      ...(typeof display_name === 'string' && display_name.trim()
-        ? { display_name: display_name.trim() }
-        : {}),
-      ...(typeof prompt_body === 'string' ? { prompt_body: prompt_body.trim() } : {}),
-      ...(typeof is_active === 'boolean' ? { is_active } : {}),
-      version: bodyChanged ? existing.version + 1 : existing.version,
-      previous_versions: nextHistory,
-      updated_at: new Date().toISOString(),
-    })
+    .update(extendedPayload)
     .eq('id', existing.id)
     .select('*')
     .single();
 
-  if (error) {
+  if (updateRes.error && isMissingColumnError(updateRes.error)) {
+    updateRes = await supabaseAdmin
+      .from('system_prompts')
+      .update(basePayload)
+      .eq('id', existing.id)
+      .select('*')
+      .single();
+  }
+
+  if (updateRes.error || !updateRes.data) {
     res.status(500).json({ error: 'Failed to update system prompt' });
     return;
   }
 
-  res.json({ prompt: updated });
+  invalidatePromptCache();
+  res.json({ prompt: updateRes.data });
 });
 
 router.post('/prompts/:id/rollback', async (req: AuthenticatedRequest, res) => {
@@ -450,6 +523,7 @@ router.post('/prompts/:id/rollback', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
+  invalidatePromptCache();
   res.json({ prompt: updated });
 });
 
@@ -460,15 +534,18 @@ router.post('/prompts/test', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const { promptBody, testQuestion, chartContext } = req.body || {};
+  const { promptBody, testQuestion, chartContext, modelId } = req.body || {};
   if (!String(promptBody || '').trim() || !String(testQuestion || '').trim()) {
     res.status(400).json({ error: 'Draft prompt body and test question are required.' });
     return;
   }
 
+  const targetModel =
+    typeof modelId === 'string' && modelId.trim() ? modelId.trim() : getConsultationModel();
+
   try {
     const completion = await createOpenRouterCompletion({
-      model: getConsultationModel(),
+      model: targetModel,
       system: `${CORE_COUNCIL_CONSTITUTION}\n\n${String(promptBody).trim()}${
         chartContext ? `\n\nTEST CHART CONTEXT:\n${String(chartContext).trim()}` : ''
       }`,
@@ -480,6 +557,7 @@ router.post('/prompts/test', async (req: AuthenticatedRequest, res) => {
       output: completion.text.trim(),
       tokensIn: completion.tokensIn,
       tokensOut: completion.tokensOut,
+      modelUsed: targetModel,
     });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Sandbox failed' });
@@ -509,6 +587,108 @@ router.get('/reports', async (_req: AuthenticatedRequest, res) => {
   res.json({ reports: data || [] });
 });
 
+router.post('/reports', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const {
+    slug,
+    name,
+    category,
+    short_description,
+    long_description,
+    price_credits,
+    sort_order,
+    is_active,
+    prompt_chain_json,
+    model_id,
+  } = req.body || {};
+
+  if (!String(name || '').trim() || !String(category || '').trim() || !String(short_description || '').trim()) {
+    res.status(400).json({ error: 'Report name, category, and short description are required.' });
+    return;
+  }
+
+  const normalizedSlug = String(slug || name)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  if (!normalizedSlug) {
+    res.status(400).json({ error: 'Valid URL slug is required.' });
+    return;
+  }
+
+  const chain =
+    Array.isArray(prompt_chain_json) && prompt_chain_json.length > 0
+      ? prompt_chain_json.map((step: { title?: string; instruction?: string }, idx: number) => ({
+          stepNumber: idx + 1,
+          title: String(step?.title || `Pass ${idx + 1}`).trim(),
+          instruction: String(step?.instruction || '').trim(),
+        }))
+      : [
+          {
+            stepNumber: 1,
+            title: 'Pass 1 · Chart Foundation & Planetary Evidence',
+            instruction: 'Audit the natal chart placements, divisional Vargas, and active Dashas.',
+          },
+          {
+            stepNumber: 2,
+            title: 'Pass 2 · Strategic Synthesis & Dossier Compilation',
+            instruction: 'Compile a clear, editorial-grade Vedic report answering every user question.',
+          },
+        ];
+
+  const baseInsert = {
+    slug: normalizedSlug,
+    name: String(name).trim(),
+    category: String(category).trim(),
+    short_description: String(short_description).trim(),
+    long_description:
+      typeof long_description === 'string' && long_description.trim()
+        ? long_description.trim()
+        : null,
+    price_credits:
+      typeof price_credits === 'number' && Number.isFinite(price_credits) && price_credits >= 0
+        ? Math.round(price_credits)
+        : 2500,
+    sort_order:
+      typeof sort_order === 'number' && Number.isFinite(sort_order)
+        ? Math.round(sort_order)
+        : 99,
+    is_active: typeof is_active === 'boolean' ? is_active : true,
+    prompt_chain_json: chain,
+  };
+
+  let insertRes = await supabaseAdmin
+    .from('report_catalog')
+    .insert({
+      ...baseInsert,
+      model_id: typeof model_id === 'string' && model_id.trim() ? model_id.trim() : null,
+    })
+    .select('*')
+    .single();
+
+  if (insertRes.error && isMissingColumnError(insertRes.error)) {
+    insertRes = await supabaseAdmin
+      .from('report_catalog')
+      .insert(baseInsert)
+      .select('*')
+      .single();
+  }
+
+  if (insertRes.error || !insertRes.data) {
+    res.status(400).json({ error: insertRes.error?.message || 'Failed to create report catalog entry' });
+    return;
+  }
+
+  res.status(201).json({ report: insertRes.data });
+});
+
 router.patch('/reports/:id', async (req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin) {
@@ -522,34 +702,68 @@ router.patch('/reports/:id', async (req: AuthenticatedRequest, res) => {
     short_description,
     long_description,
     price_credits,
+    sort_order,
     prompt_chain_json,
     is_active,
+    model_id,
   } = req.body || {};
 
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (typeof name === 'string' && name.trim()) updates.name = name.trim();
-  if (typeof category === 'string' && category.trim()) updates.category = category.trim();
-  if (typeof short_description === 'string') updates.short_description = short_description.trim();
-  if (typeof long_description === 'string') updates.long_description = long_description.trim();
-  if (typeof price_credits === 'number' && price_credits >= 0) {
-    updates.price_credits = Math.round(price_credits);
+  const baseUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (typeof name === 'string' && name.trim()) baseUpdates.name = name.trim();
+  if (typeof category === 'string' && category.trim()) baseUpdates.category = category.trim();
+  if (typeof short_description === 'string') baseUpdates.short_description = short_description.trim();
+  if (long_description !== undefined) {
+    baseUpdates.long_description =
+      typeof long_description === 'string' && long_description.trim()
+        ? long_description.trim()
+        : null;
   }
-  if (Array.isArray(prompt_chain_json)) updates.prompt_chain_json = prompt_chain_json;
-  if (typeof is_active === 'boolean') updates.is_active = is_active;
+  if (typeof price_credits === 'number' && Number.isFinite(price_credits) && price_credits >= 0) {
+    baseUpdates.price_credits = Math.round(price_credits);
+  }
+  if (typeof sort_order === 'number' && Number.isFinite(sort_order)) {
+    baseUpdates.sort_order = Math.round(sort_order);
+  }
+  if (Array.isArray(prompt_chain_json)) {
+    baseUpdates.prompt_chain_json = prompt_chain_json.map(
+      (step: { title?: string; instruction?: string }, idx: number) => ({
+        stepNumber: idx + 1,
+        title: String(step?.title || `Pass ${idx + 1}`).trim(),
+        instruction: String(step?.instruction || '').trim(),
+      })
+    );
+  }
+  if (typeof is_active === 'boolean') baseUpdates.is_active = is_active;
 
-  const { data, error } = await supabaseAdmin
+  const extendedUpdates: Record<string, unknown> = {
+    ...baseUpdates,
+    ...(model_id !== undefined
+      ? { model_id: typeof model_id === 'string' && model_id.trim() ? model_id.trim() : null }
+      : {}),
+  };
+
+  let updateRes = await supabaseAdmin
     .from('report_catalog')
-    .update(updates)
+    .update(extendedUpdates)
     .eq('id', req.params.id)
     .select('*')
     .single();
 
-  if (error) {
+  if (updateRes.error && isMissingColumnError(updateRes.error)) {
+    updateRes = await supabaseAdmin
+      .from('report_catalog')
+      .update(baseUpdates)
+      .eq('id', req.params.id)
+      .select('*')
+      .single();
+  }
+
+  if (updateRes.error || !updateRes.data) {
     res.status(500).json({ error: 'Failed to update report catalog entry' });
     return;
   }
 
-  res.json({ report: data });
+  res.json({ report: updateRes.data });
 });
 
 // 6. Bulk Old-Client CSV Onboarding (forces must_change_password = true + optional credits + profile + Resend invite)

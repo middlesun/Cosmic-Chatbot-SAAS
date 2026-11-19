@@ -16,12 +16,14 @@ export interface ChatCatalog {
 export interface ChatProfile {
   id: string;
   name: string;
+  short_name?: string | null;
+  is_default?: boolean;
   birth_date: string;
   birth_city: string;
   birth_country: string;
   relationship: string | null;
   is_activated: boolean;
-  profile_memory_summary: string | null;
+  profile_memory_summary?: string | null;
 }
 
 export interface ConversationRecord {

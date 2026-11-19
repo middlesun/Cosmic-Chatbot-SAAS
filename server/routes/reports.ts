@@ -178,7 +178,7 @@ router.post('/orders', requireAuth, async (req: AuthenticatedRequest, res) => {
   res.status(201).json({ order });
 });
 
-// 3. Poll Detailed Order Status + Live Step Outputs + Final Markdown
+// 3. Poll Detailed Order Status + Live Step Outputs + Final Markdown (supports lightweight ?mode=poll)
 router.get('/orders/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin || !req.appUser) {
@@ -186,9 +186,14 @@ router.get('/orders/:id', requireAuth, async (req: AuthenticatedRequest, res) =>
     return;
   }
 
+  const isPollMode = req.query.mode === 'poll';
+  const orderSelect = isPollMode
+    ? 'id, profile_id, report_catalog_id, user_questions, credits_charged, status, progress_step, pdf_url, audio_url, linked_conversation_id, error_message, created_at, completed_at'
+    : '*';
+
   const { data: order } = await supabaseAdmin
     .from('report_orders')
-    .select('*')
+    .select(orderSelect)
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
@@ -198,30 +203,63 @@ router.get('/orders/:id', requireAuth, async (req: AuthenticatedRequest, res) =>
     return;
   }
 
+  const orderRecord = order as unknown as {
+    report_catalog_id: string;
+    profile_id: string;
+    status: string;
+    progress_step: string | null;
+    step_outputs_json?: unknown[];
+  };
+
   const [{ data: catalogItem }, { data: profile }] = await Promise.all([
     supabaseAdmin
       .from('report_catalog')
       .select('id, name, category, short_description, prompt_chain_json')
-      .eq('id', order.report_catalog_id)
+      .eq('id', orderRecord.report_catalog_id)
       .maybeSingle(),
     supabaseAdmin
       .from('profiles')
       .select('id, name, birth_date, birth_time, birth_city, birth_country')
-      .eq('id', order.profile_id)
+      .eq('id', orderRecord.profile_id)
       .maybeSingle(),
   ]);
 
+  const passTitles =
+    catalogItem && Array.isArray(catalogItem.prompt_chain_json)
+      ? catalogItem.prompt_chain_json.map((s: { title?: string }) => s.title || '')
+      : [];
+
+  let completedPasses = 0;
+  if (isPollMode) {
+    if (orderRecord.status === 'completed' || orderRecord.status === 'generating_pdf') {
+      completedPasses = passTitles.length;
+    } else if (orderRecord.progress_step && passTitles.length > 0) {
+      const idx = passTitles.findIndex((t) => t === orderRecord.progress_step);
+      if (idx >= 0) {
+        completedPasses = idx;
+      } else {
+        const match = orderRecord.progress_step.match(/Pass\s+(\d+)/i);
+        if (match) {
+          completedPasses = Math.max(0, Number(match[1]) - 1);
+        }
+      }
+    }
+  } else if (Array.isArray(orderRecord.step_outputs_json)) {
+    completedPasses = orderRecord.step_outputs_json.length;
+  }
+
   res.json({
-    order,
+    order: {
+      ...(order as unknown as Record<string, unknown>),
+      completed_passes: completedPasses,
+    },
     reportMeta: catalogItem
       ? {
           id: catalogItem.id,
           name: catalogItem.name,
           category: catalogItem.category,
           short_description: catalogItem.short_description,
-          pass_titles: Array.isArray(catalogItem.prompt_chain_json)
-            ? catalogItem.prompt_chain_json.map((s: { title?: string }) => s.title || '')
-            : [],
+          pass_titles: passTitles,
         }
       : null,
     profile: profile || null,

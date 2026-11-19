@@ -1,12 +1,27 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Plus, Search, Trash2, Eye, Sparkles, Loader2, ArrowLeft, AlertCircle } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Trash2,
+  Eye,
+  Sparkles,
+  Loader2,
+  ArrowLeft,
+  AlertCircle,
+  Check,
+  Pencil,
+  UserCheck,
+} from 'lucide-react';
 import { useAuth } from './AuthContext';
 import ChartViewer, { type CompiledChartJson } from './ChartViewer';
 import CustomSelect from './CustomSelect';
+import CustomDatePicker from './CustomDatePicker';
 
 interface ProfileSummary {
   id: string;
   name: string;
+  short_name?: string | null;
+  is_default?: boolean;
   birth_date: string;
   birth_time: string;
   birth_city: string;
@@ -35,6 +50,8 @@ const ProfileManager: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [formState, setFormState] = useState({
     name: '',
+    short_name: '',
+    is_default: false,
     birth_date: '',
     birth_time: '',
     birth_city: '',
@@ -50,6 +67,11 @@ const ProfileManager: React.FC = () => {
   const [activationStepText, setActivationStepText] = useState('');
   const [selectedProfile, setSelectedProfile] = useState<ProfileSummary | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Inline label & default management
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [editingShortName, setEditingShortName] = useState('');
+  const [updatingMetaId, setUpdatingMetaId] = useState<string | null>(null);
 
   const loadProfiles = useCallback(async () => {
     const token = await getAccessToken();
@@ -104,6 +126,8 @@ const ProfileManager: React.FC = () => {
         setShowCreateForm(false);
         setFormState({
           name: '',
+          short_name: '',
+          is_default: false,
           birth_date: '',
           birth_time: '',
           birth_city: '',
@@ -120,6 +144,61 @@ const ProfileManager: React.FC = () => {
       setError('Failed to save profile.');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleSetAsDefault = async (profileId: string) => {
+    const token = await getAccessToken();
+    if (!token) return;
+    setError(null);
+    setUpdatingMetaId(profileId);
+    try {
+      const res = await fetch(`/api/profiles/${profileId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ is_default: true }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Could not update default profile.');
+      } else {
+        await loadProfiles();
+      }
+    } catch {
+      setError('Network error updating default profile.');
+    } finally {
+      setUpdatingMetaId(null);
+    }
+  };
+
+  const handleSaveShortName = async (profileId: string) => {
+    const token = await getAccessToken();
+    if (!token) return;
+    setError(null);
+    setUpdatingMetaId(profileId);
+    try {
+      const res = await fetch(`/api/profiles/${profileId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ short_name: editingShortName.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Could not save short name.');
+      } else {
+        setEditingLabelId(null);
+        await loadProfiles();
+      }
+    } catch {
+      setError('Network error saving short name.');
+    } finally {
+      setUpdatingMetaId(null);
     }
   };
 
@@ -242,7 +321,13 @@ const ProfileManager: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => setShowCreateForm(!showCreateForm)}
+          onClick={() => {
+            const nextOpen = !showCreateForm;
+            setShowCreateForm(nextOpen);
+            if (nextOpen && profiles.length === 0) {
+              setFormState((prev) => ({ ...prev, is_default: true }));
+            }
+          }}
           disabled={profiles.length >= tierLimit}
           className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 whitespace-nowrap shrink-0"
         >
@@ -297,13 +382,25 @@ const ProfileManager: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Birth Date</label>
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
+                Short Name (Optional)
+              </label>
               <input
-                type="date"
-                required
-                value={formState.birth_date}
-                onChange={(e) => setFormState({ ...formState, birth_date: e.target.value })}
+                type="text"
+                maxLength={40}
+                value={formState.short_name}
+                onChange={(e) => setFormState({ ...formState, short_name: e.target.value })}
+                placeholder="e.g. Aarav, Mom..."
                 className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Birth Date</label>
+              <CustomDatePicker
+                value={formState.birth_date}
+                onChange={(nextDate) => setFormState({ ...formState, birth_date: nextDate })}
+                ariaLabel="Birth Date"
+                required
               />
             </div>
             <div>
@@ -375,6 +472,9 @@ const ProfileManager: React.FC = () => {
                 className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
             <div>
               <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Chart PDF URL (Optional)</label>
               <input
@@ -385,6 +485,16 @@ const ProfileManager: React.FC = () => {
                 className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
               />
             </div>
+
+            <label className="flex items-center gap-2.5 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-4 py-2.5 text-xs text-[#3D3830] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={formState.is_default}
+                onChange={(e) => setFormState({ ...formState, is_default: e.target.checked })}
+                className="h-4 w-4 accent-[#4A453D] rounded"
+              />
+              <span>Set as my primary chart (shown as “You” across Overview & Chat)</span>
+            </label>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
@@ -447,19 +557,80 @@ const ProfileManager: React.FC = () => {
           {filtered.map((profile) => (
             <div
               key={profile.id}
-              className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 flex flex-col justify-between gap-5"
+              className={`rounded-3xl border p-6 flex flex-col justify-between gap-5 transition-colors ${
+                profile.is_default
+                  ? 'bg-[#F1ECE3]/85 border-[#3D3830]/20'
+                  : 'bg-[#FDFBF7] border-[#3D3830]/10'
+              }`}
             >
               <div>
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs text-[#8B8275] mb-1">
-                      {profile.relationship || 'Profile'} · {profile.is_activated ? 'Chart Activated' : 'Pending Activation'}
+                  <div className="min-w-0">
+                    <p className="text-xs text-[#8B8275] mb-1 flex flex-wrap items-center gap-1.5">
+                      {profile.is_default && (
+                        <span className="font-medium text-[#3D3830]">You (Primary) ·</span>
+                      )}
+                      <span>
+                        {profile.relationship || 'Profile'} · {profile.is_activated ? 'Chart Activated' : 'Pending Activation'}
+                      </span>
                     </p>
-                    <h3 className="font-serif text-2xl font-medium text-[#3D3830]">{profile.name}</h3>
+                    <h3 className="font-serif text-2xl font-medium text-[#3D3830] truncate">
+                      {profile.name}
+                    </h3>
+
+                    {editingLabelId === profile.id ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={editingShortName}
+                          maxLength={40}
+                          onChange={(e) => setEditingShortName(e.target.value)}
+                          placeholder="Short name (e.g. Mom)"
+                          className="w-40 rounded-lg border border-[#3D3830]/20 bg-[#FAF7F2] px-2.5 py-1 text-xs text-[#3D3830] focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          disabled={updatingMetaId === profile.id}
+                          onClick={() => void handleSaveShortName(profile.id)}
+                          className="inline-flex items-center gap-1 rounded-full bg-[#4A453D] px-3 py-1 text-[11px] font-medium text-[#FAF7F2] hover:bg-[#38342E]"
+                        >
+                          <Check className="h-3 w-3" />
+                          <span>Save</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingLabelId(null)}
+                          className="text-[11px] text-[#8B8275] hover:text-[#3D3830]"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-1 flex items-center gap-2 text-xs text-[#5C5449]">
+                        <span>
+                          Short label:{' '}
+                          <span className="font-medium text-[#3D3830]">
+                            {profile.short_name?.trim() || 'Not set'}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingLabelId(profile.id);
+                            setEditingShortName(profile.short_name || '');
+                          }}
+                          title="Edit short name"
+                          className="inline-flex items-center gap-1 text-[11px] text-[#8B8275] hover:text-[#3D3830]"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          <span>Edit</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {confirmDeleteId === profile.id ? (
-                    <div className="flex items-center gap-2 text-xs">
+                    <div className="flex items-center gap-2 text-xs shrink-0">
                       <button
                         type="button"
                         onClick={() => handleDelete(profile.id)}
@@ -480,7 +651,7 @@ const ProfileManager: React.FC = () => {
                       type="button"
                       onClick={() => setConfirmDeleteId(profile.id)}
                       title="Delete Profile"
-                      className="text-[#8B8275] hover:text-[#A94438] p-1.5"
+                      className="text-[#8B8275] hover:text-[#A94438] p-1.5 shrink-0"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -495,7 +666,7 @@ const ProfileManager: React.FC = () => {
                 </p>
               </div>
 
-              <div className="flex items-center justify-between pt-3 border-t border-[#3D3830]/10">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#3D3830]/10">
                 {profile.is_activated ? (
                   <button
                     type="button"
@@ -518,6 +689,18 @@ const ProfileManager: React.FC = () => {
                         ? 'Activate Chart (Included)'
                         : `Activate · ${activationCost.toLocaleString()} Credits`}
                     </span>
+                  </button>
+                )}
+
+                {!profile.is_default && (
+                  <button
+                    type="button"
+                    disabled={updatingMetaId === profile.id}
+                    onClick={() => void handleSetAsDefault(profile.id)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/20 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7] transition-colors disabled:opacity-50"
+                  >
+                    <UserCheck className="h-3.5 w-3.5 text-[#8B7355]" />
+                    <span>{updatingMetaId === profile.id ? 'Updating...' : 'Set as You'}</span>
                   </button>
                 )}
               </div>

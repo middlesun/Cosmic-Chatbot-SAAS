@@ -125,7 +125,11 @@ async function processReportOrder(orderId: string, appOrigin?: string): Promise<
       }
     }
 
-    const model = getConsultationModel();
+    const customModelId = (catalogItem as { model_id?: string | null }).model_id;
+    const model =
+      typeof customModelId === 'string' && customModelId.trim()
+        ? customModelId.trim()
+        : getConsultationModel();
     const languagePref = userRow?.default_language || 'English';
     const userQuestionsText = order.user_questions?.trim()
       ? `USER'S SPECIFIC QUESTIONS FOR THIS REPORT:\n${order.user_questions.trim()}`
@@ -246,7 +250,7 @@ ${gocharText ? `\n${gocharText}` : ''}`,
           order.user_questions ||
           `Discuss key findings and timing windows in ${catalogItem.name}`,
         assistantAnswer: introExcerpt,
-        modeSlug: 'life',
+        modeSlug: 'general',
         languageSlug: languagePref,
         hasProfile: true,
       });
@@ -273,7 +277,7 @@ ${gocharText ? `\n${gocharText}` : ''}`,
           content: `Your **${catalogItem.name}** for **${profile.name}** is ready. Below is the complete dossier loaded into our consultation context so you can ask follow-up questions about any timeline, planetary combination, or decision.\n\n---\n\n${finalMarkdown}`,
           word_count: countWords(finalMarkdown),
           expert_used: 'council_synthesis',
-          mode_used: 'life',
+          mode_used: 'general',
           output_format_used: 'detailed',
           language_used: languagePref,
           followups_json: followups,

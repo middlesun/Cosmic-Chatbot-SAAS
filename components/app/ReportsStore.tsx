@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   ArrowRight,
   CheckCircle2,
@@ -182,14 +184,11 @@ const ReportsStore: React.FC = () => {
       {/* Editorial Header */}
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-[#3D3830]/10 pb-8">
         <div>
-          <p className="text-xs text-[#8B8275] mb-2">
-            Multi-Pass Vedic Synthesis · Typeset PDF + Report-to-Chat Thread
-          </p>
           <h1 className="font-serif text-4xl font-medium text-[#3D3830] tracking-tight">
             Deep Research Reports Store
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-[#5C5449] leading-relaxed">
-            Commission long-form, 4-pass Vedic dossiers compiled across your Parashari Vargas, KP Sub-Lords, Jaimini Karakas, and active Dashas. Each completed report automatically opens a dedicated interactive chat thread pre-loaded for follow-up questions.
+            Deeply synthesised reports on key areas of life
           </p>
         </div>
 
@@ -359,9 +358,11 @@ const ReportsStore: React.FC = () => {
               className="p-6 space-y-5 max-h-[82vh] overflow-y-auto"
             >
               {selectedReport.long_description && (
-                <p className="text-xs text-[#5C5449] leading-relaxed">
-                  {selectedReport.long_description}
-                </p>
+                <div className="text-xs text-[#5C5449] leading-relaxed space-y-2.5 [&_h1]:font-serif [&_h1]:text-xl [&_h1]:text-[#3D3830] [&_h2]:font-serif [&_h2]:text-lg [&_h2]:text-[#3D3830] [&_h2]:mt-2 [&_h3]:font-medium [&_h3]:text-[#3D3830] [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-[#B8965A] [&_blockquote]:pl-3 [&_blockquote]:italic [&_strong]:text-[#3D3830]">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {selectedReport.long_description}
+                  </ReactMarkdown>
+                </div>
               )}
 
               {selectedReport.pass_titles.length > 0 && (

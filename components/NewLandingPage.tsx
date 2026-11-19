@@ -513,7 +513,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
               to="/app/login"
               className="group inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] transition-all duration-200 hover:bg-[#38342E] active:scale-[0.97] whitespace-nowrap shrink-0"
             >
-              <span>Member Portal</span>
+              <span>Login</span>
               <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
             </Link>
 
@@ -599,16 +599,13 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
               </button>
             </div>
             <div className="pt-3 border-t border-[#3D3830]/10 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onQuickOrder();
-                }}
-                className="flex-1 rounded-full bg-[#4A453D] px-4 py-2.5 text-xs font-medium text-[#FAF7F2] active:scale-[0.98] transition-transform"
+              <Link
+                to="/app/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex-1 text-center rounded-full bg-[#4A453D] px-4 py-2.5 text-xs font-medium text-[#FAF7F2] active:scale-[0.98] transition-transform"
               >
-                Book Your Reading
-              </button>
+                Login with Gmail
+              </Link>
               <Link
                 to="/legacy"
                 onClick={() => setMobileMenuOpen(false)}
@@ -651,14 +648,13 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
             className="flex flex-col items-center justify-center gap-4 animate-cc-slide-up"
             style={{ animationDelay: '320ms' }}
           >
-            <button
-              type="button"
-              onClick={() => onQuickOrder()}
+            <Link
+              to="/app/login"
               className="group inline-flex items-center justify-center gap-2.5 rounded-full bg-[#4A453D] px-10 py-4 text-sm font-medium text-[#FAF7F2] transition-all duration-200 hover:bg-[#38342E] hover:-translate-y-0.5 active:scale-[0.98] whitespace-nowrap cursor-pointer"
             >
-              <span>Book Your Reading</span>
+              <span>Login with Gmail</span>
               <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-            </button>
+            </Link>
 
             <div className="flex flex-wrap items-center justify-center gap-6 pt-1 text-xs font-medium text-[#8B8275]">
               <button
@@ -1231,9 +1227,13 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                             {formatCurrencyPrice(product.priceINR, currency)}
                           </div>
 
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F2] px-4 py-2 text-xs font-medium text-[#1F2229] group-hover:bg-[#B8965A] group-hover:text-[#1F2229] transition-colors duration-200 whitespace-nowrap">
-                            Book Your Reading
-                          </span>
+                          <Link
+                            to="/app/login"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F2] px-4 py-2 text-xs font-medium text-[#1F2229] hover:bg-[#B8965A] hover:text-[#1F2229] transition-colors duration-200 whitespace-nowrap"
+                          >
+                            Login with Gmail
+                          </Link>
                         </div>
                       </div>
                     </div>
@@ -1432,14 +1432,13 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                   Get an honest, multi-system, deeply cross-verified analysis of your career, relationships, or upcoming life phases delivered in a detailed written report.
                 </p>
                 <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => onQuickOrder()}
+                  <Link
+                    to="/app/login"
                     className="group inline-flex items-center gap-2 rounded-full bg-[#FAF7F2] px-9 py-3.5 text-sm font-medium text-[#1F2229] hover:bg-[#B8965A] hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200 whitespace-nowrap cursor-pointer"
                   >
-                    <span>Book Your Reading</span>
+                    <span>Login with Gmail</span>
                     <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-                  </button>
+                  </Link>
                 </div>
               </div>
             </Reveal>
@@ -1497,14 +1496,13 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
 
             <Reveal direction="up" delay={80}>
               <div className="mt-10 text-center">
-                <button
-                  type="button"
-                  onClick={() => onQuickOrder()}
+                <Link
+                  to="/app/login"
                   className="group inline-flex items-center gap-2 text-sm font-medium text-[#3D3830] underline underline-offset-4 hover:text-[#5C5449] cursor-pointer"
                 >
-                  <span>Ready to understand your own chart? Book Your Reading</span>
+                  <span>Ready to understand your own chart? Login with Gmail</span>
                   <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
-                </button>
+                </Link>
               </div>
             </Reveal>
           </div>
@@ -1663,7 +1661,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                   </li>
                   <li>
                     <Link to="/app/login" className="hover:text-[#3D3830] transition-colors">
-                      Member Portal
+                      Login
                     </Link>
                   </li>
                   <li>

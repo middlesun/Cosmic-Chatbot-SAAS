@@ -21,7 +21,7 @@ export const EXPERT_OPTIONS: DefaultPromptSeed[] = [
   {
     slug: 'council_synthesis',
     category: 'expert',
-    display_name: 'Council Synthesis',
+    display_name: 'Vedic astrologer',
     subtitle: 'Integrates Parashari, KP, Jaimini & Nadi into unified strategic counsel.',
     prompt_body: `ACT AS THE COSMIC COUNCIL SYNTHESIS LEAD.
 Synthesize Parashari (Lagna, Vargas D1–D60, Yogas, Shadbala, Ashtakavarga), Krishnamurti Paddhati (Placidus Cuspal Sub-Lords & ABCD significators), Jaimini (Chara Karakas AK–DK & Karakamsha), and Nadi (karakatwa linkages and planetary degrees) into one cohesive, high-precision Vedic consultation.
@@ -66,6 +66,14 @@ Translate subtle planetary combinations into vivid, real-world life situations, 
 ];
 
 export const MODE_OPTIONS: DefaultPromptSeed[] = [
+  {
+    slug: 'general',
+    category: 'mode',
+    display_name: 'General',
+    subtitle: 'Open-ended Vedic guidance across any life topic.',
+    prompt_body: `CONSULTATION MODE: GENERAL.
+Provide balanced, grounded Vedic insight tailored directly to the user's question without forcing an artificial domain frame. Anchor chart analysis in Lagna, Moon, relevant Bhavas, active Dasha/Antardasha, and current Gochar transits.`,
+  },
   {
     slug: 'life',
     category: 'mode',
@@ -216,6 +224,26 @@ export const ALL_DEFAULT_PROMPTS: DefaultPromptSeed[] = [
   ...TOOL_PROMPTS,
 ];
 
+const PROMPT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+interface CachedPromptBodyEntry {
+  body: string;
+  modelId: string | null;
+  expiresAt: number;
+}
+
+const promptBodyCache = new Map<string, CachedPromptBodyEntry>();
+
+let publicCatalogCache: {
+  data: ReturnType<typeof getPublicChatCatalog>;
+  expiresAt: number;
+} | null = null;
+
+export function invalidatePromptCache(): void {
+  promptBodyCache.clear();
+  publicCatalogCache = null;
+}
+
 export function getPublicChatCatalog() {
   return {
     experts: EXPERT_OPTIONS.map((p) => ({
@@ -252,35 +280,208 @@ export function getPublicChatCatalog() {
 }
 
 /**
- * Resolves live admin-customized prompts from Supabase `system_prompts`,
- * falling back seamlessly to `promptDefaults.ts` when keys aren't seeded yet.
+ * Returns the public-safe chat catalog with a 5-minute TTL memory cache,
+ * reflecting any active Admin customizations stored in `system_prompts`.
  */
-export async function resolvePromptBodies(slugs: string[]): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
+export async function getPublicChatCatalogCached() {
+  const now = Date.now();
+  if (publicCatalogCache && publicCatalogCache.expiresAt > now) {
+    return publicCatalogCache.data;
+  }
+
+  const base = getPublicChatCatalog();
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    return base;
+  }
+
+  try {
+    let rows: Array<{
+      slug: string;
+      category: string;
+      display_name: string;
+      subtitle?: string | null;
+      is_active: boolean;
+    }> | null = null;
+
+    const resWithSub = await supabaseAdmin
+      .from('system_prompts')
+      .select('slug, category, display_name, subtitle, is_active')
+      .eq('is_active', true);
+
+    if (!resWithSub.error && resWithSub.data) {
+      rows = resWithSub.data;
+    } else {
+      // Safe fallback if `subtitle` column migration hasn't been executed yet
+      const resBase = await supabaseAdmin
+        .from('system_prompts')
+        .select('slug, category, display_name, is_active')
+        .eq('is_active', true);
+      if (!resBase.error && resBase.data) {
+        rows = resBase.data;
+      }
+    }
+
+    if (!rows || rows.length === 0) {
+      publicCatalogCache = { data: base, expiresAt: now + PROMPT_CACHE_TTL_MS };
+      return base;
+    }
+
+    const defaultMetaBySlug = new Map(ALL_DEFAULT_PROMPTS.map((d) => [d.slug, d]));
+    const activeByCategory = {
+      experts: [] as PromptCatalogOption[],
+      modes: [] as PromptCatalogOption[],
+      outputs: [] as PromptCatalogOption[],
+      languages: [] as PromptCatalogOption[],
+      tools: [] as PromptCatalogOption[],
+    };
+
+    for (const row of rows) {
+      const def = defaultMetaBySlug.get(row.slug);
+      const item: PromptCatalogOption = {
+        slug: row.slug,
+        category: row.category as PromptCategory,
+        displayName: row.display_name || def?.display_name || row.slug,
+        subtitle: row.subtitle || def?.subtitle || '',
+      };
+
+      if (row.category === 'expert') activeByCategory.experts.push(item);
+      else if (row.category === 'mode' || row.category === 'learn') activeByCategory.modes.push(item);
+      else if (row.category === 'output') activeByCategory.outputs.push(item);
+      else if (row.category === 'language') activeByCategory.languages.push(item);
+      else if (row.category === 'tool') activeByCategory.tools.push(item);
+    }
+
+    const sortWithPriority = (items: PromptCatalogOption[], preferredOrder: string[]) =>
+      [...items].sort((a, b) => {
+        const ia = preferredOrder.indexOf(a.slug);
+        const ib = preferredOrder.indexOf(b.slug);
+        if (ia !== -1 && ib !== -1) return ia - ib;
+        if (ia !== -1) return -1;
+        if (ib !== -1) return 1;
+        return a.displayName.localeCompare(b.displayName);
+      });
+
+    const merged = {
+      experts:
+        activeByCategory.experts.length > 0
+          ? sortWithPriority(activeByCategory.experts, EXPERT_OPTIONS.map((x) => x.slug))
+          : base.experts,
+      modes:
+        activeByCategory.modes.length > 0
+          ? sortWithPriority(activeByCategory.modes, ['general', ...MODE_OPTIONS.map((x) => x.slug)])
+          : base.modes,
+      outputs:
+        activeByCategory.outputs.length > 0
+          ? sortWithPriority(activeByCategory.outputs, OUTPUT_OPTIONS.map((x) => x.slug))
+          : base.outputs,
+      languages:
+        activeByCategory.languages.length > 0
+          ? sortWithPriority(activeByCategory.languages, LANGUAGE_OPTIONS.map((x) => x.slug))
+          : base.languages,
+      tools:
+        activeByCategory.tools.length > 0
+          ? sortWithPriority(activeByCategory.tools, TOOL_PROMPTS.map((x) => x.slug))
+          : base.tools,
+    };
+
+    publicCatalogCache = { data: merged, expiresAt: now + PROMPT_CACHE_TTL_MS };
+    return merged;
+  } catch {
+    return base;
+  }
+}
+
+export interface ResolvedPromptModules {
+  bodies: Record<string, string>;
+  models: Record<string, string | null>;
+}
+
+/**
+ * Resolves live admin-customized prompt bodies and optional per-module OpenRouter model_id
+ * overrides from Supabase `system_prompts` with a 5-minute TTL cache.
+ */
+export async function resolvePromptModules(slugs: string[]): Promise<ResolvedPromptModules> {
+  const bodies: Record<string, string> = {};
+  const models: Record<string, string | null> = {};
+  const now = Date.now();
+  const missingFromCache: string[] = [];
+
   for (const seed of ALL_DEFAULT_PROMPTS) {
     if (slugs.includes(seed.slug)) {
-      result[seed.slug] = seed.prompt_body;
+      bodies[seed.slug] = seed.prompt_body;
+      models[seed.slug] = null;
+    }
+  }
+
+  for (const slug of slugs) {
+    const cached = promptBodyCache.get(slug);
+    if (cached && cached.expiresAt > now) {
+      bodies[slug] = cached.body;
+      models[slug] = cached.modelId;
+    } else {
+      missingFromCache.push(slug);
     }
   }
 
   const supabaseAdmin = getSupabaseAdmin();
-  if (!supabaseAdmin || slugs.length === 0) {
-    return result;
+  if (!supabaseAdmin || missingFromCache.length === 0) {
+    return { bodies, models };
   }
 
-  const { data } = await supabaseAdmin
+  let rows: Array<{ slug: string; prompt_body: string; model_id?: string | null }> | null = null;
+  const primaryRes = await supabaseAdmin
     .from('system_prompts')
-    .select('slug, prompt_body')
-    .in('slug', slugs)
+    .select('slug, prompt_body, model_id')
+    .in('slug', missingFromCache)
     .eq('is_active', true);
 
-  if (data) {
-    for (const row of data) {
+  if (!primaryRes.error && primaryRes.data) {
+    rows = primaryRes.data;
+  } else {
+    // Graceful fallback if `model_id` column hasn't been migrated yet
+    const fallbackRes = await supabaseAdmin
+      .from('system_prompts')
+      .select('slug, prompt_body')
+      .in('slug', missingFromCache)
+      .eq('is_active', true);
+    if (!fallbackRes.error && fallbackRes.data) {
+      rows = fallbackRes.data;
+    }
+  }
+
+  const expiresAt = now + PROMPT_CACHE_TTL_MS;
+  if (rows) {
+    for (const row of rows) {
       if (row.prompt_body && typeof row.prompt_body === 'string') {
-        result[row.slug] = row.prompt_body;
+        const modelOverride =
+          typeof row.model_id === 'string' && row.model_id.trim() ? row.model_id.trim() : null;
+        bodies[row.slug] = row.prompt_body;
+        models[row.slug] = modelOverride;
+        promptBodyCache.set(row.slug, {
+          body: row.prompt_body,
+          modelId: modelOverride,
+          expiresAt,
+        });
       }
     }
   }
 
-  return result;
+  // Cache fallback bodies for slugs not yet in DB so we don't repeatedly query for them
+  for (const slug of missingFromCache) {
+    if (!promptBodyCache.has(slug) && bodies[slug]) {
+      promptBodyCache.set(slug, { body: bodies[slug], modelId: null, expiresAt });
+    }
+  }
+
+  return { bodies, models };
+}
+
+/**
+ * Resolves live admin-customized prompts from Supabase `system_prompts` with 5-minute TTL cache,
+ * falling back seamlessly to `promptDefaults.ts` when keys aren't seeded yet.
+ */
+export async function resolvePromptBodies(slugs: string[]): Promise<Record<string, string>> {
+  const { bodies } = await resolvePromptModules(slugs);
+  return bodies;
 }

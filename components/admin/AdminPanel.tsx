@@ -192,7 +192,15 @@ const AdminPanel: React.FC = () => {
                 })
               }
               onReportSaved={(saved) =>
-                setReports((prev) => prev.map((r) => (r.id === saved.id ? saved : r)))
+                setReports((prev) => {
+                  const exists = prev.some((r) => r.id === saved.id);
+                  const next = exists
+                    ? prev.map((r) => (r.id === saved.id ? saved : r))
+                    : [...prev, saved];
+                  return [...next].sort(
+                    (a, b) => (a.sort_order ?? 99) - (b.sort_order ?? 99)
+                  );
+                })
               }
             />
           )}

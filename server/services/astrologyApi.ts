@@ -338,6 +338,12 @@ export async function fetchChartFromApi(payload: BirthApiPayload): Promise<{
   };
 }
 
+let dailyTransitsMemoryCache: {
+  transitDate: string;
+  planets: PlanetPosition[];
+  transitsText: string;
+} | null = null;
+
 // Global Daily Transit (Gochar) Cache — maximum 1 API call per UTC day across ALL users
 export async function getOrFetchDailyTransits(): Promise<{
   transitDate: string;
@@ -345,21 +351,27 @@ export async function getOrFetchDailyTransits(): Promise<{
   transitsText: string;
 }> {
   const todayISO = new Date().toISOString().slice(0, 10);
+
+  if (dailyTransitsMemoryCache && dailyTransitsMemoryCache.transitDate === todayISO) {
+    return dailyTransitsMemoryCache;
+  }
+
   const supabaseAdmin = getSupabaseAdmin();
 
   if (supabaseAdmin) {
     const { data: cached } = await supabaseAdmin
       .from('daily_transits')
-      .select('*')
+      .select('transits_json, transits_text')
       .eq('transit_date', todayISO)
       .maybeSingle();
 
     if (cached) {
-      return {
+      dailyTransitsMemoryCache = {
         transitDate: todayISO,
         planets: cached.transits_json as PlanetPosition[],
         transitsText: cached.transits_text as string,
       };
+      return dailyTransitsMemoryCache;
     }
   }
 
@@ -388,9 +400,10 @@ export async function getOrFetchDailyTransits(): Promise<{
       );
   }
 
-  return {
+  dailyTransitsMemoryCache = {
     transitDate: todayISO,
     planets,
     transitsText,
   };
+  return dailyTransitsMemoryCache;
 }

@@ -15,19 +15,54 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
   const requestedProfileId = typeof req.query.profileId === 'string' ? req.query.profileId : '';
 
-  const { data: activatedProfiles, error: listErr } = await supabaseAdmin
+  interface RadarProfileRow {
+    id: string;
+    name: string;
+    short_name?: string | null;
+    is_default?: boolean | null;
+    birth_date: string;
+    birth_city: string;
+    is_activated: boolean;
+  }
+
+  let activatedProfiles: RadarProfileRow[] | null = null;
+
+  const primaryRes = await supabaseAdmin
     .from('profiles')
-    .select('id, name, birth_date, birth_city, is_activated, chart_json')
+    .select('id, name, short_name, is_default, birth_date, birth_city, is_activated')
     .eq('user_id', req.appUser.id)
     .eq('is_activated', true)
     .order('activated_at', { ascending: false });
 
-  if (listErr) {
-    res.status(500).json({ error: 'Failed to load profiles for Timing Radar' });
-    return;
+  if (primaryRes.error) {
+    // Fallback if 002_v2_foundations.sql columns are not yet applied in Postgres
+    const fallbackRes = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, birth_date, birth_city, is_activated')
+      .eq('user_id', req.appUser.id)
+      .eq('is_activated', true)
+      .order('activated_at', { ascending: false });
+
+    if (fallbackRes.error) {
+      res.status(500).json({ error: 'Failed to load profiles for Timing Radar' });
+      return;
+    }
+
+    activatedProfiles = (fallbackRes.data || []).map((row) => ({
+      ...row,
+      short_name: null,
+      is_default: false,
+    }));
+  } else {
+    activatedProfiles = (primaryRes.data || []) as RadarProfileRow[];
   }
 
-  const list = activatedProfiles || [];
+  const list = [...(activatedProfiles || [])].sort((a, b) => {
+    const aDef = a.is_default ? 1 : 0;
+    const bDef = b.is_default ? 1 : 0;
+    return bDef - aDef;
+  });
+
   if (list.length === 0) {
     res.json({
       hasActivatedProfile: false,
@@ -37,13 +72,29 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const target =
+  const targetMeta =
     (requestedProfileId ? list.find((p) => p.id === requestedProfileId) : null) || list[0];
 
-  if (!target.chart_json) {
+  const { data: targetChartRow } = await supabaseAdmin
+    .from('profiles')
+    .select('chart_json')
+    .eq('id', targetMeta.id)
+    .eq('user_id', req.appUser.id)
+    .maybeSingle();
+
+  const serializedProfiles = list.map((p) => ({
+    id: p.id,
+    name: p.name,
+    short_name: p.short_name ?? null,
+    is_default: Boolean(p.is_default),
+    birth_date: p.birth_date,
+    birth_city: p.birth_city,
+  }));
+
+  if (!targetChartRow?.chart_json) {
     res.json({
       hasActivatedProfile: false,
-      profiles: list.map((p) => ({ id: p.id, name: p.name })),
+      profiles: serializedProfiles,
       radar: null,
     });
     return;
@@ -51,19 +102,14 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
   try {
     const radar = await buildTimingRadarForProfile({
-      profileId: target.id,
-      profileName: target.name,
-      chartJson: target.chart_json as CompiledChartData,
+      profileId: targetMeta.id,
+      profileName: targetMeta.name,
+      chartJson: targetChartRow.chart_json as CompiledChartData,
     });
 
     res.json({
       hasActivatedProfile: true,
-      profiles: list.map((p) => ({
-        id: p.id,
-        name: p.name,
-        birth_date: p.birth_date,
-        birth_city: p.birth_city,
-      })),
+      profiles: serializedProfiles,
       radar,
     });
   } catch (err) {

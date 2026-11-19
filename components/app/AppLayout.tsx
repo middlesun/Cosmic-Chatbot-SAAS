@@ -1,12 +1,14 @@
 import React from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LogOut, Coins, ShieldCheck } from 'lucide-react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { LogOut, Coins } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import SetPasswordModal from './SetPasswordModal';
 
 const AppLayout: React.FC = () => {
   const { appUser, isPasswordRecovery, isPreviewMode, exitPreviewMode, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isChatRoute = location.pathname.startsWith('/app/chat');
 
   const handleSignOut = async () => {
     if (isPreviewMode) {
@@ -25,9 +27,17 @@ const AppLayout: React.FC = () => {
     }`;
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] text-[#3D3830] font-['Plus_Jakarta_Sans',sans-serif] flex flex-col">
-      {/* Three-Zone Frosted Top Bar Contract */}
-      <header className="sticky top-0 z-30 w-full px-4 md:px-8 pt-4">
+    <div
+      className={`bg-[#FAF7F2] text-[#3D3830] font-['Plus_Jakarta_Sans',sans-serif] flex flex-col overflow-x-hidden ${
+        isChatRoute ? 'h-[100dvh] md:min-h-screen overflow-hidden' : 'min-h-screen'
+      }`}
+    >
+      {/* Three-Zone Frosted Top Bar Contract (hidden on mobile Chat route for full-screen native mobile UX) */}
+      <header
+        className={`sticky top-0 z-30 w-full px-4 md:px-8 pt-4 ${
+          isChatRoute ? 'hidden md:block' : ''
+        }`}
+      >
         <div className="mx-auto max-w-7xl flex items-center justify-between gap-8 rounded-2xl bg-[#EAE3D7]/75 backdrop-blur-md px-5 py-3.5 border border-[#3D3830]/10">
           {/* Zone 1: Brand Title */}
           <Link
@@ -43,7 +53,7 @@ const AppLayout: React.FC = () => {
               Overview
             </NavLink>
             <NavLink to="/app/chat" className={navLinkClass}>
-              Chat Studio
+              Chat
             </NavLink>
             <NavLink to="/app/profiles" className={navLinkClass}>
               Profiles
@@ -54,11 +64,6 @@ const AppLayout: React.FC = () => {
             <NavLink to="/app/billing" className={navLinkClass}>
               Credits
             </NavLink>
-            {appUser?.is_admin && (
-              <NavLink to="/app/admin" className={navLinkClass}>
-                Admin
-              </NavLink>
-            )}
           </nav>
 
           {/* Zone 3: Credits & Account Action */}
@@ -94,34 +99,33 @@ const AppLayout: React.FC = () => {
         </div>
       </header>
 
-      {/* Mobile Navigation Strip */}
-      <nav className="md:hidden mx-auto w-full max-w-7xl px-4 pt-3 flex items-center gap-5 overflow-x-auto no-scrollbar border-b border-[#3D3830]/10 pb-2.5">
-        <NavLink to="/app/dashboard" className={navLinkClass}>
-          Overview
-        </NavLink>
-        <NavLink to="/app/chat" className={navLinkClass}>
-          Chat Studio
-        </NavLink>
-        <NavLink to="/app/profiles" className={navLinkClass}>
-          Profiles
-        </NavLink>
-        <NavLink to="/app/reports" className={navLinkClass}>
-          Reports
-        </NavLink>
-        <NavLink to="/app/billing" className={navLinkClass}>
-          Credits
-        </NavLink>
-        {appUser?.is_admin && (
-          <NavLink to="/app/admin" className={navLinkClass}>
-            <span className="inline-flex items-center gap-1">
-              <ShieldCheck className="h-3.5 w-3.5" /> Admin
-            </span>
+      {/* Mobile Navigation Strip (hidden on /app/chat where navigation moves into sliding drawer) */}
+      {!isChatRoute && (
+        <nav className="md:hidden mx-auto w-full max-w-7xl px-4 pt-3 flex items-center gap-5 overflow-x-auto no-scrollbar border-b border-[#3D3830]/10 pb-2.5">
+          <NavLink to="/app/dashboard" className={navLinkClass}>
+            Overview
           </NavLink>
-        )}
-      </nav>
+          <NavLink to="/app/chat" className={navLinkClass}>
+            Chat
+          </NavLink>
+          <NavLink to="/app/profiles" className={navLinkClass}>
+            Profiles
+          </NavLink>
+          <NavLink to="/app/reports" className={navLinkClass}>
+            Reports
+          </NavLink>
+          <NavLink to="/app/billing" className={navLinkClass}>
+            Credits
+          </NavLink>
+        </nav>
+      )}
 
       {isPreviewMode && (
-        <div className="mx-auto w-full max-w-7xl px-4 md:px-8 pt-4">
+        <div
+          className={`mx-auto w-full max-w-7xl px-4 md:px-8 pt-4 ${
+            isChatRoute ? 'hidden md:block' : ''
+          }`}
+        >
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#EAE3D7]/80 border border-[#3D3830]/15 px-4 py-2.5 text-xs text-[#5C5449]">
             <span>
               <strong className="font-medium text-[#3D3830]">Design Preview Mode:</strong> Interactive sample workspace. Connect Supabase and sign in to run live AI consultations and save charts.
@@ -138,7 +142,13 @@ const AppLayout: React.FC = () => {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 mx-auto w-full max-w-7xl px-4 md:px-8 py-8">
+      <main
+        className={
+          isChatRoute
+            ? 'flex-1 mx-auto w-full max-w-7xl min-h-0 md:px-8 md:py-5 flex flex-col'
+            : 'flex-1 mx-auto w-full max-w-7xl px-4 md:px-8 py-8'
+        }
+      >
         <Outlet />
       </main>
 

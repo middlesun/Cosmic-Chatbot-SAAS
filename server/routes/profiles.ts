@@ -20,6 +20,14 @@ const TIER_ACTIVATION_CREDITS: Record<string, number> = {
   guru: Number(process.env.ACTIVATION_CREDITS_GURU) || 0,
 };
 
+const BASE_PROFILE_SUMMARY_COLUMNS =
+  'id, user_id, name, birth_date, birth_time, birth_city, birth_state, birth_country, latitude, longitude, timezone_offset, gender, relationship, birth_chart_pdf_url, is_activated, activated_at, created_at, updated_at';
+
+const PROFILE_SUMMARY_COLUMNS =
+  'id, user_id, name, short_name, is_default, birth_date, birth_time, birth_city, birth_state, birth_country, latitude, longitude, timezone_offset, gender, relationship, birth_chart_pdf_url, is_activated, activated_at, created_at, updated_at';
+
+const PROFILE_DETAIL_COLUMNS = `${PROFILE_SUMMARY_COLUMNS}, chart_json`;
+
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin || !req.appUser) {
@@ -27,24 +35,43 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const { data, error } = await supabaseAdmin
+  let rows: Array<Record<string, unknown>> = [];
+
+  const primaryRes = await supabaseAdmin
     .from('profiles')
-    .select(
-      'id, user_id, name, birth_date, birth_time, birth_city, birth_state, birth_country, latitude, longitude, timezone_offset, gender, relationship, birth_chart_pdf_url, is_activated, activated_at, created_at, updated_at'
-    )
+    .select(PROFILE_SUMMARY_COLUMNS)
     .eq('user_id', req.appUser.id)
     .order('created_at', { ascending: false });
 
-  if (error) {
-    res.status(500).json({ error: 'Failed to load profiles' });
-    return;
+  if (primaryRes.error) {
+    const fallbackRes = await supabaseAdmin
+      .from('profiles')
+      .select(BASE_PROFILE_SUMMARY_COLUMNS)
+      .eq('user_id', req.appUser.id)
+      .order('created_at', { ascending: false });
+
+    if (fallbackRes.error) {
+      res.status(500).json({ error: 'Failed to load profiles' });
+      return;
+    }
+    rows = (fallbackRes.data || []).map((r) => ({
+      ...r,
+      short_name: null,
+      is_default: false,
+    }));
+  } else {
+    rows = (primaryRes.data || []) as Array<Record<string, unknown>>;
   }
+
+  const sorted = [...rows].sort((a, b) => {
+    return (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0);
+  });
 
   const tierLimit = TIER_PROFILE_LIMITS[req.appUser.tier] ?? 5;
   const activationCost = TIER_ACTIVATION_CREDITS[req.appUser.tier] ?? 2000;
 
   res.json({
-    profiles: data || [],
+    profiles: sorted,
     tierLimit,
     activationCost,
     astrologyApiConfigured: isAstrologyApiConfigured(),
@@ -58,12 +85,29 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const { data, error } = await supabaseAdmin
+  const includeChart = req.query.includeChart !== '0';
+  const selectColumns = includeChart ? PROFILE_DETAIL_COLUMNS : PROFILE_SUMMARY_COLUMNS;
+
+  let { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('*')
+    .select(selectColumns)
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
+
+  if (error) {
+    const baseCols = includeChart
+      ? `${BASE_PROFILE_SUMMARY_COLUMNS}, chart_json`
+      : BASE_PROFILE_SUMMARY_COLUMNS;
+    const fallback = await supabaseAdmin
+      .from('profiles')
+      .select(baseCols)
+      .eq('id', req.params.id)
+      .eq('user_id', req.appUser.id)
+      .maybeSingle();
+    data = fallback.data;
+    error = fallback.error;
+  }
 
   if (error || !data) {
     res.status(404).json({ error: 'Profile not found' });
@@ -95,6 +139,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
   const {
     name,
+    short_name,
+    is_default,
     birth_date,
     birth_time,
     birth_city,
@@ -110,27 +156,50 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const { data, error } = await supabaseAdmin
+  const wantsDefault = Boolean(is_default);
+  if (wantsDefault) {
+    await supabaseAdmin
+      .from('profiles')
+      .update({ is_default: false })
+      .eq('user_id', req.appUser.id)
+      .eq('is_default', true);
+  }
+
+  const basePayload = {
+    user_id: req.appUser.id,
+    name: name.trim(),
+    birth_date,
+    birth_time: birth_time.length === 5 ? `${birth_time}:00` : birth_time,
+    birth_city: birth_city.trim(),
+    birth_state: birth_state?.trim() || null,
+    birth_country: birth_country.trim(),
+    gender: ['male', 'female', 'non-binary'].includes(gender) ? gender : null,
+    relationship: relationship?.trim() || null,
+    birth_chart_pdf_url: birth_chart_pdf_url?.trim() || null,
+    is_activated: false,
+  };
+
+  let { data, error } = await supabaseAdmin
     .from('profiles')
     .insert({
-      user_id: req.appUser.id,
-      name: name.trim(),
-      birth_date,
-      birth_time: birth_time.length === 5 ? `${birth_time}:00` : birth_time,
-      birth_city: birth_city.trim(),
-      birth_state: birth_state?.trim() || null,
-      birth_country: birth_country.trim(),
-      gender: ['male', 'female', 'non-binary'].includes(gender) ? gender : null,
-      relationship: relationship?.trim() || null,
-      birth_chart_pdf_url: birth_chart_pdf_url?.trim() || null,
-      is_activated: false,
+      ...basePayload,
+      short_name: typeof short_name === 'string' && short_name.trim() ? short_name.trim().slice(0, 40) : null,
+      is_default: wantsDefault,
     })
-    .select('*')
+    .select(PROFILE_SUMMARY_COLUMNS)
     .single();
 
   if (error) {
-    res.status(500).json({ error: 'Failed to save birth profile' });
-    return;
+    const fallback = await supabaseAdmin
+      .from('profiles')
+      .insert(basePayload)
+      .select(BASE_PROFILE_SUMMARY_COLUMNS)
+      .single();
+    if (fallback.error || !fallback.data) {
+      res.status(500).json({ error: 'Failed to save birth profile' });
+      return;
+    }
+    data = { ...fallback.data, short_name: null, is_default: false };
   }
 
   res.status(201).json({ profile: data });
@@ -145,7 +214,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 
   const { data: existing } = await supabaseAdmin
     .from('profiles')
-    .select('*')
+    .select('id, is_activated')
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
@@ -155,10 +224,33 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const { name, relationship, birth_chart_pdf_url, birth_date, birth_time, birth_city, birth_state, birth_country, gender } = req.body || {};
+  const {
+    name,
+    short_name,
+    is_default,
+    relationship,
+    birth_chart_pdf_url,
+    birth_date,
+    birth_time,
+    birth_city,
+    birth_state,
+    birth_country,
+    gender,
+  } = req.body || {};
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   if (typeof name === 'string' && name.trim()) updates.name = name.trim();
+  if (typeof short_name === 'string') updates.short_name = short_name.trim().slice(0, 40) || null;
+  if (typeof is_default === 'boolean') {
+    if (is_default) {
+      await supabaseAdmin
+        .from('profiles')
+        .update({ is_default: false })
+        .eq('user_id', req.appUser.id)
+        .eq('is_default', true);
+    }
+    updates.is_default = is_default;
+  }
   if (typeof relationship === 'string') updates.relationship = relationship.trim() || null;
   if (typeof birth_chart_pdf_url === 'string') updates.birth_chart_pdf_url = birth_chart_pdf_url.trim() || null;
 
@@ -172,16 +264,28 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     if (['male', 'female', 'non-binary'].includes(gender)) updates.gender = gender;
   }
 
-  const { data, error } = await supabaseAdmin
+  let { data, error } = await supabaseAdmin
     .from('profiles')
     .update(updates)
     .eq('id', existing.id)
-    .select('*')
+    .select(PROFILE_SUMMARY_COLUMNS)
     .single();
 
   if (error) {
-    res.status(500).json({ error: 'Failed to update profile' });
-    return;
+    const baseUpdates = { ...updates };
+    delete baseUpdates.short_name;
+    delete baseUpdates.is_default;
+    const fallback = await supabaseAdmin
+      .from('profiles')
+      .update(baseUpdates)
+      .eq('id', existing.id)
+      .select(BASE_PROFILE_SUMMARY_COLUMNS)
+      .single();
+    if (fallback.error || !fallback.data) {
+      res.status(500).json({ error: 'Failed to update profile' });
+      return;
+    }
+    data = { ...fallback.data, short_name: null, is_default: false };
   }
 
   res.json({ profile: data });
@@ -226,7 +330,7 @@ router.post('/:id/activate', requireAuth, async (req: AuthenticatedRequest, res)
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('*')
+    .select(PROFILE_DETAIL_COLUMNS)
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
@@ -290,7 +394,7 @@ router.post('/:id/activate', requireAuth, async (req: AuthenticatedRequest, res)
         updated_at: new Date().toISOString(),
       })
       .eq('id', profile.id)
-      .select('*')
+      .select(PROFILE_DETAIL_COLUMNS)
       .single();
 
     if (updateErr) {

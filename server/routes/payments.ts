@@ -66,7 +66,7 @@ export const MEMBERSHIP_TIERS: MembershipTierItem[] = [
       'Up to 5 saved birth profiles',
       '2,000 credits per birth chart activation',
       'Full D1–D60, KP Sub-Lords & Jaimini viewer',
-      'Timing Radar & multi-system Chat Studio',
+      'Timing Radar & multi-system Chat',
     ],
   },
   {

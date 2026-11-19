@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, KeyRound, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { getSupabaseClient } from '../../lib/supabaseClient';
+import { getSupabaseClient, loadSupabasePublicConfig } from '../../lib/supabaseClient';
 import { useAuth, getPendingReferral, storePendingReferral } from './AuthContext';
 
 type AuthView = 'signin' | 'signup' | 'forgot';
 
 const AuthPage: React.FC = () => {
   const navigate = useNavigate();
-  const { isConfigured, session, isLoading, enterPreviewMode } = useAuth();
+  const { session, isLoading, enterPreviewMode } = useAuth();
 
   const [view, setView] = useState<AuthView>('signin');
+  const [showEmailForm, setShowEmailForm] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -27,9 +28,17 @@ const AuthPage: React.FC = () => {
 
   const handleGoogleLogin = async () => {
     setError(null);
-    const supabase = getSupabaseClient();
+    setSubmitting(true);
+
+    let supabase = getSupabaseClient();
     if (!supabase) {
-      setError('Supabase environment variables are not configured yet.');
+      await loadSupabasePublicConfig();
+      supabase = getSupabaseClient();
+    }
+
+    if (!supabase) {
+      setError('Authentication is temporarily unavailable. Please verify Supabase public environment variables.');
+      setSubmitting(false);
       return;
     }
 
@@ -37,7 +46,6 @@ const AuthPage: React.FC = () => {
       storePendingReferral(referralCode.trim());
     }
 
-    setSubmitting(true);
     const { error: oauthErr } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -54,14 +62,20 @@ const AuthPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setNotice(null);
+    setSubmitting(true);
 
-    const supabase = getSupabaseClient();
+    let supabase = getSupabaseClient();
     if (!supabase) {
-      setError('Supabase environment variables are not configured yet.');
+      await loadSupabasePublicConfig();
+      supabase = getSupabaseClient();
+    }
+
+    if (!supabase) {
+      setError('Authentication is temporarily unavailable. Please verify Supabase public environment variables.');
+      setSubmitting(false);
       return;
     }
 
-    setSubmitting(true);
     try {
       if (view === 'signin') {
         const { error: signInErr } = await supabase.auth.signInWithPassword({
@@ -154,221 +168,230 @@ const AuthPage: React.FC = () => {
             </p>
           </div>
 
-          {!isConfigured && (
-            <div className="mb-6 rounded-2xl bg-[#F1ECE3] p-4 border border-[#3D3830]/15 text-xs text-[#5C5449] space-y-1.5">
-              <div className="flex items-center gap-2 font-semibold text-[#3D3830]">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                Supabase Connection Required
-              </div>
-              <p className="leading-relaxed">
-                Add <code className="font-['JetBrains_Mono',monospace] text-[#3D3830]">VITE_SUPABASE_URL</code>,{' '}
-                <code className="font-['JetBrains_Mono',monospace] text-[#3D3830]">VITE_SUPABASE_ANON_KEY</code>, and server credentials to your environment to enable sign-in.
-              </p>
-            </div>
-          )}
-
           {view !== 'forgot' && (
-            <>
+            <div className="space-y-4">
               <button
                 type="button"
                 onClick={handleGoogleLogin}
-                disabled={submitting || !isConfigured}
-                className="w-full flex items-center justify-center gap-3 rounded-full bg-[#4A453D] px-6 py-3.5 text-sm font-medium text-[#FAF7F2] transition-colors hover:bg-[#38342E] disabled:opacity-50 whitespace-nowrap"
+                disabled={submitting}
+                className="w-full flex items-center justify-center gap-3 rounded-full bg-[#4A453D] px-6 py-4 text-sm font-medium text-[#FAF7F2] shadow-[0_12px_28px_-12px_rgba(61,56,48,0.45)] transition-all duration-200 hover:bg-[#38342E] hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-50 whitespace-nowrap"
               >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+                <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
                   <path
                     fill="currentColor"
                     d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27c3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10c5.35 0 9.25-3.67 9.25-9.09c0-1.15-.15-1.81-.15-1.81Z"
                   />
                 </svg>
-                Continue with Google
+                <span>Continue with Gmail</span>
               </button>
 
-              <div className="my-6 flex items-center gap-3">
+              <div className="flex items-center gap-3 pt-1">
                 <div className="h-px flex-1 bg-[#3D3830]/10" />
-                <span className="text-xs text-[#8B8275]">or with email</span>
+                <span className="text-[11px] text-[#8B8275]">or</span>
                 <div className="h-px flex-1 bg-[#3D3830]/10" />
               </div>
-            </>
+
+              {!showEmailForm && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setNotice(null);
+                    setShowEmailForm(true);
+                  }}
+                  className="w-full rounded-full border border-[#3D3830]/15 bg-transparent px-5 py-2.5 text-xs font-medium text-[#5C5449] transition-colors hover:bg-[#F1ECE3]/70 hover:text-[#3D3830]"
+                >
+                  Use email &amp; password instead
+                </button>
+              )}
+            </div>
           )}
 
-          <form onSubmit={handleEmailAuth} className="space-y-4">
-            {view === 'signup' && (
-              <div>
-                <label htmlFor="auth-fullname" className="block text-xs font-medium text-[#5C5449] mb-1.5">
-                  Full Name
-                </label>
-                <input
-                  id="auth-fullname"
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Your name"
-                  className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-4 py-3 text-sm text-[#3D3830] placeholder:text-[#8B8275]/70 focus:border-[#4A453D] focus:outline-none"
-                />
-              </div>
-            )}
-
-            <div>
-              <label htmlFor="auth-email" className="block text-xs font-medium text-[#5C5449] mb-1.5">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-[#8B8275]" />
-                <input
-                  id="auth-email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] pl-10 pr-4 py-3 text-sm text-[#3D3830] placeholder:text-[#8B8275]/70 focus:border-[#4A453D] focus:outline-none"
-                />
-              </div>
+          {error && !showEmailForm && view !== 'forgot' && (
+            <div className="mt-4 flex items-start gap-2 rounded-xl bg-[#A94438]/10 px-3.5 py-2.5 text-xs font-medium text-[#A94438]">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
+          )}
 
-            {view !== 'forgot' && (
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label htmlFor="auth-password" className="text-xs font-medium text-[#5C5449]">
-                    Password
+          {(showEmailForm || view === 'forgot') && (
+            <div className="mt-4 pt-2 animate-cc-tab-panel">
+              <form onSubmit={handleEmailAuth} className="space-y-3.5">
+                {view === 'signup' && (
+                  <div>
+                    <label htmlFor="auth-fullname" className="block text-xs font-medium text-[#5C5449] mb-1.5">
+                      Full Name
+                    </label>
+                    <input
+                      id="auth-fullname"
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Your name"
+                      className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-4 py-2.5 text-sm text-[#3D3830] placeholder:text-[#8B8275]/70 focus:border-[#4A453D] focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label htmlFor="auth-email" className="block text-xs font-medium text-[#5C5449] mb-1.5">
+                    Email Address
                   </label>
-                  {view === 'signin' && (
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-[#8B8275]" />
+                    <input
+                      id="auth-email"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] pl-10 pr-4 py-2.5 text-sm text-[#3D3830] placeholder:text-[#8B8275]/70 focus:border-[#4A453D] focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {view !== 'forgot' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label htmlFor="auth-password" className="text-xs font-medium text-[#5C5449]">
+                        Password
+                      </label>
+                      {view === 'signin' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setError(null);
+                            setNotice(null);
+                            setView('forgot');
+                          }}
+                          className="text-xs text-[#8B8275] hover:text-[#3D3830] underline underline-offset-4"
+                        >
+                          Forgot password?
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <KeyRound className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-[#8B8275]" />
+                      <input
+                        id="auth-password"
+                        type="password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder={view === 'signup' ? 'Minimum 8 characters' : 'Enter password'}
+                        className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] pl-10 pr-4 py-2.5 text-sm text-[#3D3830] placeholder:text-[#8B8275]/70 focus:border-[#4A453D] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {view === 'signup' && (
+                  <div>
+                    <label htmlFor="auth-referral" className="block text-xs font-medium text-[#5C5449] mb-1.5">
+                      Referral Code (Optional)
+                    </label>
+                    <input
+                      id="auth-referral"
+                      type="text"
+                      value={referralCode}
+                      onChange={(e) => setReferralCode(e.target.value)}
+                      placeholder="CC-XXXXXX"
+                      className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-4 py-2.5 text-sm font-['JetBrains_Mono',monospace] text-[#3D3830] placeholder:text-[#8B8275]/70 focus:border-[#4A453D] focus:outline-none uppercase"
+                    />
+                  </div>
+                )}
+
+                {error && (
+                  <div className="flex items-start gap-2 rounded-xl bg-[#A94438]/10 px-3.5 py-2.5 text-xs font-medium text-[#A94438]">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                {notice && (
+                  <div className="flex items-start gap-2 rounded-xl bg-[#5B7056]/10 px-3.5 py-2.5 text-xs font-medium text-[#465941]">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{notice}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full rounded-full border border-[#3D3830]/20 bg-[#F1ECE3] px-6 py-2.5 text-xs font-medium text-[#3D3830] transition-colors hover:bg-[#E7E0D3] disabled:opacity-50"
+                >
+                  {submitting
+                    ? 'Please wait...'
+                    : view === 'signin'
+                    ? 'Sign In with Email'
+                    : view === 'signup'
+                    ? 'Create Account with Email'
+                    : 'Send Reset Link'}
+                </button>
+              </form>
+
+              <div className="mt-4 text-center text-xs text-[#5C5449]">
+                {view === 'signin' && (
+                  <>
+                    Using email?{' '}
                     <button
                       type="button"
                       onClick={() => {
                         setError(null);
                         setNotice(null);
-                        setView('forgot');
+                        setView('signup');
                       }}
-                      className="text-xs text-[#8B8275] hover:text-[#3D3830] underline underline-offset-4"
+                      className="font-medium text-[#3D3830] underline underline-offset-4"
                     >
-                      Forgot password?
+                      Create an account
                     </button>
-                  )}
-                </div>
-                <div className="relative">
-                  <KeyRound className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-[#8B8275]" />
-                  <input
-                    id="auth-password"
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={view === 'signup' ? 'Minimum 8 characters' : 'Enter password'}
-                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] pl-10 pr-4 py-3 text-sm text-[#3D3830] placeholder:text-[#8B8275]/70 focus:border-[#4A453D] focus:outline-none"
-                  />
-                </div>
+                  </>
+                )}
+                {view === 'signup' && (
+                  <>
+                    Already have an account?{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError(null);
+                        setNotice(null);
+                        setView('signin');
+                      }}
+                      className="font-medium text-[#3D3830] underline underline-offset-4"
+                    >
+                      Sign in
+                    </button>
+                  </>
+                )}
+                {view === 'forgot' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setNotice(null);
+                      setView('signin');
+                    }}
+                    className="font-medium text-[#3D3830] underline underline-offset-4"
+                  >
+                    Back to Sign In
+                  </button>
+                )}
               </div>
-            )}
+            </div>
+          )}
 
-            {view === 'signup' && (
-              <div>
-                <label htmlFor="auth-referral" className="block text-xs font-medium text-[#5C5449] mb-1.5">
-                  Referral Code (Optional)
-                </label>
-                <input
-                  id="auth-referral"
-                  type="text"
-                  value={referralCode}
-                  onChange={(e) => setReferralCode(e.target.value)}
-                  placeholder="CC-XXXXXX"
-                  className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-4 py-3 text-sm font-['JetBrains_Mono',monospace] text-[#3D3830] placeholder:text-[#8B8275]/70 focus:border-[#4A453D] focus:outline-none uppercase"
-                />
-              </div>
-            )}
-
-            {error && (
-              <div className="flex items-start gap-2 rounded-xl bg-[#A94438]/10 px-3.5 py-2.5 text-xs font-medium text-[#A94438]">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {notice && (
-              <div className="flex items-start gap-2 rounded-xl bg-[#5B7056]/10 px-3.5 py-2.5 text-xs font-medium text-[#465941]">
-                <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>{notice}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={submitting || !isConfigured}
-              className="w-full rounded-full border border-[#3D3830]/20 bg-[#F1ECE3] px-6 py-3 text-sm font-medium text-[#3D3830] transition-colors hover:bg-[#E7E0D3] disabled:opacity-50"
-            >
-              {submitting
-                ? 'Please wait...'
-                : view === 'signin'
-                ? 'Sign In with Email'
-                : view === 'signup'
-                ? 'Create Account'
-                : 'Send Reset Link'}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center text-xs text-[#5C5449]">
-            {view === 'signin' && (
-              <>
-                New to Cosmic Council?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setNotice(null);
-                    setView('signup');
-                  }}
-                  className="font-medium text-[#3D3830] underline underline-offset-4"
-                >
-                  Create an account
-                </button>
-              </>
-            )}
-            {view === 'signup' && (
-              <>
-                Already have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setNotice(null);
-                    setView('signin');
-                  }}
-                  className="font-medium text-[#3D3830] underline underline-offset-4"
-                >
-                  Sign in
-                </button>
-              </>
-            )}
-            {view === 'forgot' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  setNotice(null);
-                  setView('signin');
-                }}
-                className="font-medium text-[#3D3830] underline underline-offset-4"
-              >
-                Back to Sign In
-              </button>
-            )}
-          </div>
-
-          <div className="mt-6 pt-5 border-t border-[#3D3830]/10 text-center space-y-2">
+          <div className="mt-7 pt-5 border-t border-[#3D3830]/10 text-center">
             <button
               type="button"
               onClick={() => {
                 enterPreviewMode();
                 navigate('/app/chat');
               }}
-              className="w-full rounded-full border border-[#3D3830]/20 bg-[#FAF7F2] px-5 py-2.5 text-xs font-medium text-[#3D3830] transition-colors hover:bg-[#EAE3D7]"
+              className="w-full rounded-full border border-[#3D3830]/15 bg-transparent px-5 py-2.5 text-xs font-medium text-[#5C5449] transition-colors hover:bg-[#F1ECE3]/70 hover:text-[#3D3830]"
             >
-              Preview Chatbot &amp; Observatory UI (No Sign-In)
+              Preview without login
             </button>
-            <p className="text-[11px] text-[#8B8275]">
-              Explore the studio layout, typography, and sample reading before connecting Supabase.
-            </p>
           </div>
         </div>
       </main>

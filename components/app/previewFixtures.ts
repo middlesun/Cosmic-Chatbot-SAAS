@@ -18,6 +18,8 @@ export const PREVIEW_APP_USER: AppUser = {
   default_expert: 'council_synthesis',
   default_output: 'detailed',
   default_language: 'English',
+  preferred_call_name: null,
+  chat_font_size: 'base',
   referral_code: 'CC-PREVIEW',
   referred_by: null,
   must_change_password: false,
@@ -31,7 +33,7 @@ export const PREVIEW_CHAT_CATALOG: ChatCatalog = {
     {
       slug: 'council_synthesis',
       category: 'expert',
-      displayName: 'Council Synthesis',
+      displayName: 'Vedic astrologer',
       subtitle: 'Integrates Parashari, KP, Jaimini & Nadi into unified strategic counsel.',
     },
     {
@@ -60,6 +62,12 @@ export const PREVIEW_CHAT_CATALOG: ChatCatalog = {
     },
   ],
   modes: [
+    {
+      slug: 'general',
+      category: 'mode',
+      displayName: 'General',
+      subtitle: 'Open-ended Vedic guidance across any life topic.',
+    },
     {
       slug: 'life',
       category: 'mode',
@@ -169,6 +177,8 @@ export const PREVIEW_PROFILES: ChatProfile[] = [
   {
     id: 'preview-prof-1',
     name: 'Aarav Mehta (Sample)',
+    short_name: 'Aarav',
+    is_default: true,
     birth_date: '1992-08-14',
     birth_city: 'Mumbai',
     birth_country: 'India',

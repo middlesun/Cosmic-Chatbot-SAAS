@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, Wand2, HelpCircle, X, ArrowUpRight, Loader2 } from 'lucide-react';
+import type { ChatCatalogOption } from './chatTypes';
 
 interface QuickToolsModalProps {
   isOpen: boolean;
@@ -7,6 +8,7 @@ interface QuickToolsModalProps {
   modeSlug: string;
   languageSlug: string;
   profileId: string | null;
+  toolsCatalog?: ChatCatalogOption[];
   getAccessToken: () => Promise<string | null>;
   onClose: () => void;
   onInsertText: (text: string, sendNow?: boolean) => void;
@@ -20,6 +22,7 @@ const QuickToolsModal: React.FC<QuickToolsModalProps> = ({
   modeSlug,
   languageSlug,
   profileId,
+  toolsCatalog,
   getAccessToken,
   onClose,
   onInsertText,
@@ -32,6 +35,24 @@ const QuickToolsModal: React.FC<QuickToolsModalProps> = ({
   const [resultText, setResultText] = useState('');
 
   if (!isOpen) return null;
+
+  const getToolMeta = (slug: ToolSlug, fallbackName: string) => {
+    const match = toolsCatalog?.find((t) => t.slug === slug);
+    return {
+      name: match?.displayName || fallbackName,
+      subtitle: match?.subtitle || '',
+    };
+  };
+
+  const qGenMeta = getToolMeta('question_generator', 'Question Generator');
+  const expanderMeta = getToolMeta('prompt_expander', 'Prompt Expander');
+  const optimizerMeta = getToolMeta('prompt_optimizer', 'Prompt Optimizer');
+  const activeSubtitle =
+    activeTool === 'question_generator'
+      ? qGenMeta.subtitle
+      : activeTool === 'prompt_expander'
+      ? expanderMeta.subtitle
+      : optimizerMeta.subtitle;
 
   const handleRun = async () => {
     setError(null);
@@ -78,7 +99,7 @@ const QuickToolsModal: React.FC<QuickToolsModalProps> = ({
               Consultation Prompt Studio
             </h3>
             <p className="text-xs text-[#5C5449]">
-              Refine or discover high-precision astrological questions before sending.
+              {activeSubtitle || 'Refine or discover high-precision astrological questions before sending.'}
             </p>
           </div>
           <button
@@ -108,8 +129,8 @@ const QuickToolsModal: React.FC<QuickToolsModalProps> = ({
                   : 'bg-[#FDFBF7] text-[#5C5449] border-[#3D3830]/12 hover:bg-[#F1ECE3]'
               }`}
             >
-              <HelpCircle className="h-3.5 w-3.5" />
-              <span>Question Generator</span>
+              <HelpCircle className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{qGenMeta.name}</span>
             </button>
 
             <button
@@ -126,8 +147,8 @@ const QuickToolsModal: React.FC<QuickToolsModalProps> = ({
                   : 'bg-[#FDFBF7] text-[#5C5449] border-[#3D3830]/12 hover:bg-[#F1ECE3]'
               }`}
             >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>Prompt Expander</span>
+              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{expanderMeta.name}</span>
             </button>
 
             <button
@@ -144,8 +165,8 @@ const QuickToolsModal: React.FC<QuickToolsModalProps> = ({
                   : 'bg-[#FDFBF7] text-[#5C5449] border-[#3D3830]/12 hover:bg-[#F1ECE3]'
               }`}
             >
-              <Wand2 className="h-3.5 w-3.5" />
-              <span>Prompt Optimizer</span>
+              <Wand2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{optimizerMeta.name}</span>
             </button>
           </div>
 

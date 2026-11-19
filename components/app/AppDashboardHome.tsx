@@ -1,43 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import { Copy, Check, ArrowRight, MessageSquare, UserPlus, FileText, CreditCard } from 'lucide-react';
+import { ArrowRight, MessageSquare, UserPlus, FileText, CreditCard } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import TimingRadarDashboard from './TimingRadarDashboard';
 
-interface HealthStatus {
-  status: string;
-  integrations: {
-    supabaseServer: boolean;
-    supabaseClient: boolean;
-    openrouter: boolean;
-    freeAstrologyApi: boolean;
-    dodoPayments: boolean;
-    resend: boolean;
-  };
-}
-
 const AppDashboardHome: React.FC = () => {
   const { appUser, stats } = useAuth();
-  const [copied, setCopied] = useState(false);
-  const [health, setHealth] = useState<HealthStatus | null>(null);
-
-  useEffect(() => {
-    fetch('/api/health')
-      .then((res) => res.json())
-      .then((data) => setHealth(data))
-      .catch(() => null);
-  }, []);
-
-  const referralUrl = appUser
-    ? `${window.location.origin}/app/login?ref=${appUser.referral_code}`
-    : '';
-
-  const copyReferral = async () => {
-    if (!referralUrl) return;
-    await navigator.clipboard.writeText(referralUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const tierProfileLimit =
     appUser?.tier === 'guru' ? 200 : appUser?.tier === 'pro' ? 50 : 5;
@@ -58,10 +26,10 @@ const AppDashboardHome: React.FC = () => {
             {tierLabel} · {appUser?.currency_pref || 'INR'} · {appUser?.email}
           </p>
           <h1 className="font-serif text-4xl md:text-5xl font-medium text-[#3D3830] tracking-tight">
-            Welcome, {appUser?.full_name || 'Seeker'}
+            Welcome back
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-[#5C5449] leading-relaxed">
-            Your private Cosmic Council observatory is authenticated and ready. Manage birth chart profiles, track planetary timing phases, or open a multi-system consultation.
+            Your personal Vedic astrologer. Analyse charts, generate reports, track dashas and transits and get real time insights
           </p>
         </div>
 
@@ -69,7 +37,7 @@ const AppDashboardHome: React.FC = () => {
           to="/app/chat"
           className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-6 py-3 text-sm font-medium text-[#FAF7F2] transition-colors hover:bg-[#38342E] whitespace-nowrap shrink-0"
         >
-          <span>Open Chat Studio</span>
+          <span>Open Chat</span>
           <ArrowRight className="h-4 w-4" />
         </Link>
       </section>
@@ -159,66 +127,6 @@ const AppDashboardHome: React.FC = () => {
             Top up credits starting at ₹1,000 or upgrade to Professional and Guru plans.
           </p>
         </Link>
-      </section>
-
-      {/* Referral & Environment Connection Strip */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-3xl bg-[#F1ECE3] p-6 border border-[#3D3830]/10">
-          <h3 className="font-serif text-2xl font-medium text-[#3D3830]">Invite & Earn 5,000 Credits</h3>
-          <p className="mt-1.5 text-xs text-[#5C5449] leading-relaxed">
-            Share your personal link. When a friend signs up and completes their first paid credit purchase or profile activation, you both receive 5,000 credits.
-          </p>
-          <div className="mt-4 flex items-center gap-2">
-            <input
-              type="text"
-              readOnly
-              value={referralUrl}
-              aria-label="Your referral link"
-              className="flex-1 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830]"
-            />
-            <button
-              type="button"
-              onClick={copyReferral}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-4 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] whitespace-nowrap shrink-0"
-            >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              <span>{copied ? 'Copied' : 'Copy Link'}</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="rounded-3xl bg-[#FDFBF7] p-6 border border-[#3D3830]/10">
-          <h3 className="font-serif text-2xl font-medium text-[#3D3830]">Platform Environment Readiness</h3>
-          <p className="mt-1 text-xs text-[#8B8275]">
-            Backend key configuration status across upcoming rollout phases.
-          </p>
-          <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2.5 text-xs">
-            <div className="flex items-center justify-between border-b border-[#3D3830]/10 pb-1.5">
-              <span className="text-[#5C5449]">Supabase DB & Auth</span>
-              <span className="font-['JetBrains_Mono',monospace] text-[#3D3830]">
-                {health?.integrations.supabaseServer ? 'Ready' : 'Pending Key'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between border-b border-[#3D3830]/10 pb-1.5">
-              <span className="text-[#5C5449]">FreeAstrologyAPI</span>
-              <span className="font-['JetBrains_Mono',monospace] text-[#3D3830]">
-                {health?.integrations.freeAstrologyApi ? 'Ready' : 'Phase 2'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between border-b border-[#3D3830]/10 pb-1.5">
-              <span className="text-[#5C5449]">OpenRouter AI Council</span>
-              <span className="font-['JetBrains_Mono',monospace] text-[#3D3830]">
-                {health?.integrations.openrouter ? 'Ready' : 'Pending Key'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between border-b border-[#3D3830]/10 pb-1.5">
-              <span className="text-[#5C5449]">Dodo Payments & Resend</span>
-              <span className="font-['JetBrains_Mono',monospace] text-[#3D3830]">
-                {health?.integrations.dodoPayments && health?.integrations.resend ? 'Ready' : 'Phase 4'}
-              </span>
-            </div>
-          </div>
-        </div>
       </section>
     </div>
   );

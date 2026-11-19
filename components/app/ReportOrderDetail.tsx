@@ -25,8 +25,9 @@ interface ReportOrderFull {
   progress_step: string | null;
   user_questions: string | null;
   credits_charged: number;
-  step_outputs_json: StepOutputRecord[];
-  final_markdown: string | null;
+  completed_passes?: number;
+  step_outputs_json?: StepOutputRecord[];
+  final_markdown?: string | null;
   pdf_url: string | null;
   audio_url: string | null;
   linked_conversation_id: string | null;
@@ -63,19 +64,28 @@ const ReportOrderDetail: React.FC = () => {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchOrder = useCallback(async () => {
+  const fetchOrder = useCallback(async (pollOnly = false) => {
     if (!orderId) return;
     try {
       const token = await getAccessToken();
       if (!token) return;
 
-      const res = await fetch(`/api/reports/orders/${orderId}`, {
+      const endpoint = pollOnly
+        ? `/api/reports/orders/${orderId}?mode=poll`
+        : `/api/reports/orders/${orderId}`;
+
+      const res = await fetch(endpoint, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Unable to load report order');
+      }
+
+      if (pollOnly && data.order?.status === 'completed') {
+        await fetchOrder(false);
+        return;
       }
 
       setOrder(data.order);
@@ -93,10 +103,10 @@ const ReportOrderDetail: React.FC = () => {
   }, [orderId, getAccessToken, refreshUser]);
 
   useEffect(() => {
-    void fetchOrder();
+    void fetchOrder(false);
   }, [fetchOrder]);
 
-  // Live polling while report sequential passes run in background
+  // Live polling while report sequential passes run in background (lightweight ?mode=poll)
   useEffect(() => {
     if (
       !order ||
@@ -107,7 +117,7 @@ const ReportOrderDetail: React.FC = () => {
     }
 
     const timer = setInterval(() => {
-      void fetchOrder();
+      void fetchOrder(true);
     }, 3500);
 
     return () => clearInterval(timer);
@@ -172,9 +182,12 @@ const ReportOrderDetail: React.FC = () => {
     );
   }
 
-  const completedPasses = Array.isArray(order.step_outputs_json)
-    ? order.step_outputs_json.length
-    : 0;
+  const completedPasses =
+    typeof order.completed_passes === 'number'
+      ? order.completed_passes
+      : Array.isArray(order.step_outputs_json)
+      ? order.step_outputs_json.length
+      : 0;
   const passTitles =
     reportMeta?.pass_titles && reportMeta.pass_titles.length > 0
       ? reportMeta.pass_titles
@@ -238,7 +251,7 @@ const ReportOrderDetail: React.FC = () => {
                   className="inline-flex items-center gap-2 rounded-full bg-[#B8965A] px-5 py-2.5 text-xs font-medium text-[#1F2229] hover:opacity-90 transition-opacity"
                 >
                   <MessageSquare className="h-3.5 w-3.5" />
-                  <span>Continue in Chat Studio</span>
+                  <span>Continue in Chat</span>
                 </Link>
               )}
             </div>

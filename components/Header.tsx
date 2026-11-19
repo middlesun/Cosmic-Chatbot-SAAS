@@ -95,7 +95,7 @@ const Header: React.FC<HeaderProps> = ({ currency, setCurrency, onLogoClick, onC
             to="/app/login"
             className="px-4 py-2 rounded-full border border-indigo-950/20 text-indigo-950 hover:bg-indigo-950 hover:text-white font-sans text-[13px] xl:text-[14px] font-semibold tracking-wide transition-all duration-300 whitespace-nowrap"
           >
-            Member Portal
+            Login
           </Link>
         </nav>
 
@@ -161,7 +161,7 @@ const Header: React.FC<HeaderProps> = ({ currency, setCurrency, onLogoClick, onC
               <a href="#" onClick={(e) => { e.preventDefault(); onMyEssaysClick(); setIsMenuOpen(false); }} className="font-serif text-xl md:text-3xl text-indigo-950 hover:text-soft-gold transition-silky">Blog</a>
               <a href="#" onClick={(e) => { e.preventDefault(); onFAQsClick(); setIsMenuOpen(false); }} className="font-serif text-xl md:text-3xl text-indigo-950 hover:text-soft-gold transition-silky">FAQs</a>
               <a href="#" onClick={(e) => { e.preventDefault(); onContactClick(); setIsMenuOpen(false); }} className="font-serif text-xl md:text-3xl text-indigo-950 hover:text-soft-gold transition-silky">Contact</a>
-              <Link to="/app/login" onClick={() => setIsMenuOpen(false)} className="font-serif text-xl md:text-3xl text-indigo-950 hover:text-soft-gold transition-silky">Member Portal</Link>
+              <Link to="/app/login" onClick={() => setIsMenuOpen(false)} className="font-serif text-xl md:text-3xl text-indigo-950 hover:text-soft-gold transition-silky">Login</Link>
             </div>
 
             {/* 3. Shop Section */}

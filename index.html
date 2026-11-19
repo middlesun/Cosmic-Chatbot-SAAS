@@ -152,6 +152,11 @@
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
+        @keyframes ccMessageIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         .animate-cc-slide-down {
             animation: ccSlideDown 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
@@ -176,6 +181,10 @@
             animation: ccDropdownUp 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
 
+        .animate-cc-message-in {
+            animation: ccMessageIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
         @media (prefers-reduced-motion: reduce) {
             .animate-slide-up-fade,
             .animate-fade-in,
@@ -184,11 +193,32 @@
             .animate-cc-tab-panel,
             .animate-cc-drawer-in,
             .animate-cc-dropdown-down,
-            .animate-cc-dropdown-up {
+            .animate-cc-dropdown-up,
+            .animate-cc-message-in {
                 animation: none !important;
                 opacity: 1 !important;
                 transform: none !important;
             }
+        }
+
+        /* Subtle Ivory & Sandstone Scrollbars */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: #D6CEC2 transparent;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: #D6CEC2;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: #B8B0A4;
         }
 
         .no-scrollbar::-webkit-scrollbar { display: none; }

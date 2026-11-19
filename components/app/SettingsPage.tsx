@@ -3,9 +3,31 @@ import { Check, KeyRound, Save } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { getSupabaseClient } from '../../lib/supabaseClient';
 import CustomSelect from './CustomSelect';
+import type { ChatCatalog } from './chatTypes';
+
+const FALLBACK_EXPERTS = [
+  { value: 'council_synthesis', label: 'Vedic astrologer' },
+  { value: 'parashari', label: 'Parashari Strategist' },
+  { value: 'kp_precision', label: 'KP Precision Analyst' },
+  { value: 'jaimini', label: 'Jaimini & Karma Reader' },
+  { value: 'nadi', label: 'Nadi Synthesizer' },
+];
+
+const FALLBACK_OUTPUTS = [
+  { value: 'detailed', label: 'Detailed Explanation' },
+  { value: 'concise', label: 'Concise Summary' },
+  { value: 'bullets', label: 'Structured Bullet Points' },
+];
+
+const FALLBACK_LANGUAGES = [
+  { value: 'English', label: 'English' },
+  { value: 'Hindi', label: 'Hindi (हिन्दी)' },
+  { value: 'Hinglish', label: 'Hinglish' },
+];
 
 const SettingsPage: React.FC = () => {
   const { appUser, getAccessToken, refreshUser } = useAuth();
+  const [catalog, setCatalog] = useState<ChatCatalog | null>(null);
 
   const [fullName, setFullName] = useState(appUser?.full_name || '');
   const [currencyPref, setCurrencyPref] = useState<'INR' | 'USD' | 'AED' | 'EUR'>(
@@ -35,6 +57,28 @@ const SettingsPage: React.FC = () => {
       setDefaultLanguage(appUser.default_language || 'English');
     }
   }, [appUser]);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        const res = await fetch('/api/chat/config', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok && active) {
+          const data = await res.json();
+          if (data.catalog) setCatalog(data.catalog);
+        }
+      } catch {
+        // Keep built-in fallback lists
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [getAccessToken]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,13 +200,15 @@ const SettingsPage: React.FC = () => {
               size="md"
               surface="canvas"
               className="w-full"
-              options={[
-                { value: 'council_synthesis', label: 'Council Synthesis' },
-                { value: 'parashari', label: 'Parashari Strategist' },
-                { value: 'kp_precision', label: 'KP Precision Analyst' },
-                { value: 'jaimini', label: 'Jaimini & Karma Reader' },
-                { value: 'nadi', label: 'Nadi Synthesizer' },
-              ]}
+              options={
+                catalog?.experts.length
+                  ? catalog.experts.map((e) => ({
+                      value: e.slug,
+                      label: e.displayName,
+                      hint: e.subtitle,
+                    }))
+                  : FALLBACK_EXPERTS
+              }
             />
           </div>
 
@@ -177,11 +223,15 @@ const SettingsPage: React.FC = () => {
               size="md"
               surface="canvas"
               className="w-full"
-              options={[
-                { value: 'detailed', label: 'Detailed Explanation' },
-                { value: 'concise', label: 'Concise Summary' },
-                { value: 'bullets', label: 'Structured Bullet Points' },
-              ]}
+              options={
+                catalog?.outputs.length
+                  ? catalog.outputs.map((o) => ({
+                      value: o.slug,
+                      label: o.displayName,
+                      hint: o.subtitle,
+                    }))
+                  : FALLBACK_OUTPUTS
+              }
             />
           </div>
 
@@ -196,11 +246,15 @@ const SettingsPage: React.FC = () => {
               size="md"
               surface="canvas"
               className="w-full"
-              options={[
-                { value: 'English', label: 'English' },
-                { value: 'Hindi', label: 'Hindi (हिन्दी)' },
-                { value: 'Hinglish', label: 'Hinglish' },
-              ]}
+              options={
+                catalog?.languages.length
+                  ? catalog.languages.map((l) => ({
+                      value: l.slug,
+                      label: l.displayName,
+                      hint: l.subtitle,
+                    }))
+                  : FALLBACK_LANGUAGES
+              }
             />
           </div>
         </div>
