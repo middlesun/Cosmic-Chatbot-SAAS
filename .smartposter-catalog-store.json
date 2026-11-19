@@ -1,0 +1,3299 @@
+{
+  "directories": [
+    {
+      "id": "dir-product-hunt",
+      "name": "Product Hunt",
+      "url": "https://www.producthunt.com/posts/new",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Tech"
+      ],
+      "category": "launchpads",
+      "domain_rating": 91,
+      "description": "Premier tech launch platform with global audience",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-betalist",
+      "name": "BetaList",
+      "url": "https://betalist.com/submit",
+      "tags": [
+        "Launchpad",
+        "Early Stage",
+        "Beta"
+      ],
+      "category": "launchpads",
+      "domain_rating": 76,
+      "description": "Early-stage startup discovery & beta subscriber acquisition",
+      "pricing_type": "freemium",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-devpost",
+      "name": "Devpost",
+      "url": "https://devpost.com/software/new",
+      "tags": [
+        "Launchpad",
+        "Developers",
+        "Indie"
+      ],
+      "category": "launchpads",
+      "domain_rating": 84,
+      "description": "Developer & indie hacker project showcase",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-launching-next",
+      "name": "Launching Next",
+      "url": "https://www.launchingnext.com/submit/",
+      "tags": [
+        "Launchpad",
+        "Startups"
+      ],
+      "category": "launchpads",
+      "domain_rating": 70,
+      "description": "Curated daily showcase of promising new startups",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-killerstartups",
+      "name": "KillerStartups",
+      "url": "https://www.killerstartups.com/submit-startup/",
+      "tags": [
+        "Launchpad",
+        "Reviews",
+        "Startups"
+      ],
+      "category": "launchpads",
+      "domain_rating": 74,
+      "description": "Startup reviews and discovery community",
+      "pricing_type": "freemium",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-startupbase",
+      "name": "StartupBase",
+      "url": "https://startupbase.io/submit",
+      "tags": [
+        "Launchpad",
+        "Makers",
+        "Community"
+      ],
+      "category": "launchpads",
+      "domain_rating": 68,
+      "description": "Community for makers to share new tech products",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-futurepedia",
+      "name": "Futurepedia",
+      "url": "https://www.futurepedia.io/submit-tool",
+      "tags": [
+        "AI",
+        "Tools",
+        "Discovery"
+      ],
+      "category": "ai",
+      "domain_rating": 81,
+      "description": "Largest AI tools catalog with 450K+ monthly visitors",
+      "pricing_type": "freemium",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-toolify",
+      "name": "Toolify.ai",
+      "url": "https://www.toolify.ai/submit",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 79,
+      "description": "Top AI discovery engine with 1.2M+ monthly visits",
+      "pricing_type": "paid",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-taaft",
+      "name": "Theres An AI For That",
+      "url": "https://theresanaiforthat.com/submit/",
+      "tags": [
+        "AI",
+        "Aggregator",
+        "Tools"
+      ],
+      "category": "ai",
+      "domain_rating": 83,
+      "description": "Massive AI aggregator with smart search",
+      "pricing_type": "paid",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aivalley",
+      "name": "AI Valley",
+      "url": "https://aivalley.ai/submit",
+      "tags": [
+        "AI",
+        "Newsletter",
+        "Tools"
+      ],
+      "category": "ai",
+      "domain_rating": 72,
+      "description": "Curated AI repository and daily newsletter",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-topai",
+      "name": "TopAI.tools",
+      "url": "https://topai.tools/submit",
+      "tags": [
+        "AI",
+        "Productivity",
+        "Marketing"
+      ],
+      "category": "ai",
+      "domain_rating": 75,
+      "description": "High-DR catalog for AI productivity and marketing tools",
+      "pricing_type": "freemium",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-futuretools",
+      "name": "FutureTools",
+      "url": "https://www.futuretools.io/submit-a-tool",
+      "tags": [
+        "AI",
+        "Software",
+        "Tools"
+      ],
+      "category": "ai",
+      "domain_rating": 78,
+      "description": "Curated AI software directory by Matt Wolfe",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-saashub",
+      "name": "SaaSHub",
+      "url": "https://www.saashub.com/submit",
+      "tags": [
+        "SaaS",
+        "Alternatives",
+        "Software"
+      ],
+      "category": "saas",
+      "domain_rating": 78,
+      "description": "High-traffic software alternative & comparison engine",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-alternativeto",
+      "name": "AlternativeTo",
+      "url": "https://alternativeto.net/software/add/",
+      "tags": [
+        "SaaS",
+        "Alternatives",
+        "Software"
+      ],
+      "category": "saas",
+      "domain_rating": 86,
+      "description": "Authority crowdsourced software directory & alternatives",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-sourceforge",
+      "name": "SourceForge",
+      "url": "https://sourceforge.net/create/",
+      "tags": [
+        "SaaS",
+        "B2B",
+        "Reviews"
+      ],
+      "category": "saas",
+      "domain_rating": 92,
+      "description": "Global business software directory & user review platform",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-capterra",
+      "name": "Capterra Community",
+      "url": "https://www.capterra.com/vendors/",
+      "tags": [
+        "SaaS",
+        "B2B",
+        "Enterprise"
+      ],
+      "category": "saas",
+      "domain_rating": 91,
+      "description": "Gartner business software listing program",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-getapp",
+      "name": "GetApp",
+      "url": "https://www.getapp.com/vendor/",
+      "tags": [
+        "SaaS",
+        "Cloud",
+        "B2B"
+      ],
+      "category": "saas",
+      "domain_rating": 89,
+      "description": "Discover & compare business apps and cloud tools",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-softwareadvice",
+      "name": "Software Advice",
+      "url": "https://www.softwareadvice.com/vendor/",
+      "tags": [
+        "SaaS",
+        "B2B",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 88,
+      "description": "B2B software directory and buyer guidance",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-indiehackers",
+      "name": "Indie Hackers Products",
+      "url": "https://www.indiehackers.com/products",
+      "tags": [
+        "Indie",
+        "Micro-SaaS",
+        "Community"
+      ],
+      "category": "indie",
+      "domain_rating": 88,
+      "description": "Showcase your profitable micro-SaaS and side projects",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-microns",
+      "name": "Microns.io",
+      "url": "https://www.microns.io/",
+      "tags": [
+        "Indie",
+        "Micro-SaaS",
+        "Startups"
+      ],
+      "category": "indie",
+      "domain_rating": 69,
+      "description": "Marketplace and showcase for bootstrap indie startups",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-uneed",
+      "name": "Uneed Best",
+      "url": "https://www.uneed.best/submit-a-tool",
+      "tags": [
+        "Indie",
+        "Launchpad",
+        "Tools"
+      ],
+      "category": "indie",
+      "domain_rating": 73,
+      "description": "Daily hand-picked tools for web builders and makers",
+      "pricing_type": "freemium",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-startupbuffer",
+      "name": "StartupBuffer",
+      "url": "https://startupbuffer.com/site/submit",
+      "tags": [
+        "Indie",
+        "Growth",
+        "Startups"
+      ],
+      "category": "indie",
+      "domain_rating": 66,
+      "description": "Promote your startup to growth hackers & founders",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-sideprojectors",
+      "name": "SideProjectors",
+      "url": "https://www.sideprojectors.com/",
+      "tags": [
+        "Indie",
+        "Side Projects"
+      ],
+      "category": "indie",
+      "domain_rating": 65,
+      "description": "Showcase and discover side projects from indie developers",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-feedough",
+      "name": "Feedough",
+      "url": "https://www.feedough.com/",
+      "tags": [
+        "Indie",
+        "Startups",
+        "Business"
+      ],
+      "category": "indie",
+      "domain_rating": 77,
+      "description": "Startup and business model guide listing",
+      "pricing_type": "freemium",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-crunchbase",
+      "name": "Crunchbase",
+      "url": "https://www.crunchbase.com/add-new",
+      "tags": [
+        "Backlinks",
+        "SEO",
+        "Investors"
+      ],
+      "category": "backlinks",
+      "domain_rating": 92,
+      "description": "World premier company information and investor database",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-f6s",
+      "name": "F6S",
+      "url": "https://www.f6s.com/",
+      "tags": [
+        "Backlinks",
+        "Founders",
+        "Startups"
+      ],
+      "category": "backlinks",
+      "domain_rating": 85,
+      "description": "Global network for founders, accelerators & startups",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-clutch",
+      "name": "Clutch.co",
+      "url": "https://clutch.co/get-listed",
+      "tags": [
+        "Backlinks",
+        "B2B",
+        "Reviews"
+      ],
+      "category": "backlinks",
+      "domain_rating": 90,
+      "description": "Leading ratings & reviews for B2B service firms",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-trustpilot",
+      "name": "Trustpilot",
+      "url": "https://business.trustpilot.com/",
+      "tags": [
+        "Backlinks",
+        "Reviews",
+        "Authority"
+      ],
+      "category": "backlinks",
+      "domain_rating": 93,
+      "description": "Global consumer review platform & brand authority link",
+      "pricing_type": "freemium",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-alltopstartups",
+      "name": "AllTopStartups",
+      "url": "https://alltopstartups.com/submit-startup/",
+      "tags": [
+        "Backlinks",
+        "SEO",
+        "Startups"
+      ],
+      "category": "backlinks",
+      "domain_rating": 71,
+      "description": "Resource hub for entrepreneurs with high-authority backlink",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-feedmystartup",
+      "name": "FeedMyStartup",
+      "url": "https://www.feedmystartup.com/submit/",
+      "tags": [
+        "Backlinks",
+        "Startups",
+        "Reviews"
+      ],
+      "category": "backlinks",
+      "domain_rating": 64,
+      "description": "Fast review submission platform for fresh SaaS products",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aitoptools-com",
+      "name": "aitoptools.com",
+      "url": "https://aitoptools.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aitoolsdirectory-com",
+      "name": "aitoolsdirectory.com",
+      "url": "https://aitoolsdirectory.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-submitator-com",
+      "name": "submitator.com",
+      "url": "https://submitator.com",
+      "tags": [
+        "AI",
+        "Marketing",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-backlinkbot-ai",
+      "name": "backlinkbot.ai",
+      "url": "https://backlinkbot.ai",
+      "tags": [
+        "Backlinks",
+        "SEO",
+        "Directory"
+      ],
+      "category": "backlinks",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-gptbot-io",
+      "name": "gptbot.io",
+      "url": "https://gptbot.io",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-startupsubmit-app",
+      "name": "startupsubmit.app",
+      "url": "https://startupsubmit.app",
+      "tags": [
+        "Startups",
+        "AI",
+        "Directory"
+      ],
+      "category": "startups",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-submitsaas-com",
+      "name": "submitsaas.com",
+      "url": "https://submitsaas.com",
+      "tags": [
+        "SaaS",
+        "AI",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-theaisearchdirectory-com",
+      "name": "theaisearchdirectory.com",
+      "url": "https://theaisearchdirectory.com",
+      "tags": [
+        "AI",
+        "Search",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-toolscout-ai",
+      "name": "toolscout.ai",
+      "url": "https://toolscout.ai",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aisuperhub-io",
+      "name": "aisuperhub.io",
+      "url": "https://aisuperhub.io",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-bestofai-io",
+      "name": "bestofai.io",
+      "url": "https://bestofai.io",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aitoolscapital-com",
+      "name": "aitoolscapital.com",
+      "url": "https://aitoolscapital.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Leaderboard"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-submitwell-com",
+      "name": "submitwell.com",
+      "url": "https://submitwell.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-scrolllaunch-com",
+      "name": "scrolllaunch.com",
+      "url": "https://scrolllaunch.com",
+      "tags": [
+        "Launchpad",
+        "AI",
+        "Tools"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-peerpush-com",
+      "name": "peerpush.com",
+      "url": "https://peerpush.com",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Discovery"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-codehype-ai",
+      "name": "codehype.ai",
+      "url": "https://codehype.ai",
+      "tags": [
+        "SaaS",
+        "Directory",
+        "Startups"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-findly-tools",
+      "name": "findly.tools",
+      "url": "https://findly.tools",
+      "tags": [
+        "Tools",
+        "Discovery",
+        "Directory"
+      ],
+      "category": "tools",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-index-dodopayments-com",
+      "name": "index.dodopayments.com",
+      "url": "https://index.dodopayments.com",
+      "tags": [
+        "Startups",
+        "Indie",
+        "SaaS"
+      ],
+      "category": "startups",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-turbo0-com",
+      "name": "turbo0.com",
+      "url": "https://turbo0.com",
+      "tags": [
+        "Tools",
+        "Directory",
+        "Discovery"
+      ],
+      "category": "tools",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-toolpilot-ai",
+      "name": "toolpilot.ai",
+      "url": "https://toolpilot.ai",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-csswinner-com",
+      "name": "csswinner.com",
+      "url": "https://csswinner.com",
+      "tags": [
+        "Design",
+        "Showcase",
+        "Directory"
+      ],
+      "category": "design",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-goodaitools-com",
+      "name": "goodaitools.com",
+      "url": "https://goodaitools.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Productivity"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-activesearchresults-com",
+      "name": "activesearchresults.com",
+      "url": "https://activesearchresults.com",
+      "tags": [
+        "Search",
+        "Backlinks",
+        "Directory"
+      ],
+      "category": "search",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-plerdy-com",
+      "name": "plerdy.com",
+      "url": "https://plerdy.com",
+      "tags": [
+        "SaaS",
+        "Tools",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-tools-launchllama-co",
+      "name": "tools.launchllama.co",
+      "url": "https://tools.launchllama.co",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Directory"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-linkcentre-com",
+      "name": "linkcentre.com",
+      "url": "https://linkcentre.com",
+      "tags": [
+        "Backlinks",
+        "Directory",
+        "General"
+      ],
+      "category": "backlinks",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-productwatch-io",
+      "name": "productwatch.io",
+      "url": "https://productwatch.io",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Tech"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-tekpon-com",
+      "name": "tekpon.com",
+      "url": "https://tekpon.com",
+      "tags": [
+        "SaaS",
+        "B2B",
+        "Software"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-viesearch-com",
+      "name": "viesearch.com",
+      "url": "https://viesearch.com",
+      "tags": [
+        "Search",
+        "Backlinks",
+        "Directory"
+      ],
+      "category": "search",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aidirectori-es",
+      "name": "aidirectori.es",
+      "url": "https://aidirectori.es",
+      "tags": [
+        "AI",
+        "Directory",
+        "Startups"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aibase-com",
+      "name": "aibase.com",
+      "url": "https://aibase.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-allmyfaves-com",
+      "name": "allmyfaves.com",
+      "url": "https://allmyfaves.com",
+      "tags": [
+        "Bookmarks",
+        "Discovery",
+        "Directory"
+      ],
+      "category": "bookmarks",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-openhunts-com",
+      "name": "openhunts.com",
+      "url": "https://openhunts.com",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Alternative"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-therundown-ai",
+      "name": "therundown.ai",
+      "url": "https://therundown.ai",
+      "tags": [
+        "AI",
+        "Newsletter",
+        "Tools"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-tinystartups-com",
+      "name": "tinystartups.com",
+      "url": "https://tinystartups.com",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Indie"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-layers-to",
+      "name": "layers.to",
+      "url": "https://layers.to",
+      "tags": [
+        "Design",
+        "Showcase",
+        "Community"
+      ],
+      "category": "design",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-whatlaunched-today",
+      "name": "whatlaunched.today",
+      "url": "https://whatlaunched.today",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Discovery"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-craftwork-design",
+      "name": "craftwork.design",
+      "url": "https://craftwork.design",
+      "tags": [
+        "Design",
+        "UI",
+        "Resources"
+      ],
+      "category": "design",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-magicbox-tools",
+      "name": "magicbox.tools",
+      "url": "https://magicbox.tools",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aitools-inc",
+      "name": "aitools.inc",
+      "url": "https://aitools.inc",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-saaspirate-com",
+      "name": "saaspirate.com",
+      "url": "https://saaspirate.com",
+      "tags": [
+        "SaaS",
+        "Deals",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-uno-directory",
+      "name": "uno.directory",
+      "url": "https://uno.directory",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-landingfolio-com",
+      "name": "landingfolio.com",
+      "url": "https://landingfolio.com",
+      "tags": [
+        "Design",
+        "Landing Pages",
+        "Inspiration"
+      ],
+      "category": "design",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-nocode-tech",
+      "name": "nocode.tech",
+      "url": "https://nocode.tech",
+      "tags": [
+        "No-Code",
+        "Tools",
+        "Directory"
+      ],
+      "category": "no-code",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-microlaunch-net",
+      "name": "microlaunch.net",
+      "url": "https://microlaunch.net",
+      "tags": [
+        "Launchpad",
+        "Tech",
+        "Startups"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-saascity-io",
+      "name": "saascity.io",
+      "url": "https://saascity.io",
+      "tags": [
+        "SaaS",
+        "Launchpad",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-earlyhunt-com",
+      "name": "earlyhunt.com",
+      "url": "https://earlyhunt.com",
+      "tags": [
+        "Launchpad",
+        "AI",
+        "Startups"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-recent-design",
+      "name": "recent.design",
+      "url": "https://recent.design",
+      "tags": [
+        "Design",
+        "Inspiration",
+        "Showcase"
+      ],
+      "category": "design",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-indiehunt-io",
+      "name": "indiehunt.io",
+      "url": "https://indiehunt.io",
+      "tags": [
+        "Launchpad",
+        "Indie",
+        "AI"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-toolfio-com",
+      "name": "toolfio.com",
+      "url": "https://toolfio.com",
+      "tags": [
+        "SaaS",
+        "AI",
+        "Tools"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-dailybot-com",
+      "name": "dailybot.com",
+      "url": "https://dailybot.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-siteswebdirectory-com",
+      "name": "siteswebdirectory.com",
+      "url": "https://siteswebdirectory.com",
+      "tags": [
+        "Backlinks",
+        "Directory",
+        "General"
+      ],
+      "category": "backlinks",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-saasgrow-app",
+      "name": "saasgrow.app",
+      "url": "https://saasgrow.app",
+      "tags": [
+        "SaaS",
+        "Startups",
+        "Build in Public"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-toolfinder-com",
+      "name": "toolfinder.com",
+      "url": "https://toolfinder.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Productivity"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aithor-com",
+      "name": "aithor.com",
+      "url": "https://aithor.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-dailypings-com",
+      "name": "dailypings.com",
+      "url": "https://dailypings.com",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Discovery"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-productwing-com",
+      "name": "productwing.com",
+      "url": "https://productwing.com",
+      "tags": [
+        "SaaS",
+        "Software",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aixcollection-com",
+      "name": "aixcollection.com",
+      "url": "https://aixcollection.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-builtatlightspeed-com",
+      "name": "builtatlightspeed.com",
+      "url": "https://builtatlightspeed.com",
+      "tags": [
+        "Design",
+        "Templates",
+        "UI"
+      ],
+      "category": "design",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aitoolnet-com",
+      "name": "aitoolnet.com",
+      "url": "https://aitoolnet.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-launchvault-dev",
+      "name": "launchvault.dev",
+      "url": "https://launchvault.dev",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Tech"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-shinylaunch-com",
+      "name": "shinylaunch.com",
+      "url": "https://shinylaunch.com",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Discovery"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-saasaitools-com",
+      "name": "saasaitools.com",
+      "url": "https://saasaitools.com",
+      "tags": [
+        "SaaS",
+        "AI",
+        "Tools"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-dododirectory-com",
+      "name": "dododirectory.com",
+      "url": "https://dododirectory.com",
+      "tags": [
+        "Backlinks",
+        "Business",
+        "Directory"
+      ],
+      "category": "backlinks",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-curated-design",
+      "name": "curated.design",
+      "url": "https://curated.design",
+      "tags": [
+        "Design",
+        "Inspiration",
+        "Showcase"
+      ],
+      "category": "design",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-mylaunchstash-com",
+      "name": "mylaunchstash.com",
+      "url": "https://mylaunchstash.com",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Software"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-promoteproject-com",
+      "name": "promoteproject.com",
+      "url": "https://promoteproject.com",
+      "tags": [
+        "Startups",
+        "Backlinks",
+        "Directory"
+      ],
+      "category": "startups",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-makerthrive-com",
+      "name": "makerthrive.com",
+      "url": "https://makerthrive.com",
+      "tags": [
+        "Makers",
+        "Tools",
+        "Directory"
+      ],
+      "category": "makers",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-sumodir-com",
+      "name": "sumodir.com",
+      "url": "https://sumodir.com",
+      "tags": [
+        "SaaS",
+        "Startups",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-shipboost-io",
+      "name": "shipboost.io",
+      "url": "https://shipboost.io",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Discovery"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-toolhunter-ai",
+      "name": "toolhunter.ai",
+      "url": "https://toolhunter.ai",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-viberank-dev",
+      "name": "viberank.dev",
+      "url": "https://viberank.dev",
+      "tags": [
+        "Launchpad",
+        "Developers",
+        "Directory"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-rankinpublic-xyz",
+      "name": "rankinpublic.xyz",
+      "url": "https://rankinpublic.xyz",
+      "tags": [
+        "Launchpad",
+        "SaaS",
+        "Indie"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-thatappshow-com",
+      "name": "thatappshow.com",
+      "url": "https://thatappshow.com",
+      "tags": [
+        "Software",
+        "Apps",
+        "Directory"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-trustiner-com",
+      "name": "trustiner.com",
+      "url": "https://trustiner.com",
+      "tags": [
+        "Software",
+        "B2B",
+        "SaaS"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-best-ai-org",
+      "name": "best-ai.org",
+      "url": "https://best-ai.org",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-saaswheel-com",
+      "name": "saaswheel.com",
+      "url": "https://saaswheel.com",
+      "tags": [
+        "SaaS",
+        "Workflows",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aigc160-com",
+      "name": "aigc160.com",
+      "url": "https://aigc160.com",
+      "tags": [
+        "AI",
+        "Content",
+        "Tools"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-bai-tools",
+      "name": "bai.tools",
+      "url": "https://bai.tools",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-besttoolvault-com",
+      "name": "besttoolvault.com",
+      "url": "https://besttoolvault.com",
+      "tags": [
+        "Software",
+        "Tools",
+        "Directory"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-huntfortools-com",
+      "name": "huntfortools.com",
+      "url": "https://huntfortools.com",
+      "tags": [
+        "Software",
+        "Tools",
+        "Directory"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-poweruptools-com",
+      "name": "poweruptools.com",
+      "url": "https://poweruptools.com",
+      "tags": [
+        "AI",
+        "Productivity",
+        "Tools"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-alterbase-co",
+      "name": "alterbase.co",
+      "url": "https://alterbase.co",
+      "tags": [
+        "SaaS",
+        "Alternatives",
+        "Software"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-launchscroll-com",
+      "name": "launchscroll.com",
+      "url": "https://launchscroll.com",
+      "tags": [
+        "Launchpad",
+        "Software",
+        "Discovery"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-postmake-io",
+      "name": "postmake.io",
+      "url": "https://postmake.io",
+      "tags": [
+        "Tools",
+        "Makers",
+        "Directory"
+      ],
+      "category": "tools",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-projecthunt-me",
+      "name": "projecthunt.me",
+      "url": "https://projecthunt.me",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Indie"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-solvertools-com",
+      "name": "solvertools.com",
+      "url": "https://solvertools.com",
+      "tags": [
+        "Software",
+        "Workflows",
+        "Tools"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-tidyrepo-com",
+      "name": "tidyrepo.com",
+      "url": "https://tidyrepo.com",
+      "tags": [
+        "WordPress",
+        "Plugins",
+        "Directory"
+      ],
+      "category": "wordpress",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-vibecodinglist-com",
+      "name": "vibecodinglist.com",
+      "url": "https://vibecodinglist.com",
+      "tags": [
+        "Vibe Coding",
+        "Indie",
+        "Launchpad"
+      ],
+      "category": "vibe coding",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-appsytools-com",
+      "name": "appsytools.com",
+      "url": "https://appsytools.com",
+      "tags": [
+        "Software",
+        "Tools",
+        "Marketing"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-beamtools-com",
+      "name": "beamtools.com",
+      "url": "https://beamtools.com",
+      "tags": [
+        "Software",
+        "Workflows",
+        "Tools"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-confettisaas-com",
+      "name": "confettisaas.com",
+      "url": "https://confettisaas.com",
+      "tags": [
+        "SaaS",
+        "Startups",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-deadsimplesites-com",
+      "name": "deadsimplesites.com",
+      "url": "https://deadsimplesites.com",
+      "tags": [
+        "Design",
+        "Minimal",
+        "Showcase"
+      ],
+      "category": "design",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-fuse-kiwi",
+      "name": "fuse.kiwi",
+      "url": "https://fuse.kiwi",
+      "tags": [
+        "Discovery",
+        "Web",
+        "Directory"
+      ],
+      "category": "discovery",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-productlistdir-com",
+      "name": "productlistdir.com",
+      "url": "https://productlistdir.com",
+      "tags": [
+        "Software",
+        "Tools",
+        "Directory"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-saasfield-com",
+      "name": "saasfield.com",
+      "url": "https://saasfield.com",
+      "tags": [
+        "SaaS",
+        "AI",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-toshilist-com",
+      "name": "toshilist.com",
+      "url": "https://toshilist.com",
+      "tags": [
+        "Software",
+        "Tools",
+        "Directory"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-mystarttools-com",
+      "name": "mystarttools.com",
+      "url": "https://mystarttools.com",
+      "tags": [
+        "Startups",
+        "Tools",
+        "Directory"
+      ],
+      "category": "startups",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-stackdirectory-com",
+      "name": "stackdirectory.com",
+      "url": "https://stackdirectory.com",
+      "tags": [
+        "Software",
+        "Stack",
+        "Directory"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-submithunt-com",
+      "name": "submithunt.com",
+      "url": "https://submithunt.com",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Directory"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-toolfinddir-com",
+      "name": "toolfinddir.com",
+      "url": "https://toolfinddir.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-sitepromotiondirectory-com",
+      "name": "sitepromotiondirectory.com",
+      "url": "https://sitepromotiondirectory.com",
+      "tags": [
+        "Backlinks",
+        "SEO",
+        "Directory"
+      ],
+      "category": "backlinks",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-softwarebolt-com",
+      "name": "softwarebolt.com",
+      "url": "https://softwarebolt.com",
+      "tags": [
+        "Software",
+        "Tools",
+        "Directory"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-tinyhunt-dev",
+      "name": "tinyhunt.dev",
+      "url": "https://tinyhunt.dev",
+      "tags": [
+        "Launchpad",
+        "Tech",
+        "Indie"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aiscout-net",
+      "name": "aiscout.net",
+      "url": "https://aiscout.net",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-ashlist-com",
+      "name": "ashlist.com",
+      "url": "https://ashlist.com",
+      "tags": [
+        "Software",
+        "Tools",
+        "Directory"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-bestofai-com",
+      "name": "bestofai.com",
+      "url": "https://bestofai.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-saasroots-com",
+      "name": "saasroots.com",
+      "url": "https://saasroots.com",
+      "tags": [
+        "SaaS",
+        "Startups",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-saastoolsdir-com",
+      "name": "saastoolsdir.com",
+      "url": "https://saastoolsdir.com",
+      "tags": [
+        "SaaS",
+        "Tools",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-dirs-cc",
+      "name": "dirs.cc",
+      "url": "https://dirs.cc",
+      "tags": [
+        "Tools",
+        "Products",
+        "Directory"
+      ],
+      "category": "tools",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-toolsignal-com",
+      "name": "toolsignal.com",
+      "url": "https://toolsignal.com",
+      "tags": [
+        "Software",
+        "Tools",
+        "Directory"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-toptrendtools-com",
+      "name": "toptrendtools.com",
+      "url": "https://toptrendtools.com",
+      "tags": [
+        "Software",
+        "Productivity",
+        "Tools"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-darkmodedesign-com",
+      "name": "darkmodedesign.com",
+      "url": "https://darkmodedesign.com",
+      "tags": [
+        "Design",
+        "Inspiration",
+        "Showcase"
+      ],
+      "category": "design",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-productburst-com",
+      "name": "productburst.com",
+      "url": "https://productburst.com",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Marketing"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-saashubdirectory-com",
+      "name": "saashubdirectory.com",
+      "url": "https://saashubdirectory.com",
+      "tags": [
+        "SaaS",
+        "Tools",
+        "Directory"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-startuplist-ing",
+      "name": "startuplist.ing",
+      "url": "https://startuplist.ing",
+      "tags": [
+        "Startups",
+        "SaaS",
+        "Directory"
+      ],
+      "category": "startups",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-toolslisthq-com",
+      "name": "toolslisthq.com",
+      "url": "https://toolslisthq.com",
+      "tags": [
+        "Software",
+        "Tools",
+        "Directory"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-1000-tools",
+      "name": "1000.tools",
+      "url": "https://1000.tools",
+      "tags": [
+        "Tools",
+        "Directory",
+        "Discovery"
+      ],
+      "category": "tools",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-startups-watch",
+      "name": "startups.watch",
+      "url": "https://startups.watch",
+      "tags": [
+        "Startups",
+        "Discovery",
+        "Directory"
+      ],
+      "category": "startups",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-startupaideas-com",
+      "name": "startupaideas.com",
+      "url": "https://startupaideas.com",
+      "tags": [
+        "AI",
+        "Startups",
+        "Tools"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-superaiboom-com",
+      "name": "superaiboom.com",
+      "url": "https://superaiboom.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Automation"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-themegatools-com",
+      "name": "themegatools.com",
+      "url": "https://themegatools.com",
+      "tags": [
+        "Software",
+        "Tools",
+        "Directory"
+      ],
+      "category": "software",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-tinytoolhub-com",
+      "name": "tinytoolhub.com",
+      "url": "https://tinytoolhub.com",
+      "tags": [
+        "Tools",
+        "Indie",
+        "Directory"
+      ],
+      "category": "tools",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-featuredtool-com",
+      "name": "featuredtool.com",
+      "url": "https://featuredtool.com",
+      "tags": [
+        "Tools",
+        "Discovery",
+        "Directory"
+      ],
+      "category": "tools",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-productfame-com",
+      "name": "productfame.com",
+      "url": "https://productfame.com",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Discovery"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-victrays-com",
+      "name": "victrays.com",
+      "url": "https://victrays.com",
+      "tags": [
+        "AI",
+        "Prompts",
+        "Tools"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-nocodelist-co",
+      "name": "nocodelist.co",
+      "url": "https://nocodelist.co",
+      "tags": [
+        "No-Code",
+        "Tools",
+        "Directory"
+      ],
+      "category": "no-code",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-theapptools-com",
+      "name": "theapptools.com",
+      "url": "https://theapptools.com",
+      "tags": [
+        "AI",
+        "Apps",
+        "Tools"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-thetoolsverse-com",
+      "name": "thetoolsverse.com",
+      "url": "https://thetoolsverse.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-businesshunt-co",
+      "name": "businesshunt.co",
+      "url": "https://businesshunt.co",
+      "tags": [
+        "Business",
+        "Launchpad",
+        "Directory"
+      ],
+      "category": "business",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-flatui-com",
+      "name": "flatui.com",
+      "url": "https://flatui.com",
+      "tags": [
+        "Design",
+        "UI",
+        "Showcase"
+      ],
+      "category": "design",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-rankyourai-com",
+      "name": "rankyourai.com",
+      "url": "https://rankyourai.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-shipyardhq-dev",
+      "name": "shipyardhq.dev",
+      "url": "https://shipyardhq.dev",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Developers"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-aitoolsrecap-com",
+      "name": "aitoolsrecap.com",
+      "url": "https://aitoolsrecap.com",
+      "tags": [
+        "AI",
+        "Directory",
+        "Tools"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-listingbott-com",
+      "name": "listingbott.com",
+      "url": "https://listingbott.com",
+      "tags": [
+        "Directory",
+        "Submission",
+        "SEO"
+      ],
+      "category": "directory",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-hyzenpro-com",
+      "name": "hyzenpro.com",
+      "url": "https://hyzenpro.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-saastr-ai",
+      "name": "saastr.ai",
+      "url": "https://saastr.ai",
+      "tags": [
+        "AI",
+        "Agents",
+        "B2B"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-microsaasdirectory-com",
+      "name": "microsaasdirectory.com",
+      "url": "https://microsaasdirectory.com",
+      "tags": [
+        "Micro-SaaS",
+        "SaaS",
+        "Directory"
+      ],
+      "category": "micro-saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-listmysaas-xyz",
+      "name": "listmysaas.xyz",
+      "url": "https://listmysaas.xyz",
+      "tags": [
+        "SaaS",
+        "Directory",
+        "Startups"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-startupbricks-in",
+      "name": "startupbricks.in",
+      "url": "https://startupbricks.in",
+      "tags": [
+        "Startups",
+        "SaaS",
+        "AI"
+      ],
+      "category": "startups",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-easysubmits-com",
+      "name": "easysubmits.com",
+      "url": "https://easysubmits.com",
+      "tags": [
+        "SaaS",
+        "Directory",
+        "Submission"
+      ],
+      "category": "saas",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-14T08:05:25.008Z",
+      "updated_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "dir-postyourbuildideas-com-launch",
+      "name": "postyourbuildideas.com",
+      "url": "https://postyourbuildideas.com/launch",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Indie"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-megalaun-ch",
+      "name": "megalaun.ch",
+      "url": "https://megalaun.ch",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Discovery"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-shipdesk-dev",
+      "name": "shipdesk.dev",
+      "url": "https://shipdesk.dev",
+      "tags": [
+        "Launchpad",
+        "Developers",
+        "Indie"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-freeaidirectory-com",
+      "name": "freeaidirectory.com",
+      "url": "https://freeaidirectory.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-dailyaitools-ai",
+      "name": "dailyaitools.ai",
+      "url": "https://dailyaitools.ai",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-toolala-io",
+      "name": "toolala.io",
+      "url": "https://toolala.io",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-makesuccessonline-com",
+      "name": "makesuccessonline.com",
+      "url": "https://makesuccessonline.com",
+      "tags": [
+        "Startups",
+        "Tools",
+        "Directory"
+      ],
+      "category": "startups",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-automateo-app",
+      "name": "automateo.app",
+      "url": "https://automateo.app",
+      "tags": [
+        "AI",
+        "Automation",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-eliteai-tools",
+      "name": "eliteai.tools",
+      "url": "https://eliteai.tools",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-nanolaunch-online",
+      "name": "nanolaunch.online",
+      "url": "https://nanolaunch.online",
+      "tags": [
+        "Launchpad",
+        "Indie",
+        "Startups"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-launchaitools-io",
+      "name": "launchaitools.io",
+      "url": "https://launchaitools.io",
+      "tags": [
+        "AI",
+        "Launchpad",
+        "Tools"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-trylaunch-ai",
+      "name": "trylaunch.ai",
+      "url": "https://trylaunch.ai",
+      "tags": [
+        "Launchpad",
+        "AI",
+        "Startups"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-launchwoo-com",
+      "name": "launchwoo.com",
+      "url": "https://launchwoo.com",
+      "tags": [
+        "Launchpad",
+        "Startups",
+        "Directory"
+      ],
+      "category": "launchpad",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    },
+    {
+      "id": "dir-every-ai-com",
+      "name": "every-ai.com",
+      "url": "https://every-ai.com",
+      "tags": [
+        "AI",
+        "Tools",
+        "Directory"
+      ],
+      "category": "ai",
+      "domain_rating": 0,
+      "description": "",
+      "pricing_type": "free",
+      "is_active": true,
+      "created_at": "2026-11-16T23:45:00.000Z",
+      "updated_at": "2026-11-16T23:45:00.000Z"
+    }
+  ],
+  "releases": [
+    {
+      "id": "rel-v1-3-0",
+      "version": "v1.3.0",
+      "title": "Smart Poster v1.3.0 (Latest)",
+      "summary": "Smart Context Detection across social/DM/article/webmail/directory/contact pages, starred & draggable comment ordering, campaign-aware AI rewriting, and synced User Dashboard.",
+      "download_url": "/api/download/extension?version=v1.3.0",
+      "file_size": "~522 KB",
+      "is_latest": true,
+      "released_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "rel-v1-2-0",
+      "version": "v1.2.0",
+      "title": "Smart Poster v1.2.0",
+      "summary": "Supabase Cloud Sync, Google OAuth login, 3+3 AI reply generation (Organic, Trojan Bridge, Direct Promo), and Anti-Ban preflight protection.",
+      "download_url": "/api/download/extension?version=v1.2.0",
+      "file_size": "~500 KB",
+      "is_latest": false,
+      "released_at": "2026-09-18T10:00:00.000Z"
+    },
+    {
+      "id": "rel-v1-1-0",
+      "version": "v1.1.0",
+      "title": "Smart Poster v1.1.0",
+      "summary": "Multi-Platform Keyword Radar, 1-click Opportunity Queue launcher, Twitter clean domain rule, and domain/thread suppression lists.",
+      "download_url": "/api/download/extension?version=v1.1.0",
+      "file_size": "~470 KB",
+      "is_latest": false,
+      "released_at": "2026-08-05T10:00:00.000Z"
+    },
+    {
+      "id": "rel-v1-0-0",
+      "version": "v1.0.0",
+      "title": "Smart Poster v1.0.0",
+      "summary": "Initial Manifest V3 Universal Side Panel with multi-length directory form filler, contact form automation, and local campaign profiles.",
+      "download_url": "/api/download/extension?version=v1.0.0",
+      "file_size": "~420 KB",
+      "is_latest": false,
+      "released_at": "2026-06-20T10:00:00.000Z"
+    }
+  ],
+  "changelog": [
+    {
+      "id": "chg-130-ai-assistant",
+      "version": "v1.3.0",
+      "title": "AI Assistant Upgrade: Full Marketing Content Creator",
+      "category": "feature",
+      "description": "Upgraded the AI Assistant into a versatile content creator and marketing copy generator. Beyond filling SmartPoster modules, use it to brainstorm campaigns, scan reference pages, and craft promotional copy, social threads, emails, and marketing assets for your entire business.",
+      "published_at": "2026-11-14T08:05:25.008Z"
+    },
+    {
+      "id": "chg-130-images-gallery",
+      "version": "v1.3.0",
+      "title": "Dedicated Promotional Images Gallery",
+      "category": "feature",
+      "description": "Save, label, and organize promotional banners, product screenshots, and marketing creatives in a dedicated per-campaign Gallery—synced between the Dashboard and Chrome Extension for instant drag-and-drop onto any webpage.",
+      "published_at": "2026-11-13T15:30:00.000Z"
+    },
+    {
+      "id": "chg-130-comment-priority",
+      "version": "v1.3.0",
+      "title": "Comment Favorites (Starring) & Drag-and-Drop Priority Reordering",
+      "category": "feature",
+      "description": "Star your top-converting comment variations to keep favorites pinned at the top, and drag-and-drop to reorder your comment list by priority with automatic sequential numbering.",
+      "published_at": "2026-11-11T16:45:00.000Z"
+    },
+    {
+      "id": "chg-130-velocity-guard",
+      "version": "v1.3.0",
+      "title": "Anti-Ban Velocity Tracker & Rolling Hourly Guard",
+      "category": "feature",
+      "description": "Live per-platform daily counters and rolling 60-minute rate monitoring (SAFE, CAUTION, SLOW DOWN) built directly into the extension to help prevent shadowbans and spam flags during outreach sessions.",
+      "published_at": "2026-11-09T14:20:00.000Z"
+    },
+    {
+      "id": "chg-130-single-pass-editors",
+      "version": "v1.3.0",
+      "title": "Reliable Single-Pass Insertion for X (Twitter) & Modern Rich-Text Editors",
+      "category": "fix",
+      "description": "Resolved duplicate/undeletable text issues in X/Twitter Draft.js and modern editors (Pinterest, YouTube, Reddit, LinkedIn), and added automatic scroll-and-highlight guidance straight to the native Reply/Post button.",
+      "published_at": "2026-11-07T11:10:00.000Z"
+    },
+    {
+      "id": "chg-130-cloud-vault",
+      "version": "v1.3.0",
+      "title": "Cross-Device Cloud Sync & Media Asset Vault",
+      "category": "feature",
+      "description": "Sync your campaigns, uploaded logos/favicons/screenshots, comment images, suppression lists, and posting rules automatically across devices when signed in with Google.",
+      "published_at": "2026-11-05T17:00:00.000Z"
+    },
+    {
+      "id": "chg-130-dashboard",
+      "version": "v1.3.0",
+      "title": "Full-Screen Left-Hand User Dashboard",
+      "category": "feature",
+      "description": "Edit campaigns, review reports, configure AI settings, browse the Admin-curated Directory Database, download releases, and review release notes in a full-width browser workspace synced directly with your Chrome Side Panel.",
+      "published_at": "2026-11-03T13:15:00.000Z"
+    },
+    {
+      "id": "chg-130-research",
+      "version": "v1.3.0",
+      "title": "Research & Automated Competitor Alerts (Zero API Keys)",
+      "category": "feature",
+      "description": "Keywords is now Research! Track brand keywords and competitors with automatic high-intent phrases (\"Alternative to X\", \"Best alternative to X\"), instant native feed polling, and 1-click Google Alerts RSS capture.",
+      "published_at": "2026-11-02T10:30:00.000Z"
+    },
+    {
+      "id": "chg-130-dir-bookmarks",
+      "version": "v1.3.0",
+      "title": "Directory Table Bookmarks & Custom User Directories",
+      "category": "feature",
+      "description": "Browse all Admin-managed directories in a sortable table, star favorites for quick access, and add your own custom directories.",
+      "published_at": "2026-11-01T09:45:00.000Z"
+    },
+    {
+      "id": "chg-120-twitter-fix",
+      "version": "v1.2.0",
+      "title": "Twitter / X Clean Domain Formatting Fix",
+      "category": "fix",
+      "description": "Fixed duplicate URL glitches on X/Twitter replies by automatically formatting links cleanly without protocol prefixes when enabled in Posting Rules.",
+      "published_at": "2026-09-18T10:00:00.000Z"
+    }
+  ],
+  "workspacePrefs": {},
+  "userCloudState": {},
+  "extensionVaults": {
+    "spv_49dd3ab70ffcb4ec1eb9614631bae95ed605ccc8a0820279": {
+      "vaultId": "spv_49dd3ab70ffcb4ec1eb9614631bae95ed605ccc8a0820279",
+      "snapshot": {
+        "schemaVersion": 2,
+        "updatedAt": "2026-11-14T08:05:24.979Z",
+        "brandProfiles": [
+          {
+            "brandId": "brand-test-reinstall",
+            "campaignId": "brand-test-reinstall",
+            "brandName": "My Saved Product",
+            "updatedAt": "2026-11-14T08:05:24.980Z",
+            "brandInfo": {
+              "name": "My Saved Product",
+              "url": "https://example.com"
+            }
+          }
+        ],
+        "activeBrandId": "brand-test-reinstall",
+        "settings": {
+          "formActionMode": "submit"
+        }
+      },
+      "updatedAt": "2026-11-14T08:05:24.979Z"
+    }
+  }
+}

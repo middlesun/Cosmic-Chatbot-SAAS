@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Icon Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        canvas {
+            border: 1px solid #ccc;
+            margin: 10px;
+            display: block;
+        }
+        .download-links {
+            margin-top: 20px;
+        }
+        .download-links a {
+            display: block;
+            margin: 5px 0;
+            padding: 10px;
+            background: #007cba;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .download-links a:hover {
+            background: #005a8b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Web Form Tester - Icon Generator</h1>
+        <p>This page generates the required icon files for the Chrome extension.</p>
+        
+        <div id="icons-container"></div>
+        
+        <div class="download-links" id="download-links">
+            <p><strong>Instructions:</strong></p>
+            <p>1. Right-click on each icon below and select "Save image as..."</p>
+            <p>2. Save them in the Toot-Tester-Plugin folder with the exact names shown</p>
+            <p>3. The extension will then display these icons in Chrome</p>
+        </div>
+    </div>
+
+    <script>
+        // Generate icons for the extension
+        const sizes = [16, 48, 128];
+        const container = document.getElementById('icons-container');
+
+        sizes.forEach(size => {
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Create gradient background
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#667eea');
+            gradient.addColorStop(1, '#764ba2');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+
+            // Add rounded corners
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.beginPath();
+            ctx.roundRect(0, 0, size, size, size * 0.2);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+
+            // Add icon content
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${size * 0.4}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Draw test tube emoji or letter T
+            if (size >= 48) {
+                ctx.fillText('🧪', size/2, size/2);
+            } else {
+                ctx.fillText('T', size/2, size/2);
+            }
+
+            // Add to page
+            const label = document.createElement('h3');
+            label.textContent = `Icon ${size}x${size} (save as: icon${size}.png)`;
+            container.appendChild(label);
+            container.appendChild(canvas);
+
+            // Create download link
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL();
+            link.download = `icon${size}.png`;
+            link.textContent = `Download icon${size}.png`;
+            document.getElementById('download-links').appendChild(link);
+        });
+    </script>
+</body>
+</html> 
