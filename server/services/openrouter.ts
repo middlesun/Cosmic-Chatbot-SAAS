@@ -1,6 +1,11 @@
+export type OpenRouterContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+  | { type: 'file'; file: { filename: string; file_data: string } };
+
 export interface OpenRouterMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | OpenRouterContentPart[];
 }
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';

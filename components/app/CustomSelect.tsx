@@ -326,10 +326,10 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
             }}
             className={`${
               coords.direction === 'up' ? 'animate-cc-dropdown-up' : 'animate-cc-dropdown-down'
-            } rounded-2xl p-1.5 backdrop-blur-md focus:outline-none ${
+            } rounded-2xl p-1.5 focus:outline-none ${
               isDark
-                ? 'bg-[#1F2229]/98 border border-[#F4EFE6]/16 shadow-[0_20px_48px_-12px_rgba(0,0,0,0.68)]'
-                : 'bg-[#FDFBF7]/98 border border-[#3D3830]/14 shadow-[0_18px_42px_-12px_rgba(61,56,48,0.22),0_4px_12px_-4px_rgba(61,56,48,0.08)]'
+                ? 'bg-[#1F2229] border border-[#F4EFE6]/16 shadow-[0_20px_48px_-12px_rgba(0,0,0,0.68)]'
+                : 'bg-[#FDFBF7] border border-[#3D3830]/15 shadow-[0_18px_42px_-12px_rgba(61,56,48,0.22),0_4px_12px_-4px_rgba(61,56,48,0.08)]'
             }`}
           >
             <div

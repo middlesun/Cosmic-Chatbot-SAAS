@@ -7,14 +7,27 @@ import {
   isOpenRouterConfigured,
   safeExtractJson,
   streamOpenRouterCompletion,
+  type OpenRouterContentPart,
   type OpenRouterMessage,
 } from './openrouter';
 import {
   CORE_COUNCIL_CONSTITUTION,
   resolvePromptModules,
 } from './promptDefaults';
+import {
+  PROMPT_EXTRACTION_REFUSAL,
+  containsInternalPromptLeak,
+  detectPromptExtractionAttempt,
+  sanitizeAssistantOutput,
+} from './abuseGuard';
 
-export { getConsultationModel, isOpenRouterConfigured };
+export {
+  getConsultationModel,
+  isOpenRouterConfigured,
+  detectPromptExtractionAttempt,
+  PROMPT_EXTRACTION_REFUSAL,
+  sanitizeAssistantOutput,
+};
 
 export function countWords(text: string): number {
   const trimmed = text.trim();
@@ -33,6 +46,25 @@ export function calculateCreditsFromUsage(
   return Math.max(25, Math.min(weighted, 1500));
 }
 
+export interface ConsultationAttachmentInput {
+  kind: 'image' | 'pdf';
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+}
+
+export interface ConsultationProfileRecord {
+  id: string;
+  name: string;
+  is_activated: boolean;
+  chart_text_context: string | null;
+  profile_memory_summary: string | null;
+  birth_date: string;
+  birth_time: string;
+  birth_city: string;
+  birth_country: string;
+}
+
 export interface StreamConsultationParams {
   userId: string;
   conversation: {
@@ -42,17 +74,10 @@ export interface StreamConsultationParams {
     use_full_profile_memory: boolean;
     title: string;
   };
-  profile: {
-    id: string;
-    name: string;
-    is_activated: boolean;
-    chart_text_context: string | null;
-    profile_memory_summary: string | null;
-    birth_date: string;
-    birth_time: string;
-    birth_city: string;
-    birth_country: string;
-  } | null;
+  profile: ConsultationProfileRecord | null;
+  scopeMemoryContext?: string | null;
+  extraProfiles?: ConsultationProfileRecord[];
+  attachments?: ConsultationAttachmentInput[];
   historyMessages: Array<{
     id: string;
     role: 'user' | 'assistant';
@@ -69,6 +94,8 @@ export interface StreamConsultationParams {
   modeSlug: string;
   outputSlug: string;
   languageSlug: string;
+  toneMode?: 'friendly' | 'technical';
+  responseLength?: 'short' | 'detailed';
   preferredCallName?: string | null;
   abortSignal: AbortSignal;
   onChunk: (chunkText: string) => void;
@@ -80,6 +107,7 @@ export interface StreamConsultationResult {
   tokensOut: number;
   creditsCharged: number;
   aborted: boolean;
+  leakIntercepted?: boolean;
 }
 
 async function buildStaticSystemInstruction(params: {
@@ -87,8 +115,11 @@ async function buildStaticSystemInstruction(params: {
   modeSlug: string;
   outputSlug: string;
   languageSlug: string;
+  toneMode: 'friendly' | 'technical';
+  responseLength: 'short' | 'detailed';
   preferredCallName?: string | null;
   profile: StreamConsultationParams['profile'];
+  extraProfiles?: ConsultationProfileRecord[];
 }): Promise<{ systemInstruction: string; modelOverride: string | null }> {
   const { bodies: promptBodies, models: promptModels } = await resolvePromptModules([
     params.expertSlug,
@@ -112,6 +143,26 @@ async function buildStaticSystemInstruction(params: {
     promptBodies[params.languageSlug] || '',
   ].filter(Boolean);
 
+  if (params.toneMode === 'friendly') {
+    sections.push(
+      `COMMUNICATION DEPTH — FRIENDLY MODE (NON-TECHNICAL): Perform all Vedic/KP/Jaimini/Dasha chart synthesis silently behind the scenes, then explain your answer in warm, clear, everyday conversational language. Avoid overwhelming technical jargon, raw planetary degrees, Nakshatra pada math, or long Sanskrit sub-lord chains unless the user explicitly asks to see the technical breakdown. Translate chart factors directly into relatable life guidance and plain calendar timing windows.`
+    );
+  } else {
+    sections.push(
+      `COMMUNICATION DEPTH — TECHNICAL MODE: Include authentic Jyotish technical precision—citing exact Rashi placements, house lordships, planetary strengths/Shadbala/Ashtakavarga, Nakshatra & KP Sub-Lord significators, divisional Vargas (D9/D10), and active Vimshottari Mahadasha–Antardasha–Pratyantardasha mechanics.`
+    );
+  }
+
+  if (params.responseLength === 'short') {
+    sections.push(
+      `RESPONSE LENGTH — SHORT: Keep the answer crisp, high-signal, and concise (around 120–200 words max). Lead with the direct conclusion upfront, give the top 2–3 key insights or timing dates, and skip unnecessary filler or lengthy preambles.`
+    );
+  } else {
+    sections.push(
+      `RESPONSE LENGTH — DETAILED: Provide a thorough, well-paced, comprehensive reading that unpacks the reasoning, relevant timing shifts, and practical next steps without cutting corners.`
+    );
+  }
+
   if (params.preferredCallName?.trim()) {
     sections.push(`USER ADDRESS PREFERENCE: Address the user warmly and naturally as "${params.preferredCallName.trim()}" when appropriate.`);
   }
@@ -126,7 +177,17 @@ Name: ${params.profile.name} | Born: ${params.profile.birth_date} ${params.profi
 Note: Full planetary ephemeris calculations have not been activated yet for this profile. Be transparent about needing chart activation for exact degree/Dasha timing while still answering conceptual or general astrological questions helpfully.`);
     }
   } else {
-    sections.push(`SESSION SCOPE: GENERAL / LEARN ASTROLOGY (No specific natal chart attached).`);
+    sections.push(`SESSION SCOPE: GENERAL / LEARN ASTROLOGY (No primary natal chart attached).`);
+  }
+
+  if (params.extraProfiles && params.extraProfiles.length > 0) {
+    const extraBlocks = params.extraProfiles.map((ep, idx) => {
+      if (ep.is_activated && ep.chart_text_context) {
+        return `ADDITIONAL ATTACHED CHART #${idx + 1} (${ep.name}):\n${ep.chart_text_context}`;
+      }
+      return `ADDITIONAL ATTACHED PROFILE #${idx + 1} (NOT YET ACTIVATED): Name: ${ep.name} | Born: ${ep.birth_date} ${ep.birth_time} in ${ep.birth_city}, ${ep.birth_country}.`;
+    });
+    sections.push(extraBlocks.join('\n\n'));
   }
 
   return {
@@ -138,14 +199,20 @@ Note: Full planetary ephemeris calculations have not been activated yet for this
 export async function streamConsultationResponse(
   params: StreamConsultationParams
 ): Promise<StreamConsultationResult> {
+  const toneMode = params.toneMode === 'friendly' ? 'friendly' : 'technical';
+  const responseLength = params.responseLength === 'short' ? 'short' : 'detailed';
+
   const { systemInstruction: staticSystemInstruction, modelOverride } =
     await buildStaticSystemInstruction({
       expertSlug: params.expertSlug,
       modeSlug: params.modeSlug,
       outputSlug: params.outputSlug,
       languageSlug: params.languageSlug,
+      toneMode,
+      responseLength,
       preferredCallName: params.preferredCallName,
       profile: params.profile,
+      extraProfiles: params.extraProfiles,
     });
 
   const model = modelOverride || getConsultationModel();
@@ -165,13 +232,18 @@ export async function streamConsultationResponse(
   if (gocharContext) {
     dynamicContextBlocks.push(gocharContext);
   }
-  if (
-    params.conversation.use_full_profile_memory &&
-    params.profile?.profile_memory_summary
-  ) {
-    dynamicContextBlocks.push(
-      `LONGITUDINAL PROFILE MEMORY (Themes from earlier active sessions):\n${params.profile.profile_memory_summary}`
-    );
+  if (params.conversation.use_full_profile_memory) {
+    if (params.profile?.profile_memory_summary) {
+      dynamicContextBlocks.push(
+        `LONGITUDINAL PROFILE MEMORY (Themes from earlier active sessions):\n${params.profile.profile_memory_summary}`
+      );
+    } else if (params.scopeMemoryContext?.trim()) {
+      const scopeTitle =
+        params.conversation.mode_type === 'learn_astrology' ? 'LEARNING' : 'GENERAL';
+      dynamicContextBlocks.push(
+        `LONGITUDINAL ${scopeTitle} MEMORY (Themes and progress from earlier active sessions):\n${params.scopeMemoryContext.trim()}`
+      );
+    }
   }
 
   const systemInstructionWithDynamic = [
@@ -199,32 +271,118 @@ ${snippet}
 User's specific question: ${finalUserText}`;
   }
 
-  messages.push({
-    role: 'user',
-    content: finalUserText,
-  });
+  if (params.attachments && params.attachments.length > 0) {
+    const contentParts: OpenRouterContentPart[] = [
+      { type: 'text', text: finalUserText },
+    ];
+    for (const att of params.attachments) {
+      if (att.kind === 'image' && att.dataUrl.startsWith('data:image/')) {
+        contentParts.push({
+          type: 'image_url',
+          image_url: { url: att.dataUrl },
+        });
+      } else if (att.kind === 'pdf' && att.dataUrl.startsWith('data:application/pdf')) {
+        contentParts.push({
+          type: 'file',
+          file: {
+            filename: att.name || 'document.pdf',
+            file_data: att.dataUrl,
+          },
+        });
+      }
+    }
+    messages.push({
+      role: 'user',
+      content: contentParts,
+    });
+  } else {
+    messages.push({
+      role: 'user',
+      content: finalUserText,
+    });
+  }
 
-  const streamResult = await streamOpenRouterCompletion({
-    model,
-    system: systemInstructionWithDynamic,
-    messages,
-    abortSignal: params.abortSignal,
-    onChunk: params.onChunk,
-  });
+  const internalAbortController = new AbortController();
+  const forwardAbort = () => internalAbortController.abort();
+  if (params.abortSignal.aborted) {
+    internalAbortController.abort();
+  } else {
+    params.abortSignal.addEventListener('abort', forwardAbort, { once: true });
+  }
 
-  const creditsCharged = calculateCreditsFromUsage(
-    streamResult.tokensIn,
-    streamResult.tokensOut,
-    streamResult.fullText
-  );
+  let rawAccumulated = '';
+  let flushedLength = 0;
+  let leakIntercepted = false;
+  const HOLD_BACK_CHARS = 64;
 
-  return {
-    fullText: streamResult.fullText,
-    tokensIn: streamResult.tokensIn,
-    tokensOut: streamResult.tokensOut,
-    creditsCharged,
-    aborted: streamResult.aborted,
-  };
+  try {
+    const streamResult = await streamOpenRouterCompletion({
+      model,
+      system: systemInstructionWithDynamic,
+      messages,
+      abortSignal: internalAbortController.signal,
+      onChunk: (chunkText) => {
+        if (leakIntercepted) return;
+        rawAccumulated += chunkText;
+        if (containsInternalPromptLeak(rawAccumulated)) {
+          leakIntercepted = true;
+          internalAbortController.abort();
+          return;
+        }
+        const safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
+        if (safeEnd > flushedLength) {
+          const toEmit = rawAccumulated.slice(flushedLength, safeEnd);
+          flushedLength = safeEnd;
+          params.onChunk(toEmit);
+        }
+      },
+    });
+
+    if (leakIntercepted || containsInternalPromptLeak(streamResult.fullText)) {
+      return {
+        fullText: PROMPT_EXTRACTION_REFUSAL,
+        tokensIn: streamResult.tokensIn,
+        tokensOut: streamResult.tokensOut,
+        creditsCharged: 0,
+        aborted: false,
+        leakIntercepted: true,
+      };
+    }
+
+    if (rawAccumulated.length > flushedLength) {
+      params.onChunk(rawAccumulated.slice(flushedLength));
+      flushedLength = rawAccumulated.length;
+    }
+
+    const sanitized = sanitizeAssistantOutput(streamResult.fullText);
+    if (sanitized.leaked) {
+      return {
+        fullText: sanitized.text,
+        tokensIn: streamResult.tokensIn,
+        tokensOut: streamResult.tokensOut,
+        creditsCharged: 0,
+        aborted: false,
+        leakIntercepted: true,
+      };
+    }
+
+    const creditsCharged = calculateCreditsFromUsage(
+      streamResult.tokensIn,
+      streamResult.tokensOut,
+      streamResult.fullText
+    );
+
+    return {
+      fullText: streamResult.fullText,
+      tokensIn: streamResult.tokensIn,
+      tokensOut: streamResult.tokensOut,
+      creditsCharged,
+      aborted: streamResult.aborted && !leakIntercepted,
+      leakIntercepted: false,
+    };
+  } finally {
+    params.abortSignal.removeEventListener('abort', forwardAbort);
+  }
 }
 
 export async function generateFollowUpQuestions(params: {

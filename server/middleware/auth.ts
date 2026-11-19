@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
+import { getClientIpHash } from '../services/abuseGuard';
 
 export interface AppUserRecord {
   id: string;
@@ -13,6 +14,8 @@ export interface AppUserRecord {
   default_language: string;
   preferred_call_name?: string | null;
   chat_font_size?: 'sm' | 'base' | 'lg' | null;
+  signup_ip_hash?: string | null;
+  last_ip_hash?: string | null;
   referral_code: string;
   referred_by: string | null;
   must_change_password: boolean;
@@ -30,7 +33,11 @@ export interface AuthenticatedRequest extends Request {
     email: string;
   };
   appUser?: AppUserRecord;
+  clientIpHash?: string | null;
 }
+
+const ipSyncCache = new Map<string, { hash: string; syncedAt: number }>();
+const IP_SYNC_DEBOUNCE_MS = 10 * 60 * 1000;
 
 export const requireAuth = async (
   req: AuthenticatedRequest,
@@ -61,6 +68,8 @@ export const requireAuth = async (
       return;
     }
 
+    const ipHash = getClientIpHash(req);
+    req.clientIpHash = ipHash;
     req.authUser = {
       id: authData.user.id,
       email: authData.user.email || '',
@@ -80,26 +89,99 @@ export const requireAuth = async (
     // Fallback bootstrap if user existed in auth.users before trigger migration ran
     if (!appUser) {
       const randomCode = `CC-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-      const { data: inserted, error: insertError } = await supabaseAdmin
+      const baseInsert = {
+        id: authData.user.id,
+        email: authData.user.email || '',
+        full_name:
+          (authData.user.user_metadata?.full_name as string) ||
+          authData.user.email?.split('@')[0] ||
+          'Member',
+        credits_balance: 5000,
+        referral_code: randomCode,
+        must_change_password: Boolean(authData.user.user_metadata?.must_change_password),
+      };
+
+      let { data: inserted, error: insertError } = await supabaseAdmin
         .from('users')
         .insert({
-          id: authData.user.id,
-          email: authData.user.email || '',
-          full_name:
-            (authData.user.user_metadata?.full_name as string) ||
-            authData.user.email?.split('@')[0] ||
-            'Member',
-          referral_code: randomCode,
-          must_change_password: Boolean(authData.user.user_metadata?.must_change_password),
+          ...baseInsert,
+          ...(ipHash ? { signup_ip_hash: ipHash, last_ip_hash: ipHash } : {}),
         })
         .select('*')
         .single();
 
-      if (insertError) {
+      if (insertError && ipHash) {
+        // Safe fallback if 002_v2_foundations.sql columns aren't migrated yet
+        const retry = await supabaseAdmin
+          .from('users')
+          .insert(baseInsert)
+          .select('*')
+          .single();
+        inserted = retry.data;
+        insertError = retry.error;
+      }
+
+      if (insertError || !inserted) {
         res.status(500).json({ error: 'Failed to initialize user record' });
         return;
       }
+
+      await supabaseAdmin.from('credit_transactions').insert({
+        user_id: inserted.id,
+        amount: 5000,
+        balance_after: 5000,
+        tx_type: 'welcome_bonus',
+        reference_id: inserted.id,
+        description: 'Welcome bonus — 5,000 free signup credits',
+      });
+
       appUser = inserted;
+    } else {
+      // Idempotent welcome-credit grant if trigger created user at 0 before migration 003 ran
+      const createdRecently =
+        Date.now() - new Date(appUser.created_at).getTime() < 15 * 60 * 1000;
+      if (appUser.credits_balance === 0 && createdRecently) {
+        const { count: txCount } = await supabaseAdmin
+          .from('credit_transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', appUser.id);
+        if (txCount === 0) {
+          const { data: nextBal, error: grantErr } = await supabaseAdmin.rpc(
+            'grant_user_credits',
+            {
+              p_user_id: appUser.id,
+              p_amount: 5000,
+              p_tx_type: 'welcome_bonus',
+              p_reference_id: appUser.id,
+              p_description: 'Welcome bonus — 5,000 free signup credits',
+            }
+          );
+          if (!grantErr && typeof nextBal === 'number') {
+            appUser.credits_balance = nextBal;
+          }
+        }
+      }
+
+      if (ipHash) {
+        const needsSignupHash = !appUser.signup_ip_hash;
+        const needsLastHash = appUser.last_ip_hash !== ipHash;
+        if (needsSignupHash || needsLastHash) {
+          const cached = ipSyncCache.get(appUser.id);
+          const now = Date.now();
+          if (!cached || cached.hash !== ipHash || now - cached.syncedAt > IP_SYNC_DEBOUNCE_MS) {
+            ipSyncCache.set(appUser.id, { hash: ipHash, syncedAt: now });
+            const ipUpdates: Record<string, string> = { last_ip_hash: ipHash };
+            if (needsSignupHash) {
+              ipUpdates.signup_ip_hash = ipHash;
+              appUser.signup_ip_hash = ipHash;
+            }
+            appUser.last_ip_hash = ipHash;
+            void Promise.resolve(
+              supabaseAdmin.from('users').update(ipUpdates).eq('id', appUser.id)
+            ).catch(() => null);
+          }
+        }
+      }
     }
 
     if (appUser.account_status === 'suspended') {

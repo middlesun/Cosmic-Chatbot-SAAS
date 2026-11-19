@@ -16,7 +16,7 @@ export function createExpressApp(): Express {
   // Dodo webhook needs raw body for HMAC-SHA256 verification before express.json()
   app.post('/api/payments/webhook', ...dodoWebhookMiddleware);
 
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '15mb' }));
 
   // Public client-safe Supabase config fallback for static builds without compile-time VITE_* env injection
   app.get('/api/config/public', (_req, res) => {
@@ -267,6 +267,263 @@ export function createExpressApp(): Express {
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to fetch daily transits' });
     }
+  });
+
+  // Business Support Contact Submission
+  app.post('/api/app/support', requireAuth, async (req: AuthenticatedRequest, res) => {
+    if (!req.appUser) {
+      res.status(503).json({ error: 'Backend unavailable' });
+      return;
+    }
+
+    const { name, email, category, subject, message } = req.body || {};
+    const cleanSubject = typeof subject === 'string' ? subject.trim().slice(0, 140) : '';
+    const cleanMessage = typeof message === 'string' ? message.trim().slice(0, 4000) : '';
+    const cleanCategory = typeof category === 'string' && category.trim() ? category.trim().slice(0, 60) : 'General Support';
+    const fromName = typeof name === 'string' && name.trim() ? name.trim().slice(0, 100) : (req.appUser.full_name || 'Member');
+    const fromEmail = typeof email === 'string' && email.trim() ? email.trim().slice(0, 140) : req.appUser.email;
+
+    if (!cleanSubject || !cleanMessage) {
+      res.status(400).json({ error: 'Subject and message are required.' });
+      return;
+    }
+
+    const { sendSupportInquiryEmail } = await import('./services/email');
+    const delivery = await sendSupportInquiryEmail({
+      fromName,
+      fromEmail,
+      category: cleanCategory,
+      subject: cleanSubject,
+      message: cleanMessage,
+      userId: req.appUser.id,
+    });
+
+    res.json({
+      ok: true,
+      deliveredViaEmail: delivery.sent,
+      message: delivery.sent
+        ? 'Your support inquiry has been sent. Our team will respond via email shortly.'
+        : 'Your support inquiry has been recorded by Cosmic Council concierge.',
+    });
+  });
+
+  // Full User Data Export (Backup .json)
+  app.get('/api/app/data/export', requireAuth, async (req: AuthenticatedRequest, res) => {
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin || !req.appUser) {
+      res.status(503).json({ error: 'Backend unavailable' });
+      return;
+    }
+
+    const [profilesRes, convsRes, promptsRes, reportsRes] = await Promise.all([
+      supabaseAdmin
+        .from('profiles')
+        .select('id, name, short_name, is_default, birth_date, birth_time, birth_city, birth_state, birth_country, latitude, longitude, timezone_offset, gender, relationship, profile_memory_summary, is_activated, created_at')
+        .eq('user_id', req.appUser.id)
+        .order('created_at', { ascending: false }),
+      supabaseAdmin
+        .from('conversations')
+        .select('id, profile_id, title, mode_type, is_bookmarked, use_full_profile_memory, created_at, updated_at')
+        .eq('user_id', req.appUser.id)
+        .order('updated_at', { ascending: false }),
+      supabaseAdmin
+        .from('custom_prompts')
+        .select('id, title, prompt_text, created_at')
+        .eq('user_id', req.appUser.id)
+        .order('created_at', { ascending: false }),
+      supabaseAdmin
+        .from('report_orders')
+        .select('id, profile_id, report_slug, status, final_markdown, created_at, completed_at')
+        .eq('user_id', req.appUser.id)
+        .order('created_at', { ascending: false }),
+    ]);
+
+    const convs = convsRes.data || [];
+    const convIds = convs.map((c) => c.id);
+    let messagesByConv: Record<string, Array<Record<string, unknown>>> = {};
+
+    if (convIds.length > 0) {
+      const { data: msgRows } = await supabaseAdmin
+        .from('messages')
+        .select('conversation_id, role, content, expert_used, mode_used, output_format_used, language_used, is_starred, created_at')
+        .in('conversation_id', convIds)
+        .order('created_at', { ascending: true });
+
+      for (const m of msgRows || []) {
+        const key = String(m.conversation_id);
+        if (!messagesByConv[key]) messagesByConv[key] = [];
+        messagesByConv[key].push(m);
+      }
+    }
+
+    const exportBundle = {
+      format: 'cosmic-council-backup-v1',
+      exportedAt: new Date().toISOString(),
+      preferences: {
+        full_name: req.appUser.full_name,
+        preferred_call_name: req.appUser.preferred_call_name ?? null,
+        chat_font_size: req.appUser.chat_font_size ?? 'base',
+        currency_pref: req.appUser.currency_pref,
+        default_expert: req.appUser.default_expert,
+        default_output: req.appUser.default_output,
+        default_language: req.appUser.default_language,
+      },
+      profiles: profilesRes.data || [],
+      customPrompts: promptsRes.data || [],
+      conversations: convs.map((c) => ({
+        ...c,
+        messages: messagesByConv[c.id] || [],
+      })),
+      reports: reportsRes.data || [],
+    };
+
+    res.json(exportBundle);
+  });
+
+  // Restore / Import Data Backup (Profiles, Custom Prompts, Preferences)
+  app.post('/api/app/data/import', requireAuth, async (req: AuthenticatedRequest, res) => {
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin || !req.appUser) {
+      res.status(503).json({ error: 'Backend unavailable' });
+      return;
+    }
+
+    const payload = req.body;
+    if (!payload || typeof payload !== 'object') {
+      res.status(400).json({ error: 'Invalid backup JSON payload.' });
+      return;
+    }
+
+    const tierLimits: Record<string, number> = { personal: 10, pro: 100, guru: 200 };
+    const maxProfiles = tierLimits[req.appUser.tier] ?? 10;
+
+    let importedProfiles = 0;
+    let importedPrompts = 0;
+    let updatedPreferences = false;
+
+    // 1. Restore Preferences if present
+    if (payload.preferences && typeof payload.preferences === 'object') {
+      const p = payload.preferences as Record<string, unknown>;
+      const prefUpdates: Record<string, unknown> = {};
+      if (typeof p.preferred_call_name === 'string') {
+        prefUpdates.preferred_call_name = p.preferred_call_name.trim().slice(0, 60) || null;
+      }
+      if (['sm', 'base', 'lg'].includes(String(p.chat_font_size))) {
+        prefUpdates.chat_font_size = p.chat_font_size;
+      }
+      if (['INR', 'USD', 'AED', 'EUR'].includes(String(p.currency_pref))) {
+        prefUpdates.currency_pref = p.currency_pref;
+      }
+      if (typeof p.default_expert === 'string' && p.default_expert.trim()) {
+        prefUpdates.default_expert = p.default_expert.trim();
+      }
+      if (typeof p.default_output === 'string' && p.default_output.trim()) {
+        prefUpdates.default_output = p.default_output.trim();
+      }
+      if (typeof p.default_language === 'string' && p.default_language.trim()) {
+        prefUpdates.default_language = p.default_language.trim();
+      }
+      if (Object.keys(prefUpdates).length > 0) {
+        await supabaseAdmin
+          .from('users')
+          .update({ ...prefUpdates, updated_at: new Date().toISOString() })
+          .eq('id', req.appUser.id);
+        updatedPreferences = true;
+      }
+    }
+
+    // 2. Import non-duplicate Profiles (respecting tier limit)
+    if (Array.isArray(payload.profiles) && payload.profiles.length > 0) {
+      const { data: existingProfs } = await supabaseAdmin
+        .from('profiles')
+        .select('name, birth_date, birth_time')
+        .eq('user_id', req.appUser.id);
+
+      const existingKeys = new Set(
+        (existingProfs || []).map(
+          (e) => `${String(e.name).toLowerCase()}|${e.birth_date}|${String(e.birth_time).slice(0, 5)}`
+        )
+      );
+      let currentCount = (existingProfs || []).length;
+
+      for (const raw of payload.profiles) {
+        if (currentCount >= maxProfiles) break;
+        if (!raw || typeof raw !== 'object') continue;
+        const r = raw as Record<string, unknown>;
+        const name = typeof r.name === 'string' ? r.name.trim() : '';
+        const birthDate = typeof r.birth_date === 'string' ? r.birth_date.trim() : '';
+        const birthTime = typeof r.birth_time === 'string' ? r.birth_time.trim() : '';
+        const birthCity = typeof r.birth_city === 'string' ? r.birth_city.trim() : '';
+        const birthCountry = typeof r.birth_country === 'string' ? r.birth_country.trim() : '';
+        if (!name || !birthDate || !birthTime || !birthCity || !birthCountry) continue;
+
+        const key = `${name.toLowerCase()}|${birthDate}|${birthTime.slice(0, 5)}`;
+        if (existingKeys.has(key)) continue;
+
+        const { error: insErr } = await supabaseAdmin.from('profiles').insert({
+          user_id: req.appUser.id,
+          name: name.slice(0, 100),
+          short_name: typeof r.short_name === 'string' ? r.short_name.trim().slice(0, 40) || null : null,
+          is_default: false,
+          birth_date: birthDate,
+          birth_time: birthTime,
+          birth_city: birthCity,
+          birth_state: typeof r.birth_state === 'string' ? r.birth_state : null,
+          birth_country: birthCountry,
+          latitude: Number.isFinite(Number(r.latitude)) ? Number(r.latitude) : 0,
+          longitude: Number.isFinite(Number(r.longitude)) ? Number(r.longitude) : 0,
+          timezone_offset: Number.isFinite(Number(r.timezone_offset)) ? Number(r.timezone_offset) : 5.5,
+          gender: typeof r.gender === 'string' ? r.gender : null,
+          relationship: typeof r.relationship === 'string' ? r.relationship : null,
+          is_activated: false,
+        });
+        if (!insErr) {
+          existingKeys.add(key);
+          currentCount += 1;
+          importedProfiles += 1;
+        }
+      }
+    }
+
+    // 3. Import non-duplicate Custom Prompts (max 10 total)
+    if (Array.isArray(payload.customPrompts) && payload.customPrompts.length > 0) {
+      const { data: existingPrompts } = await supabaseAdmin
+        .from('custom_prompts')
+        .select('title')
+        .eq('user_id', req.appUser.id);
+
+      const promptTitles = new Set(
+        (existingPrompts || []).map((p) => String(p.title).toLowerCase())
+      );
+      let promptCount = (existingPrompts || []).length;
+
+      for (const raw of payload.customPrompts) {
+        if (promptCount >= 10) break;
+        if (!raw || typeof raw !== 'object') continue;
+        const p = raw as Record<string, unknown>;
+        const title = typeof p.title === 'string' ? p.title.trim().slice(0, 80) : '';
+        const promptText = typeof p.prompt_text === 'string' ? p.prompt_text.trim().slice(0, 4000) : '';
+        if (!title || !promptText || promptTitles.has(title.toLowerCase())) continue;
+
+        const { error: pErr } = await supabaseAdmin.from('custom_prompts').insert({
+          user_id: req.appUser.id,
+          title,
+          prompt_text: promptText,
+        });
+        if (!pErr) {
+          promptTitles.add(title.toLowerCase());
+          promptCount += 1;
+          importedPrompts += 1;
+        }
+      }
+    }
+
+    res.json({
+      ok: true,
+      importedProfiles,
+      importedPrompts,
+      updatedPreferences,
+    });
   });
 
   return app;

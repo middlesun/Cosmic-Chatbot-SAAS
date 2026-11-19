@@ -221,6 +221,32 @@
             background-color: #B8B0A4;
         }
 
+        /* Subtle Observatory Night Scrollbars inside dark containers */
+        .observatory-dark-scroll,
+        .observatory-dark-scroll *,
+        [class*="from-[#1F2229]"],
+        [class*="from-[#1F2229]"] * {
+            scrollbar-color: #4A4F5A #1F2229;
+        }
+        .observatory-dark-scroll::-webkit-scrollbar-track,
+        .observatory-dark-scroll *::-webkit-scrollbar-track,
+        [class*="from-[#1F2229]"]::-webkit-scrollbar-track,
+        [class*="from-[#1F2229]"] *::-webkit-scrollbar-track {
+            background: #1F2229;
+        }
+        .observatory-dark-scroll::-webkit-scrollbar-thumb,
+        .observatory-dark-scroll *::-webkit-scrollbar-thumb,
+        [class*="from-[#1F2229]"]::-webkit-scrollbar-thumb,
+        [class*="from-[#1F2229]"] *::-webkit-scrollbar-thumb {
+            background-color: #4A4F5A;
+        }
+        .observatory-dark-scroll::-webkit-scrollbar-thumb:hover,
+        .observatory-dark-scroll *::-webkit-scrollbar-thumb:hover,
+        [class*="from-[#1F2229]"]::-webkit-scrollbar-thumb:hover,
+        [class*="from-[#1F2229]"] *::-webkit-scrollbar-thumb:hover {
+            background-color: #636978;
+        }
+
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 

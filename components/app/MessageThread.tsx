@@ -18,6 +18,7 @@ import type {
   ConversationRecord,
 } from './chatTypes';
 import type { ChatFontSize } from './ChatSettingsModal';
+import Tooltip from './Tooltip';
 
 interface MessageThreadProps {
   conversation: ConversationRecord | null;
@@ -141,10 +142,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [isScrollable, setIsScrollable] = useState(false);
+  const [isScrollingActive, setIsScrollingActive] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const holdRafRef = useRef<number | null>(null);
   const holdTimerRef = useRef<number | null>(null);
+  const scrollIdleTimerRef = useRef<number | null>(null);
+  const isScrollHoveredRef = useRef(false);
   const didHoldScrollRef = useRef(false);
 
   const sizeTokens = FONT_SIZE_STYLES[fontSize] || FONT_SIZE_STYLES.base;
@@ -157,6 +161,28 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     setCanScrollUp(el.scrollTop > 32);
     setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 32);
   }, []);
+
+  const scheduleHideScrollControls = useCallback(() => {
+    if (scrollIdleTimerRef.current !== null) {
+      window.clearTimeout(scrollIdleTimerRef.current);
+      scrollIdleTimerRef.current = null;
+    }
+    scrollIdleTimerRef.current = window.setTimeout(() => {
+      if (
+        !isScrollHoveredRef.current &&
+        holdTimerRef.current === null &&
+        holdRafRef.current === null
+      ) {
+        setIsScrollingActive(false);
+      }
+    }, 1400);
+  }, []);
+
+  const handleThreadScroll = useCallback(() => {
+    updateScrollState();
+    setIsScrollingActive(true);
+    scheduleHideScrollControls();
+  }, [updateScrollState, scheduleHideScrollControls]);
 
   useEffect(() => {
     updateScrollState();
@@ -171,14 +197,22 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       window.cancelAnimationFrame(holdRafRef.current);
       holdRafRef.current = null;
     }
-  }, []);
+    scheduleHideScrollControls();
+  }, [scheduleHideScrollControls]);
 
   useEffect(() => {
-    return () => stopHoldScroll();
+    return () => {
+      stopHoldScroll();
+      if (scrollIdleTimerRef.current !== null) {
+        window.clearTimeout(scrollIdleTimerRef.current);
+        scrollIdleTimerRef.current = null;
+      }
+    };
   }, [stopHoldScroll]);
 
   const startHoldScroll = (direction: 'up' | 'down') => {
     stopHoldScroll();
+    setIsScrollingActive(true);
     didHoldScrollRef.current = false;
 
     holdTimerRef.current = window.setTimeout(() => {
@@ -332,9 +366,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     return (
       <div
         key={conversation?.id || 'empty'}
-        className="animate-cc-tab-panel flex-1 min-h-0 overflow-y-auto px-4 md:px-8 py-8 flex flex-col items-center justify-center"
+        className="animate-cc-tab-panel flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-8 pb-32 sm:pb-36 flex flex-col items-center"
       >
-        <div className="w-full max-w-2xl space-y-7">
+        <div className="w-full max-w-2xl space-y-7 my-auto">
           <div className="space-y-3 text-center">
             <p className="text-xs text-[#8B8275]">
               {profile
@@ -383,11 +417,11 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     <div className="relative flex-1 min-h-0 flex flex-col">
       <div
         ref={scrollContainerRef}
-        onScroll={updateScrollState}
+        onScroll={handleThreadScroll}
         key={conversation?.id || 'thread'}
-        className="animate-cc-tab-panel flex-1 overflow-y-auto px-4 md:px-8 py-6"
+        className="animate-cc-tab-panel flex-1 overflow-y-auto px-5 md:px-8 pt-6 pb-32 sm:pb-36"
       >
-        <div className="mx-auto max-w-3xl space-y-7">
+        <div className="mx-auto max-w-2xl space-y-7">
           {hasMoreMessages && onLoadEarlierMessages && (
             <div className="flex justify-center">
               <button
@@ -444,11 +478,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                       type="button"
                       onClick={() => onToggleExclude(msg)}
                       className="inline-flex items-center gap-1 hover:text-[#3D3830]"
-                      title={
-                        msg.excluded_from_context
-                          ? 'Include in context memory'
-                          : 'Exclude from AI context'
-                      }
                     >
                       {msg.excluded_from_context ? (
                         <>
@@ -670,37 +699,55 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         </div>
       </div>
 
-      {/* Smart Floating Scroll Controls (Tap = jump top/bottom, Press & Hold = glide) */}
-      {isScrollable && messages.length > 0 && (
+      {/* Smart Floating Scroll Controls — hidden by default, visible only while actively scrolling */}
+      {isScrollable && messages.length > 0 && (canScrollUp || canScrollDown) && (
         <div
-          className="absolute right-4 bottom-4 z-20 flex flex-col rounded-2xl bg-[#EAE3D7]/90 backdrop-blur-md border border-[#3D3830]/15 shadow-md overflow-hidden"
-          title="Tap to jump top/bottom · Hold to glide smoothly"
+          onMouseEnter={() => {
+            isScrollHoveredRef.current = true;
+            if (scrollIdleTimerRef.current !== null) {
+              window.clearTimeout(scrollIdleTimerRef.current);
+              scrollIdleTimerRef.current = null;
+            }
+          }}
+          onMouseLeave={() => {
+            isScrollHoveredRef.current = false;
+            scheduleHideScrollControls();
+          }}
+          className={`absolute right-4 bottom-32 sm:bottom-36 z-20 transition-all duration-200 ${
+            isScrollingActive
+              ? 'opacity-100 pointer-events-auto translate-y-0'
+              : 'opacity-0 pointer-events-none translate-y-1'
+          }`}
         >
-          <button
-            type="button"
-            disabled={!canScrollUp}
-            onPointerDown={() => startHoldScroll('up')}
-            onPointerUp={() => handleScrollTap('up')}
-            onPointerLeave={stopHoldScroll}
-            onPointerCancel={stopHoldScroll}
-            aria-label="Scroll to top or hold to scroll up"
-            className="p-2 text-[#3D3830] hover:bg-[#FAF7F2]/70 disabled:opacity-30 disabled:pointer-events-none transition-colors"
-          >
-            <ChevronUp className="h-4 w-4" />
-          </button>
-          <div className="h-px bg-[#3D3830]/10" />
-          <button
-            type="button"
-            disabled={!canScrollDown}
-            onPointerDown={() => startHoldScroll('down')}
-            onPointerUp={() => handleScrollTap('down')}
-            onPointerLeave={stopHoldScroll}
-            onPointerCancel={stopHoldScroll}
-            aria-label="Scroll to bottom or hold to scroll down"
-            className="p-2 text-[#3D3830] hover:bg-[#FAF7F2]/70 disabled:opacity-30 disabled:pointer-events-none transition-colors"
-          >
-            <ChevronDown className="h-4 w-4" />
-          </button>
+          <Tooltip content="Tap to jump top/bottom · Hold to glide smoothly" placement="left">
+            <div className="flex flex-col rounded-2xl bg-[#EAE3D7]/90 backdrop-blur-md border border-[#3D3830]/15 shadow-md overflow-hidden">
+              <button
+                type="button"
+                disabled={!canScrollUp}
+                onPointerDown={() => startHoldScroll('up')}
+                onPointerUp={() => handleScrollTap('up')}
+                onPointerLeave={stopHoldScroll}
+                onPointerCancel={stopHoldScroll}
+                aria-label="Scroll to top or hold to scroll up"
+                className="p-2 text-[#3D3830] hover:bg-[#FAF7F2]/70 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              >
+                <ChevronUp className="h-4 w-4" />
+              </button>
+              <div className="h-px bg-[#3D3830]/10" />
+              <button
+                type="button"
+                disabled={!canScrollDown}
+                onPointerDown={() => startHoldScroll('down')}
+                onPointerUp={() => handleScrollTap('down')}
+                onPointerLeave={stopHoldScroll}
+                onPointerCancel={stopHoldScroll}
+                aria-label="Scroll to bottom or hold to scroll down"
+                className="p-2 text-[#3D3830] hover:bg-[#FAF7F2]/70 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </div>
+          </Tooltip>
         </div>
       )}
     </div>

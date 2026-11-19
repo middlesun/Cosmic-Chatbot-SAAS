@@ -73,6 +73,12 @@ interface ProfileOption {
   birth_city?: string;
 }
 
+const DASHA_LEVEL_HINTS: Record<DashaProgressItem['level'], string> = {
+  Mahadasha: 'Major life chapter',
+  Antardasha: 'Active sub-phase',
+  Pratyantardasha: 'Current micro-window',
+};
+
 const TimingRadarDashboard: React.FC = () => {
   const { isPreviewMode, getAccessToken } = useAuth();
   const [profiles, setProfiles] = useState<ProfileOption[]>([]);
@@ -171,6 +177,18 @@ const TimingRadarDashboard: React.FC = () => {
     );
   }
 
+  const maha = radar.dashaLadder.find((d) => d.level === 'Mahadasha')?.lord;
+  const antar = radar.dashaLadder.find((d) => d.level === 'Antardasha')?.lord;
+  const phaseSummary = [maha, antar].filter(Boolean).join('–');
+  const seededChatPrompt = phaseSummary
+    ? `What does my current ${phaseSummary} phase mean for my priorities right now?`
+    : `How should I navigate my current planetary timing phase?`;
+  const chatParams = new URLSearchParams();
+  if (radar.profileId) chatParams.set('profileId', radar.profileId);
+  chatParams.set('prompt', seededChatPrompt);
+  if (isPreviewMode) chatParams.set('preview', '1');
+  const discussPhaseUrl = `/app/chat?${chatParams.toString()}`;
+
   return (
     <section className="space-y-5">
       {/* Observatory Night Radar Container */}
@@ -220,11 +238,11 @@ const TimingRadarDashboard: React.FC = () => {
             )}
 
             <Link
-              to="/app/chat"
+              to={discussPhaseUrl}
               className="inline-flex items-center gap-1.5 rounded-full bg-[#F4EFE6]/12 border border-[#F4EFE6]/15 px-4 py-2 text-xs font-medium text-[#F4EFE6] hover:bg-[#F4EFE6]/20 transition-colors shrink-0"
             >
               <Sparkles className="h-3.5 w-3.5 text-[#B8965A]" />
-              <span>Discuss Timing in Chat</span>
+              <span>Ask astrologer about this phase →</span>
             </Link>
           </div>
         </div>
@@ -233,10 +251,15 @@ const TimingRadarDashboard: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-7">
           {/* Active Dasha Progress Bars */}
           <div className="lg:col-span-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
-                Vimshottari Dasha Progression
-              </h3>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
+                  Vimshottari Dasha Progression
+                </h3>
+                <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
+                  Planetary life cycles active in your chart right now
+                </p>
+              </div>
               {radar.upcomingShift && (
                 <span className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#B8965A]">
                   Next {radar.upcomingShift.type.slice(0, 2)}: {radar.upcomingShift.toLord} ({radar.upcomingShift.transitionDate})
@@ -250,12 +273,15 @@ const TimingRadarDashboard: React.FC = () => {
                   key={item.level}
                   className="rounded-2xl bg-[#F4EFE6]/5 border border-[#F4EFE6]/10 p-4 space-y-2"
                 >
-                  <div className="flex items-center justify-between text-xs">
-                    <div>
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <div className="min-w-0">
                       <span className="text-[#F4EFE6]/60 mr-2">{item.level}</span>
                       <span className="font-medium text-[#F4EFE6]">{item.lord}</span>
+                      <span className="text-[11px] text-[#F4EFE6]/50 ml-2">
+                        · {DASHA_LEVEL_HINTS[item.level]}
+                      </span>
                     </div>
-                    <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[#F4EFE6]/80">
+                    <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[#F4EFE6]/80 shrink-0">
                       {item.daysRemaining.toLocaleString()}d left · {item.percentElapsed}%
                     </span>
                   </div>
@@ -348,9 +374,14 @@ const TimingRadarDashboard: React.FC = () => {
 
         {/* Row 2: Convergence Timing Windows */}
         <div className="space-y-3 pt-2 border-t border-[#F4EFE6]/10">
-          <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
-            Dasha & Gochar Convergence Windows
-          </h3>
+          <div>
+            <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
+              Dasha & Gochar Convergence Windows
+            </h3>
+            <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
+              Dates when your personal life cycle aligns with current sky transits
+            </p>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {radar.convergenceWindows.map((win, idx) => (
               <div
@@ -375,9 +406,14 @@ const TimingRadarDashboard: React.FC = () => {
         {/* Row 3: Live Slow-Planet Gochar Relative to Natal Lagna & Moon */}
         {radar.slowPlanetShifts.length > 0 && (
           <div className="space-y-3 pt-2 border-t border-[#F4EFE6]/10">
-            <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
-              Live Gochar Alignment Over Natal Houses
-            </h3>
+            <div>
+              <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
+                Live Gochar Alignment Over Natal Houses
+              </h3>
+              <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
+                Current sky positions (Gochar) relative to your birth Ascendant (Lagna)
+              </p>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {radar.slowPlanetShifts.map((t) => (
                 <div

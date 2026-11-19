@@ -22,7 +22,7 @@ const AuthPage: React.FC = () => {
 
   useEffect(() => {
     if (!isLoading && session) {
-      navigate('/app/dashboard', { replace: true });
+      navigate('/app/chat', { replace: true });
     }
   }, [isLoading, session, navigate]);
 
@@ -49,7 +49,7 @@ const AuthPage: React.FC = () => {
     const { error: oauthErr } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/app/dashboard`,
+        redirectTo: `${window.location.origin}/app/chat`,
       },
     });
     if (oauthErr) {
@@ -85,7 +85,7 @@ const AuthPage: React.FC = () => {
         if (signInErr) {
           setError(signInErr.message);
         } else {
-          navigate('/app/dashboard');
+          navigate('/app/chat');
         }
       } else if (view === 'signup') {
         if (password.length < 8) {
@@ -100,7 +100,7 @@ const AuthPage: React.FC = () => {
           email: email.trim(),
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/app/dashboard`,
+            emailRedirectTo: `${window.location.origin}/app/chat`,
             data: {
               full_name: fullName.trim() || email.split('@')[0],
               referral_code: referralCode.trim().toUpperCase() || undefined,
@@ -110,13 +110,13 @@ const AuthPage: React.FC = () => {
         if (signUpErr) {
           setError(signUpErr.message);
         } else if (data.session) {
-          navigate('/app/dashboard');
+          navigate('/app/chat');
         } else {
           setNotice('Check your email for the confirmation link to activate your account.');
         }
       } else if (view === 'forgot') {
         const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-          redirectTo: `${window.location.origin}/app/dashboard`,
+          redirectTo: `${window.location.origin}/app/chat`,
         });
         if (resetErr) {
           setError(resetErr.message);

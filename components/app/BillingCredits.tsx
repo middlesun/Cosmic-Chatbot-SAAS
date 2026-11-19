@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowUpRight, Check, Coins, Copy, Gift, Plus, Receipt, Shield, Sparkles } from 'lucide-react';
+import { ArrowUpRight, Check, Coins, Copy, Gift, Plus, Receipt, Shield, Sparkles, X } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 type SupportedCurrency = 'INR' | 'USD' | 'AED' | 'EUR';
@@ -62,6 +62,7 @@ const BillingCredits: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copiedReferral, setCopiedReferral] = useState(false);
+  const [showReferralModal, setShowReferralModal] = useState(false);
 
   useEffect(() => {
     if (appUser?.currency_pref) {
@@ -164,7 +165,7 @@ const BillingCredits: React.FC = () => {
     : `${window.location.origin}/app/login`;
 
   const tierProfileLimit =
-    appUser?.tier === 'guru' ? 200 : appUser?.tier === 'pro' ? 50 : 5;
+    appUser?.tier === 'guru' ? 200 : appUser?.tier === 'pro' ? 100 : 10;
 
   const currentTierLabel =
     appUser?.tier === 'guru'
@@ -173,12 +174,7 @@ const BillingCredits: React.FC = () => {
       ? 'Professional Plan'
       : 'Personal Plan';
 
-  const currentActivationRate =
-    appUser?.tier === 'guru'
-      ? 'Free'
-      : appUser?.tier === 'pro'
-      ? '1,000 Credits'
-      : '2,000 Credits';
+  const currentActivationRate = 'Free';
 
   const scrollToSection = (sectionId: string) => {
     const el = document.getElementById(sectionId);
@@ -186,6 +182,15 @@ const BillingCredits: React.FC = () => {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
+
+  useEffect(() => {
+    if (!showReferralModal) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowReferralModal(false);
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [showReferralModal]);
 
   const handleCopyReferral = async () => {
     await navigator.clipboard.writeText(referralUrl);
@@ -205,7 +210,7 @@ const BillingCredits: React.FC = () => {
             Credits, Plans & Billing
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-[#5C5449] leading-relaxed">
-            Top up consultation credits starting at ₹1,000 (10,000 Credits) or upgrade your membership tier for higher saved profile limits and discounted chart activations.
+            Top up consultation credits starting at ₹1,000 (10,000 Credits) or upgrade your membership tier for higher saved profile limits and included monthly credits.
           </p>
         </div>
 
@@ -221,7 +226,7 @@ const BillingCredits: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => scrollToSection('refer-and-earn')}
+            onClick={() => setShowReferralModal(true)}
             className="inline-flex items-center gap-2 rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-5 py-2.5 text-sm font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap"
           >
             <Gift className="h-4 w-4 text-[#8B7355]" />
@@ -300,7 +305,7 @@ const BillingCredits: React.FC = () => {
               {currentActivationRate}
             </p>
             <p className="mt-1 text-xs text-[#5C5449]">
-              Per birth chart activation on your plan
+              Included free on all plans
             </p>
           </div>
         </div>
@@ -331,7 +336,7 @@ const BillingCredits: React.FC = () => {
             Top-Up Credit Packs
           </h2>
           <p className="text-xs text-[#5C5449]">
-            Credits never expire and work across Chat consultations, chart activations, and Deep Research reports.
+            Credits never expire and work across Chat consultations and Deep Research reports.
           </p>
         </div>
 
@@ -385,7 +390,7 @@ const BillingCredits: React.FC = () => {
             Observatory Membership Tiers
           </h2>
           <p className="text-xs text-[#5C5449]">
-            Expand saved birth profile capacity and reduce or eliminate per-chart activation costs.
+            Expand saved birth profile capacity and receive included monthly consultation credits.
           </p>
         </div>
 
@@ -482,7 +487,7 @@ const BillingCredits: React.FC = () => {
                 Invite & Earn 5,000 Credits
               </h3>
               <p className="text-xs text-[#5C5449] mt-1 leading-relaxed max-w-2xl">
-                Share your personal referral link. When a friend signs up and completes their first paid credit purchase or chart activation, you both receive 5,000 credits.
+                Share your personal referral link. When a friend signs up and completes their first paid credit purchase or subscription upgrade, you both receive 5,000 credits.
               </p>
             </div>
           </div>
@@ -566,6 +571,72 @@ const BillingCredits: React.FC = () => {
           )}
         </div>
       </section>
+
+      {/* Refer & Earn Modal */}
+      {showReferralModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#3D3830]/40 backdrop-blur-sm p-4"
+          onClick={() => setShowReferralModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="referral-modal-title"
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/15 p-6 md:p-8 shadow-2xl space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <Gift className="h-5 w-5 text-[#8B7355] shrink-0 mt-1" />
+                <div>
+                  <h2
+                    id="referral-modal-title"
+                    className="font-serif text-2xl font-medium text-[#3D3830]"
+                  >
+                    Invite & Earn 5,000 Credits
+                  </h2>
+                  <p className="text-xs text-[#5C5449] mt-1 leading-relaxed">
+                    Share your personal referral link. When a friend signs up and completes their first paid credit purchase or subscription upgrade, you both receive 5,000 credits.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReferralModal(false)}
+                aria-label="Close referral modal"
+                className="p-1.5 rounded-full text-[#8B8275] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors shrink-0"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="rounded-2xl bg-[#F1ECE3] px-4 py-3 flex items-center justify-between text-xs text-[#3D3830]">
+              <span>Referral Status</span>
+              <span className="font-['JetBrains_Mono',monospace] tabular-nums">
+                {rewardedReferralsCount} Rewarded · {pendingReferralsCount} Pending
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <input
+                type="text"
+                readOnly
+                value={referralUrl}
+                aria-label="Your personal referral link"
+                className="flex-1 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs font-['JetBrains_Mono',monospace] text-[#3D3830]"
+              />
+              <button
+                type="button"
+                onClick={() => void handleCopyReferral()}
+                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors whitespace-nowrap shrink-0"
+              >
+                {copiedReferral ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                <span>{copiedReferral ? 'Copied' : 'Copy Link'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

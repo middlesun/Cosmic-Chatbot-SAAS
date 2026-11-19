@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Currency, Category } from '../types';
+import FloatingScrollControls from './FloatingScrollControls';
 
 interface HeaderProps {
   currency: Currency;
@@ -18,23 +19,6 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ currency, setCurrency, onLogoClick, onCategoryClick, onContactClick, onTestimonialsClick, onWhyUsClick, onPayClick, onQuickOrderClick, onMyEssaysClick, onFAQsClick }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [showGoTop, setShowGoTop] = useState(false);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setShowGoTop(window.scrollY > 400);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const scrollToBottom = () => {
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-  };
 
   const getCurrencyIcon = () => {
     if (currency === Currency.USD) return '$';
@@ -217,23 +201,8 @@ const Header: React.FC<HeaderProps> = ({ currency, setCurrency, onLogoClick, onC
         </div>
       </div>
 
-      {/* Floating Action Buttons */}
-      <div className="fixed bottom-8 right-8 z-[100] flex flex-col gap-3">
-        <button 
-          onClick={scrollToTop}
-          title="Jump to Top"
-          className={`w-14 h-14 bg-indigo-950 text-white rounded-full shadow-2xl transition-all duration-700 transform hover:scale-110 active:scale-95 flex items-center justify-center ${showGoTop ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0 pointer-events-none'}`}
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7"/></svg>
-        </button>
-        <button 
-          onClick={scrollToBottom}
-          title="Jump to Bottom"
-          className={`w-14 h-14 bg-indigo-950 text-white rounded-full shadow-2xl transition-all duration-700 transform hover:scale-110 active:scale-95 flex items-center justify-center ${showGoTop ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0 pointer-events-none'}`}
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
-        </button>
-      </div>
+      {/* Floating Scroll Controls */}
+      <FloatingScrollControls />
     </>
   );
 };

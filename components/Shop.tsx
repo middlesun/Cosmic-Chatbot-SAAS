@@ -150,7 +150,7 @@ const Shop: React.FC<ShopProps> = ({
               <button 
                 onClick={handlePriceSortCycle}
                 className={`h-[56px] w-[56px] flex-shrink-0 rounded-2xl border-2 transition-silky shadow-sm flex items-center justify-center ${sortBy !== 'default' ? 'bg-indigo-500 border-indigo-500 text-white shadow-md' : 'bg-white/10 backdrop-blur-md border-white/10 text-indigo-300 hover:text-white'}`}
-                title="Sort by price"
+                aria-label="Sort by price"
               >
                 {getSortIcon()}
               </button>

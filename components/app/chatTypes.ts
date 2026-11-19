@@ -70,3 +70,16 @@ export interface FavoriteMessageRecord extends ChatMessageRecord {
   conversation_title: string;
   profile_id: string | null;
 }
+
+export type ChatToneMode = 'friendly' | 'technical';
+export type ChatResponseLength = 'short' | 'detailed';
+
+export interface ChatAttachmentInput {
+  id: string;
+  kind: 'image' | 'pdf';
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataUrl: string;
+}
+

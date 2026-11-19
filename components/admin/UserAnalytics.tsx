@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Check, Coins, MapPin, Search, ShieldAlert, ShieldCheck } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { AlertTriangle, Check, Coins, MapPin, Search, ShieldAlert, ShieldCheck } from 'lucide-react';
 import CustomSelect from '../app/CustomSelect';
 
 export interface AdminUserRow {
@@ -17,6 +17,9 @@ export interface AdminUserRow {
   profile_count: number;
   activated_profile_count: number;
   conversation_count: number;
+  ip_cluster_size?: number;
+  ip_cluster_id?: string | null;
+  duplicate_chart_count?: number;
 }
 
 interface UserAnalyticsProps {
@@ -39,6 +42,20 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({
   const [adjustmentNote, setAdjustmentNote] = useState<string>('Admin courtesy credit adjustment');
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
+
+  const isFlaggedAccount = (u: AdminUserRow) =>
+    (u.ip_cluster_size || 0) >= 2 || (u.duplicate_chart_count || 0) > 0;
+
+  const flaggedCount = useMemo(
+    () => users.filter((u) => isFlaggedAccount(u)).length,
+    [users]
+  );
+
+  const visibleUsers = useMemo(
+    () => (showFlaggedOnly ? users.filter((u) => isFlaggedAccount(u)) : users),
+    [showFlaggedOnly, users]
+  );
 
   const patchUser = async (
     userId: string,
@@ -91,9 +108,28 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({
           />
         </div>
 
-        <span className="text-xs font-['JetBrains_Mono',monospace] tabular-nums text-[#8B8275]">
-          {users.length} member accounts shown
-        </span>
+        <div className="flex flex-wrap items-center gap-3">
+          {flaggedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowFlaggedOnly((prev) => !prev)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                showFlaggedOnly
+                  ? 'border-[#7A3E36] bg-[#7A3E36]/10 text-[#7A3E36]'
+                  : 'border-[#3D3830]/15 bg-[#FDFBF7] text-[#7A3E36] hover:bg-[#F1ECE3]'
+              }`}
+            >
+              <AlertTriangle className="h-3 w-3" />
+              <span>
+                {flaggedCount} flagged cluster{flaggedCount === 1 ? '' : 's'}
+                {showFlaggedOnly ? ' · Showing flagged' : ''}
+              </span>
+            </button>
+          )}
+          <span className="text-xs font-['JetBrains_Mono',monospace] tabular-nums text-[#8B8275]">
+            {visibleUsers.length} member accounts shown
+          </span>
+        </div>
       </div>
 
       {feedback && (
@@ -118,7 +154,7 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3D3830]/8">
-              {users.map((u) => (
+              {visibleUsers.map((u) => (
                 <React.Fragment key={u.id}>
                   <tr className="hover:bg-[#FAF7F2]/60">
                     <td className="px-5 py-3.5">
@@ -131,6 +167,19 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                         )}
                       </p>
                       <p className="text-[11px] text-[#8B8275]">{u.email}</p>
+                      {((u.ip_cluster_size || 0) >= 2 || (u.duplicate_chart_count || 0) > 0) && (
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-['JetBrains_Mono',monospace] text-[#7A3E36]">
+                          {(u.ip_cluster_size || 0) >= 2 && (
+                            <span>
+                              IP cluster: {u.ip_cluster_size} accts
+                              {u.ip_cluster_id ? ` (#${u.ip_cluster_id})` : ''}
+                            </span>
+                          )}
+                          {(u.duplicate_chart_count || 0) > 0 && (
+                            <span>· Duplicate chart match</span>
+                          )}
+                        </div>
+                      )}
                     </td>
 
                     <td className="px-5 py-3.5 text-[#5C5449] whitespace-nowrap">

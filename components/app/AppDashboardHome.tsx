@@ -8,7 +8,7 @@ const AppDashboardHome: React.FC = () => {
   const { appUser, stats } = useAuth();
 
   const tierProfileLimit =
-    appUser?.tier === 'guru' ? 200 : appUser?.tier === 'pro' ? 50 : 5;
+    appUser?.tier === 'guru' ? 200 : appUser?.tier === 'pro' ? 100 : 10;
 
   const tierLabel =
     appUser?.tier === 'guru'
@@ -54,7 +54,7 @@ const AppDashboardHome: React.FC = () => {
               Balance & Capacity
             </h2>
             <p className="mt-1.5 text-sm text-[#5C5449] max-w-xl">
-              Credits power multi-system Vedic consultations, profile chart activations, and deep research reports.
+              Credits power multi-system Vedic consultations and deep research reports.
             </p>
           </div>
 

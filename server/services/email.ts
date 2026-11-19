@@ -190,3 +190,67 @@ export async function sendClientInviteEmail(params: {
     html,
   });
 }
+
+export async function sendSupportInquiryEmail(params: {
+  fromName: string;
+  fromEmail: string;
+  category: string;
+  subject: string;
+  message: string;
+  userId: string;
+}): Promise<SendEmailResult> {
+  const supportTarget =
+    (process.env.SUPPORT_EMAIL || process.env.RESEND_SUPPORT_EMAIL || 'support@cosmiccouncil.pro').trim();
+  const safeMsg = params.message
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br/>');
+
+  const html = wrapObservatoryLayout(
+    `Support Request: ${params.category}`,
+    `<div style="background:#F1ECE3;border-radius:14px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:#3D3830;">
+       <div><strong>From:</strong> ${params.fromName} (${params.fromEmail})</div>
+       <div><strong>User ID:</strong> ${params.userId}</div>
+       <div><strong>Topic:</strong> ${params.category}</div>
+       <div><strong>Subject:</strong> ${params.subject}</div>
+     </div>
+     <div style="font-size:14px;line-height:1.65;color:#3D3830;">${safeMsg}</div>`
+  );
+
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    return { sent: false, reason: 'RESEND_API_KEY not configured' };
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: FROM_EMAIL,
+        to: [supportTarget],
+        reply_to: params.fromEmail,
+        subject: `[Support · ${params.category}] ${params.subject}`,
+        html,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        sent: false,
+        reason: (data as { message?: string }).message || `Resend error (${response.status})`,
+      };
+    }
+    return { sent: true, id: (data as { id?: string }).id };
+  } catch (err) {
+    return {
+      sent: false,
+      reason: err instanceof Error ? err.message : 'Email transport failed',
+    };
+  }
+}
+

@@ -18,12 +18,33 @@ interface OverviewMetrics {
   totalCreditsCirculating: number;
 }
 
+interface IntegrationReadiness {
+  supabaseServer: boolean;
+  supabaseClient: boolean;
+  openrouter: boolean;
+  freeAstrologyApi: boolean;
+  dodoPayments: boolean;
+  resend: boolean;
+  sanityBlog: boolean;
+}
+
 type AdminTab = 'users' | 'prompts' | 'reports' | 'import';
+
+const INTEGRATION_LABELS: Array<{ key: keyof IntegrationReadiness; label: string }> = [
+  { key: 'supabaseServer', label: 'Supabase Admin' },
+  { key: 'supabaseClient', label: 'Supabase Client Auth' },
+  { key: 'openrouter', label: 'OpenRouter AI' },
+  { key: 'freeAstrologyApi', label: 'FreeAstrologyAPI' },
+  { key: 'dodoPayments', label: 'Dodo Payments' },
+  { key: 'resend', label: 'Resend Email' },
+  { key: 'sanityBlog', label: 'Sanity Blog CMS' },
+];
 
 const AdminPanel: React.FC = () => {
   const { getAccessToken } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [metrics, setMetrics] = useState<OverviewMetrics | null>(null);
+  const [integrations, setIntegrations] = useState<IntegrationReadiness | null>(null);
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [prompts, setPrompts] = useState<SystemPromptRow[]>([]);
@@ -59,6 +80,7 @@ const AdminPanel: React.FC = () => {
       ]);
 
       setMetrics(ov.metrics || null);
+      setIntegrations(ov.integrations || null);
       setUsers(usr.users || []);
       setPrompts(pr.prompts || []);
       setReports(rep.reports || []);
@@ -128,6 +150,39 @@ const AdminPanel: React.FC = () => {
                 {metrics.totalCreditsCirculating.toLocaleString()}
               </p>
             </div>
+          </div>
+        </section>
+      )}
+
+      {integrations && (
+        <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 md:p-6 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-xs font-medium uppercase tracking-wider text-[#5C5449]">
+              Platform Environment Readiness
+            </h2>
+            <span className="text-[11px] text-[#8B8275]">Admin-only integration check</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+            {INTEGRATION_LABELS.map((item) => {
+              const ready = Boolean(integrations[item.key]);
+              return (
+                <div
+                  key={item.key}
+                  className="rounded-2xl border border-[#3D3830]/10 bg-[#FAF7F2] px-3.5 py-2.5 flex flex-col justify-between gap-1"
+                >
+                  <span className="text-[11px] font-medium text-[#3D3830] truncate">
+                    {item.label}
+                  </span>
+                  <span
+                    className={`text-[11px] font-['JetBrains_Mono',monospace] ${
+                      ready ? 'text-[#2D6A4F]' : 'text-[#7A3E36]'
+                    }`}
+                  >
+                    {ready ? 'Configured' : 'Missing'}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

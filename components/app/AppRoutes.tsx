@@ -51,7 +51,7 @@ const AppRoutes: React.FC = () => {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to="/app/dashboard" replace />} />
+          <Route index element={<Navigate to="/app/chat" replace />} />
           <Route path="dashboard" element={<AppDashboardHome />} />
           <Route path="profiles" element={<ProfileManager />} />
           <Route path="chat" element={<ChatWorkspace />} />
@@ -69,7 +69,7 @@ const AppRoutes: React.FC = () => {
             }
           />
         </Route>
-        <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/app/chat" replace />} />
       </Routes>
     </AuthProvider>
   );

@@ -199,7 +199,7 @@ const MyPromptsModal: React.FC<MyPromptsModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteId(item.id)}
-                        title="Delete prompt"
+                        aria-label="Delete prompt"
                         className="p-1.5 rounded-full text-[#8B8275] hover:text-[#7A3E36] hover:bg-[#3D3830]/10"
                       >
                         <Trash2 className="h-3.5 w-3.5" />

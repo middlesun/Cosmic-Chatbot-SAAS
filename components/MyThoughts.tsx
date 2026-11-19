@@ -301,7 +301,7 @@ const MyThoughts: React.FC<MyThoughtsProps> = ({
               <span>/</span>
               <span className="hover:text-indigo-950 cursor-pointer transition-colors" onClick={handleBack}>Blog</span>
               <span>/</span>
-              <span className="text-indigo-950 font-bold truncate max-w-[150px] sm:max-w-[300px]" title={activeArticle.title}>{activeArticle.title}</span>
+              <span className="text-indigo-950 font-bold truncate max-w-[150px] sm:max-w-[300px]">{activeArticle.title}</span>
             </nav>
 
             {/* Back Button */}

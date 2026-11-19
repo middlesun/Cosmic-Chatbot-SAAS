@@ -2,11 +2,14 @@ import { Router } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import {
+  PROMPT_EXTRACTION_REFUSAL,
   countWords,
+  detectPromptExtractionAttempt,
   generateConversationTitle,
   generateFollowUpQuestions,
   isOpenRouterConfigured,
   runQuickTool,
+  sanitizeAssistantOutput,
   streamConsultationResponse,
 } from '../services/geminiOrchestrator';
 import {
@@ -14,6 +17,7 @@ import {
   updateProfileMemoryAfterTurn,
 } from '../services/memoryArchivist';
 import { getPublicChatCatalogCached } from '../services/promptDefaults';
+import { checkRateLimit } from '../services/abuseGuard';
 
 const router = Router();
 
@@ -321,7 +325,7 @@ router.get('/favorites', requireAuth, async (req: AuthenticatedRequest, res) => 
   const convMap = new Map(convs.map((c) => [c.id, c]));
   const { data: starred, error } = await supabaseAdmin
     .from('messages')
-    .select('*')
+    .select(MESSAGE_SELECT_COLUMNS)
     .in('conversation_id', convs.map((c) => c.id))
     .eq('is_starred', true)
     .order('created_at', { ascending: false })
@@ -349,17 +353,14 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     return;
   }
 
-  if (!isOpenRouterConfigured()) {
-    res.status(503).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' });
-    return;
-  }
-
-  if (req.appUser.credits_balance < MIN_CREDITS_TO_CHAT) {
-    res.status(402).json({
-      error: `Minimum ${MIN_CREDITS_TO_CHAT} credits required to start a consultation. Please top up credits.`,
-      code: 'INSUFFICIENT_CREDITS',
-    });
-    return;
+  if (!req.appUser.is_admin) {
+    const burst = checkRateLimit(`chat_msg:${req.appUser.id}`, 20, 2 * 60 * 1000);
+    if (!burst.allowed) {
+      res.status(429).json({
+        error: 'Please pause a moment before sending another message.',
+      });
+      return;
+    }
   }
 
   const {
@@ -368,14 +369,55 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     mode,
     outputFormat,
     language,
+    toneMode,
+    responseLength,
+    extraProfileIds,
+    attachments,
     parentMessageId,
   } = req.body || {};
 
-  const promptText = typeof content === 'string' ? content.trim() : '';
-  if (!promptText) {
+  const validAttachments: Array<{
+    kind: 'image' | 'pdf';
+    name: string;
+    mimeType: string;
+    dataUrl: string;
+  }> = Array.isArray(attachments)
+    ? attachments
+        .slice(0, 4)
+        .filter((att): att is { kind: 'image' | 'pdf'; name: string; mimeType: string; dataUrl: string } => {
+          if (!att || typeof att !== 'object') return false;
+          const d = typeof att.dataUrl === 'string' ? att.dataUrl : '';
+          if (att.kind === 'image' && d.startsWith('data:image/')) return true;
+          if (att.kind === 'pdf' && d.startsWith('data:application/pdf')) return true;
+          return false;
+        })
+        .map((att) => ({
+          kind: att.kind,
+          name: typeof att.name === 'string' && att.name.trim() ? att.name.trim().slice(0, 120) : (att.kind === 'pdf' ? 'document.pdf' : 'image.jpg'),
+          mimeType: typeof att.mimeType === 'string' ? att.mimeType : (att.kind === 'pdf' ? 'application/pdf' : 'image/jpeg'),
+          dataUrl: att.dataUrl,
+        }))
+    : [];
+
+  const rawPromptText = typeof content === 'string' ? content.trim() : '';
+  if (!rawPromptText && validAttachments.length === 0) {
     res.status(400).json({ error: 'Message content cannot be empty' });
     return;
   }
+
+  const normalizedExtraProfileIds: string[] = Array.isArray(extraProfileIds)
+    ? Array.from(
+        new Set(
+          extraProfileIds
+            .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+            .slice(0, 3)
+        )
+      )
+    : [];
+
+  const promptText =
+    rawPromptText ||
+    'Please analyze the attached file(s) in the context of this consultation.';
 
   const { data: conversation } = await supabaseAdmin
     .from('conversations')
@@ -389,7 +431,36 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     return;
   }
 
+  const isExtractionProbe = detectPromptExtractionAttempt(promptText);
+  if (isExtractionProbe) {
+    const userProbeRate = checkRateLimit(`extract_probe:${req.appUser.id}`, 5, 15 * 60 * 1000);
+    const ipProbeAllowed = req.clientIpHash
+      ? checkRateLimit(`extract_probe_ip:${req.clientIpHash}`, 8, 15 * 60 * 1000).allowed
+      : true;
+
+    if (!userProbeRate.allowed || !ipProbeAllowed) {
+      res.status(429).json({
+        error: 'Too many invalid policy requests. Please wait a few minutes and ask a chart-related question.',
+      });
+      return;
+    }
+  } else {
+    if (!isOpenRouterConfigured()) {
+      res.status(503).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' });
+      return;
+    }
+
+    if (req.appUser.credits_balance < MIN_CREDITS_TO_CHAT) {
+      res.status(402).json({
+        error: `Minimum ${MIN_CREDITS_TO_CHAT} credits required to start a consultation. Please top up credits.`,
+        code: 'INSUFFICIENT_CREDITS',
+      });
+      return;
+    }
+  }
+
   let profileData = null;
+  let scopeMemoryContext: string | null = null;
   if (conversation.profile_id) {
     const { data: prof } = await supabaseAdmin
       .from('profiles')
@@ -400,12 +471,84 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       .eq('user_id', req.appUser.id)
       .maybeSingle();
     profileData = prof || null;
+  } else if (conversation.use_full_profile_memory) {
+    const targetModeType =
+      conversation.mode_type === 'learn_astrology' ? 'learn_astrology' : 'reading';
+    const { data: priorConvs } = await supabaseAdmin
+      .from('conversations')
+      .select('id, title')
+      .eq('user_id', req.appUser.id)
+      .is('profile_id', null)
+      .eq('mode_type', targetModeType)
+      .neq('id', conversation.id)
+      .order('updated_at', { ascending: false })
+      .limit(5);
+
+    if (priorConvs && priorConvs.length > 0) {
+      const priorIds = priorConvs.map((c) => c.id);
+      const { data: priorMsgs } = await supabaseAdmin
+        .from('messages')
+        .select('conversation_id, role, content, created_at')
+        .in('conversation_id', priorIds)
+        .eq('excluded_from_context', false)
+        .order('created_at', { ascending: false })
+        .limit(12);
+
+      if (priorMsgs && priorMsgs.length > 0) {
+        const titleMap = new Map(priorConvs.map((c) => [c.id, c.title]));
+        const ordered = [...priorMsgs].reverse();
+        const snippets = ordered.map((m) => {
+          const prefix = m.role === 'user' ? 'User' : 'Council';
+          const topic = titleMap.get(m.conversation_id) || 'Earlier Session';
+          return `[${topic}] ${prefix}: ${String(m.content || '').slice(0, 220)}`;
+        });
+        scopeMemoryContext = snippets.join('\n').slice(0, 1800);
+      }
+    }
+  }
+
+  const extraIdsFiltered = normalizedExtraProfileIds.filter(
+    (id) => id !== conversation.profile_id
+  );
+  let extraProfilesData: Array<{
+    id: string;
+    name: string;
+    is_activated: boolean;
+    chart_text_context: string | null;
+    profile_memory_summary: string | null;
+    birth_date: string;
+    birth_time: string;
+    birth_city: string;
+    birth_country: string;
+  }> = [];
+
+  if (extraIdsFiltered.length > 0) {
+    const { data: extraProfs } = await supabaseAdmin
+      .from('profiles')
+      .select(
+        'id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_country'
+      )
+      .in('id', extraIdsFiltered)
+      .eq('user_id', req.appUser.id);
+    extraProfilesData = extraProfs || [];
   }
 
   const expertSlug = typeof expert === 'string' && expert ? expert : req.appUser.default_expert || 'council_synthesis';
   const modeSlug = typeof mode === 'string' && mode ? mode : (conversation.mode_type === 'learn_astrology' ? 'learn_astrology' : 'general');
   const outputSlug = typeof outputFormat === 'string' && outputFormat ? outputFormat : req.appUser.default_output || 'detailed';
   const languageSlug = typeof language === 'string' && language ? language : req.appUser.default_language || 'English';
+  const normalizedToneMode = toneMode === 'friendly' ? 'friendly' : 'technical';
+  const normalizedResponseLength = responseLength === 'short' ? 'short' : 'detailed';
+
+  const contextTags: string[] = [];
+  if (extraProfilesData.length > 0) {
+    contextTags.push(`[Added chart(s): ${extraProfilesData.map((p) => p.name).join(', ')}]`);
+  }
+  if (validAttachments.length > 0) {
+    contextTags.push(`[Attached: ${validAttachments.map((a) => a.name).join(', ')}]`);
+  }
+  const persistedUserContent =
+    contextTags.length > 0 ? `${contextTags.join(' ')}\n${promptText}` : promptText;
 
   const [{ data: historyRows }, parentQuote] = await Promise.all([
     supabaseAdmin
@@ -424,15 +567,15 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       : Promise.resolve(null),
   ]);
 
-  // Save User Message immediately
-  const userWordCount = countWords(promptText);
+  // Save User Message immediately (lightweight metadata tags only — never raw binary blobs)
+  const userWordCount = countWords(persistedUserContent);
   const { data: userMessage, error: userInsertErr } = await supabaseAdmin
     .from('messages')
     .insert({
       conversation_id: conversation.id,
       parent_message_id: parentQuote?.id || null,
       role: 'user',
-      content: promptText,
+      content: persistedUserContent,
       word_count: userWordCount,
       expert_used: expertSlug,
       mode_used: modeSlug,
@@ -461,6 +604,56 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
   sendEvent({ type: 'user_message', message: userMessage });
 
+  if (isExtractionProbe) {
+    const refusalText = PROMPT_EXTRACTION_REFUSAL;
+    const refusalWordCount = countWords(refusalText);
+    sendEvent({ type: 'chunk', text: refusalText });
+
+    const { data: assistantMessage } = await supabaseAdmin
+      .from('messages')
+      .insert({
+        conversation_id: conversation.id,
+        parent_message_id: userMessage.id,
+        role: 'assistant',
+        content: refusalText,
+        word_count: refusalWordCount,
+        expert_used: expertSlug,
+        mode_used: modeSlug,
+        output_format_used: outputSlug,
+        language_used: languageSlug,
+        followups_json: [],
+        tokens_in: 0,
+        tokens_out: 0,
+        credits_charged: 0,
+      })
+      .select('*')
+      .single();
+
+    const nextTotalWords =
+      (conversation.total_word_count || 0) + userWordCount + refusalWordCount;
+    const { data: updatedConversation } = await supabaseAdmin
+      .from('conversations')
+      .update({
+        total_word_count: nextTotalWords,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', conversation.id)
+      .select('*')
+      .single();
+
+    sendEvent({
+      type: 'done',
+      assistantMessage,
+      followups: [],
+      conversation: updatedConversation || conversation,
+      creditsBalance: req.appUser.credits_balance,
+      creditsCharged: 0,
+      aborted: false,
+    });
+    res.end();
+    return;
+  }
+
   const abortController = new AbortController();
   const handleDisconnect = () => {
     abortController.abort();
@@ -472,6 +665,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       userId: req.appUser.id,
       conversation,
       profile: profileData,
+      scopeMemoryContext,
+      extraProfiles: extraProfilesData,
+      attachments: validAttachments,
       historyMessages: (historyRows || []) as Array<{
         id: string;
         role: 'user' | 'assistant';
@@ -484,6 +680,8 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       modeSlug,
       outputSlug,
       languageSlug,
+      toneMode: normalizedToneMode,
+      responseLength: normalizedResponseLength,
       preferredCallName: req.appUser.preferred_call_name || req.appUser.full_name || null,
       abortSignal: abortController.signal,
       onChunk: (chunkText) => {
@@ -493,20 +691,25 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
     req.off('close', handleDisconnect);
 
-    const finalAssistantText =
+    const rawFinalText =
       streamResult.fullText.trim() ||
       (streamResult.aborted ? '*(Generation stopped by user.)*' : '');
 
-    if (!finalAssistantText) {
+    if (!rawFinalText) {
       sendEvent({ type: 'error', error: 'No response generated from OpenRouter.' });
       res.end();
       return;
     }
 
+    const sanitizedFinal = sanitizeAssistantOutput(rawFinalText);
+    const finalAssistantText = sanitizedFinal.text;
+    const wasLeakIntercepted = Boolean(streamResult.leakIntercepted || sanitizedFinal.leaked);
     const assistantWordCount = countWords(finalAssistantText);
 
-    // Deduct credits atomically (capped cleanly to available balance if aborted/overshot)
-    const chargeTarget = Math.min(streamResult.creditsCharged, req.appUser.credits_balance);
+    // Deduct credits atomically (zero charge if leak intercepted; capped cleanly otherwise)
+    const chargeTarget = wasLeakIntercepted
+      ? 0
+      : Math.min(streamResult.creditsCharged, req.appUser.credits_balance);
     let updatedBalance = req.appUser.credits_balance;
 
     if (chargeTarget > 0) {
@@ -522,10 +725,10 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       }
     }
 
-    // Generate 5–6 JSON follow-ups + auto-title (if first exchange) in parallel when not aborted
+    // Generate 5–6 JSON follow-ups + auto-title (if first exchange) in parallel when not aborted/leaked
     const isFirstTurn = (historyRows || []).length === 0 && conversation.title === 'New Consultation';
     const [followups, generatedTitle] = await Promise.all([
-      streamResult.aborted
+      streamResult.aborted || wasLeakIntercepted
         ? Promise.resolve([])
         : generateFollowUpQuestions({
             userQuestion: promptText,
@@ -534,7 +737,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
             languageSlug,
             hasProfile: Boolean(profileData?.is_activated),
           }),
-      isFirstTurn
+      isFirstTurn && !wasLeakIntercepted
         ? generateConversationTitle(promptText, profileData?.name)
         : Promise.resolve(conversation.title),
     ]);
@@ -573,7 +776,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       .single();
 
     // Async non-blocking Profile Memory update
-    if (conversation.profile_id && !streamResult.aborted) {
+    if (conversation.profile_id && !streamResult.aborted && !wasLeakIntercepted) {
       void updateProfileMemoryAfterTurn(conversation.profile_id, req.appUser.id);
     }
 

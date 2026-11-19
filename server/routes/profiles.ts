@@ -4,20 +4,25 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { isAstrologyApiConfigured, getOrFetchDailyTransits } from '../services/astrologyApi';
 import { compileBirthChart } from '../services/chartCompiler';
 import { rewardReferralIfEligible } from '../services/referralReward';
+import {
+  checkDuplicateChartAbuse,
+  checkRateLimit,
+  computeChartFingerprint,
+} from '../services/abuseGuard';
 
 const router = Router();
 
 const TIER_PROFILE_LIMITS: Record<string, number> = {
-  personal: 5,
-  pro: 50,
+  personal: 10,
+  pro: 100,
   guru: 200,
 };
 
-// Activation cost by tier (credits): configurable & transparent
+// Chart activations are free for all tiers
 const TIER_ACTIVATION_CREDITS: Record<string, number> = {
-  personal: Number(process.env.ACTIVATION_CREDITS_PERSONAL) || 2000,
-  pro: Number(process.env.ACTIVATION_CREDITS_PRO) || 1000,
-  guru: Number(process.env.ACTIVATION_CREDITS_GURU) || 0,
+  personal: 0,
+  pro: 0,
+  guru: 0,
 };
 
 const BASE_PROFILE_SUMMARY_COLUMNS =
@@ -67,8 +72,8 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     return (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0);
   });
 
-  const tierLimit = TIER_PROFILE_LIMITS[req.appUser.tier] ?? 5;
-  const activationCost = TIER_ACTIVATION_CREDITS[req.appUser.tier] ?? 2000;
+  const tierLimit = TIER_PROFILE_LIMITS[req.appUser.tier] ?? 10;
+  const activationCost = TIER_ACTIVATION_CREDITS[req.appUser.tier] ?? 0;
 
   res.json({
     profiles: sorted,
@@ -124,7 +129,26 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const tierLimit = TIER_PROFILE_LIMITS[req.appUser.tier] ?? 5;
+  if (!req.appUser.is_admin) {
+    const userRate = checkRateLimit(`profile_create:${req.appUser.id}`, 12, 10 * 60 * 1000);
+    if (!userRate.allowed) {
+      res.status(429).json({
+        error: 'Too many birth profiles created recently. Please wait a few minutes and try again.',
+      });
+      return;
+    }
+    if (req.clientIpHash) {
+      const ipRate = checkRateLimit(`profile_create_ip:${req.clientIpHash}`, 20, 10 * 60 * 1000);
+      if (!ipRate.allowed) {
+        res.status(429).json({
+          error: 'Too many birth profiles created from this network recently. Please try again shortly.',
+        });
+        return;
+      }
+    }
+  }
+
+  const tierLimit = TIER_PROFILE_LIMITS[req.appUser.tier] ?? 10;
   const { count } = await supabaseAdmin
     .from('profiles')
     .select('id', { count: 'exact', head: true })
@@ -156,6 +180,26 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
+  const normalizedBirthTime = birth_time.length === 5 ? `${birth_time}:00` : birth_time;
+
+  const abuseCheck = await checkDuplicateChartAbuse({
+    supabaseAdmin,
+    user: req.appUser,
+    ipHash: req.clientIpHash ?? null,
+    birthDate: birth_date,
+    birthTime: normalizedBirthTime,
+    birthCity: birth_city.trim(),
+    birthCountry: birth_country.trim(),
+  });
+
+  if (abuseCheck.blocked) {
+    res.status(403).json({
+      error: abuseCheck.reason,
+      code: 'DUPLICATE_CHART_NETWORK_LIMIT',
+    });
+    return;
+  }
+
   const wantsDefault = Boolean(is_default);
   if (wantsDefault) {
     await supabaseAdmin
@@ -165,11 +209,18 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       .eq('is_default', true);
   }
 
+  const chartFingerprint = computeChartFingerprint({
+    birthDate: birth_date,
+    birthTime: normalizedBirthTime,
+    birthCity: birth_city.trim(),
+    birthCountry: birth_country.trim(),
+  });
+
   const basePayload = {
     user_id: req.appUser.id,
     name: name.trim(),
     birth_date,
-    birth_time: birth_time.length === 5 ? `${birth_time}:00` : birth_time,
+    birth_time: normalizedBirthTime,
     birth_city: birth_city.trim(),
     birth_state: birth_state?.trim() || null,
     birth_country: birth_country.trim(),
@@ -185,6 +236,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       ...basePayload,
       short_name: typeof short_name === 'string' && short_name.trim() ? short_name.trim().slice(0, 40) : null,
       is_default: wantsDefault,
+      chart_fingerprint: chartFingerprint,
     })
     .select(PROFILE_SUMMARY_COLUMNS)
     .single();
@@ -214,7 +266,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 
   const { data: existing } = await supabaseAdmin
     .from('profiles')
-    .select('id, is_activated')
+    .select('id, is_activated, birth_date, birth_time, birth_city, birth_country')
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
@@ -262,6 +314,16 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     if (typeof birth_state === 'string') updates.birth_state = birth_state.trim() || null;
     if (birth_country?.trim()) updates.birth_country = birth_country.trim();
     if (['male', 'female', 'non-binary'].includes(gender)) updates.gender = gender;
+
+    if (birth_date || birth_time || birth_city?.trim() || birth_country?.trim()) {
+      const nextFp = computeChartFingerprint({
+        birthDate: String(updates.birth_date || existing.birth_date),
+        birthTime: String(updates.birth_time || existing.birth_time),
+        birthCity: String(updates.birth_city || existing.birth_city),
+        birthCountry: String(updates.birth_country || existing.birth_country),
+      });
+      if (nextFp) updates.chart_fingerprint = nextFp;
+    }
   }
 
   let { data, error } = await supabaseAdmin
@@ -275,6 +337,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     const baseUpdates = { ...updates };
     delete baseUpdates.short_name;
     delete baseUpdates.is_default;
+    delete baseUpdates.chart_fingerprint;
     const fallback = await supabaseAdmin
       .from('profiles')
       .update(baseUpdates)
@@ -328,6 +391,16 @@ router.post('/:id/activate', requireAuth, async (req: AuthenticatedRequest, res)
     return;
   }
 
+  if (!req.appUser.is_admin) {
+    const activateRate = checkRateLimit(`profile_activate:${req.appUser.id}`, 10, 10 * 60 * 1000);
+    if (!activateRate.allowed) {
+      res.status(429).json({
+        error: 'Too many chart activation attempts recently. Please wait a few minutes and try again.',
+      });
+      return;
+    }
+  }
+
   const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select(PROFILE_DETAIL_COLUMNS)
@@ -345,7 +418,28 @@ router.post('/:id/activate', requireAuth, async (req: AuthenticatedRequest, res)
     return;
   }
 
-  const activationCost = TIER_ACTIVATION_CREDITS[req.appUser.tier] ?? 2000;
+  const preCheck = await checkDuplicateChartAbuse({
+    supabaseAdmin,
+    user: req.appUser,
+    ipHash: req.clientIpHash ?? null,
+    birthDate: profile.birth_date,
+    birthTime: profile.birth_time,
+    birthCity: profile.birth_city,
+    birthCountry: profile.birth_country,
+    latitude: profile.latitude,
+    longitude: profile.longitude,
+    excludeProfileId: profile.id,
+  });
+
+  if (preCheck.blocked) {
+    res.status(403).json({
+      error: preCheck.reason,
+      code: 'DUPLICATE_CHART_NETWORK_LIMIT',
+    });
+    return;
+  }
+
+  const activationCost = TIER_ACTIVATION_CREDITS[req.appUser.tier] ?? 0;
   let deducted = false;
 
   if (activationCost > 0) {
@@ -381,21 +475,76 @@ router.post('/:id/activate', requireAuth, async (req: AuthenticatedRequest, res)
       timezoneOffset: profile.timezone_offset,
     });
 
-    const { data: updated, error: updateErr } = await supabaseAdmin
+    const postGeoCheck = await checkDuplicateChartAbuse({
+      supabaseAdmin,
+      user: req.appUser,
+      ipHash: req.clientIpHash ?? null,
+      birthDate: profile.birth_date,
+      birthTime: profile.birth_time,
+      birthCity: profile.birth_city,
+      birthCountry: profile.birth_country,
+      latitude: compiled.location.latitude,
+      longitude: compiled.location.longitude,
+      excludeProfileId: profile.id,
+    });
+
+    if (postGeoCheck.blocked) {
+      if (deducted && activationCost > 0) {
+        await supabaseAdmin.rpc('grant_user_credits', {
+          p_user_id: req.appUser.id,
+          p_amount: activationCost,
+          p_tx_type: 'refund',
+          p_reference_id: profile.id,
+          p_description: `Automatic refund: duplicate network chart check for ${profile.name}`,
+        });
+      }
+      res.status(403).json({
+        error: postGeoCheck.reason,
+        code: 'DUPLICATE_CHART_NETWORK_LIMIT',
+      });
+      return;
+    }
+
+    const geoFingerprint = computeChartFingerprint({
+      birthDate: profile.birth_date,
+      birthTime: profile.birth_time,
+      birthCity: profile.birth_city,
+      birthCountry: profile.birth_country,
+      latitude: compiled.location.latitude,
+      longitude: compiled.location.longitude,
+    });
+
+    const activationPayload = {
+      latitude: compiled.location.latitude,
+      longitude: compiled.location.longitude,
+      timezone_offset: compiled.location.timezoneOffset,
+      chart_json: compiled.chartJson,
+      chart_text_context: compiled.chartTextContext,
+      is_activated: true,
+      activated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    let { data: updated, error: updateErr } = await supabaseAdmin
       .from('profiles')
       .update({
-        latitude: compiled.location.latitude,
-        longitude: compiled.location.longitude,
-        timezone_offset: compiled.location.timezoneOffset,
-        chart_json: compiled.chartJson,
-        chart_text_context: compiled.chartTextContext,
-        is_activated: true,
-        activated_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        ...activationPayload,
+        ...(geoFingerprint ? { chart_fingerprint: geoFingerprint } : {}),
       })
       .eq('id', profile.id)
       .select(PROFILE_DETAIL_COLUMNS)
       .single();
+
+    if (updateErr && geoFingerprint) {
+      const retry = await supabaseAdmin
+        .from('profiles')
+        .update(activationPayload)
+        .eq('id', profile.id)
+        .select(PROFILE_DETAIL_COLUMNS)
+        .single();
+      updated = retry.data;
+      updateErr = retry.error;
+    }
 
     if (updateErr) {
       throw new Error(updateErr.message);

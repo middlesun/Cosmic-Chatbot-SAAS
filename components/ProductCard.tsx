@@ -67,7 +67,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, currency, isFavorite
           <button 
             onClick={handleCopyId}
             className={`p-1 transition-colors ${copied ? 'text-emerald-500' : 'text-indigo-200 hover:text-indigo-400'}`}
-            title="Copy ID"
+            aria-label="Copy ID"
           >
             {copied ? (
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">

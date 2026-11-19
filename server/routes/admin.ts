@@ -5,8 +5,9 @@ import {
 } from '../services/openrouter';
 import crypto from 'crypto';
 import { Router } from 'express';
-import { getSupabaseAdmin } from '../lib/supabaseAdmin';
+import { getSupabaseAdmin, isSupabaseServerConfigured } from '../lib/supabaseAdmin';
 import { requireAdmin, requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { isAstrologyApiConfigured } from '../services/astrologyApi';
 import { sendClientInviteEmail } from '../services/email';
 import {
   ALL_DEFAULT_PROMPTS,
@@ -14,6 +15,7 @@ import {
   invalidatePromptCache,
 } from '../services/promptDefaults';
 import { ensureReportCatalogSeeded } from '../services/reportDefaults';
+import { isSanityConfigured } from '../../lib/sanity';
 
 const router = Router();
 
@@ -140,6 +142,9 @@ router.get('/overview', async (_req: AuthenticatedRequest, res) => {
     {} as Record<string, number>
   );
 
+  const hasPublicUrl = Boolean(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL);
+  const hasPublicAnon = Boolean(process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY);
+
   res.json({
     metrics: {
       totalUsers: totalUsers || 0,
@@ -152,10 +157,19 @@ router.get('/overview', async (_req: AuthenticatedRequest, res) => {
       tierBreakdown,
       revenueByCurrency,
     },
+    integrations: {
+      supabaseServer: isSupabaseServerConfigured(),
+      supabaseClient: hasPublicUrl && hasPublicAnon,
+      openrouter: isOpenRouterConfigured(),
+      freeAstrologyApi: isAstrologyApiConfigured(),
+      dodoPayments: Boolean(process.env.DODO_API_KEY),
+      resend: Boolean(process.env.RESEND_API_KEY),
+      sanityBlog: isSanityConfigured(),
+    },
   });
 });
 
-// 2. Users Directory with Profile & Question Counts
+// 2. Users Directory with Profile, Question & Anti-Abuse Cluster Counts
 router.get('/users', async (req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin) {
@@ -182,14 +196,38 @@ router.get('/users', async (req: AuthenticatedRequest, res) => {
   }
 
   const userIds = (users || []).map((u) => u.id);
-  const [{ data: profileRows }, { data: convoRows }] = await Promise.all([
+  const [profileRes, convoRes, ipUsersRes, fpRes] = await Promise.all([
     userIds.length > 0
-      ? supabaseAdmin.from('profiles').select('user_id, is_activated').in('user_id', userIds)
-      : Promise.resolve({ data: [] }),
+      ? supabaseAdmin
+          .from('profiles')
+          .select('user_id, is_activated, chart_fingerprint')
+          .in('user_id', userIds)
+      : Promise.resolve({ data: [], error: null }),
     userIds.length > 0
       ? supabaseAdmin.from('conversations').select('user_id, total_word_count').in('user_id', userIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
+    supabaseAdmin.from('users').select('id, signup_ip_hash, last_ip_hash').limit(1000),
+    supabaseAdmin
+      .from('profiles')
+      .select('user_id, chart_fingerprint')
+      .not('chart_fingerprint', 'is', null)
+      .limit(2000),
   ]);
+
+  let profileRows = profileRes.data as Array<{
+    user_id: string;
+    is_activated: boolean;
+    chart_fingerprint?: string | null;
+  }> | null;
+  if (profileRes.error && userIds.length > 0) {
+    const fallbackProf = await supabaseAdmin
+      .from('profiles')
+      .select('user_id, is_activated')
+      .in('user_id', userIds);
+    profileRows = fallbackProf.data || [];
+  }
+
+  const convoRows = convoRes.data || [];
 
   const profileCounts = new Map<string, { total: number; activated: number }>();
   for (const p of profileRows || []) {
@@ -200,16 +238,87 @@ router.get('/users', async (req: AuthenticatedRequest, res) => {
   }
 
   const convoCounts = new Map<string, number>();
-  for (const c of convoRows || []) {
+  for (const c of convoRows) {
     convoCounts.set(c.user_id, (convoCounts.get(c.user_id) || 0) + 1);
   }
 
-  const enriched = (users || []).map((u) => ({
-    ...u,
-    profile_count: profileCounts.get(u.id)?.total || 0,
-    activated_profile_count: profileCounts.get(u.id)?.activated || 0,
-    conversation_count: convoCounts.get(u.id) || 0,
-  }));
+  // Compute IP-cluster sizes across accounts without exposing raw hashes/IPs
+  const ipHashUsers = new Map<string, Set<string>>();
+  if (!ipUsersRes.error && Array.isArray(ipUsersRes.data)) {
+    for (const row of ipUsersRes.data as Array<{
+      id: string;
+      signup_ip_hash?: string | null;
+      last_ip_hash?: string | null;
+    }>) {
+      if (row.signup_ip_hash) {
+        const set = ipHashUsers.get(row.signup_ip_hash) || new Set<string>();
+        set.add(row.id);
+        ipHashUsers.set(row.signup_ip_hash, set);
+      }
+      if (row.last_ip_hash) {
+        const set = ipHashUsers.get(row.last_ip_hash) || new Set<string>();
+        set.add(row.id);
+        ipHashUsers.set(row.last_ip_hash, set);
+      }
+    }
+  }
+
+  // Compute cross-account fuzzy chart fingerprint collisions
+  const fpUsers = new Map<string, Set<string>>();
+  if (!fpRes.error && Array.isArray(fpRes.data)) {
+    for (const row of fpRes.data as Array<{
+      user_id: string;
+      chart_fingerprint?: string | null;
+    }>) {
+      if (row.chart_fingerprint) {
+        const set = fpUsers.get(row.chart_fingerprint) || new Set<string>();
+        set.add(row.user_id);
+        fpUsers.set(row.chart_fingerprint, set);
+      }
+    }
+  }
+
+  const duplicateChartCounts = new Map<string, number>();
+  for (const p of profileRows || []) {
+    if (p.chart_fingerprint) {
+      const owners = fpUsers.get(p.chart_fingerprint);
+      if (owners && owners.size > 1) {
+        duplicateChartCounts.set(p.user_id, (duplicateChartCounts.get(p.user_id) || 0) + 1);
+      }
+    }
+  }
+
+  const enriched = (users || []).map((u) => {
+    const signupHash = (u as { signup_ip_hash?: string | null }).signup_ip_hash || null;
+    const lastHash = (u as { last_ip_hash?: string | null }).last_ip_hash || null;
+    const signupCluster = signupHash ? ipHashUsers.get(signupHash)?.size || 1 : 0;
+    const lastCluster = lastHash ? ipHashUsers.get(lastHash)?.size || 1 : 0;
+
+    let ipClusterSize = Math.max(signupCluster, lastCluster);
+    let ipClusterId: string | null = null;
+    if (signupCluster >= lastCluster && signupHash) {
+      ipClusterId = signupHash.slice(0, 6);
+    } else if (lastHash) {
+      ipClusterId = lastHash.slice(0, 6);
+    }
+    if (ipClusterSize < 2) {
+      ipClusterSize = signupHash || lastHash ? 1 : 0;
+    }
+
+    const safeUser = { ...u } as Record<string, unknown>;
+    delete safeUser.signup_ip_hash;
+    delete safeUser.last_ip_hash;
+
+    return {
+      ...safeUser,
+      profile_count: profileCounts.get(u.id)?.total || 0,
+      activated_profile_count: profileCounts.get(u.id)?.activated || 0,
+      conversation_count: convoCounts.get(u.id) || 0,
+      ip_cluster_size: ipClusterSize,
+      ip_cluster_id: ipClusterId,
+      duplicate_chart_count: duplicateChartCounts.get(u.id) || 0,
+    };
+  });
 
   res.json({ users: enriched });
 });

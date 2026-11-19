@@ -1413,7 +1413,7 @@ Sex : ${details.sex}`;
                                   type="button" 
                                   onClick={() => setSelectedItems(selectedItems.filter(i => i.id !== item.id))} 
                                   className="text-rose-400 hover:text-rose-600 transition-colors p-1"
-                                  title="Remove Package"
+                                  aria-label="Remove Package"
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path d="M6 18L18 6M6 6l12 12"/></svg>
                                 </button>

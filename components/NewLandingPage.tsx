@@ -17,6 +17,7 @@ import { Category, Currency, Product, formatCurrencyPrice, slugify } from '../ty
 import { PRODUCTS, TESTIMONIALS } from '../constants';
 import { articlesData } from './articleData';
 import type { SanityArticleItem } from '../lib/sanity';
+import FloatingScrollControls from './FloatingScrollControls';
 
 interface NewLandingPageProps {
   currency: Currency;
@@ -273,6 +274,91 @@ const DISCLAIMER_POINTS = [
   },
 ];
 
+interface FeatureHighlightItem {
+  title: string;
+  body: string;
+}
+
+const PERSONAL_USE_POINTS: FeatureHighlightItem[] = [
+  {
+    title: 'Your personal astrologer',
+    body: "Chat just like you're chatting with your personal astrologer. Get genuine guidance for you and your loved ones on any topic.",
+  },
+  {
+    title: 'Deep analysis',
+    body: 'Unlike human astrologers who are time and scope bound, AI takes your entire birth chart into consideration for every interpretation',
+  },
+  {
+    title: 'Synthesized interpretations',
+    body: 'Get accurate, balanced predictions that are based on synthesized interpretations across different techniques, disciplines & planetary strengths',
+  },
+  {
+    title: 'Ask follow ups freely',
+    body: 'Ask as many follow up questions, technical clarifications or remedial guidance as possible without worrying about time',
+  },
+  {
+    title: 'Never repeat your story',
+    body: 'Your life story, birth chart, ongoing conversation, current life affairs & dilemmas are all saved - never having to repeat yourself',
+  },
+  {
+    title: 'No fear mongering',
+    body: 'We understand the limits of astrology hence our AI is designed to show possibilities with confidence scoring and not give absolute verdicts',
+  },
+  {
+    title: 'Learn astrology',
+    body: "The 'Learning Mode' is designed for astrology enthusiasts and professionals to deepen your understanding and improve their skills.",
+  },
+  {
+    title: 'Fully private & secure',
+    body: 'Except for your Birth Chart details, everything is encrypted. All your conversations are fully private & secured',
+  },
+];
+
+const PERSONAL_USE_HIGHLIGHT: FeatureHighlightItem = {
+  title: 'No monthly fees',
+  body: 'Unlike most apps charging monthly subscription, VedicAstro does not charge you a fixed fees. You only pay for what you use',
+};
+
+const PROFESSIONAL_USE_POINTS: FeatureHighlightItem[] = [
+  {
+    title: 'Refine your analysis',
+    body: 'VedicAstro can help you refine your own analysis, score planetary combinations and get deeper technical understanding of any chart',
+  },
+  {
+    title: '600+ Data points',
+    body: 'Have the most advanced birth chart breakdown, use them as you like - answer complex questions, discover unseen patterns',
+  },
+  {
+    title: 'Client satisfaction',
+    body: 'Always have your clients life story, historical analysis, current affairs, challenges, family history & notes in one place',
+  },
+  {
+    title: 'Client management',
+    body: 'Save hundreds of profiles with all historical data, add notes for each client, easily search and switch between profiles',
+  },
+  {
+    title: 'Add your own formulas',
+    body: 'Add your own custom prompts, formulas & and logic making each analysis based around your signature style',
+  },
+  {
+    title: 'Important date tracker',
+    body: 'Add reminders for important dates, dasha and transit changes and follow ups for your clients',
+  },
+  {
+    title: 'Generate reports quickly',
+    body: 'Setup your own reports generator based on your personal logic, using your own prompts and output style',
+  },
+  {
+    title: 'Your data is completely yours',
+    body: 'All your analysis, conversations, custom prompts, historical data are not only private but you can export them in one click',
+  },
+];
+
+const PROFESSIONAL_USE_HIGHLIGHT: FeatureHighlightItem = {
+  title: 'Just $29/month',
+  body: 'For a flat monthly fee, save upto 100 profiles, with 5GB of storage. Bring all your analysis, reporting, question & answer in one place.',
+};
+
 const CATEGORIES = [
   Category.TOP,
   Category.CONSULTATIONS,
@@ -327,6 +413,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
 }) => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeAudience, setActiveAudience] = useState<'personal' | 'professional'>('personal');
   const [activeLayer, setActiveLayer] = useState<number>(0);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
   const [visibleTestimonialsCount, setVisibleTestimonialsCount] = useState(6);
@@ -456,9 +543,9 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] text-[#3D3830] font-['Plus_Jakarta_Sans',sans-serif] selection:bg-[#EAE3D7] flex flex-col overflow-x-hidden">
+    <div className="min-h-screen bg-[#FAF7F2] text-[#3D3830] font-['Plus_Jakarta_Sans',sans-serif] selection:bg-[#EAE3D7] flex flex-col overflow-x-clip">
       {/* Three-Zone Frosted Top Bar Contract */}
-      <header className="sticky top-0 z-40 w-full px-4 md:px-8 pt-4 animate-cc-slide-down">
+      <header className="fixed top-0 inset-x-0 z-40 w-full px-4 md:px-8 pt-4 animate-cc-slide-down">
         <div className="mx-auto max-w-7xl flex items-center justify-between gap-8 rounded-2xl bg-[#EAE3D7]/75 backdrop-blur-md px-5 py-3.5 border border-[#3D3830]/10 transition-shadow duration-300">
           {/* Zone 1: Single-line Brand Wordmark */}
           <Link
@@ -477,6 +564,13 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
               className="text-sm font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors duration-200 whitespace-nowrap shrink-0 py-1 border-b border-transparent hover:border-[#3D3830]/40 cursor-pointer"
             >
               Methodology
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection('pricing-section')}
+              className="text-sm font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors duration-200 whitespace-nowrap shrink-0 py-1 border-b border-transparent hover:border-[#3D3830]/40 cursor-pointer"
+            >
+              Pricing
             </button>
             <button
               type="button"
@@ -538,6 +632,13 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                 className="text-left font-medium text-[#3D3830] py-1.5"
               >
                 Methodology
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection('pricing-section')}
+                className="text-left font-medium text-[#3D3830] py-1.5"
+              >
+                Pricing
               </button>
               <button
                 type="button"
@@ -620,57 +721,217 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
 
       <main className="flex-1">
         {/* 1. HERO SECTION */}
-        <section className="mx-auto max-w-5xl px-6 pt-16 pb-20 md:pt-28 md:pb-28 text-center">
-          <p
-            className="text-xs font-medium text-[#8B8275] tracking-wide mb-6 animate-cc-slide-down"
-            style={{ animationDelay: '40ms' }}
-          >
-            Ask unlimited questions privately
-          </p>
-
-          <h1
-            className="font-serif text-4xl sm:text-5xl md:text-7xl font-medium text-[#3D3830] tracking-tight leading-[1.06] max-w-4xl mx-auto mb-10 animate-cc-slide-up"
-            style={{ textWrap: 'balance', animationDelay: '100ms' }}
-          >
-            AI for professional Vedic astrology
-          </h1>
-
+        <section className="relative overflow-hidden bg-gradient-to-b from-[#EFE9DF] via-[#FAF7F2] to-[#FAF7F2]">
+          {/* Subtle Observatory Atmospheric Texture & Orbital Arcs */}
           <div
-            className="max-w-3xl mx-auto mb-12 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 px-7 py-8 md:px-12 md:py-10 animate-cc-slide-up"
-            style={{ animationDelay: '180ms' }}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 overflow-hidden"
           >
-            <p className="text-base md:text-lg text-[#5C5449] leading-relaxed">
-              Imagine if ChatGPT had the most granular details of your divisional charts, KP charts, Ashtakavarga, Shadbala, Jaimini Karakas, Dashas, and live transits—and was trained on advanced Vedic astrology principles so every prediction is cross-verified across multiple systems before answering you.
-            </p>
+            <div
+              className="absolute inset-0 opacity-65"
+              style={{
+                backgroundImage:
+                  'radial-gradient(rgba(61, 56, 48, 0.11) 1px, transparent 1px)',
+                backgroundSize: '26px 26px',
+                maskImage:
+                  'radial-gradient(ellipse 80% 62% at 50% 34%, #000 35%, transparent 100%)',
+                WebkitMaskImage:
+                  'radial-gradient(ellipse 80% 62% at 50% 34%, #000 35%, transparent 100%)',
+              }}
+            />
+            <div
+              className="absolute left-1/2 top-[62%] h-[540px] w-[900px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
+              style={{
+                background:
+                  'radial-gradient(circle, rgba(184, 150, 90, 0.16) 0%, rgba(234, 227, 215, 0.25) 45%, transparent 75%)',
+              }}
+            />
+            <svg
+              viewBox="0 0 1440 760"
+              fill="none"
+              className="absolute left-1/2 top-0 h-[760px] w-[1440px] -translate-x-1/2 opacity-60"
+            >
+              <circle
+                cx="720"
+                cy="360"
+                r="310"
+                stroke="#3D3830"
+                strokeOpacity="0.06"
+                strokeWidth="1"
+              />
+              <circle
+                cx="720"
+                cy="360"
+                r="470"
+                stroke="#B8965A"
+                strokeOpacity="0.14"
+                strokeWidth="1"
+                strokeDasharray="4 8"
+              />
+              <circle
+                cx="720"
+                cy="360"
+                r="640"
+                stroke="#3D3830"
+                strokeOpacity="0.05"
+                strokeWidth="1"
+              />
+            </svg>
           </div>
 
-          <div
-            className="flex flex-col items-center justify-center gap-4 animate-cc-slide-up"
-            style={{ animationDelay: '320ms' }}
-          >
-            <Link
-              to="/app/login"
-              className="group inline-flex items-center justify-center gap-2.5 rounded-full bg-[#4A453D] px-10 py-4 text-sm font-medium text-[#FAF7F2] transition-all duration-200 hover:bg-[#38342E] hover:-translate-y-0.5 active:scale-[0.98] whitespace-nowrap cursor-pointer"
+          <div className="relative z-10 mx-auto max-w-7xl px-6 pt-28 pb-20 md:pt-36 md:pb-28 text-center">
+            <h1
+              className="font-serif text-5xl sm:text-6xl md:text-7xl lg:text-[84px] font-medium text-[#3D3830] tracking-tight leading-[1.03] max-w-6xl mx-auto mb-5 animate-cc-slide-up"
+              style={{ textWrap: 'balance', animationDelay: '60ms' }}
             >
-              <span>Login with Gmail</span>
-              <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-            </Link>
+              Professional Vedic Astrology AI
+            </h1>
 
-            <div className="flex flex-wrap items-center justify-center gap-6 pt-1 text-xs font-medium text-[#8B8275]">
-              <button
-                type="button"
-                onClick={onWhyUs}
-                className="hover:text-[#3D3830] underline underline-offset-4 transition-colors duration-200 cursor-pointer"
+            <p
+              className="text-lg sm:text-xl md:text-2xl font-semibold text-[#3D3830] tracking-tight max-w-4xl mx-auto mb-7 animate-cc-slide-up"
+              style={{ animationDelay: '110ms' }}
+            >
+              Increase accuracy of your predictions dramatically
+            </p>
+
+            <div
+              className="max-w-5xl mx-auto mb-11 rounded-3xl bg-[#FDFBF7]/92 backdrop-blur-sm border border-[#3D3830]/12 px-7 py-8 md:px-14 md:py-10 shadow-[0_14px_42px_-24px_rgba(61,56,48,0.14)] animate-cc-slide-up"
+              style={{ animationDelay: '160ms' }}
+            >
+              <p className="text-lg md:text-xl lg:text-[21px] text-[#5C5449] leading-relaxed">
+                Synthesize hundreds of data points and yogas into your interpretations , cross verify across dozens of established principles, rank interpretations by combined planetary health &amp; strength of Yogas automatically. Produce predictions ranked by confidence score based on diverse set of metrics.
+              </p>
+            </div>
+
+            <div
+              className="flex flex-wrap items-center justify-center gap-3.5 animate-cc-slide-up"
+              style={{ animationDelay: '260ms' }}
+            >
+              <Link
+                to="/app/login"
+                className="group inline-flex items-center justify-center gap-2.5 rounded-full bg-[#4A453D] px-10 py-4 text-sm font-medium text-[#FAF7F2] transition-all duration-200 hover:bg-[#38342E] hover:-translate-y-0.5 active:scale-[0.98] whitespace-nowrap cursor-pointer shadow-sm"
               >
-                How it works
-              </button>
-              <span aria-hidden="true">·</span>
+                <span>Login with Gmail</span>
+                <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+              </Link>
+
               <Link
                 to="/app/chat?preview=1"
-                className="hover:text-[#3D3830] underline underline-offset-4 transition-colors duration-200"
+                className="inline-flex items-center justify-center rounded-full border border-[#3D3830]/20 bg-[#FDFBF7]/95 px-9 py-4 text-sm font-medium text-[#3D3830] transition-all duration-200 hover:bg-[#EAE3D7] hover:-translate-y-0.5 active:scale-[0.98] whitespace-nowrap cursor-pointer"
               >
-                Preview AI Observatory
+                <span>Quick preview</span>
               </Link>
+            </div>
+
+            {/* Dual Device Showcase: MacBook Pro + iPhone */}
+            <div
+              className="relative mx-auto mt-14 md:mt-16 max-w-4xl animate-cc-slide-up"
+              style={{ animationDelay: '360ms' }}
+            >
+              {/* MacBook Pro Frame */}
+              <div className="mx-auto max-w-[640px] lg:max-w-[680px] md:pr-10 lg:pr-12">
+                <div className="rounded-t-[14px] md:rounded-t-[18px] bg-[#1F2229] p-1.5 sm:p-2 md:p-2.5 border border-[#3D3830]/25 shadow-[0_28px_60px_-22px_rgba(31,34,41,0.36)]">
+                  <div className="mx-auto mb-1 flex items-center justify-center">
+                    <span className="h-1 w-1 rounded-full bg-[#3A404D]" />
+                  </div>
+                  <div className="overflow-hidden rounded-[7px] md:rounded-[10px] border border-white/10 bg-[#FAF7F2]">
+                    <img
+                      src="/assets/aistudio/image_83e5066e.png"
+                      alt="Cosmic Council desktop consultation workspace"
+                      className="w-full h-auto block"
+                    />
+                  </div>
+                </div>
+                {/* MacBook Anodized Aluminum Base */}
+                <div className="relative mx-auto w-[103%] -ml-[1.5%] h-2.5 md:h-3 rounded-b-xl bg-gradient-to-b from-[#E2DDD3] via-[#C9C3B8] to-[#A49D91] border-t border-white/70 shadow-[0_12px_24px_-10px_rgba(31,34,41,0.3)]">
+                  <div className="mx-auto h-1 w-16 md:w-24 rounded-b bg-[#9B9488]" />
+                </div>
+              </div>
+
+              {/* iPhone Frame */}
+              <div className="mt-7 mx-auto w-[165px] sm:w-[180px] md:mt-0 md:w-[165px] lg:w-[188px] md:absolute md:-bottom-3 md:right-3 lg:right-5 transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1.5">
+                <div className="rounded-[24px] md:rounded-[28px] bg-[#1F2229] p-[5px] sm:p-1.5 md:p-[7px] border border-[#F4EFE6]/15 shadow-[0_24px_50px_-14px_rgba(31,34,41,0.45)]">
+                  <div className="mx-auto mb-1 h-2 w-10 rounded-full bg-[#111317] border border-white/5" />
+                  <div className="overflow-hidden rounded-[19px] md:rounded-[21px] border border-white/10 bg-[#FAF7F2]">
+                    <img
+                      src="/assets/aistudio/Cosmic_Demo_Mobile_5e28a9b8.png"
+                      alt="Cosmic Council mobile consultation workspace"
+                      className="w-full h-auto block"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 1B. PERSONAL & PROFESSIONAL CAPABILITIES */}
+        <section className="border-t border-[#3D3830]/10 bg-[#FAF7F2] py-16 md:py-24">
+          <div className="mx-auto max-w-7xl px-6 space-y-10 md:space-y-12">
+            <Reveal direction="up">
+              <div className="flex flex-col items-center gap-5 text-center">
+                <div
+                  role="tablist"
+                  aria-label="Audience capabilities"
+                  className="inline-flex items-center rounded-full bg-[#EAE3D7]/80 border border-[#3D3830]/12 p-1.5"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeAudience === 'personal'}
+                    onClick={() => setActiveAudience('personal')}
+                    className={`rounded-full px-5 sm:px-7 py-2.5 text-sm font-medium transition-all duration-300 cursor-pointer ${
+                      activeAudience === 'personal'
+                        ? 'bg-[#4A453D] text-[#FAF7F2] shadow-sm'
+                        : 'text-[#5C5449] hover:text-[#3D3830]'
+                    }`}
+                  >
+                    For personal use
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeAudience === 'professional'}
+                    onClick={() => setActiveAudience('professional')}
+                    className={`rounded-full px-5 sm:px-7 py-2.5 text-sm font-medium transition-all duration-300 cursor-pointer ${
+                      activeAudience === 'professional'
+                        ? 'bg-[#4A453D] text-[#FAF7F2] shadow-sm'
+                        : 'text-[#5C5449] hover:text-[#3D3830]'
+                    }`}
+                  >
+                    For professional use
+                  </button>
+                </div>
+
+                <p className="max-w-2xl text-sm md:text-base text-[#5C5449] leading-relaxed">
+                  Designed for personal use and for professional consultants - both. Easily switch between casual friendly chat and highly technical breakdown.
+                </p>
+              </div>
+            </Reveal>
+
+            <div key={activeAudience} role="tabpanel">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
+                {(activeAudience === 'personal'
+                  ? [...PERSONAL_USE_POINTS, PERSONAL_USE_HIGHLIGHT]
+                  : [...PROFESSIONAL_USE_POINTS, PROFESSIONAL_USE_HIGHLIGHT]
+                ).map((item, index) => (
+                  <Reveal
+                    key={`${activeAudience}-${item.title}`}
+                    direction="up"
+                    delay={(index % 3) * 70}
+                    className="h-full"
+                  >
+                    <article className="h-full rounded-3xl p-7 md:p-8 flex flex-col gap-3.5 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1.5 hover:shadow-[0_20px_44px_-22px_rgba(61,56,48,0.18)] bg-[#EAE3D7] border border-[#3D3830]/18 hover:border-[#3D3830]/30">
+                      <h3 className="font-serif text-2xl md:text-[26px] font-medium text-[#3D3830] leading-snug tracking-tight">
+                        {item.title}
+                      </h3>
+                      <p className="text-[15px] md:text-base text-[#5C5449] leading-relaxed">
+                        {item.body}
+                      </p>
+                    </article>
+                  </Reveal>
+                ))}
+              </div>
             </div>
           </div>
         </section>
@@ -1051,6 +1312,208 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
           </div>
         </section>
 
+        {/* 6B. PRICING */}
+        <section id="pricing-section" className="border-t border-[#3D3830]/10 bg-[#FAF7F2] py-20 md:py-28">
+          <div className="mx-auto max-w-5xl px-6">
+            <Reveal direction="down">
+              <div className="text-center max-w-2xl mx-auto mb-10 space-y-3">
+                <p className="text-xs font-medium text-[#8B8275]">Transparent Plans</p>
+                <h2 className="font-serif text-3xl md:text-5xl font-medium text-[#3D3830] tracking-tight leading-tight">
+                  Simple, Honest Pricing
+                </h2>
+                <p className="text-sm md:text-base text-[#5C5449] leading-relaxed">
+                  Every user gets full access to all astrology systems and platform tools. Start free with 5,000 signup credits, or upgrade when you manage more charts.
+                </p>
+              </div>
+            </Reveal>
+
+            <Reveal direction="fade" delay={40}>
+              <div className="flex justify-center mb-10">
+                <div className="inline-flex items-center gap-1 rounded-full bg-[#EAE3D7] p-1 border border-[#3D3830]/12">
+                  {Object.values(Currency).map((curr) => (
+                    <button
+                      type="button"
+                      key={curr}
+                      onClick={() => setCurrency(curr)}
+                      className={`rounded-full px-3.5 py-1.5 text-xs font-['JetBrains_Mono',monospace] transition-all duration-200 active:scale-95 cursor-pointer ${
+                        currency === curr
+                          ? 'bg-[#4A453D] text-[#FAF7F2] font-medium shadow-sm'
+                          : 'text-[#5C5449] hover:text-[#3D3830]'
+                      }`}
+                    >
+                      {curr}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </Reveal>
+
+            {(() => {
+              const tierPrices: Record<
+                Currency,
+                { personal: string; professional: string; topUp: string }
+              > = {
+                [Currency.USD]: { personal: '$0', professional: '$19', topUp: '$12' },
+                [Currency.INR]: { personal: '₹0', professional: '₹1,599', topUp: '₹1,000' },
+                [Currency.EUR]: { personal: '€0', professional: '€18', topUp: '€11' },
+              };
+              const prices = tierPrices[currency] || tierPrices[Currency.USD];
+
+              return (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+                    {/* Personal Tier */}
+                    <Reveal direction="up" delay={0} className="h-full">
+                      <div className="h-full rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/15 p-8 md:p-10 flex flex-col justify-between space-y-8 transition-all duration-300 hover:-translate-y-1 hover:border-[#3D3830]/25">
+                        <div className="space-y-6">
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-[#8B8275]">For Everyday Seekers</p>
+                            <h3 className="font-serif text-3xl font-medium text-[#3D3830]">
+                              Personal
+                            </h3>
+                            <p className="text-sm text-[#5C5449] leading-relaxed">
+                              For individuals exploring their own chart and those of close family members.
+                            </p>
+                          </div>
+
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="font-['JetBrains_Mono',monospace] tabular-nums text-4xl font-medium text-[#3D3830]">
+                              {prices.personal}
+                            </span>
+                            <span className="text-xs text-[#8B8275]">/ month</span>
+                          </div>
+
+                          <div className="h-px bg-[#3D3830]/10" />
+
+                          <ul className="space-y-3 text-sm text-[#5C5449]">
+                            <li className="flex items-start gap-2.5">
+                              <Check className="h-4 w-4 text-[#8B7355] shrink-0 mt-0.5" />
+                              <span>
+                                Up to <strong className="font-semibold text-[#3D3830]">10 Charts</strong> saved
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <Check className="h-4 w-4 text-[#8B7355] shrink-0 mt-0.5" />
+                              <span>
+                                <strong className="font-semibold text-[#3D3830]">5,000 Free Credits</strong> on signup
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <Check className="h-4 w-4 text-[#8B7355] shrink-0 mt-0.5" />
+                              <span>Free chart activations — no activation fees</span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <Check className="h-4 w-4 text-[#8B7355] shrink-0 mt-0.5" />
+                              <span>All platform features included</span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <Check className="h-4 w-4 text-[#8B7355] shrink-0 mt-0.5" />
+                              <span>Pay-as-you-go credit top-ups anytime</span>
+                            </li>
+                          </ul>
+                        </div>
+
+                        <div className="pt-2">
+                          <Link
+                            to="/app/login"
+                            className="group w-full inline-flex items-center justify-center gap-2 rounded-full border border-[#3D3830]/20 bg-[#F1ECE3] px-6 py-3.5 text-sm font-medium text-[#3D3830] hover:bg-[#4A453D] hover:text-[#FAF7F2] hover:border-[#4A453D] active:scale-[0.98] transition-all duration-200"
+                          >
+                            <span>Start Free with Gmail</span>
+                            <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                          </Link>
+                        </div>
+                      </div>
+                    </Reveal>
+
+                    {/* Professional Tier */}
+                    <Reveal direction="up" delay={100} className="h-full">
+                      <div className="h-full rounded-3xl bg-[#1F2229] text-[#F4EFE6] border border-[#B8965A]/30 p-8 md:p-10 flex flex-col justify-between space-y-8 shadow-[0_24px_56px_-22px_rgba(31,34,41,0.35)] transition-all duration-300 hover:-translate-y-1">
+                        <div className="space-y-6">
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-medium text-[#B8965A]">
+                                For Practicing Astrologers
+                              </p>
+                              <span className="text-xs font-medium text-[#B8965A]">
+                                Recommended
+                              </span>
+                            </div>
+                            <h3 className="font-serif text-3xl font-medium text-[#F4EFE6]">
+                              Professional
+                            </h3>
+                            <p className="text-sm text-[#F4EFE6]/75 leading-relaxed">
+                              Built for practicing consultants and serious researchers managing client charts.
+                            </p>
+                          </div>
+
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="font-['JetBrains_Mono',monospace] tabular-nums text-4xl font-medium text-[#F4EFE6]">
+                              {prices.professional}
+                            </span>
+                            <span className="text-xs text-[#F4EFE6]/60">/ month</span>
+                          </div>
+
+                          <div className="h-px bg-white/10" />
+
+                          <ul className="space-y-3 text-sm text-[#F4EFE6]/85">
+                            <li className="flex items-start gap-2.5">
+                              <Check className="h-4 w-4 text-[#B8965A] shrink-0 mt-0.5" />
+                              <span>
+                                Up to <strong className="font-semibold text-[#F4EFE6]">100 Charts</strong> saved
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <Check className="h-4 w-4 text-[#B8965A] shrink-0 mt-0.5" />
+                              <span>
+                                <strong className="font-semibold text-[#F4EFE6]">25,000 Credits</strong> included every month
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <Check className="h-4 w-4 text-[#B8965A] shrink-0 mt-0.5" />
+                              <span>Free chart activations — no activation fees</span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <Check className="h-4 w-4 text-[#B8965A] shrink-0 mt-0.5" />
+                              <span>All platform features included</span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <Check className="h-4 w-4 text-[#B8965A] shrink-0 mt-0.5" />
+                              <span>Top up extra credits anytime — credits never expire</span>
+                            </li>
+                          </ul>
+                        </div>
+
+                        <div className="pt-2">
+                          <Link
+                            to="/app/login"
+                            className="group w-full inline-flex items-center justify-center gap-2 rounded-full bg-[#FAF7F2] px-6 py-3.5 text-sm font-medium text-[#1F2229] hover:bg-[#B8965A] active:scale-[0.98] transition-all duration-200"
+                          >
+                            <span>Get Started with Gmail</span>
+                            <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                          </Link>
+                        </div>
+                      </div>
+                    </Reveal>
+                  </div>
+
+                  <Reveal direction="up" delay={140}>
+                    <div className="mt-8 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/10 px-6 py-4 text-center max-w-3xl mx-auto">
+                      <p className="text-xs md:text-sm text-[#5C5449] leading-relaxed">
+                        Credits cover consultation chat and research usage and{' '}
+                        <span className="font-medium text-[#3D3830]">never expire</span>. Optional pay-as-you-go top-up packs start at{' '}
+                        <span className="font-['JetBrains_Mono',monospace] tabular-nums font-medium text-[#3D3830]">
+                          {prices.topUp}
+                        </span>{' '}
+                        for 10,000 credits.
+                      </p>
+                    </div>
+                  </Reveal>
+                </>
+              );
+            })()}
+          </div>
+        </section>
+
         {/* 7. CHOOSE YOUR CONSULTATION (OBSERVATORY NIGHT CATALOG) */}
         <section id="shop-section" className="bg-[#1F2229] text-[#F4EFE6] py-20 md:py-28">
           <div className="mx-auto max-w-7xl px-6">
@@ -1123,7 +1586,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
-                    title="Filter saved consultations"
+                    aria-label="Filter saved consultations"
                     className={`h-[46px] w-[46px] shrink-0 rounded-2xl border flex items-center justify-center transition-all duration-200 active:scale-95 cursor-pointer ${
                       showOnlyFavorites
                         ? 'bg-[#B8965A] border-[#B8965A] text-[#1F2229]'
@@ -1136,7 +1599,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                   <button
                     type="button"
                     onClick={cycleSort}
-                    title="Sort by price"
+                    aria-label="Sort by price"
                     className={`h-[46px] px-4 shrink-0 rounded-2xl border flex items-center gap-2 text-xs font-medium transition-all duration-200 active:scale-95 cursor-pointer ${
                       sortBy !== 'default'
                         ? 'bg-[#FAF7F2] border-[#FAF7F2] text-[#1F2229]'
@@ -1178,7 +1641,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                             <button
                               type="button"
                               onClick={(e) => handleCopyProductId(e, product.id)}
-                              title="Copy ID"
+                              aria-label="Copy ID"
                               className="text-[#F4EFE6]/50 hover:text-[#F4EFE6] transition-colors"
                             >
                               {copiedId === product.id ? (
@@ -1630,6 +2093,15 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                   <li>
                     <button
                       type="button"
+                      onClick={() => scrollToSection('pricing-section')}
+                      className="hover:text-[#3D3830] transition-colors cursor-pointer"
+                    >
+                      Pricing
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
                       onClick={onWhyUs}
                       className="hover:text-[#3D3830] transition-colors cursor-pointer"
                     >
@@ -1714,6 +2186,8 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
           </div>
         </Reveal>
       </footer>
+
+      <FloatingScrollControls />
     </div>
   );
 };

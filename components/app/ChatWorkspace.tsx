@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
+  Check,
   ChevronDown,
   ChevronUp,
   Menu,
+  MessageSquarePlus,
   PanelLeftOpen,
   Search,
   Settings2,
@@ -14,13 +16,16 @@ import { useAuth } from './AuthContext';
 import ChatSidebar from './ChatSidebar';
 import MessageThread from './MessageThread';
 import ChatComposer from './ChatComposer';
-import QuickToolsModal from './QuickToolsModal';
+import Tooltip from './Tooltip';
 import MyPromptsModal from './MyPromptsModal';
 import ChatSettingsModal, { type ChatFontSize } from './ChatSettingsModal';
 import type {
+  ChatAttachmentInput,
   ChatCatalog,
   ChatMessageRecord,
   ChatProfile,
+  ChatResponseLength,
+  ChatToneMode,
   ConversationRecord,
   CustomPromptRecord,
   FavoriteMessageRecord,
@@ -36,16 +41,30 @@ import {
 
 const SIDEBAR_LOCK_STORAGE_KEY = 'cc_chat_sidebar_locked';
 
-const getProfileDisplayLabel = (p: ChatProfile): string => {
-  const short = p.short_name?.trim();
-  if (p.is_default) {
-    return short ? `You (${short})` : 'You';
+const getHeaderProfileLabel = (p: ChatProfile | null, modeType?: string): string => {
+  if (p) {
+    return p.short_name?.trim() || p.name;
   }
-  return short || p.name;
+  if (modeType === 'learn_astrology') return 'Learn Astrology';
+  return 'General';
+};
+
+const formatLastChatted = (dateStr?: string | null): string => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
+  const diffMs = Date.now() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 };
 
 const ChatWorkspace: React.FC = () => {
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { appUser, isPreviewMode, exitPreviewMode, signOut, getAccessToken, refreshUser } = useAuth();
 
@@ -53,6 +72,7 @@ const ChatWorkspace: React.FC = () => {
   const [profiles, setProfiles] = useState<ChatProfile[]>([]);
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
   const [activeConversation, setActiveConversation] = useState<ConversationRecord | null>(null);
+  const [pendingProfileId, setPendingProfileId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageRecord[]>([]);
   const [customPrompts, setCustomPrompts] = useState<CustomPromptRecord[]>([]);
   const [favorites, setFavorites] = useState<FavoriteMessageRecord[]>([]);
@@ -70,10 +90,14 @@ const ChatWorkspace: React.FC = () => {
   const [modeSlug, setModeSlug] = useState('general');
   const [outputSlug, setOutputSlug] = useState(appUser?.default_output || 'detailed');
   const [languageSlug, setLanguageSlug] = useState(appUser?.default_language || 'English');
+  const [toneMode, setToneMode] = useState<ChatToneMode>('technical');
+  const [responseLength, setResponseLength] = useState<ChatResponseLength>('detailed');
+  const [pendingMemory, setPendingMemory] = useState<boolean>(true);
   const [chatFontSize, setChatFontSize] = useState<ChatFontSize>(appUser?.chat_font_size || 'base');
-  const [preferredCallName, setPreferredCallName] = useState(appUser?.preferred_call_name || '');
 
   const [draftText, setDraftText] = useState('');
+  const [extraProfileIds, setExtraProfileIds] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<ChatAttachmentInput[]>([]);
   const [replyTarget, setReplyTarget] = useState<ChatMessageRecord | null>(null);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingEarlierMessages, setLoadingEarlierMessages] = useState(false);
@@ -81,9 +105,9 @@ const ChatWorkspace: React.FC = () => {
   const [streamingText, setStreamingText] = useState('');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
-  const [showQuickTools, setShowQuickTools] = useState(false);
   const [showMyPrompts, setShowMyPrompts] = useState(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
+  const [showHeaderThreadMenu, setShowHeaderThreadMenu] = useState(false);
 
   // In-chat keyword search
   const [showInChatSearch, setShowInChatSearch] = useState(false);
@@ -92,6 +116,8 @@ const ChatWorkspace: React.FC = () => {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const inChatSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const headerThreadMenuRef = useRef<HTMLDivElement | null>(null);
+  const seededQueryRef = useRef<string>('');
 
   // Sync defaults once appUser loads
   useEffect(() => {
@@ -100,9 +126,30 @@ const ChatWorkspace: React.FC = () => {
       setOutputSlug((prev) => prev || appUser.default_output || 'detailed');
       setLanguageSlug((prev) => prev || appUser.default_language || 'English');
       setChatFontSize(appUser.chat_font_size || 'base');
-      setPreferredCallName(appUser.preferred_call_name || '');
     }
   }, [appUser]);
+
+  // Close header thread switcher on outside click or Escape
+  useEffect(() => {
+    if (!showHeaderThreadMenu) return;
+    const handlePointer = (e: MouseEvent) => {
+      if (
+        headerThreadMenuRef.current &&
+        !headerThreadMenuRef.current.contains(e.target as Node)
+      ) {
+        setShowHeaderThreadMenu(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowHeaderThreadMenu(false);
+    };
+    document.addEventListener('mousedown', handlePointer);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handlePointer);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [showHeaderThreadMenu]);
 
   const loadConfigAndPrompts = useCallback(async () => {
     if (isPreviewMode) {
@@ -268,6 +315,7 @@ const ChatWorkspace: React.FC = () => {
 
   useEffect(() => {
     if (routeConversationId) {
+      setPendingProfileId(null);
       void loadConversationMessages(routeConversationId);
     } else if (isPreviewMode) {
       const defaultConv = PREVIEW_CONVERSATIONS[0];
@@ -283,12 +331,37 @@ const ChatWorkspace: React.FC = () => {
     }
     setInChatQuery('');
     setActiveMatchIdx(0);
+    setExtraProfileIds([]);
+    setAttachments([]);
   }, [routeConversationId, loadConversationMessages, isPreviewMode]);
 
+  useEffect(() => {
+    if (routeConversationId) return;
+    const seedProfileId = searchParams.get('profileId');
+    const seedPrompt = searchParams.get('prompt');
+    if (!seedProfileId && !seedPrompt) return;
+
+    const queryKey = `${seedProfileId || ''}::${seedPrompt || ''}`;
+    if (seededQueryRef.current === queryKey) return;
+    seededQueryRef.current = queryKey;
+
+    if (seedPrompt) setDraftText(seedPrompt);
+    if (seedProfileId) setPendingProfileId(seedProfileId);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('profileId');
+    nextParams.delete('prompt');
+    setSearchParams(nextParams, { replace: true });
+  }, [routeConversationId, searchParams, setSearchParams]);
+
+  const effectiveProfileId = activeConversation
+    ? activeConversation.profile_id
+    : pendingProfileId;
+
   const activeProfile = useMemo(() => {
-    if (!activeConversation?.profile_id) return null;
-    return profiles.find((p) => p.id === activeConversation.profile_id) || null;
-  }, [activeConversation, profiles]);
+    if (!effectiveProfileId) return null;
+    return profiles.find((p) => p.id === effectiveProfileId) || null;
+  }, [effectiveProfileId, profiles]);
 
   const activeFollowups = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -363,6 +436,7 @@ const ChatWorkspace: React.FC = () => {
       body: JSON.stringify({
         profile_id: profileId,
         mode_type: modeType,
+        use_full_profile_memory: pendingMemory,
       }),
     });
 
@@ -375,6 +449,7 @@ const ChatWorkspace: React.FC = () => {
     const created = data.conversation as ConversationRecord;
     setConversations((prev) => [created, ...prev]);
     setActiveConversation(created);
+    setPendingProfileId(null);
     setMessages([]);
     if (modeType === 'learn_astrology') {
       setModeSlug('learn_astrology');
@@ -448,8 +523,23 @@ const ChatWorkspace: React.FC = () => {
     }
   };
 
+  const effectiveMemory = activeConversation
+    ? activeConversation.use_full_profile_memory
+    : pendingMemory;
+
   const handleToggleMemory = async () => {
-    if (!activeConversation) return;
+    if (!activeConversation) {
+      setPendingMemory((prev) => !prev);
+      return;
+    }
+    if (isPreviewMode) {
+      setActiveConversation((prev) =>
+        prev
+          ? { ...prev, use_full_profile_memory: !prev.use_full_profile_memory }
+          : prev
+      );
+      return;
+    }
     const token = await getAccessToken();
     if (!token) return;
     const nextVal = !activeConversation.use_full_profile_memory;
@@ -467,9 +557,30 @@ const ChatWorkspace: React.FC = () => {
     }
   };
 
+  const handleNewChat = () => {
+    setErrorBanner(null);
+    if (isPreviewMode) {
+      setErrorBanner('This is a preview, login to start a new consultation');
+      return;
+    }
+    setActiveConversation(null);
+    setPendingProfileId(null);
+    setPendingMemory(true);
+    setMessages([]);
+    setReplyTarget(null);
+    setDraftText('');
+    setExtraProfileIds([]);
+    setAttachments([]);
+    if (modeSlug === 'learn_astrology') {
+      setModeSlug('general');
+    }
+    navigate('/app/chat');
+  };
+
   const handleSendMessage = async (overrideText?: string) => {
     const promptToSend = (overrideText ?? draftText).trim();
-    if (!promptToSend || isStreaming) return;
+    const pendingAttachments = overrideText ? [] : attachments;
+    if ((!promptToSend && pendingAttachments.length === 0) || isStreaming) return;
 
     if (isPreviewMode) {
       setErrorBanner('This is a preview, login to start chatting');
@@ -483,14 +594,16 @@ const ChatWorkspace: React.FC = () => {
     let targetConversation = activeConversation;
     if (!targetConversation) {
       const inferredMode = modeSlug === 'learn_astrology' ? 'learn_astrology' : 'reading';
-      targetConversation = await handleCreateConversation(null, inferredMode);
+      targetConversation = await handleCreateConversation(pendingProfileId, inferredMode);
       if (!targetConversation) return;
     }
 
+    const currentReplyTarget = replyTarget;
+    const currentExtraProfiles = extraProfileIds;
     if (!overrideText) {
       setDraftText('');
+      setAttachments([]);
     }
-    const currentReplyTarget = replyTarget;
     setReplyTarget(null);
     setIsStreaming(true);
     setStreamingText('');
@@ -511,6 +624,15 @@ const ChatWorkspace: React.FC = () => {
           mode: modeSlug,
           outputFormat: outputSlug,
           language: languageSlug,
+          toneMode,
+          responseLength,
+          extraProfileIds: currentExtraProfiles,
+          attachments: pendingAttachments.map((a) => ({
+            kind: a.kind,
+            name: a.name,
+            mimeType: a.mimeType,
+            dataUrl: a.dataUrl,
+          })),
           parentMessageId: currentReplyTarget?.id || null,
         }),
         signal: controller.signal,
@@ -653,18 +775,36 @@ const ChatWorkspace: React.FC = () => {
     navigate('/app/login');
   };
 
-  const activeExpertDisplay =
-    catalog?.experts.find((e) => e.slug === expertSlug)?.displayName || 'Vedic astrologer';
-  const activeModeDisplay =
-    catalog?.modes.find((m) => m.slug === modeSlug)?.displayName || 'General';
-  const activeProfileDisplay = activeProfile
-    ? getProfileDisplayLabel(activeProfile)
-    : activeConversation?.mode_type === 'learn_astrology'
-    ? 'Learn Astrology'
-    : 'General';
+  const headerProfileName = getHeaderProfileLabel(
+    activeProfile,
+    activeConversation?.mode_type ||
+      (modeSlug === 'learn_astrology' ? 'learn_astrology' : 'reading')
+  );
+
+  const sameProfileConversations = useMemo(() => {
+    const targetProfileId = activeConversation
+      ? activeConversation.profile_id || null
+      : effectiveProfileId || null;
+    const targetMode = activeConversation?.mode_type;
+
+    return conversations
+      .filter((c) => {
+        const cid = c.profile_id || null;
+        if (cid !== targetProfileId) return false;
+        if (!targetProfileId && targetMode) {
+          return c.mode_type === targetMode;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const tA = new Date(a.updated_at || a.created_at).getTime();
+        const tB = new Date(b.updated_at || b.created_at).getTime();
+        return tB - tA;
+      });
+  }, [conversations, activeConversation, effectiveProfileId]);
 
   return (
-    <div className="flex-1 min-h-0 flex w-full max-w-full overflow-hidden bg-[#FAF7F2] md:rounded-3xl md:border md:border-[#3D3830]/12 md:shadow-[0_20px_50px_-24px_rgba(61,56,48,0.16)]">
+    <div className="flex-1 min-h-0 flex w-full max-w-full overflow-hidden bg-[#FAF7F2]">
       {/* Profile-Grouped Collapsible/Lockable Sidebar */}
       <ChatSidebar
         profiles={profiles}
@@ -692,14 +832,14 @@ const ChatWorkspace: React.FC = () => {
       />
 
       {/* Main Consultation Studio Pane */}
-      <div className="flex-1 flex flex-col min-w-0 h-full">
-        {/* Top Consultation Header Strip */}
-        <div className="flex items-center justify-between gap-2 sm:gap-4 border-b border-[#3D3830]/10 bg-[#FAF7F2] px-3 sm:px-4 md:px-7 py-3">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+      <div className="relative flex-1 flex flex-col min-w-0 h-full">
+        {/* Slim Single-Line Consultation Header Strip */}
+        <div className="flex items-center justify-between gap-2 sm:gap-3 border-b border-[#3D3830]/10 bg-[#FAF7F2] px-3 sm:px-4 md:px-6 py-2">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
             <button
               type="button"
               onClick={() => setShowMobileDrawer(true)}
-              className="lg:hidden p-2 rounded-xl border border-[#3D3830]/12 text-[#3D3830] active:scale-[0.97] transition-all shrink-0"
+              className="lg:hidden p-1.5 rounded-xl border border-[#3D3830]/12 text-[#3D3830] active:scale-[0.97] transition-all shrink-0"
               aria-label="Open consultation menu"
             >
               <Menu className="h-4 w-4" />
@@ -709,32 +849,113 @@ const ChatWorkspace: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsSidebarCollapsed(false)}
-                className="hidden lg:inline-flex p-2 rounded-xl border border-[#3D3830]/12 text-[#5C5449] hover:text-[#3D3830] shrink-0"
-                title="Expand consultation folders"
+                aria-label="Expand consultation folders"
+                className="hidden lg:inline-flex p-1.5 rounded-xl border border-[#3D3830]/12 text-[#5C5449] hover:text-[#3D3830] shrink-0"
               >
                 <PanelLeftOpen className="h-4 w-4" />
               </button>
             )}
 
-            <div className="min-w-0">
-              <h1 className="font-serif text-lg md:text-xl font-medium text-[#3D3830] truncate">
-                {activeConversation ? activeConversation.title : 'Cosmic Council Chat'}
-              </h1>
-              <p className="text-[11px] text-[#8B8275] truncate">
-                <span className="font-medium text-[#5C5449]">{activeProfileDisplay}</span>
-                <span> · {activeExpertDisplay}</span>
-                <span> · {activeModeDisplay}</span>
-                {activeProfile && (
-                  <span className="hidden sm:inline">
-                    {' '}
-                    · {activeProfile.is_activated ? 'Chart Context Loaded' : 'Draft Profile'}
+            {/* Single-Line Profile (Chat Title) + Same-Profile Last-Chatted Switcher */}
+            <div ref={headerThreadMenuRef} className="relative min-w-0 flex-1 max-w-2xl">
+              <button
+                type="button"
+                onClick={() => setShowHeaderThreadMenu((v) => !v)}
+                aria-expanded={showHeaderThreadMenu}
+                aria-label="Switch conversations for this profile"
+                className="group inline-flex items-center gap-1.5 max-w-full rounded-xl px-2 py-1 -ml-2 hover:bg-[#F1ECE3]/80 transition-colors cursor-pointer text-left"
+              >
+                <h1 className="font-serif text-[15px] sm:text-base font-medium text-[#3D3830] truncate">
+                  <span className="font-semibold text-[#3D3830]">{headerProfileName}</span>{' '}
+                  <span className="text-[#5C5449]">
+                    ({activeConversation ? activeConversation.title : 'New Chat'})
                   </span>
-                )}
-              </p>
+                </h1>
+                <ChevronDown
+                  className={`h-3.5 w-3.5 shrink-0 text-[#8B8275] group-hover:text-[#3D3830] transition-transform duration-150 ${
+                    showHeaderThreadMenu ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {showHeaderThreadMenu && (
+                <div className="animate-cc-dropdown-down absolute left-0 top-full mt-1.5 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden">
+                  <div className="flex items-center justify-between px-3.5 py-2 bg-[#F1ECE3]/80 border-b border-[#3D3830]/10">
+                    <span className="text-[11px] font-medium text-[#5C5449] truncate">
+                      {headerProfileName} · Last chatted
+                    </span>
+                    <span className="text-[10px] font-['JetBrains_Mono',monospace] text-[#8B8275]">
+                      {sameProfileConversations.length}
+                    </span>
+                  </div>
+
+                  <div className="max-h-72 overflow-y-auto p-1.5 space-y-0.5">
+                    {sameProfileConversations.length === 0 ? (
+                      <p className="px-3 py-3 text-xs text-[#8B8275]">
+                        No saved chats for {headerProfileName} yet.
+                      </p>
+                    ) : (
+                      sameProfileConversations.map((conv) => {
+                        const isActive = conv.id === activeConversation?.id;
+                        return (
+                          <button
+                            key={conv.id}
+                            type="button"
+                            onClick={() => {
+                              setShowHeaderThreadMenu(false);
+                              navigate(`/app/chat/${conv.id}`);
+                            }}
+                            className={`w-full flex items-center justify-between gap-2.5 rounded-xl px-3 py-2 text-left transition-colors cursor-pointer ${
+                              isActive
+                                ? 'bg-[#F1ECE3] text-[#3D3830]'
+                                : 'text-[#5C5449] hover:bg-[#F1ECE3]/60 hover:text-[#3D3830]'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-[#3D3830] truncate">
+                                {conv.title}
+                              </p>
+                              <p className="text-[10px] text-[#8B8275] font-['JetBrains_Mono',monospace]">
+                                {formatLastChatted(conv.updated_at || conv.created_at)}
+                              </p>
+                            </div>
+                            {isActive && (
+                              <Check className="h-3.5 w-3.5 text-[#2D6A4F] shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="border-t border-[#3D3830]/10 p-1.5 bg-[#FAF7F2]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowHeaderThreadMenu(false);
+                        if (isPreviewMode) {
+                          handleNewChat();
+                        } else {
+                          void handleCreateConversation(
+                            effectiveProfileId || null,
+                            activeConversation?.mode_type === 'learn_astrology'
+                              ? 'learn_astrology'
+                              : 'reading'
+                          );
+                        }
+                      }}
+                      className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7]/70 transition-colors cursor-pointer"
+                    >
+                      <MessageSquarePlus className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
+                      <span className="truncate">New chat for {headerProfileName}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             {activeProfile && !activeProfile.is_activated && (
               <Link
                 to="/app/profiles"
@@ -745,26 +966,26 @@ const ChatWorkspace: React.FC = () => {
               </Link>
             )}
 
-            <button
-              type="button"
-              onClick={handleOpenInChatSearch}
-              title="Search within conversation"
-              aria-label="Search within conversation"
-              className={`p-2 rounded-xl border transition-all active:scale-[0.96] ${
-                showInChatSearch
-                  ? 'border-[#3D3830]/25 bg-[#F1ECE3] text-[#3D3830]'
-                  : 'border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:text-[#3D3830]'
-              }`}
-            >
-              <Search className="h-4 w-4" />
-            </button>
+            <Tooltip content="Search within conversation" placement="bottom">
+              <button
+                type="button"
+                onClick={handleOpenInChatSearch}
+                aria-label="Search within conversation"
+                className={`p-1.5 rounded-xl border transition-all active:scale-[0.96] cursor-pointer ${
+                  showInChatSearch
+                    ? 'border-[#3D3830]/25 bg-[#F1ECE3] text-[#3D3830]'
+                    : 'border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:text-[#3D3830]'
+                }`}
+              >
+                <Search className="h-4 w-4" />
+              </button>
+            </Tooltip>
 
             <button
               type="button"
               onClick={() => setShowChatSettings(true)}
-              title="Chat settings"
               aria-label="Open chat settings"
-              className="p-2 rounded-xl border border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:text-[#3D3830] active:scale-[0.96] transition-all"
+              className="p-1.5 rounded-xl border border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:text-[#3D3830] active:scale-[0.96] transition-all cursor-pointer"
             >
               <Settings2 className="h-4 w-4" />
             </button>
@@ -874,50 +1095,70 @@ const ChatWorkspace: React.FC = () => {
           onDraftChange={setDraftText}
           catalog={catalog}
           profiles={profiles}
-          activeProfileId={activeConversation?.profile_id || null}
-          useFullProfileMemory={activeConversation?.use_full_profile_memory ?? true}
+          activeProfileId={effectiveProfileId}
+          extraProfileIds={extraProfileIds}
+          attachments={attachments}
           expertSlug={expertSlug}
           modeSlug={modeSlug}
           outputSlug={outputSlug}
           languageSlug={languageSlug}
+          fontSize={chatFontSize}
+          useFullProfileMemory={effectiveMemory}
+          toneMode={toneMode}
+          responseLength={responseLength}
           replyTarget={replyTarget}
           activeFollowups={activeFollowups}
           customPrompts={customPrompts}
           isStreaming={isStreaming}
           isThreadLocked={isThreadLocked}
           isPreviewMode={isPreviewMode}
+          getAccessToken={getAccessToken}
           onChangeExpert={setExpertSlug}
           onChangeMode={setModeSlug}
-          onChangeLanguage={setLanguageSlug}
           onChangeOutput={setOutputSlug}
-          onSwitchProfile={handleSwitchProfileBeforeStart}
+          onChangeLanguage={setLanguageSlug}
+          onChangeFontSize={(nextSize) => {
+            setChatFontSize(nextSize);
+            if (!isPreviewMode) {
+              void getAccessToken().then((token) => {
+                if (!token) return;
+                return fetch('/api/app/me/preferences', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                  },
+                  body: JSON.stringify({ chat_font_size: nextSize }),
+                });
+              });
+            }
+          }}
           onToggleMemory={handleToggleMemory}
+          onChangeToneMode={setToneMode}
+          onChangeResponseLength={setResponseLength}
+          onSwitchProfile={handleSwitchProfileBeforeStart}
+          onAddExtraProfile={(pid) =>
+            setExtraProfileIds((prev) =>
+              prev.includes(pid) || prev.length >= 3 ? prev : [...prev, pid]
+            )
+          }
+          onRemoveExtraProfile={(pid) =>
+            setExtraProfileIds((prev) => prev.filter((id) => id !== pid))
+          }
+          onAddAttachments={(newFiles) =>
+            setAttachments((prev) => [...prev, ...newFiles].slice(0, 4))
+          }
+          onRemoveAttachment={(attId) =>
+            setAttachments((prev) => prev.filter((a) => a.id !== attId))
+          }
           onClearReply={() => setReplyTarget(null)}
           onOpenMyPrompts={() => setShowMyPrompts(true)}
-          onOpenQuickTools={() => setShowQuickTools(true)}
+          onOpenSettings={() => setShowChatSettings(true)}
+          onNewChat={handleNewChat}
           onSendMessage={handleSendMessage}
           onStopGeneration={handleStopGeneration}
         />
       </div>
-
-      {/* Quick Tools Modal (Question Generator, Prompt Expander, Prompt Optimizer) */}
-      <QuickToolsModal
-        isOpen={showQuickTools}
-        initialDraft={draftText}
-        modeSlug={modeSlug}
-        languageSlug={languageSlug}
-        profileId={activeConversation?.profile_id || null}
-        toolsCatalog={catalog?.tools}
-        getAccessToken={getAccessToken}
-        onClose={() => setShowQuickTools(false)}
-        onInsertText={(text, sendNow) => {
-          if (sendNow) {
-            void handleSendMessage(text);
-          } else {
-            setDraftText(text);
-          }
-        }}
-      />
 
       {/* User Custom Prompts Modal ("My Prompts", max 10) */}
       <MyPromptsModal
@@ -930,19 +1171,32 @@ const ChatWorkspace: React.FC = () => {
         onClose={() => setShowMyPrompts(false)}
       />
 
-      {/* Top-Right Chat Preferences Modal */}
+      {/* Consultation & Chat Settings Modal */}
       <ChatSettingsModal
         isOpen={showChatSettings}
         isPreviewMode={isPreviewMode}
         catalog={catalog}
-        initialCallName={preferredCallName}
+        profiles={profiles}
+        activeProfileId={effectiveProfileId}
+        useFullProfileMemory={effectiveMemory}
+        expertSlug={expertSlug}
+        modeSlug={modeSlug}
+        outputSlug={outputSlug}
+        languageSlug={languageSlug}
+        toneMode={toneMode}
+        responseLength={responseLength}
+        isThreadLocked={isThreadLocked}
         initialFontSize={chatFontSize}
-        initialExpert={appUser?.default_expert || expertSlug}
-        initialOutput={appUser?.default_output || outputSlug}
-        initialLanguage={appUser?.default_language || languageSlug}
         getAccessToken={getAccessToken}
+        onSwitchProfile={handleSwitchProfileBeforeStart}
+        onChangeExpert={setExpertSlug}
+        onChangeMode={setModeSlug}
+        onChangeOutput={setOutputSlug}
+        onChangeLanguage={setLanguageSlug}
+        onChangeToneMode={setToneMode}
+        onChangeResponseLength={setResponseLength}
+        onToggleMemory={handleToggleMemory}
         onSaved={(updated) => {
-          setPreferredCallName(updated.preferredCallName);
           setChatFontSize(updated.chatFontSize);
           if (!isThreadLocked) {
             setExpertSlug(updated.defaultExpert);

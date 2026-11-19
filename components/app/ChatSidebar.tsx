@@ -5,8 +5,10 @@ import {
   ChevronDown,
   ChevronRight,
   Coins,
+  Database,
   FolderOpen,
   LayoutDashboard,
+  LifeBuoy,
   Lock,
   LogOut,
   MessageSquarePlus,
@@ -21,6 +23,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { useAppShell } from './AppLayout';
 import type {
   ChatProfile,
   ConversationRecord,
@@ -85,6 +88,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onDeleteConversation,
   onLoadFavorites,
 }) => {
+  const { openSupport, openBackup, openAccountSettings } = useAppShell();
   const [sidebarTab, setSidebarTab] = useState<'folders' | 'favorites'>('folders');
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
     general: true,
@@ -189,7 +193,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               <button
                 type="button"
                 onClick={() => onToggleBookmark(conv)}
-                title={conv.is_bookmarked ? 'Remove bookmark' : 'Pin to top'}
+                aria-label={conv.is_bookmarked ? 'Remove bookmark' : 'Pin to top'}
                 className={`p-1 rounded hover:bg-[#3D3830]/10 transition-opacity ${
                   conv.is_bookmarked ? 'opacity-100 text-[#8B7355]' : 'opacity-0 group-hover:opacity-100 text-[#8B8275]'
                 }`}
@@ -199,7 +203,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               <button
                 type="button"
                 onClick={() => setConfirmDeleteId(conv.id)}
-                title="Delete chat"
+                aria-label="Delete chat"
                 className="p-1 rounded text-[#8B8275] hover:text-[#7A3E36] hover:bg-[#3D3830]/10 opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <Trash2 className="h-3 w-3" />
@@ -291,7 +295,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
         <button
           type="button"
           onClick={onToggleLock}
-          title={isLocked ? 'Unlock sidebar width' : 'Lock sidebar open'}
+          aria-label={isLocked ? 'Unlock sidebar width' : 'Lock sidebar open'}
           className={`hidden lg:inline-flex p-2 rounded-xl border transition-colors ${
             isLocked
               ? 'border-[#3D3830]/25 bg-[#FAF7F2] text-[#3D3830]'
@@ -305,7 +309,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
           <button
             type="button"
             onClick={onToggleCollapse}
-            title="Collapse sidebar"
+            aria-label="Collapse sidebar"
             className="hidden lg:inline-flex p-2 rounded-xl text-[#8B8275] hover:bg-[#EAE3D7] hover:text-[#3D3830]"
           >
             <PanelLeftClose className="h-3.5 w-3.5" />
@@ -407,7 +411,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                     <button
                       type="button"
                       onClick={() => toggleFolder(profile.id)}
-                      title={profile.name}
                       className="flex items-center gap-1.5 text-left min-w-0 flex-1 py-1 text-xs font-semibold text-[#3D3830] hover:text-[#5C5449]"
                     >
                       {open ? (
@@ -426,7 +429,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                         onCreateConversation(profile.id, 'reading');
                         onCloseMobileDrawer();
                       }}
-                      title={`New consultation for ${displayLabel}`}
+                      aria-label={`New consultation for ${displayLabel}`}
                       className="p-1 text-[#8B8275] hover:text-[#3D3830] rounded"
                     >
                       <MessageSquarePlus className="h-3.5 w-3.5" />
@@ -472,7 +475,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                     onCreateConversation(null, 'reading');
                     onCloseMobileDrawer();
                   }}
-                  title="New general consultation"
+                  aria-label="New general consultation"
                   className="p-1 text-[#8B8275] hover:text-[#3D3830] rounded"
                 >
                   <MessageSquarePlus className="h-3.5 w-3.5" />
@@ -568,14 +571,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
         <nav className="grid grid-cols-2 gap-1">
           <NavLink
-            to="/app/dashboard"
-            onClick={onCloseMobileDrawer}
-            className={mobileNavLinkClass}
-          >
-            <LayoutDashboard className="h-3.5 w-3.5 text-[#8B8275]" />
-            <span>Overview</span>
-          </NavLink>
-          <NavLink
             to="/app/profiles"
             onClick={onCloseMobileDrawer}
             className={mobileNavLinkClass}
@@ -592,6 +587,14 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             <span>Reports</span>
           </NavLink>
           <NavLink
+            to="/app/dashboard"
+            onClick={onCloseMobileDrawer}
+            className={mobileNavLinkClass}
+          >
+            <LayoutDashboard className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Dashboard</span>
+          </NavLink>
+          <NavLink
             to="/app/billing"
             onClick={onCloseMobileDrawer}
             className={mobileNavLinkClass}
@@ -599,14 +602,39 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             <Coins className="h-3.5 w-3.5 text-[#8B8275]" />
             <span>Credits</span>
           </NavLink>
-          <NavLink
-            to="/app/settings"
-            onClick={onCloseMobileDrawer}
-            className={mobileNavLinkClass}
+          <button
+            type="button"
+            onClick={() => {
+              onCloseMobileDrawer();
+              openSupport();
+            }}
+            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
+          >
+            <LifeBuoy className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Support</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onCloseMobileDrawer();
+              openAccountSettings();
+            }}
+            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
           >
             <Settings className="h-3.5 w-3.5 text-[#8B8275]" />
             <span>Settings</span>
-          </NavLink>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onCloseMobileDrawer();
+              openBackup();
+            }}
+            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
+          >
+            <Database className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Backup</span>
+          </button>
           {onSignOut && (
             <button
               type="button"

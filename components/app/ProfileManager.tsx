@@ -35,11 +35,37 @@ interface ProfileSummary {
   chart_json?: CompiledChartJson | null;
 }
 
+const HOUR_12_OPTIONS = Array.from({ length: 12 }, (_, idx) => {
+  const val = String(idx + 1).padStart(2, '0');
+  return { value: val, label: val };
+});
+
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, idx) => {
+  const val = String(idx).padStart(2, '0');
+  return { value: val, label: val };
+});
+
+const MERIDIEM_OPTIONS = [
+  { value: 'AM', label: 'AM' },
+  { value: 'PM', label: 'PM' },
+];
+
+function to24HourTimeString(hour12: string, minute: string, meridiem: string): string {
+  if (!hour12 || !minute || (meridiem !== 'AM' && meridiem !== 'PM')) return '';
+  let h = Number(hour12);
+  if (meridiem === 'AM') {
+    if (h === 12) h = 0;
+  } else if (h !== 12) {
+    h += 12;
+  }
+  return `${String(h).padStart(2, '0')}:${minute}:00`;
+}
+
 const ProfileManager: React.FC = () => {
   const { getAccessToken, refreshUser } = useAuth();
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
-  const [tierLimit, setTierLimit] = useState(5);
-  const [activationCost, setActivationCost] = useState(2000);
+  const [tierLimit, setTierLimit] = useState(10);
+  const [activationCost, setActivationCost] = useState(0);
   const [astrologyApiConfigured, setAstrologyApiConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -48,6 +74,9 @@ const ProfileManager: React.FC = () => {
   // Create form state
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [birthHour12, setBirthHour12] = useState('');
+  const [birthMinute, setBirthMinute] = useState('');
+  const [birthMeridiem, setBirthMeridiem] = useState<'AM' | 'PM'>('AM');
   const [formState, setFormState] = useState({
     name: '',
     short_name: '',
@@ -87,8 +116,8 @@ const ProfileManager: React.FC = () => {
         setError(data.error || 'Failed to load profiles.');
       } else {
         setProfiles(data.profiles || []);
-        setTierLimit(data.tierLimit ?? 5);
-        setActivationCost(data.activationCost ?? 2000);
+        setTierLimit(data.tierLimit ?? 10);
+        setActivationCost(data.activationCost ?? 0);
         setAstrologyApiConfigured(Boolean(data.astrologyApiConfigured));
         setError(null);
       }
@@ -103,9 +132,27 @@ const ProfileManager: React.FC = () => {
     loadProfiles();
   }, [loadProfiles]);
 
+  const updateBirthTimeParts = (nextHour: string, nextMinute: string, nextMeridiem: 'AM' | 'PM') => {
+    setBirthHour12(nextHour);
+    setBirthMinute(nextMinute);
+    setBirthMeridiem(nextMeridiem);
+    const converted = to24HourTimeString(nextHour, nextMinute, nextMeridiem);
+    setFormState((prev) => ({ ...prev, birth_time: converted }));
+  };
+
   const handleCreateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (!formState.birth_date) {
+      setError('Please select a birth date.');
+      return;
+    }
+    const normalizedTime =
+      formState.birth_time || to24HourTimeString(birthHour12, birthMinute, birthMeridiem);
+    if (!normalizedTime) {
+      setError('Please select birth hour, minute, and AM/PM.');
+      return;
+    }
     const token = await getAccessToken();
     if (!token) return;
 
@@ -117,13 +164,16 @@ const ProfileManager: React.FC = () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(formState),
+        body: JSON.stringify({ ...formState, birth_time: normalizedTime }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || 'Could not save profile.');
       } else {
         setShowCreateForm(false);
+        setBirthHour12('');
+        setBirthMinute('');
+        setBirthMeridiem('AM');
         setFormState({
           name: '',
           short_name: '',
@@ -404,15 +454,41 @@ const ProfileManager: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Birth Time (24h)</label>
-              <input
-                type="time"
-                step="1"
-                required
-                value={formState.birth_time}
-                onChange={(e) => setFormState({ ...formState, birth_time: e.target.value })}
-                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
-              />
+              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Birth Time</label>
+              <div className="grid grid-cols-3 gap-2">
+                <CustomSelect
+                  value={birthHour12}
+                  onChange={(val) => updateBirthTimeParts(val, birthMinute, birthMeridiem)}
+                  options={HOUR_12_OPTIONS}
+                  placeholder="HH"
+                  ariaLabel="Birth Hour"
+                  size="md"
+                  surface="canvas"
+                />
+                <CustomSelect
+                  value={birthMinute}
+                  onChange={(val) => updateBirthTimeParts(birthHour12, val, birthMeridiem)}
+                  options={MINUTE_OPTIONS}
+                  placeholder="MM"
+                  ariaLabel="Birth Minute"
+                  size="md"
+                  surface="canvas"
+                />
+                <CustomSelect
+                  value={birthMeridiem}
+                  onChange={(val) =>
+                    updateBirthTimeParts(
+                      birthHour12,
+                      birthMinute,
+                      val === 'PM' ? 'PM' : 'AM'
+                    )
+                  }
+                  options={MERIDIEM_OPTIONS}
+                  ariaLabel="AM or PM"
+                  size="md"
+                  surface="canvas"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Birth City</label>
@@ -545,7 +621,10 @@ const ProfileManager: React.FC = () => {
           </p>
           <button
             type="button"
-            onClick={() => setShowCreateForm(true)}
+            onClick={() => {
+              setFormState((prev) => ({ ...prev, is_default: true }));
+              setShowCreateForm(true);
+            }}
             className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-6 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E]"
           >
             <Plus className="h-4 w-4" />
@@ -619,7 +698,6 @@ const ProfileManager: React.FC = () => {
                             setEditingLabelId(profile.id);
                             setEditingShortName(profile.short_name || '');
                           }}
-                          title="Edit short name"
                           className="inline-flex items-center gap-1 text-[11px] text-[#8B8275] hover:text-[#3D3830]"
                         >
                           <Pencil className="h-3 w-3" />
@@ -650,7 +728,7 @@ const ProfileManager: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setConfirmDeleteId(profile.id)}
-                      title="Delete Profile"
+                      aria-label="Delete Profile"
                       className="text-[#8B8275] hover:text-[#A94438] p-1.5 shrink-0"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -700,7 +778,7 @@ const ProfileManager: React.FC = () => {
                     className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/20 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7] transition-colors disabled:opacity-50"
                   >
                     <UserCheck className="h-3.5 w-3.5 text-[#8B7355]" />
-                    <span>{updatingMetaId === profile.id ? 'Updating...' : 'Set as You'}</span>
+                    <span>{updatingMetaId === profile.id ? 'Updating...' : 'Set as Your Chart'}</span>
                   </button>
                 )}
               </div>

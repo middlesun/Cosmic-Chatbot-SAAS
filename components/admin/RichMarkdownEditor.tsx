@@ -13,6 +13,7 @@ import {
   PenLine,
   Quote,
 } from 'lucide-react';
+import Tooltip from '../app/Tooltip';
 
 interface RichMarkdownEditorProps {
   value: string;
@@ -137,17 +138,17 @@ const RichMarkdownEditor: React.FC<RichMarkdownEditorProps> = ({
           {toolbarButtons.map((btn) => {
             const Icon = btn.icon;
             return (
-              <button
-                key={btn.label}
-                type="button"
-                disabled={tab === 'preview'}
-                onClick={btn.onClick}
-                title={btn.label}
-                aria-label={btn.label}
-                className="p-1.5 rounded-lg text-[#5C5449] hover:bg-[#FDFBF7] hover:text-[#3D3830] disabled:opacity-40 transition-colors"
-              >
-                <Icon className="h-3.5 w-3.5" />
-              </button>
+              <Tooltip key={btn.label} content={btn.label} placement="top">
+                <button
+                  type="button"
+                  disabled={tab === 'preview'}
+                  onClick={btn.onClick}
+                  aria-label={btn.label}
+                  className="p-1.5 rounded-lg text-[#5C5449] hover:bg-[#FDFBF7] hover:text-[#3D3830] disabled:opacity-40 transition-colors"
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
             );
           })}
         </div>
