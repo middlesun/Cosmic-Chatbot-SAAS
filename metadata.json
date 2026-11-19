@@ -1,8 +1,6 @@
 {
-  "name": "ContactFormSubmitter.pro",
-  "description": "High quality B2B lead generation and precision-targeted contact form outreach service.",
-  "permissions": [],
-  "capabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "name": "CosmicCouncil.pro",
+  "description": "A luxury mobile-first astrology consultation platform offering strategic timing and psychological clarity for life's pivotal moments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
