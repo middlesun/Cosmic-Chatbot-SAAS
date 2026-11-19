@@ -26,6 +26,19 @@ const AuthPage: React.FC = () => {
     }
   }, [isLoading, session, navigate]);
 
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const oauthErrDesc =
+      hashParams.get('error_description') ||
+      searchParams.get('error_description') ||
+      hashParams.get('error') ||
+      searchParams.get('error');
+    if (oauthErrDesc) {
+      setError(oauthErrDesc.replace(/\+/g, ' '));
+    }
+  }, []);
+
   const handleGoogleLogin = async () => {
     setError(null);
     setSubmitting(true);
@@ -46,10 +59,40 @@ const AuthPage: React.FC = () => {
       storePendingReferral(referralCode.trim());
     }
 
+    const redirectTo = `${window.location.origin}/app/chat`;
+    const isInIframe = (() => {
+      try {
+        return window.self !== window.top;
+      } catch {
+        return true;
+      }
+    })();
+
+    if (isInIframe) {
+      const { data, error: oauthErr } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (oauthErr || !data?.url) {
+        setError(oauthErr?.message || 'Unable to start Google sign-in.');
+        setSubmitting(false);
+        return;
+      }
+      try {
+        window.top?.location.assign(data.url);
+      } catch {
+        window.location.assign(data.url);
+      }
+      return;
+    }
+
     const { error: oauthErr } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/app/chat`,
+        redirectTo,
       },
     });
     if (oauthErr) {
@@ -157,7 +200,7 @@ const AuthPage: React.FC = () => {
         <div className="w-full max-w-md rounded-3xl bg-[#FDFBF7] p-8 md:p-10 shadow-[0_20px_50px_-20px_rgba(61,56,48,0.12)] border border-[#3D3830]/10">
           <div className="mb-8 text-center">
             <h1 className="font-serif text-3xl md:text-4xl font-medium text-[#3D3830] tracking-tight">
-              {view === 'signin' && 'Enter the Observatory'}
+              {view === 'signin' && 'Enter CosmicCouncil'}
               {view === 'signup' && 'Create Your Account'}
               {view === 'forgot' && 'Reset Password'}
             </h1>

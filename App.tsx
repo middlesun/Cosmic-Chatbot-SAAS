@@ -354,6 +354,25 @@ const App: React.FC = () => {
     return <Navigate to={`/blog/${slug}`} replace />;
   };
 
+  if (!location.pathname.startsWith('/app')) {
+    const hasOAuthHash =
+      location.hash.includes('access_token=') ||
+      location.hash.includes('refresh_token=') ||
+      location.hash.includes('error_description=');
+    const searchObj = new URLSearchParams(location.search);
+    const hasAuthCode = searchObj.has('code') || searchObj.has('error_description');
+
+    if (hasOAuthHash || hasAuthCode) {
+      const hasError =
+        location.hash.includes('error=') ||
+        location.hash.includes('error_description=') ||
+        searchObj.has('error') ||
+        searchObj.has('error_description');
+      const target = hasError ? '/app/login' : '/app/chat';
+      return <Navigate to={`${target}${location.search}${location.hash}`} replace />;
+    }
+  }
+
   if (location.pathname.startsWith('/app')) {
     return (
       <Routes>
@@ -364,7 +383,7 @@ const App: React.FC = () => {
 
   const homeMetaTags = (
     <MetaTags 
-      title="Cosmic Council PRO | Professional Vedic Astrology & Chart Readings"
+      title="CosmicCouncil - Your personal AI astrologer"
       description="Get highly accurate, multi-system cross-verified Vedic astrology consultations. Rely on precise chart predictions combining Parashari, Jaimini, KP, and Nadi methodologies."
       canonicalUrl="https://www.cosmiccouncil.pro/"
       schemaData={{

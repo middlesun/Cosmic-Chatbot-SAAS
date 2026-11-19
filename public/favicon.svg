@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="cc-bg" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FAF7F2" />
+      <stop offset="100%" stop-color="#EAE3D7" />
+    </linearGradient>
+  </defs>
+
+  <!-- Soft rounded-corner squircle in Cosmic Council warm ivory & sandstone -->
+  <rect
+    x="2"
+    y="2"
+    width="60"
+    height="60"
+    rx="16"
+    fill="url(#cc-bg)"
+    stroke="#3D3830"
+    stroke-opacity="0.14"
+    stroke-width="1.5"
+  />
+
+  <!-- Delicate inner orbital hairline -->
+  <rect
+    x="5.5"
+    y="5.5"
+    width="53"
+    height="53"
+    rx="12.5"
+    stroke="#B8965A"
+    stroke-opacity="0.22"
+    stroke-width="1"
+  />
+
+  <!-- Soft editorial serif letter C in Deep Umber (#3D3830) -->
+  <path
+    d="M42.4 22.8C43.1 23.6 42.1 24.6 41.1 23.9C39.2 21.1 36.7 19.3 33.4 19.3C27.4 19.3 23.2 24.8 23.2 32C23.2 39.2 27.4 44.7 33.4 44.7C36.9 44.7 39.5 42.8 41.3 40.0C42.1 39.1 43.3 40.0 42.6 41.1C40.4 45.0 36.8 47.6 32.0 47.6C23.5 47.6 17.4 40.8 17.4 32C17.4 23.2 23.5 16.4 32.0 16.4C36.6 16.4 40.2 18.8 42.4 22.8Z"
+    fill="#3D3830"
+  />
+
+  <!-- Celestial Aged Brass (#B8965A) accent point -->
+  <circle cx="43.5" cy="32" r="2.7" fill="#B8965A" />
+</svg>

@@ -166,20 +166,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
-      setSession(data.session);
-      await fetchAppUser(data.session);
-
       const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
         if (!mounted) return;
         if (event === 'PASSWORD_RECOVERY') {
           setIsPasswordRecovery(true);
         }
+        if (nextSession && window.location.hash.includes('access_token=')) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
         setSession(nextSession);
         void fetchAppUser(nextSession);
       });
       unsubscribe = () => listener.subscription.unsubscribe();
+
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (data.session && window.location.hash.includes('access_token=')) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+      setSession(data.session);
+      await fetchAppUser(data.session);
     };
 
     void initAuth();
