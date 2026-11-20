@@ -323,7 +323,7 @@ const ReportsStore: React.FC = () => {
                       <span>
                         {formatProfileLabel(prof)} · ({modeTag})
                       </span>
-                      <span className="font-mono tabular-nums">
+                      <span className="font-['DM_Sans',sans-serif] tabular-nums">
                         {new Date(ord.created_at).toLocaleDateString()}
                       </span>
                     </div>
@@ -423,7 +423,7 @@ const ReportsStore: React.FC = () => {
                   <div className="pt-4 border-t border-[#3D3830]/10 flex items-center justify-between gap-4">
                     <div>
                       <p className="text-[10px] text-[#8B8275]">Price</p>
-                      <p className="font-mono tabular-nums text-base font-medium text-[#3D3830]">
+                      <p className="font-['DM_Sans',sans-serif] tabular-nums text-base font-medium text-[#3D3830]">
                         {item.price_credits.toLocaleString()} Credits
                       </p>
                     </div>
@@ -562,7 +562,7 @@ const ReportsStore: React.FC = () => {
               <div className="pt-3 border-t border-[#3D3830]/10 flex items-center justify-between gap-4">
                 <div className="text-xs">
                   <span className="text-[#8B8275]">Balance after order: </span>
-                  <span className="font-mono tabular-nums text-[#3D3830]">
+                  <span className="font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]">
                     {(
                       (appUser?.credits_balance ?? 0) - selectedReport.price_credits
                     ).toLocaleString()}{' '}

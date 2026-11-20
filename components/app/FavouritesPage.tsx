@@ -409,7 +409,7 @@ const FavouritesPage: React.FC = () => {
               >
                 <span>{t.label}</span>
                 <span
-                  className={`font-mono text-[11px] tabular-nums ${
+                  className={`font-['DM_Sans',sans-serif] text-[11px] tabular-nums ${
                     active ? 'text-[#FAF7F2]/80' : 'text-[#8B8275]'
                   }`}
                 >
@@ -548,7 +548,7 @@ const FavouritesPage: React.FC = () => {
                           <span>View in Reports</span>
                           <ArrowUpRight className="h-3.5 w-3.5" />
                         </Link>
-                        <span className="font-mono text-[11px] tabular-nums text-[#8B8275]">
+                        <span className="font-['DM_Sans',sans-serif] text-[11px] tabular-nums text-[#8B8275]">
                           {rep.price_credits.toLocaleString()} credits
                         </span>
                       </div>
@@ -591,7 +591,7 @@ const FavouritesPage: React.FC = () => {
                         >
                           {conv.title}
                         </Link>
-                        <p className="font-mono text-[11px] tabular-nums text-[#8B8275]">
+                        <p className="font-['DM_Sans',sans-serif] text-[11px] tabular-nums text-[#8B8275]">
                           Updated {formatDateShort(conv.updated_at)}
                         </p>
                       </div>
@@ -651,7 +651,7 @@ const FavouritesPage: React.FC = () => {
                         </button>
                       </div>
                       <div className="flex items-center justify-between gap-2 text-[11px] text-[#8B8275]">
-                        <span className="font-mono tabular-nums">
+                        <span className="font-['DM_Sans',sans-serif] tabular-nums">
                           {formatDateShort(msg.created_at)}
                         </span>
                         <Link
@@ -689,7 +689,7 @@ const FavouritesPage: React.FC = () => {
                           <p className="mt-0.5 text-xs text-[#5C5449] truncate">
                             {prof.birth_city}, {prof.birth_country}
                           </p>
-                          <p className="mt-0.5 font-mono text-[11px] tabular-nums text-[#8B8275]">
+                          <p className="mt-0.5 font-['DM_Sans',sans-serif] text-[11px] tabular-nums text-[#8B8275]">
                             {prof.birth_date}
                           </p>
                           {prof.tags.length > 0 && (

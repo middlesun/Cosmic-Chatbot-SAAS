@@ -3,12 +3,12 @@ import { Link } from 'react-router-dom';
 import {
   ArrowRight,
   Compass,
-  CreditCard,
   FileText,
   Hash,
   Heart,
   HeartHandshake,
   LayoutGrid,
+  MessageCircle,
   MessageSquare,
   Plus,
   Sparkles,
@@ -206,48 +206,122 @@ const AppDashboardHome: React.FC = () => {
   return (
     <div className="space-y-10 pb-8">
       {/* Editorial Greeting Header */}
-      <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-[#3D3830]/10 pb-7">
-        <div>
-          <p className="text-xs text-[#8B8275] mb-2">
+      <section className="border-b border-[#3D3830]/10 pb-7 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-[#8B8275]">
             {tierLabel} · {appUser?.currency_pref || 'INR'} · {getUserProfileDisplayLabel(appUser)}
           </p>
+          <AstrologyModeToggle value={astrologyMode} onChange={setAstrologyMode} />
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <h1 className="font-serif text-4xl md:text-5xl font-medium text-[#3D3830] tracking-tight">
             Welcome back
           </h1>
-          <p className="mt-2 max-w-2xl text-sm text-[#5C5449] leading-relaxed">
-            Your personal {astrologyMode === 'western' ? 'Western' : 'Vedic'} astrologer. Analyse charts, generate reports, track timing and transits and get real time insights
-          </p>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <AstrologyModeToggle value={astrologyMode} onChange={setAstrologyMode} />
-          {stats.savedProfiles === 0 && (
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
             <Link
-              to="/app/profiles"
+              to="/app/profiles?new=1"
               className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-5 py-3 text-sm font-medium text-[#3D3830] transition-colors hover:bg-[#F1ECE3] whitespace-nowrap shrink-0"
             >
               <Plus className="h-4 w-4 text-[#8B7355]" />
-              <span>Add Birth Details</span>
+              <span>New Chart</span>
             </Link>
-          )}
-          <Link
-            to="/app/apps"
-            className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-5 py-3 text-sm font-medium text-[#3D3830] transition-colors hover:bg-[#F1ECE3] whitespace-nowrap shrink-0"
-          >
-            <LayoutGrid className="h-4 w-4 text-[#8B7355]" />
-            <span>Explore Apps</span>
-          </Link>
-          <Link
-            to="/app/chat"
-            className="min-h-[44px] inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-6 py-3 text-sm font-medium text-[#FAF7F2] transition-colors hover:bg-[#38342E] whitespace-nowrap shrink-0"
-          >
-            <span>Open Chat</span>
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+            <Link
+              to="/app/chat"
+              className="min-h-[44px] inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-6 py-3 text-sm font-medium text-[#FAF7F2] transition-colors hover:bg-[#38342E] whitespace-nowrap shrink-0"
+            >
+              <span>Open Chat</span>
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
         </div>
       </section>
 
-      {/* SECTION 1: CONTINUE CONVERSATIONS (Dark-Warm Bento Cards) */}
+      {/* SECTION 0: PRIMARY QUICK-ACTION CARD BUTTONS (Chat, BirthCharts, Apps, Reports) */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Link
+          to="/app/chat"
+          className="group rounded-3xl bg-gradient-to-br from-[#4A453D] to-[#38342E] hover:from-[#3D3830] hover:to-[#2E2A24] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/25 text-[#FAF7F2] shadow-[0_10px_24px_-12px_rgba(61,56,48,0.45)] hover:shadow-[0_14px_28px_-12px_rgba(61,56,48,0.6)] transition-all flex flex-col justify-between gap-4"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/10 border border-[#FAF7F2]/15 flex items-center justify-center text-[#E6D3B3]">
+              <MessageSquare className="h-5 w-5" />
+            </div>
+            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/10 group-hover:bg-[#FAF7F2]/20 flex items-center justify-center transition-colors">
+              <ArrowRight className="h-3.5 w-3.5 text-[#FAF7F2] group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </div>
+          <div>
+            <h2 className="font-serif text-2xl font-medium text-[#FAF7F2]">Chat</h2>
+            <p className="mt-1 text-xs text-[#FAF7F2]/75 leading-relaxed">
+              Switch disciplines mid-chat, save custom prompts, and star insights per profile.
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          to="/app/profiles"
+          className="group rounded-3xl bg-gradient-to-br from-[#4A453D] to-[#38342E] hover:from-[#3D3830] hover:to-[#2E2A24] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/25 text-[#FAF7F2] shadow-[0_10px_24px_-12px_rgba(61,56,48,0.45)] hover:shadow-[0_14px_28px_-12px_rgba(61,56,48,0.6)] transition-all flex flex-col justify-between gap-4"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/10 border border-[#FAF7F2]/15 flex items-center justify-center text-[#E6D3B3]">
+              <UserPlus className="h-5 w-5" />
+            </div>
+            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/10 group-hover:bg-[#FAF7F2]/20 flex items-center justify-center transition-colors">
+              <ArrowRight className="h-3.5 w-3.5 text-[#FAF7F2] group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </div>
+          <div>
+            <h2 className="font-serif text-2xl font-medium text-[#FAF7F2]">BirthCharts</h2>
+            <p className="mt-1 text-xs text-[#FAF7F2]/75 leading-relaxed">
+              Save birth details once to calculate Parashari, KP, Jaimini, and Western charts.
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          to="/app/apps"
+          className="group rounded-3xl bg-gradient-to-br from-[#4A453D] to-[#38342E] hover:from-[#3D3830] hover:to-[#2E2A24] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/25 text-[#FAF7F2] shadow-[0_10px_24px_-12px_rgba(61,56,48,0.45)] hover:shadow-[0_14px_28px_-12px_rgba(61,56,48,0.6)] transition-all flex flex-col justify-between gap-4"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/10 border border-[#FAF7F2]/15 flex items-center justify-center text-[#E6D3B3]">
+              <LayoutGrid className="h-5 w-5" />
+            </div>
+            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/10 group-hover:bg-[#FAF7F2]/20 flex items-center justify-center transition-colors">
+              <ArrowRight className="h-3.5 w-3.5 text-[#FAF7F2] group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </div>
+          <div>
+            <h2 className="font-serif text-2xl font-medium text-[#FAF7F2]">Apps</h2>
+            <p className="mt-1 text-xs text-[#FAF7F2]/75 leading-relaxed">
+              Daily &amp; weekly forecasts, live transits, and chart breakdown tools.
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          to="/app/reports"
+          className="group rounded-3xl bg-gradient-to-br from-[#4A453D] to-[#38342E] hover:from-[#3D3830] hover:to-[#2E2A24] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/25 text-[#FAF7F2] shadow-[0_10px_24px_-12px_rgba(61,56,48,0.45)] hover:shadow-[0_14px_28px_-12px_rgba(61,56,48,0.6)] transition-all flex flex-col justify-between gap-4"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/10 border border-[#FAF7F2]/15 flex items-center justify-center text-[#E6D3B3]">
+              <FileText className="h-5 w-5" />
+            </div>
+            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/10 group-hover:bg-[#FAF7F2]/20 flex items-center justify-center transition-colors">
+              <ArrowRight className="h-3.5 w-3.5 text-[#FAF7F2] group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </div>
+          <div>
+            <h2 className="font-serif text-2xl font-medium text-[#FAF7F2]">Reports</h2>
+            <p className="mt-1 text-xs text-[#FAF7F2]/75 leading-relaxed">
+              Order multi-pass PDF reports and continue with interactive follow-up questions.
+            </p>
+          </div>
+        </Link>
+      </section>
+
+      {/* SECTION 1: CONTINUE CONVERSATIONS (Distinct Chat-Bubble Cards) */}
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-4">
           <div>
@@ -270,7 +344,7 @@ const AppDashboardHome: React.FC = () => {
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="h-32 rounded-3xl bg-[#EAE3D7]/70 border border-[#3D3830]/12 animate-pulse"
+                className="h-36 rounded-3xl rounded-tl-md bg-[#EAE3D7]/70 border border-[#3D3830]/12 animate-pulse"
               />
             ))}
           </div>
@@ -285,24 +359,38 @@ const AppDashboardHome: React.FC = () => {
                 <Link
                   key={conv.id}
                   to={`/app/chat/${conv.id}`}
-                  className="group flex flex-col justify-between rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/15 p-5 transition-colors hover:bg-[#EAE3D7] hover:border-[#3D3830]/25"
+                  className="group relative flex flex-col justify-between rounded-3xl rounded-tl-md bg-[#FDFBF7] border border-[#3D3830]/15 p-5 shadow-[0_8px_20px_-14px_rgba(61,56,48,0.22)] transition-all hover:bg-[#F1ECE3]/75 hover:border-[#4A453D]/35"
                 >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-[#8B8275]">
-                      <span className="truncate">{metaLine}</span>
-                      <span className="font-mono tabular-nums shrink-0">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="h-8 w-8 rounded-full bg-[#4A453D] text-[#FAF7F2] flex items-center justify-center shrink-0">
+                          {isCompanion ? (
+                            <HeartHandshake className="h-3.5 w-3.5 text-[#E6D3B3]" />
+                          ) : (
+                            <MessageCircle className="h-3.5 w-3.5 text-[#E6D3B3]" />
+                          )}
+                        </span>
+                        <span className="text-[11px] font-medium text-[#5C5449] truncate">
+                          {metaLine}
+                        </span>
+                      </div>
+                      <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#8B8275] shrink-0">
                         {formatRelativeDate(conv.updated_at)}
                       </span>
                     </div>
-                    <h3 className="font-serif text-xl font-medium text-[#3D3830] leading-snug line-clamp-2">
-                      {isCompanion && conv.companion_name ? conv.companion_name : conv.title}
-                    </h3>
-                    {isCompanion && conv.title && (
-                      <p className="text-xs text-[#5C5449] truncate">{conv.title}</p>
-                    )}
+
+                    <div className="rounded-2xl rounded-tl-sm bg-[#F1ECE3]/75 px-3.5 py-2.5 border border-[#3D3830]/8">
+                      <h3 className="font-serif text-lg font-medium text-[#3D3830] leading-snug line-clamp-2">
+                        {isCompanion && conv.companion_name ? conv.companion_name : conv.title}
+                      </h3>
+                      {isCompanion && conv.title && (
+                        <p className="mt-0.5 text-xs text-[#5C5449] truncate">{conv.title}</p>
+                      )}
+                    </div>
                   </div>
-                  <div className="mt-4 pt-3 border-t border-[#3D3830]/12 flex items-center justify-between text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830]">
-                    <span>Resume thread</span>
+                  <div className="mt-3.5 flex items-center justify-between text-xs font-medium text-[#4A453D] group-hover:text-[#3D3830]">
+                    <span>Continue chat</span>
                     <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-0.5 transition-transform" />
                   </div>
                 </Link>
@@ -310,14 +398,19 @@ const AppDashboardHome: React.FC = () => {
             })}
           </div>
         ) : (
-          <div className="rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/15 p-6 md:p-7 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h3 className="font-serif text-xl font-medium text-[#3D3830]">
-                Start your first consultation or companion chat
-              </h3>
-              <p className="mt-1 text-xs text-[#5C5449] max-w-xl leading-relaxed">
-                Ask your {astrologyMode === 'western' ? 'Western' : 'Vedic'} Astrologer about an active timing cycle, pull a Tarot spread, or talk through what is on your mind with a matched Companion.
-              </p>
+          <div className="rounded-3xl rounded-tl-md bg-[#FDFBF7] border border-[#3D3830]/15 p-6 md:p-7 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <span className="h-10 w-10 rounded-full bg-[#4A453D] text-[#FAF7F2] flex items-center justify-center shrink-0 mt-0.5">
+                <MessageCircle className="h-4 w-4 text-[#E6D3B3]" />
+              </span>
+              <div>
+                <h3 className="font-serif text-xl font-medium text-[#3D3830]">
+                  Start your first consultation or companion chat
+                </h3>
+                <p className="mt-1 text-xs text-[#5C5449] max-w-xl leading-relaxed">
+                  Ask your {astrologyMode === 'western' ? 'Western' : 'Vedic'} Astrologer about an active timing cycle, pull a Tarot spread, or talk through what is on your mind with a matched Companion.
+                </p>
+              </div>
             </div>
             <Link
               to="/app/chat"
@@ -394,7 +487,10 @@ const AppDashboardHome: React.FC = () => {
         </div>
       </section>
 
-      {/* SECTION 3: APPS BY CATEGORY + GO TO APPS */}
+      {/* SECTION 3: PERSONAL TIMING OVERVIEW CARD */}
+      <TimingRadarDashboard />
+
+      {/* SECTION 4: APPS BY CATEGORY + GO TO APPS (Moved below Overview Card) */}
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
@@ -500,20 +596,13 @@ const AppDashboardHome: React.FC = () => {
         )}
       </section>
 
-      {/* SECTION 4: PERSONAL TIMING RADAR (Preserved Observatory Night Surface) */}
-      <TimingRadarDashboard />
-
-      {/* SECTION 5: ACCOUNT CAPACITY & BALANCE SNAPSHOT (Preserved) */}
+      {/* SECTION 5: CREDITS SNAPSHOT */}
       <section className="rounded-3xl bg-[#F1ECE3] p-7 md:p-8 border border-[#3D3830]/10 text-[#3D3830]">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
           <div>
-            <p className="text-xs text-[#8B8275] mb-1.5">Account Snapshot</p>
             <h2 className="font-serif text-2xl font-medium text-[#3D3830]">
-              Balance & Capacity
+              Credits snapshot
             </h2>
-            <p className="mt-1.5 text-sm text-[#5C5449] max-w-xl">
-              Credits power multi-system Vedic consultations and deep research reports.
-            </p>
             {lowCreditsAlert && (
               <p className="mt-2 text-xs font-medium text-[#7A3E36]">
                 Your credit balance is below 10% remaining —{' '}
@@ -547,53 +636,6 @@ const AppDashboardHome: React.FC = () => {
             </div>
           </div>
         </div>
-      </section>
-
-      {/* SECTION 6: PRIMARY WORKSPACE ACTIONS (Preserved) */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <Link
-          to="/app/profiles"
-          className="group rounded-3xl bg-[#FDFBF7] p-6 border border-[#3D3830]/10 transition-all hover:bg-[#F1ECE3]"
-        >
-          <UserPlus className="h-5 w-5 text-[#5C5449] mb-4" />
-          <h3 className="font-serif text-xl font-medium text-[#3D3830]">Birth Profiles</h3>
-          <p className="mt-1.5 text-xs text-[#5C5449] leading-relaxed">
-            Save birth details once to calculate AstroSage-calibrated Parashari, KP, and Jaimini charts.
-          </p>
-        </Link>
-
-        <Link
-          to="/app/chat"
-          className="group rounded-3xl bg-[#FDFBF7] p-6 border border-[#3D3830]/10 transition-all hover:bg-[#F1ECE3]"
-        >
-          <MessageSquare className="h-5 w-5 text-[#5C5449] mb-4" />
-          <h3 className="font-serif text-xl font-medium text-[#3D3830]">Consultation Chat</h3>
-          <p className="mt-1.5 text-xs text-[#5C5449] leading-relaxed">
-            Switch disciplines mid-chat, save custom prompts, and star insights per profile.
-          </p>
-        </Link>
-
-        <Link
-          to="/app/reports"
-          className="group rounded-3xl bg-[#FDFBF7] p-6 border border-[#3D3830]/10 transition-all hover:bg-[#F1ECE3]"
-        >
-          <FileText className="h-5 w-5 text-[#5C5449] mb-4" />
-          <h3 className="font-serif text-xl font-medium text-[#3D3830]">Research Reports</h3>
-          <p className="mt-1.5 text-xs text-[#5C5449] leading-relaxed">
-            Order multi-pass PDF reports and continue with interactive follow-up questions.
-          </p>
-        </Link>
-
-        <Link
-          to="/app/billing"
-          className="group rounded-3xl bg-[#FDFBF7] p-6 border border-[#3D3830]/10 transition-all hover:bg-[#F1ECE3]"
-        >
-          <CreditCard className="h-5 w-5 text-[#5C5449] mb-4" />
-          <h3 className="font-serif text-xl font-medium text-[#3D3830]">Credits & Tiers</h3>
-          <p className="mt-1.5 text-xs text-[#5C5449] leading-relaxed">
-            Top up credits starting at ₹1,000 or upgrade to Professional and Guru plans.
-          </p>
-        </Link>
       </section>
     </div>
   );

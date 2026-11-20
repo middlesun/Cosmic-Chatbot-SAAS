@@ -254,7 +254,7 @@ const ReportOrderDetail: React.FC = () => {
           <span>Back to Reports</span>
         </Link>
 
-        <span className="text-xs font-mono tabular-nums text-[#8B8275]">
+        <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
           Order {order.id.slice(0, 8)} · ({modeTag}) · {order.credits_charged.toLocaleString()} Credits
         </span>
       </div>

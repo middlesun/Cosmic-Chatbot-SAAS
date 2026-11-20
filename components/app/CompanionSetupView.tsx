@@ -350,7 +350,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                   <h3 className="text-xs font-medium text-[#5C5449]">
                     Continue with a past companion
                   </h3>
-                  <span className="text-[11px] font-mono tabular-nums text-[#8B8275]">
+                  <span className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
                     {pastCompanionConversations.length} saved
                   </span>
                 </div>
@@ -441,7 +441,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                       >
                         How religious are you?
                       </label>
-                      <span className="text-xs font-mono tabular-nums text-[#3D3830]">
+                      <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]">
                         {religiousness} / 10 ·{' '}
                         <span className="font-sans text-[#5C5449]">
                           {getReligiousnessCaption(religiousness)}
@@ -458,7 +458,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                       onChange={(e) => setReligiousness(Number(e.target.value))}
                       className="w-full accent-[#4A453D] cursor-pointer"
                     />
-                    <div className="flex justify-between text-[10px] font-mono tabular-nums text-[#8B8275]">
+                    <div className="flex justify-between text-[10px] font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
                       <span>1 · Secular</span>
                       <span>5 · Balanced</span>
                       <span>10 · Devout</span>
@@ -647,7 +647,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                             <h3 className="font-serif text-xl font-semibold text-[#3D3830] truncate">
                               {persona.name}
                             </h3>
-                            <span className="text-xs font-mono tabular-nums text-[#8B8275]">
+                            <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
                               {persona.age}
                             </span>
                           </div>

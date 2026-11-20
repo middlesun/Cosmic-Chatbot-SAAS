@@ -1240,7 +1240,7 @@ Sex : ${details.sex}`;
                           <span className="text-sm md:text-base font-sans font-bold text-indigo-600 capitalize normal-case flex items-center gap-1">
                             <span>{item.name.substring(0, 25)}{item.name.length > 25 ? '...' : ''}</span>
                             <span className="text-indigo-400/70 font-medium">...</span>
-                            <span className="font-mono text-indigo-950 font-extrabold">{formatPrice(getTurnaroundPrice(item.name, deliveryUpgrade).INR, item.name)}</span>
+                            <span className="font-['DM_Sans',sans-serif] tabular-nums text-indigo-950 font-extrabold">{formatPrice(getTurnaroundPrice(item.name, deliveryUpgrade).INR, item.name)}</span>
                           </span>
                         </h4>
                         <div className="flex items-center gap-3">
@@ -1407,7 +1407,7 @@ Sex : ${details.sex}`;
                           <div className="flex justify-between items-start text-sm md:text-base text-slate-700 font-semibold gap-2">
                             <span className="truncate max-w-[70%] text-indigo-950">{item.name}</span>
                             <div className="flex items-center gap-3">
-                              <span className="font-bold text-indigo-950 font-mono">{finalPriceFormatted}</span>
+                              <span className="font-bold text-indigo-950 font-['DM_Sans',sans-serif] tabular-nums">{finalPriceFormatted}</span>
                               {selectedItems.length > 1 && (
                                 <button 
                                   type="button" 

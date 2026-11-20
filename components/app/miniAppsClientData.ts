@@ -71,7 +71,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
   {
     slug: 'monthly-horoscope',
     title: 'Monthly Horoscope',
-    shortTitle: 'Monthly Horizon',
+    shortTitle: 'Monthly Forecast',
     tagline: 'Long-range strategic themes for the month ahead',
     description:
       'Synthesizes slow-moving Jupiter, Saturn, and nodal transits with your Antardasha cycle to frame key priorities for the month.',
@@ -83,7 +83,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
     featuredOnHome: true,
     requiresProfile: true,
     cacheScope: 'monthly',
-    chatSeedPrompt: 'Help me plan my key priorities for this month based on my current monthly horizon.',
+    chatSeedPrompt: 'Help me plan my key priorities for this month based on my current monthly forecast.',
     estimatedRead: '3 min read',
   },
   {

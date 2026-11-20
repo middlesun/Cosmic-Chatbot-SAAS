@@ -52,7 +52,7 @@ export const MINI_APPS_CATALOG: MiniAppDefinition[] = [
   {
     slug: 'monthly-horoscope',
     title: 'Monthly Horoscope',
-    shortTitle: 'Monthly Horizon',
+    shortTitle: 'Monthly Forecast',
     tagline: 'Long-range strategic themes for the month ahead',
     description:
       'Synthesizes slow-moving Jupiter, Saturn, and nodal transits with your Antardasha cycle to frame key priorities for the month.',
@@ -64,7 +64,7 @@ export const MINI_APPS_CATALOG: MiniAppDefinition[] = [
     featuredOnHome: true,
     requiresProfile: true,
     cacheScope: 'monthly',
-    chatSeedPrompt: 'Help me plan my key priorities for this month based on my current monthly horizon.',
+    chatSeedPrompt: 'Help me plan my key priorities for this month based on my current monthly forecast.',
     estimatedRead: '3 min read',
   },
   {
@@ -1220,7 +1220,7 @@ export function buildStructuredHeaderForApp(params: {
             ? `Today’s Horoscope`
             : slug === 'weekly-horoscope'
             ? `Seven-Day Trajectory (${getIsoWeekBucket()}) · Western`
-            : `Monthly Horizon (${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}) · Western`,
+            : `Monthly Forecast (${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}) · Western`,
         metrics: [
           ...(wSun
             ? [{ label: 'Natal Sun / Moon', value: `${wSun.sign} / ${wMoon?.sign || '—'}`, hint: `${wAsc?.sign || '—'} Rising` }]
@@ -1391,7 +1391,7 @@ export function buildStructuredHeaderForApp(params: {
           ? `Today’s Horoscope · ${formattedToday}`
           : slug === 'weekly-horoscope'
           ? `Seven-Day Trajectory (${getIsoWeekBucket()})`
-          : `Monthly Horizon (${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })})`,
+          : `Monthly Forecast (${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })})`,
       metrics: [
         ...(dasha.mahadasha
           ? [
@@ -1663,7 +1663,7 @@ Structure with these ### headings:
         system,
         user: `${baseContext}
 
-TASK: Compose a strategic Monthly Horizon for ${monthYear} (**${modeLabel}**).
+TASK: Compose a strategic Monthly Forecast for ${monthYear} (**${modeLabel}**).
 Begin with a clear line or header indicating **(${modeLabel})**.
 Structure with these ### headings:
 ### Core Theme for ${monthYear}

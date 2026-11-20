@@ -1354,7 +1354,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                           <div className="min-w-0 flex-1 space-y-0.5">
                             <p className="text-xs font-semibold text-[#3D3830] truncate">
                               {activeCompanionPersona.name}{' '}
-                              <span className="font-mono text-[11px] font-normal tabular-nums text-[#8B8275]">
+                              <span className="font-['DM_Sans',sans-serif] text-[11px] font-normal tabular-nums text-[#8B8275]">
                                 {activeCompanionPersona.age}
                               </span>
                               <span className="font-normal text-[#5C5449]">

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Search,
@@ -65,6 +65,7 @@ const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
 
 const ProfileManager: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { getAccessToken, refreshUser, isPreviewMode } = useAuth();
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
   const [tierLimit, setTierLimit] = useState(10);
@@ -160,6 +161,15 @@ const ProfileManager: React.FC = () => {
   useEffect(() => {
     void loadProfiles();
   }, [loadProfiles]);
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setShowCreateForm(true);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('new');
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Autocomplete for current location inside Edit Modal
   useEffect(() => {
@@ -518,7 +528,7 @@ const ProfileManager: React.FC = () => {
             <ArrowLeft className="h-4 w-4" />
             <span>Back to Profiles</span>
           </button>
-          <span className="text-xs text-[#8B8275] font-mono tabular-nums">
+          <span className="text-xs text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
             {selectedProfile.birth_date} · {selectedProfile.birth_time} · {selectedProfile.birth_city}
           </span>
         </div>
@@ -533,7 +543,7 @@ const ProfileManager: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-[#3D3830]/10 pb-6">
         <div>
-          <p className="text-xs text-[#8B8275] mb-1 font-mono tabular-nums">
+          <p className="text-xs text-[#8B8275] mb-1 font-['DM_Sans',sans-serif] tabular-nums">
             {profiles.length} / {tierLimit} saved profile slots
           </p>
           <h1 className="font-serif text-4xl md:text-5xl font-medium text-[#3D3830] tracking-tight">
@@ -763,7 +773,7 @@ const ProfileManager: React.FC = () => {
                     </div>
                   </div>
 
-                  <p className="mt-2 font-mono tabular-nums text-xs text-[#5C5449]">
+                  <p className="mt-2 font-['DM_Sans',sans-serif] tabular-nums text-xs text-[#5C5449]">
                     {profile.birth_date} · {profile.birth_time}
                   </p>
                   <p className="mt-1 text-xs text-[#8B8275] truncate">
@@ -855,7 +865,7 @@ const ProfileManager: React.FC = () => {
                 <h2 className="font-serif text-2xl font-medium text-[#3D3830]">
                   Edit {editingProfile.name}
                 </h2>
-                <p className="text-[11px] text-[#8B8275] font-mono tabular-nums">
+                <p className="text-[11px] text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
                   {editingProfile.birth_date} · {editingProfile.birth_city}
                 </p>
               </div>

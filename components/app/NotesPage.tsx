@@ -586,7 +586,7 @@ const NotesPage: React.FC = () => {
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`font-mono text-[11px] tabular-nums ${
+                    className={`font-['DM_Sans',sans-serif] text-[11px] tabular-nums ${
                       active ? 'text-[#FAF7F2]/80' : 'text-[#8B8275]'
                     }`}
                   >
@@ -691,7 +691,7 @@ const NotesPage: React.FC = () => {
                               </span>
                             )}
                           </span>
-                          <span className="font-mono text-[10px] tabular-nums shrink-0">
+                          <span className="font-['DM_Sans',sans-serif] text-[10px] tabular-nums shrink-0">
                             {formatNoteDate(note.created_at)}
                           </span>
                         </div>
@@ -870,7 +870,7 @@ const NotesPage: React.FC = () => {
                         {selectedNote.profile_label && (
                           <span>· {selectedNote.profile_label}</span>
                         )}
-                        <span className="font-mono text-[11px] tabular-nums">
+                        <span className="font-['DM_Sans',sans-serif] text-[11px] tabular-nums">
                           · {formatNoteDate(selectedNote.created_at)}
                         </span>
                       </div>

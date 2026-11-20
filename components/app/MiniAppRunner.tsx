@@ -1462,7 +1462,7 @@ const MiniAppRunner: React.FC = () => {
                         ? ` · Natal ${planetNatalMeta.sign} (House ${planetNatalMeta.house})`
                         : ''}
                     </span>
-                    <span className="font-mono tabular-nums">
+                    <span className="font-['DM_Sans',sans-serif] tabular-nums">
                       {quizAnswers.length + 1} / {quizQuestions.length}
                     </span>
                   </div>
@@ -1557,11 +1557,11 @@ const MiniAppRunner: React.FC = () => {
                       className="rounded-2xl bg-[#F4EFE6]/6 border border-[#F4EFE6]/10 px-4 py-3.5"
                     >
                       <p className="text-[11px] text-[#F4EFE6]/60">{m.label}</p>
-                      <p className="mt-1 font-mono tabular-nums text-base md:text-lg font-medium text-[#F4EFE6]">
+                      <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-base md:text-lg font-medium text-[#F4EFE6]">
                         {m.value}
                       </p>
                       {m.hint && (
-                        <p className="mt-0.5 text-[11px] text-[#B8965A] font-mono tabular-nums">
+                        <p className="mt-0.5 text-[11px] text-[#B8965A] font-['DM_Sans',sans-serif] tabular-nums">
                           {m.hint}
                         </p>
                       )}
@@ -1582,7 +1582,7 @@ const MiniAppRunner: React.FC = () => {
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#F4EFE6]/8 font-mono tabular-nums">
+                    <tbody className="divide-y divide-[#F4EFE6]/8 font-['DM_Sans',sans-serif] tabular-nums">
                       {result.structured.table.rows.map((row, rIdx) => (
                         <tr key={rIdx} className="hover:bg-[#F4EFE6]/5 transition-colors">
                           {row.map((cell, cIdx) => (
@@ -1833,7 +1833,7 @@ const MiniAppRunner: React.FC = () => {
                   </h3>
                 </div>
                 {pastReadings.length > 0 && (
-                  <span className="font-mono text-xs text-[#8B8275] tabular-nums">
+                  <span className="font-['DM_Sans',sans-serif] text-xs text-[#8B8275] tabular-nums">
                     {pastReadings.length} saved
                   </span>
                 )}

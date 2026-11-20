@@ -859,7 +859,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     <h3 className="font-serif text-lg font-semibold text-[#3D3830] truncate">
                       {activeCompanionPersona.name}
                     </h3>
-                    <span className="text-xs font-mono tabular-nums text-[#8B8275]">
+                    <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
                       {activeCompanionPersona.age}
                     </span>
                   </div>

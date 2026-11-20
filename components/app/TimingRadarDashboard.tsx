@@ -201,7 +201,7 @@ const TimingRadarDashboard: React.FC = () => {
               {radar.transitsDate ? ` · Gochar ${radar.transitsDate}` : ''}
             </p>
             <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#F4EFE6]">
-              Planetary Rhythm for {radar.profileName}
+              Quick overview for {radar.profileName}
             </h2>
           </div>
 
@@ -332,7 +332,7 @@ const TimingRadarDashboard: React.FC = () => {
                         : 'text-[#F4EFE6]/55 border-transparent hover:text-[#F4EFE6]'
                     }`}
                   >
-                    Monthly Horizon
+                    Monthly Forecast
                   </button>
                 </div>
               </div>

@@ -387,7 +387,7 @@ const AdminPanel: React.FC = () => {
               </span>
               {item.key === 'support' && openTicketCount > 0 && (
                 <span
-                  className={`font-mono text-xs tabular-nums shrink-0 ${
+                  className={`font-['DM_Sans',sans-serif] text-xs tabular-nums shrink-0 ${
                     isActive ? 'text-[#FAF7F2]/85' : 'text-[#7A3E36] font-medium'
                   }`}
                 >
@@ -523,37 +523,37 @@ const AdminPanel: React.FC = () => {
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-5">
                       <div>
                         <p className="text-xs text-[#F4EFE6]/65">Members</p>
-                        <p className="font-mono text-2xl font-medium tabular-nums mt-1 text-[#F4EFE6]">
+                        <p className="font-['DM_Sans',sans-serif] text-2xl font-medium tabular-nums mt-1 text-[#F4EFE6]">
                           {overview.metrics.totalUsers.toLocaleString()}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs text-[#F4EFE6]/65">Birth Charts</p>
-                        <p className="font-mono text-2xl font-medium tabular-nums mt-1 text-[#F4EFE6]">
+                        <p className="font-['DM_Sans',sans-serif] text-2xl font-medium tabular-nums mt-1 text-[#F4EFE6]">
                           {overview.metrics.totalProfiles.toLocaleString()}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs text-[#F4EFE6]/65">Consultations</p>
-                        <p className="font-mono text-2xl font-medium tabular-nums mt-1 text-[#F4EFE6]">
+                        <p className="font-['DM_Sans',sans-serif] text-2xl font-medium tabular-nums mt-1 text-[#F4EFE6]">
                           {overview.metrics.totalConversations.toLocaleString()}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs text-[#F4EFE6]/65">Questions</p>
-                        <p className="font-mono text-2xl font-medium tabular-nums mt-1 text-[#F4EFE6]">
+                        <p className="font-['DM_Sans',sans-serif] text-2xl font-medium tabular-nums mt-1 text-[#F4EFE6]">
                           {overview.metrics.totalQuestionsAsked.toLocaleString()}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs text-[#F4EFE6]/65">Report Orders</p>
-                        <p className="font-mono text-2xl font-medium tabular-nums mt-1 text-[#F4EFE6]">
+                        <p className="font-['DM_Sans',sans-serif] text-2xl font-medium tabular-nums mt-1 text-[#F4EFE6]">
                           {overview.metrics.totalReportOrders.toLocaleString()}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs text-[#F4EFE6]/65">Credits Active</p>
-                        <p className="font-mono text-2xl font-medium tabular-nums mt-1 text-[#B8965A]">
+                        <p className="font-['DM_Sans',sans-serif] text-2xl font-medium tabular-nums mt-1 text-[#B8965A]">
                           {overview.metrics.totalCreditsCirculating.toLocaleString()}
                         </p>
                       </div>
@@ -589,7 +589,7 @@ const AdminPanel: React.FC = () => {
                                 className="flex items-center justify-between text-[#3D3830]"
                               >
                                 <span className="text-[#5C5449]">{currency}</span>
-                                <span className="font-mono font-medium tabular-nums">
+                                <span className="font-['DM_Sans',sans-serif] font-medium tabular-nums">
                                   {Number(total).toLocaleString()}
                                 </span>
                               </div>
@@ -602,7 +602,7 @@ const AdminPanel: React.FC = () => {
                         {(['personal', 'pro', 'guru'] as const).map((tier) => (
                           <div key={tier} className="flex items-center justify-between">
                             <span className="capitalize text-[#5C5449]">{tier} tier</span>
-                            <span className="font-mono tabular-nums text-[#3D3830]">
+                            <span className="font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]">
                               {(overview.metrics.tierBreakdown[tier] || 0).toLocaleString()}
                             </span>
                           </div>
@@ -680,7 +680,7 @@ const AdminPanel: React.FC = () => {
                         <div className="flex items-center justify-between">
                           <span className="text-[#5C5449]">Open support tickets</span>
                           <span
-                            className={`font-mono font-medium tabular-nums ${
+                            className={`font-['DM_Sans',sans-serif] font-medium tabular-nums ${
                               openTicketCount > 0 ? 'text-[#7A3E36]' : 'text-[#2D6A4F]'
                             }`}
                           >
@@ -689,13 +689,13 @@ const AdminPanel: React.FC = () => {
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-[#5C5449]">Prompts in library</span>
-                          <span className="font-mono tabular-nums text-[#3D3830]">
+                          <span className="font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]">
                             {prompts.length}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-[#5C5449]">Active report products</span>
-                          <span className="font-mono tabular-nums text-[#3D3830]">
+                          <span className="font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]">
                             {reports.filter((r) => r.is_active).length} / {reports.length}
                           </span>
                         </div>
@@ -707,7 +707,7 @@ const AdminPanel: React.FC = () => {
                           >
                             Mini-App runs
                           </button>
-                          <span className="font-mono tabular-nums text-[#3D3830]">
+                          <span className="font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]">
                             {(overview.metrics.totalAppRuns ?? 0).toLocaleString()}
                             {(overview.metrics.totalAppRuns ?? 0) > 0 && (
                               <span className="text-[#2D6A4F] ml-1.5">
@@ -718,7 +718,7 @@ const AdminPanel: React.FC = () => {
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-[#5C5449]">Integrations ready</span>
-                          <span className="font-mono tabular-nums text-[#3D3830]">
+                          <span className="font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]">
                             {Object.values(overview.integrations).filter(Boolean).length} /{' '}
                             {Object.values(overview.integrations).length}
                           </span>

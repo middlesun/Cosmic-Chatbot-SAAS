@@ -2694,7 +2694,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                     }`}
                   />
                   {askLaterItems.length > 0 && (
-                    <span className="font-mono text-[11px] tabular-nums font-medium text-[#3D3830]">
+                    <span className="font-['DM_Sans',sans-serif] text-[11px] tabular-nums font-medium text-[#3D3830]">
                       {askLaterItems.length}
                     </span>
                   )}

@@ -440,7 +440,7 @@ const BillingCredits: React.FC = () => {
             </div>
             <div className="mt-4">
               <p className="text-xs text-[#F4EFE6]/70">Available Balance</p>
-              <p className="mt-1 font-mono tabular-nums text-3xl font-medium text-[#F4EFE6]">
+              <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-3xl font-medium text-[#F4EFE6]">
                 {(appUser?.credits_balance ?? 0).toLocaleString()}
               </p>
               <p className="mt-0.5 text-xs text-[#F4EFE6]/75">Credit Points</p>
@@ -483,7 +483,7 @@ const BillingCredits: React.FC = () => {
             <Gift className="h-5 w-5 text-[#8B7355]" />
             <div className="mt-4">
               <p className="text-xs text-[#8B8275]">Referrals Earned</p>
-              <p className="mt-1 font-mono tabular-nums text-2xl font-medium text-[#3D3830]">
+              <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium text-[#3D3830]">
                 {rewardedReferralsCount}{' '}
                 <span className="font-sans text-sm font-normal text-[#5C5449]">rewarded</span>
               </p>
@@ -585,7 +585,7 @@ const BillingCredits: React.FC = () => {
                   key={curr}
                   type="button"
                   onClick={() => void handleCurrencySwitch(curr)}
-                  className={`rounded-xl px-3.5 py-1.5 text-xs font-mono font-medium transition-colors cursor-pointer ${
+                  className={`rounded-xl px-3.5 py-1.5 text-xs font-['DM_Sans',sans-serif] font-medium transition-colors cursor-pointer ${
                     currency === curr
                       ? 'bg-[#4A453D] text-[#FAF7F2]'
                       : 'text-[#5C5449] hover:text-[#3D3830]'
@@ -612,7 +612,7 @@ const BillingCredits: React.FC = () => {
                   </div>
 
                   <div className="pt-1">
-                    <p className="font-mono tabular-nums text-3xl font-medium text-[#3D3830] leading-tight">
+                    <p className="font-['DM_Sans',sans-serif] tabular-nums text-3xl font-medium text-[#3D3830] leading-tight">
                       {pack.credits.toLocaleString()}
                     </p>
                     <p className="text-sm font-medium text-[#5C5449] mt-0.5">
@@ -624,7 +624,7 @@ const BillingCredits: React.FC = () => {
                 </div>
 
                 <div className="pt-4 border-t border-[#3D3830]/10 flex items-center justify-between gap-4">
-                  <span className="font-mono tabular-nums text-xl font-medium text-[#3D3830]">
+                  <span className="font-['DM_Sans',sans-serif] tabular-nums text-xl font-medium text-[#3D3830]">
                     {formatPrice(pack.prices[currency] ?? pack.prices.INR)}
                   </span>
                   <button
@@ -669,7 +669,7 @@ const BillingCredits: React.FC = () => {
                 >
                   <div className="space-y-4">
                     <div className="flex items-center justify-between text-xs text-[#8B8275]">
-                      <span className="font-mono tabular-nums">{tier.profileLimit} Profiles</span>
+                      <span className="font-['DM_Sans',sans-serif] tabular-nums">{tier.profileLimit} Profiles</span>
                       {isCurrent && (
                         <span className="inline-flex items-center gap-1 font-medium text-[#3D3830]">
                           <Shield className="h-3.5 w-3.5" /> Active
@@ -681,7 +681,7 @@ const BillingCredits: React.FC = () => {
                       <h3 className="font-serif text-2xl font-medium text-[#3D3830]">
                         {tier.name}
                       </h3>
-                      <p className="mt-1 font-mono tabular-nums text-xl font-medium text-[#3D3830]">
+                      <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-xl font-medium text-[#3D3830]">
                         {formatPrice(tier.prices[currency] ?? tier.prices.INR)}
                         {(tier.prices[currency] ?? tier.prices.INR) > 0 && (
                           <span className="font-sans text-xs font-normal text-[#8B8275]">
@@ -763,7 +763,7 @@ const BillingCredits: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 space-y-1.5">
                 <p className="text-xs text-[#8B8275]">Mini-Apps Opened</p>
-                <p className="font-mono tabular-nums text-2xl font-medium text-[#3D3830]">
+                <p className="font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium text-[#3D3830]">
                   {usageSummary.miniApps.totalRuns.toLocaleString()}
                 </p>
                 <p className="text-xs text-[#5C5449]">
@@ -773,7 +773,7 @@ const BillingCredits: React.FC = () => {
 
               <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 space-y-1.5">
                 <p className="text-xs text-[#8B8275]">Chat Questions</p>
-                <p className="font-mono tabular-nums text-2xl font-medium text-[#3D3830]">
+                <p className="font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium text-[#3D3830]">
                   {usageSummary.chatQuestions30d.toLocaleString()}
                 </p>
                 <p className="text-xs text-[#5C5449]">
@@ -783,7 +783,7 @@ const BillingCredits: React.FC = () => {
 
               <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 space-y-1.5">
                 <p className="text-xs text-[#8B8275]">Research Reports</p>
-                <p className="font-mono tabular-nums text-2xl font-medium text-[#3D3830]">
+                <p className="font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium text-[#3D3830]">
                   {usageSummary.reportOrders30d.toLocaleString()}
                 </p>
                 <p className="text-xs text-[#5C5449]">
@@ -805,7 +805,7 @@ const BillingCredits: React.FC = () => {
                       className="group flex items-center justify-between gap-2 rounded-2xl border border-[#3D3830]/10 bg-[#FAF7F2] px-3.5 py-2.5 text-xs hover:border-[#3D3830]/25 hover:bg-[#F1ECE3]/70 transition-colors"
                     >
                       <span className="font-medium text-[#3D3830] truncate">{item.title}</span>
-                      <span className="font-mono tabular-nums text-[#8B8275] group-hover:text-[#3D3830] shrink-0">
+                      <span className="font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] group-hover:text-[#3D3830] shrink-0">
                         {item.runs}×
                       </span>
                     </Link>
@@ -845,7 +845,7 @@ const BillingCredits: React.FC = () => {
                   <tbody className="divide-y divide-[#3D3830]/10">
                     {transactions.map((tx) => (
                       <tr key={tx.id}>
-                        <td className="px-5 py-3 font-mono tabular-nums text-[#8B8275] whitespace-nowrap">
+                        <td className="px-5 py-3 font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] whitespace-nowrap">
                           {new Date(tx.created_at).toLocaleDateString('en-GB', {
                             day: '2-digit',
                             month: 'short',
@@ -859,7 +859,7 @@ const BillingCredits: React.FC = () => {
                           {tx.description || '—'}
                         </td>
                         <td
-                          className={`px-5 py-3 text-right font-mono tabular-nums whitespace-nowrap ${
+                          className={`px-5 py-3 text-right font-['DM_Sans',sans-serif] tabular-nums whitespace-nowrap ${
                             tx.amount >= 0 ? 'text-[#2D6A4F]' : 'text-[#3D3830]'
                           }`}
                         >
@@ -867,7 +867,7 @@ const BillingCredits: React.FC = () => {
                             ? `+${tx.amount.toLocaleString()}`
                             : tx.amount.toLocaleString()}
                         </td>
-                        <td className="px-5 py-3 text-right font-mono tabular-nums text-[#3D3830] whitespace-nowrap">
+                        <td className="px-5 py-3 text-right font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830] whitespace-nowrap">
                           {tx.balance_after.toLocaleString()}
                         </td>
                       </tr>
