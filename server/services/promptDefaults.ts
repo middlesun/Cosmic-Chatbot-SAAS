@@ -3,6 +3,7 @@ import { getChatbotConfig } from './platformSettings';
 
 export type PromptCategory =
   | 'system'
+  | 'master_prompts'
   | 'expert'
   | 'analysis'
   | 'modifier'

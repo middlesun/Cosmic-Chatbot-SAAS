@@ -295,7 +295,7 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
     ? `border text-[#F4EFE6] ${
         isOpen
           ? 'border-[#B8965A]/75 bg-[#1F2229] ring-2 ring-[#B8965A]/20'
-          : 'border-white/12 bg-[#1F2229]/90 hover:border-[#B8965A]/45 hover:bg-[#292D36]'
+          : 'border-white/15 bg-[#1F2229]/90 hover:border-[#B8965A]/45 hover:bg-[#292D36]'
       }`
     : `border text-[#3D3830] ${
         surface === 'canvas' ? 'bg-[#FAF7F2]' : 'bg-[#FDFBF7]'
@@ -328,8 +328,8 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
               coords.direction === 'up' ? 'animate-cc-dropdown-up' : 'animate-cc-dropdown-down'
             } rounded-2xl p-1.5 focus:outline-none ${
               isDark
-                ? 'bg-[#1F2229] border border-white/10 shadow-[0_20px_48px_-12px_rgba(0,0,0,0.68)]'
-                : 'bg-[#FDFBF7] border border-[#3D3830]/15 shadow-[0_18px_42px_-12px_rgba(61,56,48,0.22),0_4px_12px_-4px_rgba(61,56,48,0.08)]'
+                ? 'bg-[#1F2229] text-[#F4EFE6] border border-white/10 shadow-[0_20px_48px_-12px_rgba(0,0,0,0.68)]'
+                : 'bg-[#FDFBF7] text-[#3D3830] border border-[#3D3830]/15 shadow-[0_18px_42px_-12px_rgba(61,56,48,0.22),0_4px_12px_-4px_rgba(61,56,48,0.08)]'
             }`}
           >
             <div
@@ -348,8 +348,8 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
                     : isSelected
                     ? 'bg-[#292D36] text-[#F4EFE6] font-medium'
                     : isHighlighted
-                    ? 'bg-white/8 text-[#F4EFE6]'
-                    : 'text-[#F4EFE6]/78 hover:bg-white/8 hover:text-[#F4EFE6]'
+                    ? 'bg-white/10 text-[#F4EFE6]'
+                    : 'text-[#D4CFC7] hover:bg-white/10 hover:text-[#F4EFE6]'
                   : opt.disabled
                   ? 'text-[#8B8275]/50 cursor-not-allowed'
                   : isSelected

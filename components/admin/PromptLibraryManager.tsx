@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowDown,
   ArrowUp,
@@ -13,7 +14,9 @@ import {
   RotateCcw,
   Save,
   Search,
+  Tag,
   Trash2,
+  X,
 } from 'lucide-react';
 import CustomSelect from '../app/CustomSelect';
 
@@ -22,6 +25,7 @@ export interface SystemPromptRecord {
   slug: string;
   category:
     | 'system'
+    | 'master_prompts'
     | 'expert'
     | 'analysis'
     | 'modifier'
@@ -45,6 +49,7 @@ export interface SystemPromptRecord {
     archived_at: string;
   }>;
   is_active: boolean;
+  created_at?: string;
   updated_at: string;
 }
 
@@ -84,6 +89,7 @@ interface PromptLibraryManagerProps {
 
 const PROMPT_CATEGORIES: Array<{ value: SystemPromptRecord['category']; label: string }> = [
   { value: 'system', label: 'System' },
+  { value: 'master_prompts', label: 'Master Prompts' },
   { value: 'expert', label: 'Expert' },
   { value: 'analysis', label: 'Analysis' },
   { value: 'modifier', label: 'Modifier' },
@@ -93,6 +99,45 @@ const PROMPT_CATEGORIES: Array<{ value: SystemPromptRecord['category']; label: s
   { value: 'tool', label: 'Tool' },
   { value: 'report_step', label: 'Report Step' },
   { value: 'learn', label: 'Learn' },
+];
+
+const CATEGORY_LABEL_MAP: Record<string, string> = Object.fromEntries(
+  PROMPT_CATEGORIES.map((c) => [c.value, c.label])
+);
+
+function getCategoryLabel(category: string): string {
+  return CATEGORY_LABEL_MAP[category] || category;
+}
+
+function formatCharsCompact(len: number): string {
+  if (len >= 10000) return `${Math.round(len / 1000)}K`;
+  if (len >= 1000) return `${Number((len / 1000).toFixed(1))}K`;
+  return String(len);
+}
+
+function normalizeTagToken(raw: string): string {
+  return raw.trim().replace(/^#+/, '').toLowerCase();
+}
+
+function parseTagTokens(raw: string): string[] {
+  return Array.from(
+    new Set(
+      raw
+        .split(',')
+        .map((t) => normalizeTagToken(t))
+        .filter(Boolean)
+    )
+  );
+}
+
+type PromptSortMode = 'default' | 'newest' | 'oldest' | 'longest' | 'shortest';
+
+const PROMPT_SORT_OPTIONS: Array<{ value: PromptSortMode; label: string }> = [
+  { value: 'default', label: 'Sort: Default' },
+  { value: 'newest', label: 'Sort: Newest' },
+  { value: 'oldest', label: 'Sort: Oldest' },
+  { value: 'longest', label: 'Sort: Longest' },
+  { value: 'shortest', label: 'Sort: Shortest' },
 ];
 
 const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
@@ -107,6 +152,8 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
   // Prompt Library state
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<PromptSortMode>('default');
   const [activeOnly, setActiveOnly] = useState(false);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(prompts[0]?.id || null);
   const [isCreatingPrompt, setIsCreatingPrompt] = useState(false);
@@ -116,7 +163,8 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
   const [draftName, setDraftName] = useState('');
   const [draftSubtitle, setDraftSubtitle] = useState('');
   const [draftDescription, setDraftDescription] = useState('');
-  const [draftTags, setDraftTags] = useState('');
+  const [draftTagsList, setDraftTagsList] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
   const [draftSortOrder, setDraftSortOrder] = useState<number>(100);
   const [draftModelId, setDraftModelId] = useState('');
   const [draftActive, setDraftActive] = useState(true);
@@ -124,6 +172,14 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
   const [showHistory, setShowHistory] = useState(false);
   const [confirmDeletePrompt, setConfirmDeletePrompt] = useState(false);
   const [savingPrompt, setSavingPrompt] = useState(false);
+  const [togglingPromptId, setTogglingPromptId] = useState<string | null>(null);
+  const [updatingCategoryPromptId, setUpdatingCategoryPromptId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    prompt: SystemPromptRecord;
+    x: number;
+    y: number;
+  } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Recipes state
   const [recipes, setRecipes] = useState<PromptRecipeRecord[]>([]);
@@ -204,24 +260,64 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
     return counts;
   }, [prompts]);
 
+  const allLibraryTags = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of prompts) {
+      for (const raw of p.tags || []) {
+        const tag = normalizeTagToken(raw);
+        if (!tag) continue;
+        counts.set(tag, (counts.get(tag) || 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  }, [prompts]);
+
   const filteredPrompts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const tagQ = q.replace(/^#+/, '');
     return prompts
       .filter((p) => {
         if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
         if (activeOnly && !p.is_active) return false;
+        const normalizedTags = (p.tags || []).map((t) => normalizeTagToken(t)).filter(Boolean);
+        if (tagFilter && !normalizedTags.includes(tagFilter)) return false;
         if (!q) return true;
-        const tagsStr = (p.tags || []).join(' ').toLowerCase();
         return (
           p.display_name.toLowerCase().includes(q) ||
-          p.slug.toLowerCase().includes(q) ||
-          (p.subtitle || '').toLowerCase().includes(q) ||
-          tagsStr.includes(q) ||
-          p.prompt_body.toLowerCase().includes(q)
+          (tagQ.length > 0 && normalizedTags.some((t) => t.includes(tagQ)))
         );
       })
-      .sort((a, b) => (a.sort_order ?? 100) - (b.sort_order ?? 100) || a.display_name.localeCompare(b.display_name));
-  }, [prompts, searchQuery, categoryFilter, activeOnly]);
+      .sort((a, b) => {
+        if (sortBy === 'newest') {
+          const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+          const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+          return tb - ta || a.display_name.localeCompare(b.display_name);
+        }
+        if (sortBy === 'oldest') {
+          const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+          const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+          return ta - tb || a.display_name.localeCompare(b.display_name);
+        }
+        if (sortBy === 'longest') {
+          return (
+            (b.prompt_body || '').length - (a.prompt_body || '').length ||
+            a.display_name.localeCompare(b.display_name)
+          );
+        }
+        if (sortBy === 'shortest') {
+          return (
+            (a.prompt_body || '').length - (b.prompt_body || '').length ||
+            a.display_name.localeCompare(b.display_name)
+          );
+        }
+        return (
+          (a.sort_order ?? 100) - (b.sort_order ?? 100) ||
+          a.display_name.localeCompare(b.display_name)
+        );
+      });
+  }, [prompts, searchQuery, categoryFilter, activeOnly, tagFilter, sortBy]);
 
   const selectedPrompt = useMemo(
     () => prompts.find((p) => p.id === selectedPromptId) || null,
@@ -240,7 +336,12 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
       setDraftName(selectedPrompt.display_name);
       setDraftSubtitle(selectedPrompt.subtitle || '');
       setDraftDescription(selectedPrompt.description || '');
-      setDraftTags((selectedPrompt.tags || []).join(', '));
+      setDraftTagsList(
+        Array.from(
+          new Set((selectedPrompt.tags || []).map((t) => normalizeTagToken(t)).filter(Boolean))
+        )
+      );
+      setTagInput('');
       setDraftSortOrder(selectedPrompt.sort_order ?? 100);
       setDraftModelId(selectedPrompt.model_id || '');
       setDraftActive(selectedPrompt.is_active);
@@ -249,6 +350,31 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
       setConfirmDeletePrompt(false);
     }
   }, [selectedPrompt?.id, isCreatingPrompt, prompts.length]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      if (contextMenuRef.current && contextMenuRef.current.contains(e.target as Node)) {
+        return;
+      }
+      setContextMenu(null);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    const handleCloseOnScroll = () => setContextMenu(null);
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', handleCloseOnScroll, true);
+    window.addEventListener('resize', handleCloseOnScroll);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleCloseOnScroll, true);
+      window.removeEventListener('resize', handleCloseOnScroll);
+    };
+  }, [contextMenu]);
 
   const selectedRecipe = useMemo(
     () => recipes.find((r) => r.id === selectedRecipeId) || null,
@@ -278,7 +404,8 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
     setDraftName('');
     setDraftSubtitle('');
     setDraftDescription('');
-    setDraftTags('');
+    setDraftTagsList(tagFilter ? [tagFilter] : []);
+    setTagInput('');
     setDraftSortOrder(100);
     setDraftModelId('');
     setDraftActive(true);
@@ -297,22 +424,36 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
     setDraftName(`${selectedPrompt.display_name} (Copy)`);
     setDraftSubtitle(selectedPrompt.subtitle || '');
     setDraftDescription(selectedPrompt.description || '');
-    setDraftTags((selectedPrompt.tags || []).join(', '));
+    setDraftTagsList(
+      Array.from(
+        new Set((selectedPrompt.tags || []).map((t) => normalizeTagToken(t)).filter(Boolean))
+      )
+    );
+    setTagInput('');
     setDraftSortOrder((selectedPrompt.sort_order ?? 100) + 1);
     setDraftModelId(selectedPrompt.model_id || '');
     setDraftActive(true);
     setDraftBody(selectedPrompt.prompt_body);
-    setFeedback('Cloned into new draft — customize the slug and click Create Prompt.');
+    setFeedback('Cloned into new draft — customize the slug and click Save.');
+  };
+
+  const commitPendingTags = (rawInput: string) => {
+    const tokens = parseTagTokens(rawInput);
+    if (tokens.length === 0) return;
+    setDraftTagsList((prev) => Array.from(new Set([...prev, ...tokens])).slice(0, 25));
+    setTagInput('');
   };
 
   const handleSavePrompt = async () => {
     setSavingPrompt(true);
     setError(null);
     setFeedback(null);
-    const parsedTags = draftTags
-      .split(',')
-      .map((t) => t.trim().toLowerCase())
-      .filter(Boolean);
+    const pendingTokens = parseTagTokens(tagInput);
+    const parsedTags = Array.from(new Set([...draftTagsList, ...pendingTokens])).slice(0, 25);
+    if (pendingTokens.length > 0) {
+      setDraftTagsList(parsedTags);
+      setTagInput('');
+    }
 
     try {
       const token = await getAccessToken();
@@ -369,6 +510,70 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
       setError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingPrompt(false);
+    }
+  };
+
+  const handleTogglePromptActive = async (prompt: SystemPromptRecord) => {
+    setTogglingPromptId(prompt.id);
+    setError(null);
+    try {
+      const token = await getAccessToken();
+      const nextActive = !prompt.is_active;
+      const res = await fetch(`/api/admin/prompts/${prompt.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ is_active: nextActive }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not toggle prompt status');
+      onPromptSaved(data.prompt, false);
+      if (!isCreatingPrompt && selectedPromptId === prompt.id) {
+        setDraftActive(Boolean(data.prompt.is_active));
+      }
+      setFeedback(
+        `${data.prompt.is_active ? 'Enabled' : 'Disabled'} "${data.prompt.display_name}".`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Status update failed');
+    } finally {
+      setTogglingPromptId(null);
+    }
+  };
+
+  const handleChangePromptCategory = async (
+    prompt: SystemPromptRecord,
+    newCategory: SystemPromptRecord['category']
+  ) => {
+    setContextMenu(null);
+    if (prompt.category === newCategory) return;
+    setUpdatingCategoryPromptId(prompt.id);
+    setError(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/admin/prompts/${prompt.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ category: newCategory }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not change category');
+      onPromptSaved(data.prompt, false);
+      if (!isCreatingPrompt && selectedPromptId === prompt.id) {
+        setDraftCategory(data.prompt.category);
+      }
+      setFeedback(
+        `Moved "${data.prompt.display_name}" to ${getCategoryLabel(data.prompt.category)}.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Category update failed');
+    } finally {
+      setUpdatingCategoryPromptId(null);
     }
   };
 
@@ -650,37 +855,74 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
       {subView === 'prompts' && (
         <div className="space-y-4">
           {/* Category Filter Bar */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setCategoryFilter('all')}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-                categoryFilter === 'all'
-                  ? 'bg-[#3D3830] text-[#FAF7F2]'
-                  : 'bg-[#FDFBF7] border border-[#3D3830]/12 text-[#5C5449] hover:bg-[#EAE3D7]/60'
-              }`}
-            >
-              All ({categoryCounts.all || 0})
-            </button>
-            {PROMPT_CATEGORIES.map((cat) => (
+          <div className="space-y-2.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
-                key={cat.value}
                 type="button"
-                onClick={() => setCategoryFilter(cat.value)}
+                onClick={() => setCategoryFilter('all')}
                 className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-                  categoryFilter === cat.value
+                  categoryFilter === 'all'
                     ? 'bg-[#3D3830] text-[#FAF7F2]'
-                    : 'bg-[#FDFBF7] border border-[#3D3830]/12 text-[#5C5449] hover:bg-[#EAE3D7]/60'
+                    : 'bg-[#FDFBF7] border border-[#3D3830]/15 text-[#5C5449] hover:bg-[#EAE3D7]/60'
                 }`}
               >
-                {cat.label} ({categoryCounts[cat.value] || 0})
+                All ({categoryCounts.all || 0})
               </button>
-            ))}
+              {PROMPT_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => setCategoryFilter(cat.value)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                    categoryFilter === cat.value
+                      ? 'bg-[#3D3830] text-[#FAF7F2]'
+                      : 'bg-[#FDFBF7] border border-[#3D3830]/15 text-[#5C5449] hover:bg-[#EAE3D7]/60'
+                  }`}
+                >
+                  {cat.label} ({categoryCounts[cat.value] || 0})
+                </button>
+              ))}
+            </div>
+
+            {/* Tag Discovery Bar */}
+            {allLibraryTags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                <span className="inline-flex items-center gap-1 text-[#8B8275] font-medium mr-0.5">
+                  <Tag className="h-3 w-3" />
+                  Tags:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setTagFilter(null)}
+                  className={`rounded-full px-2.5 py-1 font-mono text-[10px] transition-colors cursor-pointer ${
+                    tagFilter === null
+                      ? 'bg-[#4A453D] text-[#FAF7F2]'
+                      : 'bg-[#FDFBF7] border border-[#3D3830]/15 text-[#5C5449] hover:bg-[#EAE3D7]/60'
+                  }`}
+                >
+                  All tags
+                </button>
+                {allLibraryTags.map(({ tag, count }) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setTagFilter((prev) => (prev === tag ? null : tag))}
+                    className={`rounded-full px-2.5 py-1 font-mono text-[10px] transition-colors cursor-pointer ${
+                      tagFilter === tag
+                        ? 'bg-[#4A453D] text-[#FAF7F2]'
+                        : 'bg-[#FDFBF7] border border-[#3D3830]/15 text-[#5C5449] hover:bg-[#EAE3D7]/60'
+                    }`}
+                  >
+                    #{tag} ({count})
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-5 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-5 items-start">
             {/* Left Compact Master List */}
-            <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 overflow-hidden flex flex-col max-h-[720px]">
+            <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/15 overflow-hidden flex flex-col max-h-[760px]">
               <div className="p-3 border-b border-[#3D3830]/10 space-y-2.5">
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
@@ -689,7 +931,7 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search name, slug, tags..."
+                      placeholder="Search title or #tags..."
                       className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] pl-8 pr-3 py-2 text-xs text-[#3D3830] focus:outline-none focus:border-[#3D3830]/35"
                     />
                   </div>
@@ -702,21 +944,53 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                     New
                   </button>
                 </div>
-                <div className="flex items-center justify-between text-[11px] text-[#8B8275]">
-                  <span className="font-mono tabular-nums">{filteredPrompts.length} prompts</span>
-                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={activeOnly}
-                      onChange={(e) => setActiveOnly(e.target.checked)}
-                      className="accent-[#4A453D]"
-                    />
-                    Active only
-                  </label>
+
+                <div className="flex items-center justify-between gap-2 text-[11px] text-[#8B8275]">
+                  <span className="font-mono tabular-nums shrink-0">
+                    {filteredPrompts.length} prompts
+                  </span>
+                  <div className="flex items-center gap-2.5">
+                    <label className="inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={activeOnly}
+                        onChange={(e) => setActiveOnly(e.target.checked)}
+                        className="accent-[#4A453D]"
+                      />
+                      Active only
+                    </label>
+                    <div className="w-[138px]">
+                      <CustomSelect
+                        size="xs"
+                        surface="canvas"
+                        align="right"
+                        ariaLabel="Sort prompts"
+                        value={sortBy}
+                        onChange={(val) => setSortBy(val as PromptSortMode)}
+                        options={PROMPT_SORT_OPTIONS}
+                      />
+                    </div>
+                  </div>
                 </div>
+
+                {tagFilter && (
+                  <div className="flex items-center justify-between rounded-xl bg-[#EAE3D7]/60 px-2.5 py-1.5 text-[11px] text-[#3D3830]">
+                    <span className="font-mono truncate">
+                      Filtered by tag: <strong>#{tagFilter}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setTagFilter(null)}
+                      className="inline-flex items-center gap-0.5 text-[10px] font-medium text-[#5C5449] hover:text-[#3D3830] cursor-pointer shrink-0"
+                    >
+                      <X className="h-3 w-3" />
+                      Clear
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <div className="flex-1 overflow-y-auto divide-y divide-[#3D3830]/8">
+              <div className="flex-1 overflow-y-auto divide-y divide-[#3D3830]/10">
                 {filteredPrompts.length === 0 ? (
                   <p className="p-6 text-center text-xs text-[#8B8275]">
                     No prompts match this filter. Click <strong>New</strong> to create one.
@@ -724,49 +998,116 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                 ) : (
                   filteredPrompts.map((p) => {
                     const active = !isCreatingPrompt && p.id === selectedPromptId;
+                    const charLen = (p.prompt_body || '').length;
+                    const tokenCount = Math.ceil(charLen / 4);
+                    const isUpdatingRow =
+                      togglingPromptId === p.id || updatingCategoryPromptId === p.id;
+                    const rowTags = (p.tags || []).map((t) => normalizeTagToken(t)).filter(Boolean);
+
                     return (
-                      <button
+                      <div
                         key={p.id}
-                        type="button"
-                        onClick={() => {
-                          setIsCreatingPrompt(false);
-                          setSelectedPromptId(p.id);
-                          setFeedback(null);
-                          setError(null);
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          const menuWidth = 216;
+                          const menuHeight = 380;
+                          const safeX = Math.max(
+                            8,
+                            Math.min(e.clientX, window.innerWidth - menuWidth - 8)
+                          );
+                          const safeY = Math.max(
+                            8,
+                            Math.min(e.clientY, window.innerHeight - menuHeight - 8)
+                          );
+                          setContextMenu({ prompt: p, x: safeX, y: safeY });
                         }}
-                        className={`w-full text-left px-3.5 py-3 transition-colors cursor-pointer ${
+                        className={`px-3.5 py-3 transition-colors ${
                           active ? 'bg-[#EAE3D7]/70' : 'hover:bg-[#FAF7F2]'
-                        }`}
+                        } ${isUpdatingRow ? 'opacity-70' : ''}`}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-semibold text-[#3D3830] truncate">
-                            {p.display_name}
-                          </span>
-                          <span className="font-mono text-[10px] text-[#8B8275] shrink-0">
-                            v{p.version}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex items-center justify-between gap-2 text-[10px]">
-                          <span className="font-mono text-[#8B7355] truncate">
-                            {p.category} · {p.slug}
-                          </span>
-                          {!p.is_active && (
-                            <span className="text-[#7A3E36] font-medium shrink-0">Hidden</span>
-                          )}
-                        </div>
-                        {p.tags && p.tags.length > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {p.tags.slice(0, 4).map((t) => (
+                        <div className="flex items-start justify-between gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsCreatingPrompt(false);
+                              setSelectedPromptId(p.id);
+                              setFeedback(null);
+                              setError(null);
+                            }}
+                            className="flex-1 min-w-0 text-left cursor-pointer"
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
                               <span
+                                className={`text-xs font-semibold truncate ${
+                                  p.is_active ? 'text-[#3D3830]' : 'text-[#8B8275]'
+                                }`}
+                              >
+                                {p.display_name}
+                              </span>
+                              <span className="font-mono text-[10px] text-[#8B8275] shrink-0">
+                                v{p.version}
+                              </span>
+                            </div>
+                            <p className="mt-1 font-mono text-[10px] text-[#8B7355] truncate tabular-nums">
+                              {getCategoryLabel(p.category)} - {formatCharsCompact(charLen)} characters - {tokenCount} Tokens
+                            </p>
+                          </button>
+
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={p.is_active}
+                            aria-label={
+                              p.is_active
+                                ? `Disable ${p.display_name}`
+                                : `Enable ${p.display_name}`
+                            }
+                            title={
+                              p.is_active
+                                ? 'Enabled — click to disable'
+                                : 'Disabled — click to enable'
+                            }
+                            disabled={togglingPromptId === p.id}
+                            onClick={() => void handleTogglePromptActive(p)}
+                            className={`relative mt-0.5 inline-flex h-[18px] w-[32px] shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 ${
+                              p.is_active ? 'bg-[#2D6A4F]' : 'bg-[#3D3830]/20'
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-[14px] w-[14px] transform rounded-full bg-[#FAF7F2] shadow-xs transition-transform ${
+                                p.is_active ? 'translate-x-[16px]' : 'translate-x-[2px]'
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        {rowTags.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {rowTags.slice(0, 4).map((t) => (
+                              <button
                                 key={t}
-                                className="rounded bg-[#EAE3D7]/80 px-1.5 py-0.5 font-mono text-[9px] text-[#5C5449]"
+                                type="button"
+                                onClick={() =>
+                                  setTagFilter((prev) => (prev === t ? null : t))
+                                }
+                                title={`Filter by #${t}`}
+                                className={`rounded px-1.5 py-0.5 font-mono text-[9px] transition-colors cursor-pointer ${
+                                  tagFilter === t
+                                    ? 'bg-[#4A453D] text-[#FAF7F2]'
+                                    : 'bg-[#EAE3D7]/80 text-[#5C5449] hover:bg-[#DDD4C5]'
+                                }`}
                               >
                                 #{t}
-                              </span>
+                              </button>
                             ))}
+                            {rowTags.length > 4 && (
+                              <span className="px-1 font-mono text-[9px] text-[#8B8275]">
+                                +{rowTags.length - 4}
+                              </span>
+                            )}
                           </div>
                         )}
-                      </button>
+                      </div>
                     );
                   })
                 )}
@@ -774,7 +1115,7 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
             </div>
 
             {/* Right Prompt Editor */}
-            <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 sm:p-6 space-y-4">
+            <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/15 p-5 sm:p-6 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#3D3830]/10 pb-4">
                 <div>
                   <h3 className="font-serif text-xl font-medium text-[#3D3830]">
@@ -826,11 +1167,7 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                     className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-4 py-1.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 cursor-pointer"
                   >
                     <Save className="h-3.5 w-3.5" />
-                    {savingPrompt
-                      ? 'Saving...'
-                      : isCreatingPrompt
-                      ? 'Create Prompt'
-                      : 'Save New Version'}
+                    {savingPrompt ? 'Saving...' : 'Save'}
                   </button>
                 </div>
               </div>
@@ -884,17 +1221,49 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                     ]}
                   />
                 </div>
-                <div>
+                <div className="sm:col-span-2 lg:col-span-1">
                   <label className="block text-[11px] font-medium text-[#5C5449] mb-1">
-                    Tags (comma separated)
+                    Tags
                   </label>
-                  <input
-                    type="text"
-                    value={draftTags}
-                    onChange={(e) => setDraftTags(e.target.value)}
-                    placeholder="career, d10, kp, timing"
-                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs text-[#3D3830]"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={tagInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val.includes(',')) {
+                          const parts = val.split(',');
+                          const complete = parts.slice(0, -1).join(',');
+                          const remainder = parts[parts.length - 1];
+                          const tokens = parseTagTokens(complete);
+                          if (tokens.length > 0) {
+                            setDraftTagsList((prev) =>
+                              Array.from(new Set([...prev, ...tokens])).slice(0, 25)
+                            );
+                          }
+                          setTagInput(remainder);
+                        } else {
+                          setTagInput(val);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitPendingTags(tagInput);
+                        }
+                      }}
+                      placeholder="Add tag (Enter or comma)..."
+                      className="flex-1 min-w-0 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs text-[#3D3830]"
+                    />
+                    <button
+                      type="button"
+                      disabled={!normalizeTagToken(tagInput)}
+                      onClick={() => commitPendingTags(tagInput)}
+                      className="rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-2.5 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7] disabled:opacity-40 cursor-pointer shrink-0"
+                    >
+                      Add
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-end gap-3">
                   <div className="w-24">
@@ -919,6 +1288,57 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                   </label>
                 </div>
               </div>
+
+              {(draftTagsList.length > 0 || allLibraryTags.some((t) => !draftTagsList.includes(t.tag))) && (
+                <div className="rounded-2xl border border-[#3D3830]/10 bg-[#FAF7F2]/80 px-3.5 py-2.5 space-y-2">
+                  {draftTagsList.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-medium text-[#8B8275]">Applied tags:</span>
+                      {draftTagsList.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1 rounded-full bg-[#EAE3D7] px-2.5 py-0.5 font-mono text-[10px] text-[#3D3830]"
+                        >
+                          #{tag}
+                          <button
+                            type="button"
+                            aria-label={`Remove tag ${tag}`}
+                            onClick={() =>
+                              setDraftTagsList((prev) => prev.filter((item) => item !== tag))
+                            }
+                            className="text-[#5C5449] hover:text-[#7A3E36] cursor-pointer"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {allLibraryTags.some((t) => !draftTagsList.includes(t.tag)) && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] text-[#8B8275]">Quick add existing:</span>
+                      {allLibraryTags
+                        .filter((t) => !draftTagsList.includes(t.tag))
+                        .slice(0, 10)
+                        .map(({ tag }) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() =>
+                              setDraftTagsList((prev) =>
+                                Array.from(new Set([...prev, tag])).slice(0, 25)
+                              )
+                            }
+                            className="rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-2 py-0.5 font-mono text-[10px] text-[#5C5449] hover:bg-[#EAE3D7] hover:text-[#3D3830] cursor-pointer"
+                          >
+                            + #{tag}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
@@ -967,7 +1387,7 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
 
               {/* Rollback History */}
               {showHistory && selectedPrompt && (
-                <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-2.5">
+                <div className="rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 space-y-2.5">
                   <h4 className="text-xs font-semibold text-[#3D3830]">Archived Versions</h4>
                   {(!selectedPrompt.previous_versions || selectedPrompt.previous_versions.length === 0) ? (
                     <p className="text-xs text-[#8B8275]">No earlier versions archived yet.</p>
@@ -1001,41 +1421,103 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                 </div>
               )}
 
-              {/* Delete Row */}
-              {!isCreatingPrompt && selectedPrompt && (
-                <div className="flex items-center justify-end pt-2 border-t border-[#3D3830]/8">
-                  {confirmDeletePrompt ? (
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-[#7A3E36]">Delete this prompt permanently?</span>
+              {/* Bottom Action Bar (Delete + Bottom Save) */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#3D3830]/10">
+                <div>
+                  {!isCreatingPrompt && selectedPrompt && (
+                    confirmDeletePrompt ? (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-[#7A3E36]">Delete this prompt permanently?</span>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeletePrompt()}
+                          className="rounded-full bg-[#7A3E36] px-3 py-1 text-[#FAF7F2] font-medium cursor-pointer"
+                        >
+                          Yes, Delete
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeletePrompt(false)}
+                          className="rounded-full border border-[#3D3830]/15 px-3 py-1 text-[#5C5449] cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => void handleDeletePrompt()}
-                        className="rounded-full bg-[#7A3E36] px-3 py-1 text-[#FAF7F2] font-medium cursor-pointer"
+                        onClick={() => setConfirmDeletePrompt(true)}
+                        className="inline-flex items-center gap-1 text-xs text-[#7A3E36] hover:underline cursor-pointer"
                       >
-                        Yes, Delete
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete Prompt
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDeletePrompt(false)}
-                        className="rounded-full border border-[#3D3830]/15 px-3 py-1 text-[#5C5449] cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDeletePrompt(true)}
-                      className="inline-flex items-center gap-1 text-xs text-[#7A3E36] hover:underline cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Delete Prompt
-                    </button>
+                    )
                   )}
                 </div>
-              )}
+
+                <button
+                  type="button"
+                  disabled={savingPrompt || !draftName.trim() || !draftBody.trim()}
+                  onClick={handleSavePrompt}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-4 py-1.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 cursor-pointer"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  {savingPrompt ? 'Saving...' : 'Save'}
+                </button>
+              </div>
             </div>
           </div>
+
+          {contextMenu &&
+            typeof document !== 'undefined' &&
+            createPortal(
+              <div
+                ref={contextMenuRef}
+                role="menu"
+                aria-label={`Change category for ${contextMenu.prompt.display_name}`}
+                style={{
+                  position: 'fixed',
+                  top: `${contextMenu.y}px`,
+                  left: `${contextMenu.x}px`,
+                  zIndex: 250,
+                }}
+                className="w-[216px] rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] p-1.5 shadow-[0_18px_42px_-12px_rgba(61,56,48,0.24)]"
+              >
+                <div className="px-2.5 py-1.5 border-b border-[#3D3830]/10 mb-1">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-[#8B8275]">
+                    Change Category
+                  </p>
+                  <p className="text-xs font-semibold text-[#3D3830] truncate">
+                    {contextMenu.prompt.display_name}
+                  </p>
+                </div>
+                <div className="max-h-72 overflow-y-auto space-y-0.5">
+                  {PROMPT_CATEGORIES.map((cat) => {
+                    const isCurrent = contextMenu.prompt.category === cat.value;
+                    return (
+                      <button
+                        key={cat.value}
+                        type="button"
+                        role="menuitem"
+                        onClick={() =>
+                          void handleChangePromptCategory(contextMenu.prompt, cat.value)
+                        }
+                        className={`w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-1.5 text-xs text-left transition-colors cursor-pointer ${
+                          isCurrent
+                            ? 'bg-[#F1ECE3] font-medium text-[#3D3830]'
+                            : 'text-[#5C5449] hover:bg-[#F1ECE3]/70 hover:text-[#3D3830]'
+                        }`}
+                      >
+                        <span>{cat.label}</span>
+                        {isCurrent && <Check className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>,
+              document.body
+            )}
         </div>
       )}
 

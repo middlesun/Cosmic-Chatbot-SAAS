@@ -242,81 +242,69 @@ const AppDashboardHome: React.FC = () => {
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Link
           to="/app/chat"
-          className="group rounded-3xl bg-gradient-to-br from-[#4A453D] to-[#38342E] hover:from-[#3D3830] hover:to-[#2E2A24] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/25 text-[#FAF7F2] shadow-[0_10px_24px_-12px_rgba(61,56,48,0.45)] hover:shadow-[0_14px_28px_-12px_rgba(61,56,48,0.6)] transition-all flex flex-col justify-between gap-4"
+          className="group rounded-3xl bg-[#DDD4C5] hover:bg-[#D5CBB9] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/20 hover:border-[#3D3830]/35 text-[#3D3830] hover:-translate-y-1 hover:shadow-[0_20px_44px_-22px_rgba(61,56,48,0.18)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between gap-4"
         >
           <div className="flex items-center justify-between gap-2">
-            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/10 border border-[#FAF7F2]/15 flex items-center justify-center text-[#E6D3B3]">
+            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/65 border border-[#3D3830]/15 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors">
               <MessageSquare className="h-5 w-5" />
             </div>
-            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/10 group-hover:bg-[#FAF7F2]/20 flex items-center justify-center transition-colors">
-              <ArrowRight className="h-3.5 w-3.5 text-[#FAF7F2] group-hover:translate-x-0.5 transition-transform" />
+            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/65 group-hover:bg-[#FAF7F2] border border-[#3D3830]/10 flex items-center justify-center transition-colors">
+              <ArrowRight className="h-3.5 w-3.5 text-[#3D3830] group-hover:translate-x-0.5 transition-transform" />
             </span>
           </div>
           <div>
-            <h2 className="font-serif text-2xl font-medium text-[#FAF7F2]">Chat</h2>
-            <p className="mt-1 text-xs text-[#FAF7F2]/75 leading-relaxed">
-              Switch disciplines mid-chat, save custom prompts, and star insights per profile.
-            </p>
+            <h2 className="font-serif text-2xl font-medium text-[#3D3830] tracking-tight">Chat</h2>
           </div>
         </Link>
 
         <Link
           to="/app/profiles"
-          className="group rounded-3xl bg-gradient-to-br from-[#4A453D] to-[#38342E] hover:from-[#3D3830] hover:to-[#2E2A24] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/25 text-[#FAF7F2] shadow-[0_10px_24px_-12px_rgba(61,56,48,0.45)] hover:shadow-[0_14px_28px_-12px_rgba(61,56,48,0.6)] transition-all flex flex-col justify-between gap-4"
+          className="group rounded-3xl bg-[#DDD4C5] hover:bg-[#D5CBB9] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/20 hover:border-[#3D3830]/35 text-[#3D3830] hover:-translate-y-1 hover:shadow-[0_20px_44px_-22px_rgba(61,56,48,0.18)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between gap-4"
         >
           <div className="flex items-center justify-between gap-2">
-            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/10 border border-[#FAF7F2]/15 flex items-center justify-center text-[#E6D3B3]">
+            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/65 border border-[#3D3830]/15 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors">
               <UserPlus className="h-5 w-5" />
             </div>
-            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/10 group-hover:bg-[#FAF7F2]/20 flex items-center justify-center transition-colors">
-              <ArrowRight className="h-3.5 w-3.5 text-[#FAF7F2] group-hover:translate-x-0.5 transition-transform" />
+            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/65 group-hover:bg-[#FAF7F2] border border-[#3D3830]/10 flex items-center justify-center transition-colors">
+              <ArrowRight className="h-3.5 w-3.5 text-[#3D3830] group-hover:translate-x-0.5 transition-transform" />
             </span>
           </div>
           <div>
-            <h2 className="font-serif text-2xl font-medium text-[#FAF7F2]">BirthCharts</h2>
-            <p className="mt-1 text-xs text-[#FAF7F2]/75 leading-relaxed">
-              Save birth details once to calculate Parashari, KP, Jaimini, and Western charts.
-            </p>
+            <h2 className="font-serif text-2xl font-medium text-[#3D3830] tracking-tight">BirthCharts</h2>
           </div>
         </Link>
 
         <Link
           to="/app/apps"
-          className="group rounded-3xl bg-gradient-to-br from-[#4A453D] to-[#38342E] hover:from-[#3D3830] hover:to-[#2E2A24] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/25 text-[#FAF7F2] shadow-[0_10px_24px_-12px_rgba(61,56,48,0.45)] hover:shadow-[0_14px_28px_-12px_rgba(61,56,48,0.6)] transition-all flex flex-col justify-between gap-4"
+          className="group rounded-3xl bg-[#DDD4C5] hover:bg-[#D5CBB9] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/20 hover:border-[#3D3830]/35 text-[#3D3830] hover:-translate-y-1 hover:shadow-[0_20px_44px_-22px_rgba(61,56,48,0.18)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between gap-4"
         >
           <div className="flex items-center justify-between gap-2">
-            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/10 border border-[#FAF7F2]/15 flex items-center justify-center text-[#E6D3B3]">
+            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/65 border border-[#3D3830]/15 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors">
               <LayoutGrid className="h-5 w-5" />
             </div>
-            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/10 group-hover:bg-[#FAF7F2]/20 flex items-center justify-center transition-colors">
-              <ArrowRight className="h-3.5 w-3.5 text-[#FAF7F2] group-hover:translate-x-0.5 transition-transform" />
+            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/65 group-hover:bg-[#FAF7F2] border border-[#3D3830]/10 flex items-center justify-center transition-colors">
+              <ArrowRight className="h-3.5 w-3.5 text-[#3D3830] group-hover:translate-x-0.5 transition-transform" />
             </span>
           </div>
           <div>
-            <h2 className="font-serif text-2xl font-medium text-[#FAF7F2]">Apps</h2>
-            <p className="mt-1 text-xs text-[#FAF7F2]/75 leading-relaxed">
-              Daily &amp; weekly forecasts, live transits, and chart breakdown tools.
-            </p>
+            <h2 className="font-serif text-2xl font-medium text-[#3D3830] tracking-tight">Apps</h2>
           </div>
         </Link>
 
         <Link
           to="/app/reports"
-          className="group rounded-3xl bg-gradient-to-br from-[#4A453D] to-[#38342E] hover:from-[#3D3830] hover:to-[#2E2A24] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/25 text-[#FAF7F2] shadow-[0_10px_24px_-12px_rgba(61,56,48,0.45)] hover:shadow-[0_14px_28px_-12px_rgba(61,56,48,0.6)] transition-all flex flex-col justify-between gap-4"
+          className="group rounded-3xl bg-[#DDD4C5] hover:bg-[#D5CBB9] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/20 hover:border-[#3D3830]/35 text-[#3D3830] hover:-translate-y-1 hover:shadow-[0_20px_44px_-22px_rgba(61,56,48,0.18)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between gap-4"
         >
           <div className="flex items-center justify-between gap-2">
-            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/10 border border-[#FAF7F2]/15 flex items-center justify-center text-[#E6D3B3]">
+            <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/65 border border-[#3D3830]/15 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors">
               <FileText className="h-5 w-5" />
             </div>
-            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/10 group-hover:bg-[#FAF7F2]/20 flex items-center justify-center transition-colors">
-              <ArrowRight className="h-3.5 w-3.5 text-[#FAF7F2] group-hover:translate-x-0.5 transition-transform" />
+            <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/65 group-hover:bg-[#FAF7F2] border border-[#3D3830]/10 flex items-center justify-center transition-colors">
+              <ArrowRight className="h-3.5 w-3.5 text-[#3D3830] group-hover:translate-x-0.5 transition-transform" />
             </span>
           </div>
           <div>
-            <h2 className="font-serif text-2xl font-medium text-[#FAF7F2]">Reports</h2>
-            <p className="mt-1 text-xs text-[#FAF7F2]/75 leading-relaxed">
-              Order multi-pass PDF reports and continue with interactive follow-up questions.
-            </p>
+            <h2 className="font-serif text-2xl font-medium text-[#3D3830] tracking-tight">Reports</h2>
           </div>
         </Link>
       </section>

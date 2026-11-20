@@ -592,7 +592,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart, dailyTransits: propTra
                   size="sm"
                   align="right"
                   minMenuWidth={240}
-                  triggerClassName="font-['JetBrains_Mono',monospace] bg-white/10 border-white/12"
+                  triggerClassName="font-['JetBrains_Mono',monospace] bg-white/10 border-white/15"
                   options={ALL_VARGAS.filter((d) => chart.vargas[d.code]).map((d) => ({
                     value: d.code,
                     label: d.label,
