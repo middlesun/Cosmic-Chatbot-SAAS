@@ -22,7 +22,7 @@ const AuthPage: React.FC = () => {
 
   useEffect(() => {
     if (!isLoading && session) {
-      navigate('/app/chat', { replace: true });
+      navigate('/app/home', { replace: true });
     }
   }, [isLoading, session, navigate]);
 
@@ -59,7 +59,7 @@ const AuthPage: React.FC = () => {
       storePendingReferral(referralCode.trim());
     }
 
-    const redirectTo = `${window.location.origin}/app/chat`;
+    const redirectTo = `${window.location.origin}/app/home`;
     const isInIframe = (() => {
       try {
         return window.self !== window.top;
@@ -128,7 +128,7 @@ const AuthPage: React.FC = () => {
         if (signInErr) {
           setError(signInErr.message);
         } else {
-          navigate('/app/chat');
+          navigate('/app/home');
         }
       } else if (view === 'signup') {
         if (password.length < 8) {
@@ -143,7 +143,7 @@ const AuthPage: React.FC = () => {
           email: email.trim(),
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/app/chat`,
+            emailRedirectTo: `${window.location.origin}/app/home`,
             data: {
               full_name: fullName.trim() || email.split('@')[0],
               referral_code: referralCode.trim().toUpperCase() || undefined,
@@ -153,13 +153,13 @@ const AuthPage: React.FC = () => {
         if (signUpErr) {
           setError(signUpErr.message);
         } else if (data.session) {
-          navigate('/app/chat');
+          navigate('/app/home');
         } else {
           setNotice('Check your email for the confirmation link to activate your account.');
         }
       } else if (view === 'forgot') {
         const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-          redirectTo: `${window.location.origin}/app/chat`,
+          redirectTo: `${window.location.origin}/app/home`,
         });
         if (resetErr) {
           setError(resetErr.message);
@@ -429,7 +429,7 @@ const AuthPage: React.FC = () => {
               type="button"
               onClick={() => {
                 enterPreviewMode();
-                navigate('/app/chat');
+                navigate('/app/home');
               }}
               className="w-full rounded-full border border-[#3D3830]/15 bg-transparent px-5 py-2.5 text-xs font-medium text-[#5C5449] transition-colors hover:bg-[#F1ECE3]/70 hover:text-[#3D3830]"
             >

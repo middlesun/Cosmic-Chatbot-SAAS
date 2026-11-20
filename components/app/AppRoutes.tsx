@@ -11,6 +11,8 @@ import BillingCredits from './BillingCredits';
 import SettingsPage from './SettingsPage';
 import ReportsStore from './ReportsStore';
 import ReportOrderDetail from './ReportOrderDetail';
+import AppsHub from './AppsHub';
+import MiniAppRunner from './MiniAppRunner';
 import AdminPanel from '../admin/AdminPanel';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -34,7 +36,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { appUser } = useAuth();
   if (!appUser?.is_admin) {
-    return <Navigate to="/app/dashboard" replace />;
+    return <Navigate to="/app/home" replace />;
   }
   return <>{children}</>;
 };
@@ -51,8 +53,11 @@ const AppRoutes: React.FC = () => {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to="/app/chat" replace />} />
-          <Route path="dashboard" element={<AppDashboardHome />} />
+          <Route index element={<Navigate to="/app/home" replace />} />
+          <Route path="home" element={<AppDashboardHome />} />
+          <Route path="dashboard" element={<Navigate to="/app/home" replace />} />
+          <Route path="apps" element={<AppsHub />} />
+          <Route path="apps/:appSlug" element={<MiniAppRunner />} />
           <Route path="profiles" element={<ProfileManager />} />
           <Route path="chat" element={<ChatWorkspace />} />
           <Route path="chat/:conversationId" element={<ChatWorkspace />} />
@@ -71,7 +76,7 @@ const AppRoutes: React.FC = () => {
             </ProtectedRoute>
           }
         />
-        <Route path="*" element={<Navigate to="/app/chat" replace />} />
+        <Route path="*" element={<Navigate to="/app/home" replace />} />
       </Routes>
     </AuthProvider>
   );

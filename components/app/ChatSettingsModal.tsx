@@ -25,6 +25,7 @@ interface ChatSettingsModalProps {
   responseLength: ChatResponseLength;
   isThreadLocked: boolean;
   initialFontSize: ChatFontSize;
+  initialSuggestionsAutoExpand?: boolean;
   getAccessToken: () => Promise<string | null>;
   onSwitchProfile: (profileId: string | null) => void;
   onChangeExpert: (slug: string) => void;
@@ -39,6 +40,7 @@ interface ChatSettingsModalProps {
     defaultExpert: string;
     defaultOutput: string;
     defaultLanguage: string;
+    suggestionsAutoExpand: boolean;
   }) => void;
   onClose: () => void;
 }
@@ -66,6 +68,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
   responseLength,
   isThreadLocked,
   initialFontSize,
+  initialSuggestionsAutoExpand = true,
   getAccessToken,
   onSwitchProfile,
   onChangeExpert,
@@ -79,15 +82,19 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
   onClose,
 }) => {
   const [fontSize, setFontSize] = useState<ChatFontSize>(initialFontSize);
+  const [suggestionsAutoExpand, setSuggestionsAutoExpand] = useState<boolean>(
+    initialSuggestionsAutoExpand
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setFontSize(initialFontSize);
+      setSuggestionsAutoExpand(initialSuggestionsAutoExpand);
       setError(null);
     }
-  }, [isOpen, initialFontSize]);
+  }, [isOpen, initialFontSize, initialSuggestionsAutoExpand]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -101,7 +108,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
   if (!isOpen) return null;
 
   const activeExpertLabel =
-    catalog?.experts.find((opt) => opt.slug === expertSlug)?.displayName || 'Vedic astrologer';
+    catalog?.experts.find((opt) => opt.slug === expertSlug)?.displayName || 'Vedic Astrologer';
   const activeModeLabel =
     catalog?.modes.find((opt) => opt.slug === modeSlug)?.displayName || 'General';
   const activeProfileObj = profiles.find((p) => p.id === activeProfileId);
@@ -119,6 +126,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
         defaultExpert: expertSlug,
         defaultOutput: outputSlug,
         defaultLanguage: languageSlug,
+        suggestionsAutoExpand,
       });
       onClose();
       return;
@@ -140,6 +148,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
           default_expert: expertSlug,
           default_output: outputSlug,
           default_language: languageSlug,
+          suggestions_auto_expand: suggestionsAutoExpand,
         }),
       });
 
@@ -153,6 +162,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
         defaultExpert: expertSlug,
         defaultOutput: outputSlug,
         defaultLanguage: languageSlug,
+        suggestionsAutoExpand,
       });
       onClose();
     } catch (err) {
@@ -232,11 +242,11 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
               )}
             </div>
 
-            {/* Context-Locked Pair: Astrologer & Area of Life */}
+            {/* Context-Locked Pair: Council & Area of Life */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
                 <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
-                  Astrologer
+                  Council
                 </label>
                 {isThreadLocked ? (
                   <div className="flex items-center gap-2 rounded-xl border border-[#3D3830]/12 bg-[#F1ECE3]/80 px-3.5 py-2.5 text-xs font-medium text-[#3D3830]">
@@ -247,7 +257,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
                   <CustomSelect
                     value={expertSlug}
                     onChange={onChangeExpert}
-                    ariaLabel="Select astrological expert"
+                    ariaLabel="Select council guide"
                     size="sm"
                     surface="elevated"
                     className="w-full"
@@ -287,7 +297,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
 
             {isThreadLocked && (
               <p className="text-[11px] text-[#8B8275] leading-relaxed -mt-1">
-                Profile, astrologer, and area of life are locked for this thread. Start a New Chat to switch them; all fields below remain editable anytime.
+                Profile, council guide, and area of life are locked for this thread. Start a New Chat to switch them; all fields below remain editable anytime.
               </p>
             )}
 
@@ -419,6 +429,34 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
                   );
                 })}
               </div>
+            </div>
+
+            {/* Suggestions Default Expansion (OFF collapses by default; never disables) */}
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-2.5">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-[#3D3830]">Suggestions</p>
+                <p className="text-[11px] text-[#8B8275]">
+                  {suggestionsAutoExpand
+                    ? 'Expanded below replies (Followup & Deeper analysis)'
+                    : 'Collapsed by default below replies — tap the arrow anytime to expand'}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={suggestionsAutoExpand}
+                aria-label="Toggle default expansion for Suggestions"
+                onClick={() => setSuggestionsAutoExpand((prev) => !prev)}
+                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 cursor-pointer ${
+                  suggestionsAutoExpand ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                }`}
+              >
+                <span
+                  className={`h-4 w-4 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
+                    suggestionsAutoExpand ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </button>
             </div>
 
             {/* Longitudinal Context Memory (Active for Profiles, General & Learning) */}

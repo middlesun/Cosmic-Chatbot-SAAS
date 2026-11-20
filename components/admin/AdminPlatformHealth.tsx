@@ -30,8 +30,16 @@ interface PlatformHealthResponse {
     platform_settings: boolean;
     prompt_recipes: boolean;
     support_tickets: boolean;
+    migration_005_columns?: boolean;
+    migration_006_columns?: boolean;
+    app_cache?: boolean;
+    app_usage_logs?: boolean;
+    user_favorite_apps?: boolean;
   };
   migration004Ready: boolean;
+  migration005Ready?: boolean;
+  migration006Ready?: boolean;
+  migration007Ready?: boolean;
   timestamp: string;
 }
 
@@ -79,7 +87,14 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Cache flush failed');
-      setFeedback('All in-memory Prompt, Recipe, AI Settings, Chatbot, and Pricing caches have been cleared.');
+      const flushData = await res.json().catch(() => ({}));
+      const clearedCount =
+        typeof flushData?.miniAppsMemoryCleared === 'number'
+          ? ` (${flushData.miniAppsMemoryCleared} cached Mini-App entries cleared)`
+          : '';
+      setFeedback(
+        `All in-memory Prompt, Recipe, AI Settings, Chatbot, Pricing, and Mini-Apps caches have been cleared${clearedCount}.`
+      );
       await loadHealth();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Cache flush failed');
@@ -146,6 +161,72 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
         { name: 'public.platform_settings', ok: health.tables.platform_settings, group: 'Admin v2 (004)' },
         { name: 'public.prompt_recipes', ok: health.tables.prompt_recipes, group: 'Admin v2 (004)' },
         { name: 'public.support_tickets', ok: health.tables.support_tickets, group: 'Admin v2 (004)' },
+        {
+          name: 'profiles.current_city & messages.suggestions_json',
+          ok: Boolean(health.tables.migration_005_columns),
+          group: 'Council & Suggestions (005)',
+        },
+        {
+          name: 'conversations (pillar, tabs, companion)',
+          ok: Boolean(health.tables.migration_006_columns),
+          group: 'Companions & Tabs (006)',
+        },
+        {
+          name: 'public.app_cache',
+          ok: Boolean(health.tables.app_cache),
+          group: 'Mini-Apps & Telemetry (007)',
+        },
+        {
+          name: 'public.app_usage_logs',
+          ok: Boolean(health.tables.app_usage_logs),
+          group: 'Mini-Apps & Telemetry (007)',
+        },
+        {
+          name: 'public.user_favorite_apps',
+          ok: Boolean(health.tables.user_favorite_apps),
+          group: 'Mini-Apps & Telemetry (007)',
+        },
+      ]
+    : [];
+
+  const pendingMigrations: Array<{ id: string; file: string; summary: string }> = health
+    ? [
+        ...(!health.migration004Ready
+          ? [
+              {
+                id: '004',
+                file: 'supabase/migrations/004_admin_console_and_recipes.sql',
+                summary: 'Encrypted AI Settings, Chatbot Config, Pricing, Recipes & Support Tickets',
+              },
+            ]
+          : []),
+        ...(health.migration005Ready === false
+          ? [
+              {
+                id: '005',
+                file: 'supabase/migrations/005_council_suggestions_and_location.sql',
+                summary: 'Profile Current Location & Two-Tier Suggestions persistence',
+              },
+            ]
+          : []),
+        ...(health.migration006Ready === false
+          ? [
+              {
+                id: '006',
+                file: 'supabase/migrations/006_pillars_companions_and_tabs.sql',
+                summary: 'Council / Companion / Clarity pillars & multi-tab active conversations',
+              },
+            ]
+          : []),
+        ...(health.migration007Ready === false
+          ? [
+              {
+                id: '007',
+                file: 'supabase/migrations/007_mini_apps_and_usage.sql',
+                summary: 'Mini-Apps response cache, token telemetry logs & saved favorites',
+              },
+            ]
+          : []),
       ]
     : [];
 
@@ -191,18 +272,28 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
         </div>
       )}
 
-      {health && !health.migration004Ready && (
+      {pendingMigrations.length > 0 && (
         <div className="rounded-2xl border border-[#B8965A]/45 bg-[#B8965A]/12 p-4 text-xs text-[#3D3830] flex items-start gap-3">
           <AlertTriangle className="h-4 w-4 text-[#8B7355] shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="font-semibold">Migration 004 Required for Full Persistence</p>
-            <p className="text-[#5C5449]">
-              Run{' '}
-              <code className="font-mono text-[11px] bg-[#FAF7F2] px-1.5 py-0.5 rounded">
-                supabase/migrations/004_admin_console_and_recipes.sql
-              </code>{' '}
-              in your Supabase SQL Editor to enable saving encrypted AI Settings, Chatbot Config, Pricing & Plans, Prompt Recipes, and Support Tickets.
+          <div className="space-y-2">
+            <p className="font-semibold">
+              {pendingMigrations.length === 1
+                ? `Migration ${pendingMigrations[0].id} Pending in Supabase`
+                : `${pendingMigrations.length} Supabase Migrations Pending`}
             </p>
+            <p className="text-[#5C5449]">
+              Run the following SQL files in order inside your Supabase SQL Editor for full persistence:
+            </p>
+            <ul className="space-y-1.5">
+              {pendingMigrations.map((m) => (
+                <li key={m.id} className="text-[#5C5449]">
+                  <code className="font-mono text-[11px] bg-[#FAF7F2] px-1.5 py-0.5 rounded text-[#3D3830]">
+                    {m.file}
+                  </code>{' '}
+                  — {m.summary}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}

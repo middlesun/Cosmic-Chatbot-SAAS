@@ -18,22 +18,33 @@ import { sendClientInviteEmail, sendSupportReplyEmail } from '../services/email'
 import {
   ALL_DEFAULT_PROMPTS,
   CORE_COUNCIL_CONSTITUTION,
+  LEGACY_VEDIC_SUBSYSTEM_SLUGS,
   invalidatePromptCache,
 } from '../services/promptDefaults';
 import {
   BUILTIN_MODEL_SUGGESTIONS,
   DEFAULT_CONVERSATIONAL_RULES,
+  DEFAULT_DEEPER_ANALYSIS_RULES,
+  DEFAULT_FOLLOWUPS_RULES,
+  DEFAULT_MINI_APPS_CONFIG,
+  DEFAULT_SUGGESTIONS_CONFIG,
   encryptSecret,
   getAiSettings,
   getChatbotConfig,
+  getMiniAppsConfig,
   getPricingConfig,
   getPromptRecipes,
   getResolvedOpenRouterRuntime,
+  getSuggestionsConfig,
   invalidateAllPlatformCaches,
   invalidateRecipesCache,
   savePlatformSetting,
+  type MiniAppOverrideConfig,
+  type MiniAppsGovernanceConfig,
   type PromptRecipeStep,
 } from '../services/platformSettings';
+import { MINI_APPS_CATALOG } from '../services/miniAppsCatalog';
+import { clearMiniAppsMemoryCache } from './apps';
 import { ensureReportCatalogSeeded } from '../services/reportDefaults';
 import { isSanityConfigured } from '../../lib/sanity';
 
@@ -165,14 +176,28 @@ router.get('/overview', async (_req: AuthenticatedRequest, res) => {
   const hasPublicUrl = Boolean(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL);
   const hasPublicAnon = Boolean(process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY);
 
-  const [runtime, openTicketsRes] = await Promise.all([
+  const [runtime, openTicketsRes, appRunsTotalRes, appRunsCachedRes] = await Promise.all([
     getResolvedOpenRouterRuntime(),
     supabaseAdmin
       .from('support_tickets')
       .select('id', { count: 'exact', head: true })
       .neq('status', 'resolved')
       .then((r) => (r.error ? { count: 0 } : r)),
+    supabaseAdmin
+      .from('app_usage_logs')
+      .select('id', { count: 'exact', head: true })
+      .then((r) => (r.error ? { count: 0 } : r)),
+    supabaseAdmin
+      .from('app_usage_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('cache_hit', true)
+      .then((r) => (r.error ? { count: 0 } : r)),
   ]);
+
+  const totalAppRuns = appRunsTotalRes.count || 0;
+  const appCacheHits = appRunsCachedRes.count || 0;
+  const appCacheHitRate =
+    totalAppRuns > 0 ? Math.round((appCacheHits / totalAppRuns) * 100) : 0;
 
   res.json({
     metrics: {
@@ -184,6 +209,9 @@ router.get('/overview', async (_req: AuthenticatedRequest, res) => {
       totalReportOrders: totalOrders || 0,
       totalCreditsCirculating,
       openSupportTickets: openTicketsRes.count || 0,
+      totalAppRuns,
+      appCacheHits,
+      appCacheHitRate,
       tierBreakdown,
       revenueByCurrency,
     },
@@ -1401,8 +1429,9 @@ router.get('/settings/chatbot', async (_req: AuthenticatedRequest, res) => {
 
   await ensureDefaultPromptsSeeded();
 
-  const [config, recipes, promptsRes] = await Promise.all([
+  const [config, suggestionsConfig, recipes, promptsRes] = await Promise.all([
     getChatbotConfig(),
+    getSuggestionsConfig(),
     getPromptRecipes(),
     supabaseAdmin
       .from('system_prompts')
@@ -1425,10 +1454,17 @@ router.get('/settings/chatbot', async (_req: AuthenticatedRequest, res) => {
     }));
   }
 
+  // Keep legacy Vedic sub-systems (parashari/kp_precision/jaimini/nadi) out of primary Council ordering
+  const cleanedPrompts = (promptRows || []).filter(
+    (row) => !(row.category === 'expert' && LEGACY_VEDIC_SUBSYSTEM_SLUGS.has(row.slug))
+  );
+
   res.json({
     config,
+    suggestionsConfig,
     defaultConversationalRules: DEFAULT_CONVERSATIONAL_RULES,
-    prompts: promptRows || [],
+    defaultSuggestionsConfig: DEFAULT_SUGGESTIONS_CONFIG,
+    prompts: cleanedPrompts,
     recipes,
   });
 });
@@ -1509,6 +1545,68 @@ router.put('/settings/chatbot', async (req: AuthenticatedRequest, res) => {
   }
 
   invalidatePromptCache();
+  res.json({ saved: true, config: nextConfig });
+});
+
+// 8b. Suggestions (Followup & Deeper analysis) Dynamic Rules Control
+router.get('/settings/suggestions', async (_req: AuthenticatedRequest, res) => {
+  const config = await getSuggestionsConfig();
+  res.json({
+    config,
+    defaults: {
+      ...DEFAULT_SUGGESTIONS_CONFIG,
+      followups_rules: DEFAULT_FOLLOWUPS_RULES,
+      deeper_analysis_rules: DEFAULT_DEEPER_ANALYSIS_RULES,
+    },
+  });
+});
+
+router.put('/settings/suggestions', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const current = await getSuggestionsConfig();
+  const body = req.body || {};
+
+  const nextConfig = {
+    followups_enabled:
+      typeof body.followups_enabled === 'boolean'
+        ? body.followups_enabled
+        : current.followups_enabled,
+    deeper_analysis_enabled:
+      typeof body.deeper_analysis_enabled === 'boolean'
+        ? body.deeper_analysis_enabled
+        : current.deeper_analysis_enabled,
+    default_expanded:
+      typeof body.default_expanded === 'boolean'
+        ? body.default_expanded
+        : current.default_expanded,
+    max_followups:
+      typeof body.max_followups === 'number' && body.max_followups >= 1
+        ? Math.min(6, Math.round(body.max_followups))
+        : current.max_followups,
+    max_deeper_analysis:
+      typeof body.max_deeper_analysis === 'number' && body.max_deeper_analysis >= 1
+        ? Math.min(6, Math.round(body.max_deeper_analysis))
+        : current.max_deeper_analysis,
+    followups_rules:
+      typeof body.followups_rules === 'string' && body.followups_rules.trim()
+        ? body.followups_rules.trim().slice(0, 4000)
+        : current.followups_rules,
+    deeper_analysis_rules:
+      typeof body.deeper_analysis_rules === 'string' && body.deeper_analysis_rules.trim()
+        ? body.deeper_analysis_rules.trim().slice(0, 5000)
+        : current.deeper_analysis_rules,
+  };
+
+  const saved = await savePlatformSetting('suggestions_config', nextConfig, req.appUser.id);
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to save suggestions settings.' });
+    return;
+  }
+
   res.json({ saved: true, config: nextConfig });
 });
 
@@ -1944,7 +2042,414 @@ router.post('/support/:id/reply', async (req: AuthenticatedRequest, res) => {
   });
 });
 
-// 12. Platform Health & Cache Controls
+// 12. Mini-Apps Usage, Token Economics & Governance Controls
+router.get('/apps/analytics', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const rawDays = String(req.query.days || '30').trim();
+  const periodDays = rawDays === '7' ? 7 : rawDays === 'all' ? 0 : 30;
+  const sinceIso =
+    periodDays > 0
+      ? new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
+  const [miniAppsCfg, runtime] = await Promise.all([
+    getMiniAppsConfig(),
+    getResolvedOpenRouterRuntime(),
+  ]);
+
+  let usageTableMissing = false;
+  let usageRows: Array<{
+    user_id: string;
+    app_slug: string;
+    cache_hit: boolean;
+    tokens_in: number;
+    tokens_out: number;
+    model_used: string | null;
+    created_at: string;
+  }> = [];
+
+  try {
+    let query = supabaseAdmin
+      .from('app_usage_logs')
+      .select('user_id, app_slug, cache_hit, tokens_in, tokens_out, model_used, created_at')
+      .order('created_at', { ascending: false })
+      .limit(5000);
+
+    if (sinceIso) {
+      query = query.gte('created_at', sinceIso);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      if (error.code === '42P01' || String(error.message || '').toLowerCase().includes('app_usage_logs')) {
+        usageTableMissing = true;
+      }
+    } else if (Array.isArray(data)) {
+      usageRows = data.map((r) => ({
+        user_id: String(r.user_id || ''),
+        app_slug: String(r.app_slug || ''),
+        cache_hit: Boolean(r.cache_hit),
+        tokens_in: Number(r.tokens_in || 0),
+        tokens_out: Number(r.tokens_out || 0),
+        model_used: r.model_used ? String(r.model_used) : null,
+        created_at: String(r.created_at || ''),
+      }));
+    }
+  } catch {
+    usageTableMissing = true;
+  }
+
+  // Favorites counts & total cached rows
+  const favoritesBySlug = new Map<string, number>();
+  let totalCachedEntries = 0;
+
+  try {
+    const [favRes, cacheCountRes] = await Promise.all([
+      supabaseAdmin.from('user_favorite_apps').select('app_slug').limit(5000),
+      supabaseAdmin.from('app_cache').select('id', { count: 'exact', head: true }),
+    ]);
+    if (!favRes.error && Array.isArray(favRes.data)) {
+      for (const row of favRes.data) {
+        const s = String(row.app_slug || '');
+        if (!s) continue;
+        favoritesBySlug.set(s, (favoritesBySlug.get(s) || 0) + 1);
+      }
+    }
+    if (!cacheCountRes.error && typeof cacheCountRes.count === 'number') {
+      totalCachedEntries = cacheCountRes.count;
+    }
+  } catch {
+    // Graceful pre-migration fallback
+  }
+
+  const inRate = miniAppsCfg.estimated_input_cost_per_million_usd;
+  const outRate = miniAppsCfg.estimated_output_cost_per_million_usd;
+  const calcCostUsd = (tIn: number, tOut: number) =>
+    (tIn / 1_000_000) * inRate + (tOut / 1_000_000) * outRate;
+
+  let totalRuns = 0;
+  let liveRuns = 0;
+  let cacheHits = 0;
+  let totalTokensIn = 0;
+  let totalTokensOut = 0;
+  const uniqueUsersSet = new Set<string>();
+
+  const perAppAcc = new Map<
+    string,
+    {
+      runs: number;
+      liveRuns: number;
+      cacheHits: number;
+      tokensIn: number;
+      tokensOut: number;
+      users: Set<string>;
+      lastUsedAt: string | null;
+    }
+  >();
+
+  const dailyAcc = new Map<
+    string,
+    {
+      date: string;
+      totalRuns: number;
+      liveRuns: number;
+      cacheHits: number;
+      tokensIn: number;
+      tokensOut: number;
+    }
+  >();
+
+  const userAcc = new Map<
+    string,
+    {
+      totalRuns: number;
+      liveRuns: number;
+      cacheHits: number;
+      tokensIn: number;
+      tokensOut: number;
+      lastUsedAt: string;
+    }
+  >();
+
+  for (const row of usageRows) {
+    totalRuns += 1;
+    if (row.cache_hit) {
+      cacheHits += 1;
+    } else {
+      liveRuns += 1;
+    }
+    totalTokensIn += row.tokens_in;
+    totalTokensOut += row.tokens_out;
+    if (row.user_id) uniqueUsersSet.add(row.user_id);
+
+    // Per-app accumulation
+    const appEntry = perAppAcc.get(row.app_slug) || {
+      runs: 0,
+      liveRuns: 0,
+      cacheHits: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      users: new Set<string>(),
+      lastUsedAt: null,
+    };
+    appEntry.runs += 1;
+    if (row.cache_hit) appEntry.cacheHits += 1;
+    else appEntry.liveRuns += 1;
+    appEntry.tokensIn += row.tokens_in;
+    appEntry.tokensOut += row.tokens_out;
+    if (row.user_id) appEntry.users.add(row.user_id);
+    if (!appEntry.lastUsedAt || row.created_at > appEntry.lastUsedAt) {
+      appEntry.lastUsedAt = row.created_at;
+    }
+    perAppAcc.set(row.app_slug, appEntry);
+
+    // Daily timeline accumulation
+    const dateKey = row.created_at.slice(0, 10);
+    if (dateKey) {
+      const day = dailyAcc.get(dateKey) || {
+        date: dateKey,
+        totalRuns: 0,
+        liveRuns: 0,
+        cacheHits: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      };
+      day.totalRuns += 1;
+      if (row.cache_hit) day.cacheHits += 1;
+      else day.liveRuns += 1;
+      day.tokensIn += row.tokens_in;
+      day.tokensOut += row.tokens_out;
+      dailyAcc.set(dateKey, day);
+    }
+
+    // Per-user accumulation
+    if (row.user_id) {
+      const u = userAcc.get(row.user_id) || {
+        totalRuns: 0,
+        liveRuns: 0,
+        cacheHits: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+        lastUsedAt: row.created_at,
+      };
+      u.totalRuns += 1;
+      if (row.cache_hit) u.cacheHits += 1;
+      else u.liveRuns += 1;
+      u.tokensIn += row.tokens_in;
+      u.tokensOut += row.tokens_out;
+      if (row.created_at > u.lastUsedAt) u.lastUsedAt = row.created_at;
+      userAcc.set(row.user_id, u);
+    }
+  }
+
+  // Enrich top active users with email/name/tier
+  const sortedTopUserIds = Array.from(userAcc.entries())
+    .sort((a, b) => b[1].totalRuns - a[1].totalRuns)
+    .slice(0, 15)
+    .map(([uid]) => uid);
+
+  const userInfoMap = new Map<string, { email: string; full_name: string | null; tier: string }>();
+  if (sortedTopUserIds.length > 0) {
+    const { data: userRows } = await supabaseAdmin
+      .from('users')
+      .select('id, email, full_name, tier')
+      .in('id', sortedTopUserIds);
+    for (const u of userRows || []) {
+      userInfoMap.set(String(u.id), {
+        email: String(u.email || ''),
+        full_name: u.full_name ? String(u.full_name) : null,
+        tier: String(u.tier || 'personal'),
+      });
+    }
+  }
+
+  const topUsers = sortedTopUserIds.map((uid) => {
+    const agg = userAcc.get(uid)!;
+    const info = userInfoMap.get(uid);
+    return {
+      userId: uid,
+      email: info?.email || 'Unknown user',
+      fullName: info?.full_name || null,
+      tier: info?.tier || 'personal',
+      totalRuns: agg.totalRuns,
+      liveRuns: agg.liveRuns,
+      cacheHits: agg.cacheHits,
+      totalTokens: agg.tokensIn + agg.tokensOut,
+      estimatedCostUsd: Number(calcCostUsd(agg.tokensIn, agg.tokensOut).toFixed(4)),
+      lastUsedAt: agg.lastUsedAt,
+    };
+  });
+
+  const perAppRows = MINI_APPS_CATALOG.map((app) => {
+    const agg = perAppAcc.get(app.slug);
+    const ov = miniAppsCfg.overrides[app.slug] || {};
+    const runs = agg?.runs || 0;
+    const appLiveRuns = agg?.liveRuns || 0;
+    const appCacheHits = agg?.cacheHits || 0;
+    const tIn = agg?.tokensIn || 0;
+    const tOut = agg?.tokensOut || 0;
+    const costUsd = calcCostUsd(tIn, tOut);
+    return {
+      slug: app.slug,
+      title: app.title,
+      shortTitle: app.shortTitle,
+      category: app.category,
+      categoryLabel: app.categoryLabel,
+      template: app.template,
+      cacheScope: app.cacheScope,
+      enabled: ov.enabled !== false,
+      featuredOnHome:
+        typeof ov.featured_on_home === 'boolean' ? ov.featured_on_home : app.featuredOnHome,
+      modelOverride: ov.model_id || null,
+      runs,
+      liveRuns: appLiveRuns,
+      cacheHits: appCacheHits,
+      cacheHitRate: runs > 0 ? Math.round((appCacheHits / runs) * 100) : 0,
+      uniqueUsers: agg ? agg.users.size : 0,
+      avgTokensPerLiveRun:
+        appLiveRuns > 0 ? Math.round((tIn + tOut) / appLiveRuns) : 0,
+      tokensIn: tIn,
+      tokensOut: tOut,
+      totalTokens: tIn + tOut,
+      estimatedCostUsd: Number(costUsd.toFixed(4)),
+      favoritesCount: favoritesBySlug.get(app.slug) || 0,
+      lastUsedAt: agg?.lastUsedAt || null,
+    };
+  });
+
+  const dailySeries = Array.from(dailyAcc.values())
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-30);
+
+  const estimatedTotalCostUsd = calcCostUsd(totalTokensIn, totalTokensOut);
+  const uniqueUsersCount = uniqueUsersSet.size;
+  const avgCostPerActiveUserUsd =
+    uniqueUsersCount > 0 ? estimatedTotalCostUsd / uniqueUsersCount : 0;
+  // 95% gross margin target => Price = Cost / (1 - 0.95) = Cost * 20
+  const ninetyFiveMarginTargetPerUserUsd = avgCostPerActiveUserUsd * 20;
+
+  res.json({
+    periodDays,
+    usageTableMissing,
+    summary: {
+      totalAppsCount: MINI_APPS_CATALOG.length,
+      activeAppsCount: perAppRows.filter((r) => r.enabled).length,
+      totalRuns,
+      liveRuns,
+      cacheHits,
+      cacheHitRate: totalRuns > 0 ? Math.round((cacheHits / totalRuns) * 100) : 0,
+      uniqueUsers: uniqueUsersCount,
+      totalCachedEntries,
+      totalTokensIn,
+      totalTokensOut,
+      totalTokens: totalTokensIn + totalTokensOut,
+      estimatedCostUsd: Number(estimatedTotalCostUsd.toFixed(4)),
+      avgCostPerActiveUserUsd: Number(avgCostPerActiveUserUsd.toFixed(4)),
+      ninetyFiveMarginTargetPerUserUsd: Number(ninetyFiveMarginTargetPerUserUsd.toFixed(2)),
+    },
+    perApp: perAppRows,
+    dailySeries,
+    topUsers,
+    config: miniAppsCfg,
+    defaultConfig: DEFAULT_MINI_APPS_CONFIG,
+    effectiveDefaultModel: miniAppsCfg.default_model_id || runtime.utilityModel,
+  });
+});
+
+router.put('/apps/config', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const body = (req.body || {}) as Partial<MiniAppsGovernanceConfig>;
+  const current = await getMiniAppsConfig();
+
+  const nextOverrides: Record<string, MiniAppOverrideConfig> = {};
+  if (body.overrides && typeof body.overrides === 'object' && !Array.isArray(body.overrides)) {
+    for (const [slug, ov] of Object.entries(body.overrides)) {
+      if (!ov || typeof ov !== 'object') continue;
+      nextOverrides[slug] = {
+        enabled: typeof ov.enabled === 'boolean' ? ov.enabled : undefined,
+        featured_on_home:
+          typeof ov.featured_on_home === 'boolean' ? ov.featured_on_home : undefined,
+        model_id:
+          typeof ov.model_id === 'string' && ov.model_id.trim()
+            ? ov.model_id.trim()
+            : null,
+      };
+    }
+  } else {
+    Object.assign(nextOverrides, current.overrides);
+  }
+
+  const nextConfig: MiniAppsGovernanceConfig = {
+    default_model_id:
+      typeof body.default_model_id === 'string' && body.default_model_id.trim()
+        ? body.default_model_id.trim()
+        : null,
+    daily_live_runs_soft_cap:
+      typeof body.daily_live_runs_soft_cap === 'number' && body.daily_live_runs_soft_cap >= 1
+        ? Math.min(500, Math.round(body.daily_live_runs_soft_cap))
+        : current.daily_live_runs_soft_cap,
+    estimated_input_cost_per_million_usd:
+      typeof body.estimated_input_cost_per_million_usd === 'number' &&
+      body.estimated_input_cost_per_million_usd >= 0
+        ? Number(body.estimated_input_cost_per_million_usd)
+        : current.estimated_input_cost_per_million_usd,
+    estimated_output_cost_per_million_usd:
+      typeof body.estimated_output_cost_per_million_usd === 'number' &&
+      body.estimated_output_cost_per_million_usd >= 0
+        ? Number(body.estimated_output_cost_per_million_usd)
+        : current.estimated_output_cost_per_million_usd,
+    overrides: nextOverrides,
+  };
+
+  const saved = await savePlatformSetting('mini_apps_config', nextConfig, req.appUser.id);
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to save Mini-Apps configuration.' });
+    return;
+  }
+
+  res.json({ saved: true, config: nextConfig });
+});
+
+router.post('/apps/cache-clear', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  const appSlug =
+    typeof req.body?.appSlug === 'string' && req.body.appSlug.trim()
+      ? req.body.appSlug.trim()
+      : undefined;
+
+  const memoryCleared = clearMiniAppsMemoryCache(appSlug);
+  let dbCleared = false;
+
+  if (supabaseAdmin) {
+    try {
+      const query = appSlug
+        ? supabaseAdmin.from('app_cache').delete().eq('app_slug', appSlug)
+        : supabaseAdmin.from('app_cache').delete().neq('app_slug', '__never__');
+      const { error } = await query;
+      if (!error) dbCleared = true;
+    } catch {
+      // Non-fatal if migration 007 hasn't run yet
+    }
+  }
+
+  res.json({
+    cleared: true,
+    appSlug: appSlug || 'all',
+    memoryCleared,
+    dbCleared,
+  });
+});
+
+// 13. Platform Health & Cache Controls (Verifies Migrations 004, 005, 006, 007)
 router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
   const runtime = await getResolvedOpenRouterRuntime();
@@ -1952,9 +2457,9 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
   const hasPublicUrl = Boolean(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL);
   const hasPublicAnon = Boolean(process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY);
 
-  const checkTable = async (tableName: string): Promise<boolean> => {
+  const checkTable = async (tableName: string, columns = 'id'): Promise<boolean> => {
     if (!supabaseAdmin) return false;
-    const { error } = await supabaseAdmin.from(tableName).select('*').limit(1);
+    const { error } = await supabaseAdmin.from(tableName).select(columns).limit(1);
     return !error;
   };
 
@@ -1965,14 +2470,31 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     hasPlatformSettings,
     hasPromptRecipes,
     hasSupportTickets,
+    hasMigration005Profiles,
+    hasMigration005Messages,
+    hasMigration006Conversations,
+    hasAppCache,
+    hasAppUsageLogs,
+    hasUserFavoriteApps,
   ] = await Promise.all([
     checkTable('users'),
     checkTable('profiles'),
     checkTable('system_prompts'),
-    checkTable('platform_settings'),
+    checkTable('platform_settings', 'key'),
     checkTable('prompt_recipes'),
     checkTable('support_tickets'),
+    checkTable('profiles', 'id, current_city'),
+    checkTable('messages', 'id, suggestions_json'),
+    checkTable('conversations', 'id, pillar, is_active_tab, companion_persona_json'),
+    checkTable('app_cache'),
+    checkTable('app_usage_logs'),
+    checkTable('user_favorite_apps', 'user_id, app_slug'),
   ]);
+
+  const migration004Ready = hasPlatformSettings && hasPromptRecipes && hasSupportTickets;
+  const migration005Ready = hasMigration005Profiles && hasMigration005Messages;
+  const migration006Ready = hasMigration006Conversations;
+  const migration007Ready = hasAppCache && hasAppUsageLogs && hasUserFavoriteApps;
 
   res.json({
     integrations: {
@@ -1995,8 +2517,16 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
       platform_settings: hasPlatformSettings,
       prompt_recipes: hasPromptRecipes,
       support_tickets: hasSupportTickets,
+      migration_005_columns: migration005Ready,
+      migration_006_columns: migration006Ready,
+      app_cache: hasAppCache,
+      app_usage_logs: hasAppUsageLogs,
+      user_favorite_apps: hasUserFavoriteApps,
     },
-    migration004Ready: hasPlatformSettings && hasPromptRecipes && hasSupportTickets,
+    migration004Ready,
+    migration005Ready,
+    migration006Ready,
+    migration007Ready,
     timestamp: new Date().toISOString(),
   });
 });
@@ -2004,7 +2534,8 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
 router.post('/platform/cache-flush', async (_req: AuthenticatedRequest, res) => {
   invalidatePromptCache();
   invalidateAllPlatformCaches();
-  res.json({ flushed: true, timestamp: new Date().toISOString() });
+  const miniAppsMemoryCleared = clearMiniAppsMemoryCache();
+  res.json({ flushed: true, miniAppsMemoryCleared, timestamp: new Date().toISOString() });
 });
 
 export default router;

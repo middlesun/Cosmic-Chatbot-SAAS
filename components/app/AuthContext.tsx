@@ -19,6 +19,7 @@ export interface AppUser {
   default_language: string;
   preferred_call_name?: string | null;
   chat_font_size?: 'sm' | 'base' | 'lg' | null;
+  suggestions_auto_expand?: boolean | null;
   referral_code: string;
   referred_by: string | null;
   must_change_password: boolean;

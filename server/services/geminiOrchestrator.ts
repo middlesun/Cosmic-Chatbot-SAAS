@@ -1,5 +1,20 @@
+import crypto from 'crypto';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './astrologyApi';
+import type { CompiledChartData } from './chartCompiler';
+import {
+  drawTarotSpread,
+  extractNumerologyHintsFromPrompt,
+  formatPythagoreanNumerologyContext,
+  formatTarotSpreadContext,
+  formatTropicalWesternContext,
+} from './divinationEngines';
+import {
+  buildClaritySystemPrompt,
+  buildCompanionSystemPrompt,
+  type ChatPillar,
+  type CompanionPersona,
+} from './companionEngine';
 import {
   createOpenRouterCompletion,
   getConsultationModel,
@@ -22,7 +37,9 @@ import {
   getChatbotConfig,
   getPricingConfig,
   getResolvedOpenRouterRuntime,
+  getSuggestionsConfig,
   type ChatBillingWeights,
+  type SuggestionsConfig,
 } from './platformSettings';
 import {
   PROMPT_EXTRACTION_REFUSAL,
@@ -70,26 +87,45 @@ export interface ConsultationAttachmentInput {
   dataUrl: string;
 }
 
+export interface SuggestionItem {
+  id: string;
+  text: string;
+  technical_directive?: string;
+}
+
+export interface MessageSuggestions {
+  followups: SuggestionItem[];
+  deeper_analysis: SuggestionItem[];
+}
+
 export interface ConsultationProfileRecord {
   id: string;
   name: string;
   is_activated: boolean;
   chart_text_context: string | null;
+  chart_json?: CompiledChartData | null;
   profile_memory_summary: string | null;
   birth_date: string;
   birth_time: string;
   birth_city: string;
   birth_country: string;
+  current_city?: string | null;
+  current_state?: string | null;
+  current_country?: string | null;
 }
 
 export interface StreamConsultationParams {
   userId: string;
+  pillar?: ChatPillar;
+  companionPersona?: CompanionPersona | null;
   conversation: {
     id: string;
     profile_id: string | null;
     mode_type: string;
     use_full_profile_memory: boolean;
     title: string;
+    pillar?: ChatPillar;
+    companion_persona_json?: CompanionPersona | null;
   };
   profile: ConsultationProfileRecord | null;
   scopeMemoryContext?: string | null;
@@ -107,6 +143,7 @@ export interface StreamConsultationParams {
     content: string;
   } | null;
   userPrompt: string;
+  technicalDirective?: string | null;
   expertSlug: string;
   modeSlug: string;
   outputSlug: string;
@@ -140,6 +177,7 @@ export interface StreamConsultationResult {
   aborted: boolean;
   leakIntercepted?: boolean;
   pendingProfile?: PendingBirthProfileDraft | null;
+  suggestions?: MessageSuggestions | null;
 }
 
 function normalizeDraftBirthTime(raw: string): string | null {
@@ -178,17 +216,81 @@ function formatTime12Hour(hhmm: string): string {
 
 const PROFILE_CONFIRM_REGEX = /<CC_PROFILE_CONFIRM>([\s\S]*?)<\/CC_PROFILE_CONFIRM>/i;
 const PARTIAL_PROFILE_CONFIRM_REGEX = /<CC_PROFILE_CONFIRM[\s\S]*$/i;
+const SUGGESTIONS_BLOCK_REGEX = /<<<SUGGESTIONS_JSON>>>([\s\S]*?)<<<END_SUGGESTIONS_JSON>>>/i;
+const PARTIAL_SUGGESTIONS_REGEX = /<<<SUGGESTIONS(?:_JSON)?[\s\S]*$/i;
 
-export function extractPendingProfileConfirmation(rawText: string): {
+function makeSuggestionId(prefix: string): string {
+  return `${prefix}_${crypto.randomBytes(4).toString('hex')}`;
+}
+
+function normalizeSuggestionList(
+  rawList: unknown,
+  prefix: string,
+  maxItems: number,
+  includeDirective: boolean
+): SuggestionItem[] {
+  if (!Array.isArray(rawList)) return [];
+  const seen = new Set<string>();
+  const out: SuggestionItem[] = [];
+
+  for (const entry of rawList) {
+    let rawText = '';
+    let rawDirective = '';
+    if (typeof entry === 'string') {
+      rawText = entry;
+    } else if (entry && typeof entry === 'object') {
+      const rec = entry as Record<string, unknown>;
+      rawText = typeof rec.text === 'string' ? rec.text : typeof rec.question === 'string' ? rec.question : '';
+      rawDirective =
+        typeof rec.technical_directive === 'string'
+          ? rec.technical_directive
+          : typeof rec.directive === 'string'
+          ? rec.directive
+          : '';
+    }
+
+    const cleanedText = rawText
+      .replace(/^\d+[\).\s-]+/, '')
+      .replace(/^[-•*]\s+/, '')
+      .trim()
+      .slice(0, 220);
+
+    if (!cleanedText || cleanedText.length < 6) continue;
+    const key = cleanedText.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const item: SuggestionItem = {
+      id: makeSuggestionId(prefix),
+      text: cleanedText,
+    };
+    if (includeDirective && rawDirective.trim()) {
+      item.technical_directive = rawDirective.trim().slice(0, 600);
+    }
+    out.push(item);
+    if (out.length >= maxItems) break;
+  }
+
+  return out;
+}
+
+export function extractHiddenDirectives(
+  rawText: string,
+  suggestionsConfig?: Pick<
+    SuggestionsConfig,
+    'followups_enabled' | 'deeper_analysis_enabled' | 'max_followups' | 'max_deeper_analysis'
+  >
+): {
   cleanText: string;
   pendingProfile: PendingBirthProfileDraft | null;
+  suggestions: MessageSuggestions | null;
 } {
   let pendingProfile: PendingBirthProfileDraft | null = null;
-  const match = PROFILE_CONFIRM_REGEX.exec(rawText);
+  const profileMatch = PROFILE_CONFIRM_REGEX.exec(rawText);
 
-  if (match && match[1]) {
+  if (profileMatch && profileMatch[1]) {
     try {
-      const parsed = JSON.parse(match[1].trim()) as Record<string, unknown>;
+      const parsed = JSON.parse(profileMatch[1].trim()) as Record<string, unknown>;
       const name = typeof parsed.name === 'string' ? parsed.name.trim().slice(0, 80) : '';
       const birthDate = typeof parsed.birth_date === 'string' ? parsed.birth_date.trim() : '';
       const rawTime = typeof parsed.birth_time === 'string' ? parsed.birth_time.trim() : '';
@@ -229,12 +331,49 @@ export function extractPendingProfileConfirmation(rawText: string): {
     }
   }
 
+  let suggestions: MessageSuggestions | null = null;
+  const sugMatch = SUGGESTIONS_BLOCK_REGEX.exec(rawText);
+  if (sugMatch && sugMatch[1] && !pendingProfile) {
+    const parsed = safeExtractJson<{
+      followups?: unknown;
+      deeper_analysis?: unknown;
+    }>(sugMatch[1].trim(), {});
+
+    const maxF = suggestionsConfig?.max_followups ?? 4;
+    const maxD = suggestionsConfig?.max_deeper_analysis ?? 4;
+    const followups =
+      suggestionsConfig?.followups_enabled === false
+        ? []
+        : normalizeSuggestionList(parsed.followups, 'fu', maxF, false);
+    const deeperAnalysis =
+      suggestionsConfig?.deeper_analysis_enabled === false
+        ? []
+        : normalizeSuggestionList(parsed.deeper_analysis, 'da', maxD, true);
+
+    if (followups.length > 0 || deeperAnalysis.length > 0) {
+      suggestions = {
+        followups,
+        deeper_analysis: deeperAnalysis,
+      };
+    }
+  }
+
   const cleanText = rawText
     .replace(PROFILE_CONFIRM_REGEX, '')
+    .replace(SUGGESTIONS_BLOCK_REGEX, '')
     .replace(PARTIAL_PROFILE_CONFIRM_REGEX, '')
+    .replace(PARTIAL_SUGGESTIONS_REGEX, '')
     .replace(/\n{3,}$/g, '\n\n')
     .trim();
 
+  return { cleanText, pendingProfile, suggestions };
+}
+
+export function extractPendingProfileConfirmation(rawText: string): {
+  cleanText: string;
+  pendingProfile: PendingBirthProfileDraft | null;
+} {
+  const { cleanText, pendingProfile } = extractHiddenDirectives(rawText);
   return { cleanText, pendingProfile };
 }
 
@@ -250,7 +389,11 @@ async function buildStaticSystemInstruction(params: {
   turnCount: number;
   profile: StreamConsultationParams['profile'];
   extraProfiles?: ConsultationProfileRecord[];
-}): Promise<{ systemInstruction: string; modelOverride: string | null }> {
+  userPrompt: string;
+  historyMessages: StreamConsultationParams['historyMessages'];
+  technicalDirective?: string | null;
+  suggestionsConfig: SuggestionsConfig;
+}): Promise<{ systemInstruction: string; modelOverride: string | null; wantsSuggestions: boolean }> {
   const [chatbotConfig, activeModeRecipe] = await Promise.all([
     getChatbotConfig(),
     getActiveRecipeForTarget('mode', params.modeSlug),
@@ -300,11 +443,20 @@ async function buildStaticSystemInstruction(params: {
     promptBodies[params.languageSlug] || '',
   ].filter(Boolean);
 
+  const isWesternOrModern =
+    params.expertSlug === 'western_astrologer' || params.expertSlug === 'modern_astrologer';
+  const isTarot = params.expertSlug === 'tarot_reader';
+  const isNumerology = params.expertSlug === 'numerologist';
+
   if (params.toneMode === 'friendly') {
     sections.push(
-      `COMMUNICATION DEPTH — FRIENDLY MODE (NON-TECHNICAL): Perform all Vedic/KP/Jaimini/Dasha chart synthesis silently behind the scenes, then explain your answer in warm, clear, everyday conversational language. Avoid overwhelming technical jargon, raw planetary degrees, Nakshatra pada math, or long Sanskrit sub-lord chains unless the user explicitly asks to see the technical breakdown. Translate chart factors directly into relatable life guidance and plain calendar timing windows.`
+      `COMMUNICATION DEPTH — FRIENDLY MODE (NON-TECHNICAL): Perform all analytical synthesis silently behind the scenes, then explain your answer in warm, clear, everyday conversational language. Avoid overwhelming technical jargon, raw planetary degrees, Nakshatra pada math, or dense chains unless the user explicitly asks to see the technical breakdown. Translate factors directly into relatable life guidance and clear calendar timing windows.`
     );
-  } else {
+  } else if (isWesternOrModern) {
+    sections.push(
+      `COMMUNICATION DEPTH — TECHNICAL MODE: Include authentic Tropical Western technical precision—citing exact Tropical sign placements, degrees, house cusps, tight Ptolemaic aspect orbs, elemental/modal balance, and transit timing cycles.`
+    );
+  } else if (!isTarot && !isNumerology) {
     sections.push(
       `COMMUNICATION DEPTH — TECHNICAL MODE: Include authentic Jyotish technical precision—citing exact Rashi placements, house lordships, planetary strengths/Shadbala/Ashtakavarga, Nakshatra & KP Sub-Lord significators, divisional Vargas (D9/D10), and active Vimshottari Mahadasha–Antardasha–Pratyantardasha mechanics.`
     );
@@ -333,22 +485,106 @@ async function buildStaticSystemInstruction(params: {
     );
   }
 
-  if (params.profile) {
-    if (params.profile.chart_text_context) {
-      sections.push(`ACTIVE NATAL CHART CONTEXT (VERIFIED EPHEMERIS):
-${params.profile.chart_text_context}`);
+  const currentLocationLabel = params.profile
+    ? [params.profile.current_city, params.profile.current_state, params.profile.current_country]
+        .filter((s) => typeof s === 'string' && s.trim().length > 0)
+        .join(', ')
+    : '';
+
+  // Discipline-specific deterministic engines & profile context injection
+  if (isTarot) {
+    const drawnSpread = drawTarotSpread(params.userPrompt);
+    sections.push(formatTarotSpreadContext(drawnSpread));
+    if (params.profile) {
+      sections.push(
+        `OPTIONAL PROFILE CONTEXT (Background Only): Reading for ${params.profile.name}${
+          currentLocationLabel ? ` (currently in ${currentLocationLabel})` : ''
+        }. Keep the Tarot cards as the primary lens.`
+      );
+    }
+  } else if (isNumerology) {
+    let targetName = params.profile?.name || '';
+    let targetDob = params.profile?.birth_date || '';
+    if (!targetName || !targetDob) {
+      const combinedRecentUserText = [
+        ...params.historyMessages
+          .filter((m) => m.role === 'user')
+          .slice(-4)
+          .map((m) => m.content),
+        params.userPrompt,
+      ].join('\n');
+      const extracted = extractNumerologyHintsFromPrompt(combinedRecentUserText);
+      if (!targetName && extracted.name) targetName = extracted.name;
+      if (!targetDob && extracted.birthDate) targetDob = extracted.birthDate;
+    }
+
+    const numerologyBlock = formatPythagoreanNumerologyContext({
+      fullName: targetName,
+      birthDate: targetDob,
+    });
+    if (numerologyBlock) {
+      sections.push(numerologyBlock);
     } else {
-      sections.push(`SELECTED PROFILE:
-Name: ${params.profile.name} | Born: ${params.profile.birth_date} ${params.profile.birth_time} in ${params.profile.birth_city}, ${params.profile.birth_country}.
-Note: Full planetary ephemeris data is being prepared for this profile. Do not guess exact planetary degrees or Dashas if ephemeris context is absent.`);
+      sections.push(
+        `NUMEROLOGY SCOPE: No birth profile or personal name/birth date has been provided yet. Answer general numerology questions directly; if the user wants a personal chart reading, warmly ask for their full name and date of birth.`
+      );
+    }
+  } else if (isWesternOrModern) {
+    if (params.profile) {
+      const tropicalBlock = formatTropicalWesternContext({
+        chartJson: params.profile.chart_json,
+        birthDate: params.profile.birth_date,
+        profileName: params.profile.name,
+        currentLocationLabel: currentLocationLabel || null,
+      });
+      if (tropicalBlock) {
+        sections.push(tropicalBlock);
+      } else {
+        sections.push(
+          `SELECTED PROFILE: Name: ${params.profile.name} | Born: ${params.profile.birth_date} ${params.profile.birth_time} in ${params.profile.birth_city}, ${params.profile.birth_country}.${
+            currentLocationLabel ? ` | Currently lives in: ${currentLocationLabel}.` : ''
+          }\nNote: Full Tropical chart coordinates are being prepared. Do not guess exact planetary degrees or Rising sign if the Tropical chart block is absent.`
+        );
+      }
+    } else {
+      sections.push(
+        `SESSION SCOPE: GENERAL WESTERN / MODERN ASTROLOGY (No birth chart attached yet).`
+      );
     }
   } else {
-    sections.push(`SESSION SCOPE: GENERAL / LEARN ASTROLOGY (No primary natal chart attached yet).`);
+    // Vedic Astrologer (default Council guide) & legacy analysis modes
+    if (params.profile) {
+      if (params.profile.chart_text_context) {
+        sections.push(
+          `ACTIVE NATAL CHART CONTEXT (VERIFIED EPHEMERIS):\n${params.profile.chart_text_context}${
+            currentLocationLabel
+              ? `\n\nCURRENT RESIDENCE / LOCATION: ${currentLocationLabel} (Note for relocation, foreign settlement, travel, and local transit timing context).`
+              : ''
+          }`
+        );
+      } else {
+        sections.push(`SELECTED PROFILE:
+Name: ${params.profile.name} | Born: ${params.profile.birth_date} ${params.profile.birth_time} in ${params.profile.birth_city}, ${params.profile.birth_country}.${
+          currentLocationLabel ? ` | Currently lives in: ${currentLocationLabel}.` : ''
+        }
+Note: Full planetary ephemeris data is being prepared for this profile. Do not guess exact planetary degrees or Dashas if ephemeris context is absent.`);
+      }
+    } else {
+      sections.push(`SESSION SCOPE: GENERAL / LEARN ASTROLOGY (No primary natal chart attached yet).`);
+    }
+  }
 
-    if (params.modeType !== 'learn_astrology' && chatbotConfig.features.auto_intake !== false) {
-      sections.push(`CONVERSATIONAL BIRTH CHART INTAKE (WHEN NO CHART IS ATTACHED):
-- If the user asks a general Vedic astrology question (concepts, transits, remedies, meanings), answer it directly and helpfully without demanding birth details.
-- If the user asks for a personal reading or shares someone's birth details in natural language (for example: "Hey I need a reading about Sam, born on 11th July 2001"), NEVER invent or guess Lagna, Moon sign, planetary degrees, or Dashas from memory.
+  // Birth-chart natural intake helper applies ONLY to Astrology guides when no profile is attached
+  if (
+    !params.profile &&
+    !isTarot &&
+    !isNumerology &&
+    params.modeType !== 'learn_astrology' &&
+    chatbotConfig.features.auto_intake !== false
+  ) {
+    sections.push(`CONVERSATIONAL BIRTH CHART INTAKE (WHEN NO CHART IS ATTACHED):
+- If the user asks a general astrology question (concepts, transits, meanings), answer it directly and helpfully without demanding birth details.
+- If the user asks for a personal reading or shares someone's birth details in natural language (for example: "Hey I need a reading about Sam, born on 11th July 2001"), NEVER invent or guess Lagna/Rising, Moon sign, planetary degrees, or Dashas from memory.
 - Instead, warmly collect ONLY the missing required details among these 4 fields:
   1. Name (whose chart is this — if the user says "my chart" and you know their name, use it or ask warmly)
   2. Date of Birth
@@ -359,11 +595,18 @@ Note: Full planetary ephemeris data is being prepared for this profile. Do not g
 - On the very last line of ONLY that confirmation message (never before all 4 fields are known, never inside code fences, and never mention this hidden tag to the user), append exactly:
 <CC_PROFILE_CONFIRM>{"name":"Full Name","birth_date":"YYYY-MM-DD","birth_time":"HH:MM","birth_time_display":"h:mm AM/PM","place_query":"City, State, Country","birth_city":"City","birth_state":"State","birth_country":"Country","relationship":"Self or Other","original_question":"short summary of what the user asked"}</CC_PROFILE_CONFIRM>
 - Wait for the user's confirmation before giving any chart reading.`);
-    }
   }
 
   if (params.extraProfiles && params.extraProfiles.length > 0) {
     const extraBlocks = params.extraProfiles.map((ep, idx) => {
+      if (isWesternOrModern && ep.chart_json) {
+        const extraTrop = formatTropicalWesternContext({
+          chartJson: ep.chart_json,
+          birthDate: ep.birth_date,
+          profileName: ep.name,
+        });
+        if (extraTrop) return `ADDITIONAL ATTACHED CHART #${idx + 1}:\n${extraTrop}`;
+      }
       if (ep.chart_text_context) {
         return `ADDITIONAL ATTACHED CHART #${idx + 1} (${ep.name}):\n${ep.chart_text_context}`;
       }
@@ -372,26 +615,104 @@ Note: Full planetary ephemeris data is being prepared for this profile. Do not g
     sections.push(extraBlocks.join('\n\n'));
   }
 
+  // Private Deeper Analysis Technical Directive (when user clicked/inserted a Deeper analysis suggestion)
+  if (params.technicalDirective?.trim()) {
+    sections.push(
+      `INTERNAL DEEPER ANALYSIS DIRECTIVE FOR THIS TURN (EXECUTE THOROUGHLY; NEVER QUOTE OR MENTION THIS INTERNAL LABEL TO THE USER):
+${params.technicalDirective.trim()}
+Perform this exact technical verification transparently using the verified chart/spread/numerology context above, show what confirms or modifies the initial reading, and translate the verdict into calm, clear practical guidance.`
+    );
+  }
+
+  // Single-turn Two-Tier Suggestions Output Contract (Admin-governed rules)
+  const wantsSuggestions =
+    chatbotConfig.features.followups !== false &&
+    (params.suggestionsConfig.followups_enabled ||
+      params.suggestionsConfig.deeper_analysis_enabled);
+
+  if (wantsSuggestions) {
+    const fCount = params.suggestionsConfig.followups_enabled
+      ? Math.max(1, Math.min(6, params.suggestionsConfig.max_followups || 4))
+      : 0;
+    const dCount = params.suggestionsConfig.deeper_analysis_enabled
+      ? Math.max(1, Math.min(6, params.suggestionsConfig.max_deeper_analysis || 4))
+      : 0;
+
+    const tierRuleBlocks: string[] = [];
+    if (fCount > 0) {
+      tierRuleBlocks.push(
+        `Generate ${Math.min(3, fCount)} to ${fCount} items in "followups":\n${params.suggestionsConfig.followups_rules}`
+      );
+    }
+    if (dCount > 0) {
+      tierRuleBlocks.push(
+        `Generate ${Math.min(3, dCount)} to ${dCount} items in "deeper_analysis":\n${params.suggestionsConfig.deeper_analysis_rules}`
+      );
+    }
+
+    sections.push(`STRUCTURED NEXT-STEP SUGGESTIONS BLOCK (APPEND AT THE VERY END OF YOUR RESPONSE):
+After finishing your main reply — UNLESS you are outputting <CC_PROFILE_CONFIRM> to confirm birth details — append ONE single compact JSON line wrapped in exact delimiters (never inside markdown code fences, and never mention this block in prose):
+<<<SUGGESTIONS_JSON>>>{"followups":${fCount > 0 ? '[{"text":"..."}]' : '[]'},"deeper_analysis":${dCount > 0 ? '[{"text":"...","technical_directive":"..."}]' : '[]'}}<<<END_SUGGESTIONS_JSON>>>
+
+${tierRuleBlocks.join('\n\n')}
+
+Keep the JSON strictly valid UTF-8 single-line JSON with double quotes and no trailing commas.`);
+  }
+
   return {
     systemInstruction: sections.join('\n\n---\n\n'),
     modelOverride,
+    wantsSuggestions,
   };
 }
 
 export async function streamConsultationResponse(
   params: StreamConsultationParams
 ): Promise<StreamConsultationResult> {
-  const [runtime, pricingConfig] = await Promise.all([
+  const [runtime, pricingConfig, suggestionsConfig] = await Promise.all([
     getResolvedOpenRouterRuntime(),
     getPricingConfig(),
+    getSuggestionsConfig(),
   ]);
+
+  const activePillar: ChatPillar =
+    params.pillar ||
+    params.conversation.pillar ||
+    'council';
+  const activeCompanionPersona =
+    params.companionPersona || params.conversation.companion_persona_json || null;
 
   const toneMode = params.toneMode === 'friendly' ? 'friendly' : 'technical';
   const responseLength = params.responseLength === 'short' ? 'short' : 'detailed';
   const activeHistory = params.historyMessages.filter((m) => !m.excluded_from_context);
 
-  const { systemInstruction: staticSystemInstruction, modelOverride } =
-    await buildStaticSystemInstruction({
+  let systemInstructionWithDynamic = '';
+  let modelOverride: string | null = null;
+  let wantsSuggestions = false;
+
+  if (activePillar === 'companion') {
+    systemInstructionWithDynamic = buildCompanionSystemPrompt({
+      persona: activeCompanionPersona,
+      languageSlug: params.languageSlug,
+      preferredCallName: params.preferredCallName,
+      turnCount: activeHistory.length,
+      memorySnippets: params.conversation.use_full_profile_memory
+        ? params.scopeMemoryContext
+        : null,
+    });
+    wantsSuggestions = false;
+  } else if (activePillar === 'clarity') {
+    systemInstructionWithDynamic = buildClaritySystemPrompt({
+      languageSlug: params.languageSlug,
+      preferredCallName: params.preferredCallName,
+      turnCount: activeHistory.length,
+      memorySnippets: params.conversation.use_full_profile_memory
+        ? params.scopeMemoryContext
+        : null,
+    });
+    wantsSuggestions = false;
+  } else {
+    const built = await buildStaticSystemInstruction({
       expertSlug: params.expertSlug,
       modeSlug: params.modeSlug,
       outputSlug: params.outputSlug,
@@ -403,50 +724,65 @@ export async function streamConsultationResponse(
       turnCount: activeHistory.length,
       profile: params.profile,
       extraProfiles: params.extraProfiles,
+      userPrompt: params.userPrompt,
+      historyMessages: activeHistory,
+      technicalDirective: params.technicalDirective,
+      suggestionsConfig,
     });
+    modelOverride = built.modelOverride;
+    wantsSuggestions = built.wantsSuggestions;
+
+    // Fetch today's cached Gochar transits (max 1 API call/day across platform) for Astrology guides
+    let gocharContext = '';
+    const needsTransits =
+      params.expertSlug !== 'tarot_reader' && params.expertSlug !== 'numerologist';
+    if (needsTransits && isAstrologyApiConfigured()) {
+      try {
+        const daily = await getOrFetchDailyTransits();
+        gocharContext = daily.transitsText;
+      } catch {
+        gocharContext = '';
+      }
+    }
+
+    const dynamicContextBlocks: string[] = [];
+    if (gocharContext) {
+      dynamicContextBlocks.push(gocharContext);
+    }
+    if (params.conversation.use_full_profile_memory) {
+      if (params.profile?.profile_memory_summary) {
+        dynamicContextBlocks.push(
+          `LONGITUDINAL PROFILE MEMORY (Themes from earlier active sessions):\n${params.profile.profile_memory_summary}`
+        );
+      } else if (params.scopeMemoryContext?.trim()) {
+        const scopeTitle =
+          params.conversation.mode_type === 'learn_astrology' ? 'LEARNING' : 'GENERAL';
+        dynamicContextBlocks.push(
+          `LONGITUDINAL ${scopeTitle} MEMORY (Themes and progress from earlier active sessions):\n${params.scopeMemoryContext.trim()}`
+        );
+      }
+    }
+
+    systemInstructionWithDynamic = [
+      built.systemInstruction,
+      ...dynamicContextBlocks,
+    ]
+      .filter(Boolean)
+      .join('\n\n---\n\n');
+  }
 
   const model = modelOverride || runtime.consultationModel || getConsultationModel();
-  const maxOutputTokens =
-    responseLength === 'short'
+  const baseOutputTokens =
+    activePillar === 'companion'
+      ? Math.min(runtime.tokenLimits.chat_detailed, 1100)
+      : activePillar === 'clarity'
+      ? Math.min(runtime.tokenLimits.chat_detailed, 1400)
+      : responseLength === 'short'
       ? runtime.tokenLimits.chat_short
       : runtime.tokenLimits.chat_detailed;
+  // Reserve headroom for compact single-turn suggestions JSON so prose is never clipped
+  const maxOutputTokens = wantsSuggestions ? baseOutputTokens + 420 : baseOutputTokens;
   const maxHistoryTurns = runtime.tokenLimits.max_history_turns || 24;
-
-  // Fetch today's cached Gochar transits (max 1 API call/day across platform)
-  let gocharContext = '';
-  if (isAstrologyApiConfigured()) {
-    try {
-      const daily = await getOrFetchDailyTransits();
-      gocharContext = daily.transitsText;
-    } catch {
-      gocharContext = '';
-    }
-  }
-
-  const dynamicContextBlocks: string[] = [];
-  if (gocharContext) {
-    dynamicContextBlocks.push(gocharContext);
-  }
-  if (params.conversation.use_full_profile_memory) {
-    if (params.profile?.profile_memory_summary) {
-      dynamicContextBlocks.push(
-        `LONGITUDINAL PROFILE MEMORY (Themes from earlier active sessions):\n${params.profile.profile_memory_summary}`
-      );
-    } else if (params.scopeMemoryContext?.trim()) {
-      const scopeTitle =
-        params.conversation.mode_type === 'learn_astrology' ? 'LEARNING' : 'GENERAL';
-      dynamicContextBlocks.push(
-        `LONGITUDINAL ${scopeTitle} MEMORY (Themes and progress from earlier active sessions):\n${params.scopeMemoryContext.trim()}`
-      );
-    }
-  }
-
-  const systemInstructionWithDynamic = [
-    staticSystemInstruction,
-    ...dynamicContextBlocks,
-  ]
-    .filter(Boolean)
-    .join('\n\n---\n\n');
 
   // Filter out messages excluded from context (already filtered above)
   const messages: OpenRouterMessage[] = activeHistory.slice(-maxHistoryTurns).map((m) => ({
@@ -507,8 +843,16 @@ User's specific question: ${finalUserText}`;
   let rawAccumulated = '';
   let flushedLength = 0;
   let leakIntercepted = false;
-  let confirmTagHoldStarted = false;
-  const HOLD_BACK_CHARS = 64;
+  let hiddenBlockHoldStarted = false;
+  const HOLD_BACK_CHARS = 72;
+
+  const findEarliestHiddenTagIndex = (text: string): number => {
+    const idxProfile = text.search(/<CC_PROFILE_CONFIRM/i);
+    const idxSug = text.search(/<<<SUGGESTIONS/i);
+    if (idxProfile === -1) return idxSug;
+    if (idxSug === -1) return idxProfile;
+    return Math.min(idxProfile, idxSug);
+  };
 
   try {
     const streamResult = await streamOpenRouterCompletion({
@@ -525,9 +869,9 @@ User's specific question: ${finalUserText}`;
           internalAbortController.abort();
           return;
         }
-        if (confirmTagHoldStarted) return;
+        if (hiddenBlockHoldStarted) return;
 
-        const tagIndex = rawAccumulated.search(/<CC_PROFILE_CONFIRM/i);
+        const tagIndex = findEarliestHiddenTagIndex(rawAccumulated);
         if (tagIndex !== -1) {
           if (tagIndex > flushedLength) {
             const beforeTag = rawAccumulated.slice(flushedLength, tagIndex).replace(/\s+$/, '');
@@ -536,7 +880,7 @@ User's specific question: ${finalUserText}`;
             }
             flushedLength = tagIndex;
           }
-          confirmTagHoldStarted = true;
+          hiddenBlockHoldStarted = true;
           return;
         }
 
@@ -558,16 +902,17 @@ User's specific question: ${finalUserText}`;
         aborted: false,
         leakIntercepted: true,
         pendingProfile: null,
+        suggestions: null,
       };
     }
 
-    const extractedFromAccumulated = extractPendingProfileConfirmation(rawAccumulated);
-    if (!confirmTagHoldStarted && extractedFromAccumulated.cleanText.length > flushedLength) {
+    const extractedFromAccumulated = extractHiddenDirectives(rawAccumulated, suggestionsConfig);
+    if (!hiddenBlockHoldStarted && extractedFromAccumulated.cleanText.length > flushedLength) {
       params.onChunk(extractedFromAccumulated.cleanText.slice(flushedLength));
       flushedLength = extractedFromAccumulated.cleanText.length;
     }
 
-    const extractedFinal = extractPendingProfileConfirmation(streamResult.fullText);
+    const extractedFinal = extractHiddenDirectives(streamResult.fullText, suggestionsConfig);
     const sanitized = sanitizeAssistantOutput(extractedFinal.cleanText);
     if (sanitized.leaked) {
       return {
@@ -578,6 +923,7 @@ User's specific question: ${finalUserText}`;
         aborted: false,
         leakIntercepted: true,
         pendingProfile: null,
+        suggestions: null,
       };
     }
 
@@ -596,41 +942,64 @@ User's specific question: ${finalUserText}`;
       aborted: streamResult.aborted && !leakIntercepted,
       leakIntercepted: false,
       pendingProfile: streamResult.aborted ? null : extractedFinal.pendingProfile,
+      suggestions: streamResult.aborted ? null : extractedFinal.suggestions,
     };
   } finally {
     params.abortSignal.removeEventListener('abort', forwardAbort);
   }
 }
 
-export async function generateFollowUpQuestions(params: {
+export async function generateStructuredSuggestions(params: {
   userQuestion: string;
   assistantAnswer: string;
+  expertSlug: string;
   modeSlug: string;
   languageSlug: string;
   hasProfile: boolean;
-}): Promise<string[]> {
+}): Promise<MessageSuggestions> {
   try {
-    const [chatbotConfig, runtime] = await Promise.all([
+    const [chatbotConfig, suggestionsConfig, runtime] = await Promise.all([
       getChatbotConfig(),
+      getSuggestionsConfig(),
       getResolvedOpenRouterRuntime(),
     ]);
-    if (chatbotConfig.features.followups === false) {
-      return [];
+
+    if (
+      chatbotConfig.features.followups === false ||
+      (!suggestionsConfig.followups_enabled && !suggestionsConfig.deeper_analysis_enabled)
+    ) {
+      return { followups: [], deeper_analysis: [] };
     }
+
+    const maxF = suggestionsConfig.followups_enabled
+      ? Math.max(1, Math.min(6, suggestionsConfig.max_followups || 4))
+      : 0;
+    const maxD = suggestionsConfig.deeper_analysis_enabled
+      ? Math.max(1, Math.min(6, suggestionsConfig.max_deeper_analysis || 4))
+      : 0;
+
     const completion = await createOpenRouterCompletion({
       model: runtime.utilityModel || getUtilityModel(),
-      maxTokens: runtime.tokenLimits.utility,
+      maxTokens: Math.max(600, runtime.tokenLimits.utility),
       jsonMode: true,
-      temperature: 0.4,
+      temperature: 0.45,
       messages: [
         {
           role: 'user',
-          content: `Based on this Vedic Astrology consultation exchange, propose 5 to 6 insightful, specific follow-up questions the user would naturally want to explore next.
-- Match the language: ${params.languageSlug}.
-- Mode focus: ${params.modeSlug}.
-- ${params.hasProfile ? 'Reference Dasha timing, divisional charts (D9/D10), KP sub-lords, or Gochar transits naturally.' : 'Focus on clarifying Jyotish concepts or applying them step by step.'}
-- Keep each question concise (10-18 words), sharp, and actionable. Do NOT prefix with numbers.
-- Return STRICTLY a JSON object with shape: { "questions": ["...", "..."] }
+          content: `Generate structured two-tier suggestions for this Cosmic Council consultation exchange.
+Active Council Guide: ${params.expertSlug}
+Topic Mode: ${params.modeSlug}
+Language: ${params.languageSlug}
+Chart Attached: ${params.hasProfile ? 'Yes' : 'No'}
+
+${maxF > 0 ? `TIER 1 — "followups" (${Math.min(3, maxF)}–${maxF} items):\n${suggestionsConfig.followups_rules}\n` : ''}
+${maxD > 0 ? `TIER 2 — "deeper_analysis" (${Math.min(3, maxD)}–${maxD} items):\n${suggestionsConfig.deeper_analysis_rules}\n` : ''}
+
+Return STRICTLY JSON with shape:
+{
+  "followups": ${maxF > 0 ? '[{ "text": "..." }]' : '[]'},
+  "deeper_analysis": ${maxD > 0 ? '[{ "text": "...", "technical_directive": "..." }]' : '[]'}
+}
 
 USER QUESTION:
 ${params.userQuestion.slice(0, 600)}
@@ -641,28 +1010,51 @@ ${params.assistantAnswer.slice(0, 1800)}`,
       ],
     });
 
-    const parsed = safeExtractJson<{ questions?: unknown } | unknown[]>(completion.text, {});
-    const rawList = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray((parsed as { questions?: unknown })?.questions)
-      ? ((parsed as { questions: unknown[] }).questions)
-      : [];
+    const parsed = safeExtractJson<{
+      followups?: unknown;
+      deeper_analysis?: unknown;
+    }>(completion.text, {});
 
-    return rawList
-      .map((q) => String(q).replace(/^\d+[\).\s-]+/, '').trim())
-      .filter(Boolean)
-      .slice(0, 6);
+    return {
+      followups:
+        maxF > 0 ? normalizeSuggestionList(parsed.followups, 'fu', maxF, false) : [],
+      deeper_analysis:
+        maxD > 0 ? normalizeSuggestionList(parsed.deeper_analysis, 'da', maxD, true) : [],
+    };
   } catch {
-    return [];
+    return { followups: [], deeper_analysis: [] };
   }
+}
+
+export async function generateFollowUpQuestions(params: {
+  userQuestion: string;
+  assistantAnswer: string;
+  modeSlug: string;
+  languageSlug: string;
+  hasProfile: boolean;
+}): Promise<string[]> {
+  const structured = await generateStructuredSuggestions({
+    ...params,
+    expertSlug: 'council_synthesis',
+  });
+  return structured.followups.map((item) => item.text);
 }
 
 export async function generateConversationTitle(
   firstQuestion: string,
-  profileName?: string | null
+  profileName?: string | null,
+  pillar: ChatPillar = 'council',
+  companionName?: string | null
 ): Promise<string> {
   try {
     const runtime = await getResolvedOpenRouterRuntime();
+    const subjectContext =
+      pillar === 'companion'
+        ? `this personal conversation${companionName ? ` with ${companionName}` : ''}`
+        : pillar === 'clarity'
+        ? 'this quick Clarity helper thread'
+        : `this consultation thread${profileName ? ` for ${profileName}` : ''}`;
+
     const completion = await createOpenRouterCompletion({
       model: runtime.utilityModel || getUtilityModel(),
       maxTokens: Math.min(120, runtime.tokenLimits.utility),
@@ -670,16 +1062,30 @@ export async function generateConversationTitle(
       messages: [
         {
           role: 'user',
-          content: `Generate a refined 3-to-5-word title for this Vedic astrology consultation thread${profileName ? ` for ${profileName}` : ''}. No quotes, no punctuation at the end, Title Case.
+          content: `Generate a refined 3-to-5-word title for ${subjectContext}. No quotes, no punctuation at the end, Title Case.
 
-Question: ${firstQuestion.slice(0, 400)}`,
+Message: ${firstQuestion.slice(0, 400)}`,
         },
       ],
     });
     const cleaned = completion.text.replace(/["'*#]/g, '').trim();
-    return cleaned ? cleaned.slice(0, 70) : 'Consultation Insight';
+    if (cleaned) {
+      return cleaned.slice(0, 70);
+    }
+    return pillar === 'companion'
+      ? companionName || 'Companion Chat'
+      : pillar === 'clarity'
+      ? 'Clarity'
+      : 'Consultation Insight';
   } catch {
-    return firstQuestion.trim().slice(0, 48) || 'Consultation Insight';
+    return (
+      firstQuestion.trim().slice(0, 48) ||
+      (pillar === 'companion'
+        ? companionName || 'Companion Chat'
+        : pillar === 'clarity'
+        ? 'Clarity'
+        : 'Consultation Insight')
+    );
   }
 }
 

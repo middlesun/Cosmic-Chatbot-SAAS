@@ -56,6 +56,30 @@ export interface ChatbotConfig {
   conversational_rules: string;
 }
 
+export interface SuggestionsConfig {
+  followups_enabled: boolean;
+  deeper_analysis_enabled: boolean;
+  default_expanded: boolean;
+  max_followups: number;
+  max_deeper_analysis: number;
+  followups_rules: string;
+  deeper_analysis_rules: string;
+}
+
+export interface MiniAppOverrideConfig {
+  enabled?: boolean;
+  featured_on_home?: boolean;
+  model_id?: string | null;
+}
+
+export interface MiniAppsGovernanceConfig {
+  default_model_id: string | null;
+  daily_live_runs_soft_cap: number;
+  estimated_input_cost_per_million_usd: number;
+  estimated_output_cost_per_million_usd: number;
+  overrides: Record<string, MiniAppOverrideConfig>;
+}
+
 export interface CreditPackConfig {
   slug: string;
   name: string;
@@ -159,7 +183,13 @@ export const DEFAULT_CHATBOT_CONFIG: ChatbotConfig = {
   default_language: 'English',
   default_tone: 'technical',
   default_response_length: 'detailed',
-  expert_order: ['council_synthesis', 'parashari', 'kp_precision', 'jaimini', 'nadi'],
+  expert_order: [
+    'council_synthesis',
+    'western_astrologer',
+    'modern_astrologer',
+    'tarot_reader',
+    'numerologist',
+  ],
   mode_order: ['general', 'life', 'career', 'love', 'marriage', 'health', 'wealth', 'learn_astrology'],
   language_order: ['English', 'Hindi', 'Hinglish'],
   features: {
@@ -173,6 +203,41 @@ export const DEFAULT_CHATBOT_CONFIG: ChatbotConfig = {
     memory_summary: true,
   },
   conversational_rules: DEFAULT_CONVERSATIONAL_RULES,
+};
+
+export const DEFAULT_FOLLOWUPS_RULES = `FOLLOW-UP SUGGESTIONS ("followups"):
+- Generate natural, plain-English next questions that directly continue the user's real-life curiosity from this exact exchange.
+- Keep each question crisp (8–16 words), conversational, and genuinely helpful to an everyday non-technical user.
+- Match the active conversation language strictly (English, Hindi, or Hinglish).
+- Never number them, never repeat what was already answered, and avoid fear-based phrasing.`;
+
+export const DEFAULT_DEEPER_ANALYSIS_RULES = `DEEPER ANALYSIS SUGGESTIONS ("deeper_analysis"):
+- Act as an autonomous Grandmaster specialist in the active Council discipline (Vedic Jyotish, Tropical Western, Modern Psychological Astrology, Tarot, or Numerology).
+- Look beyond what was just answered and identify 3–4 high-value, distinct analytical layers that would stress-test, cross-verify, or unlock precision on the user's exact topic:
+  • For Vedic Astrologer: autonomously draw from KP Cuspal Sub-Lords & ABCD significators, Divisional Charts (D9 Navamsa, D10 Dasamsa, D2/D4/D7/D12/D16/D24/D30/D60), Jaimini Chara Karakas / Upapada / Karakamsha, Ashtakavarga bindu validation (BAV/SAV), Yoga strengths & cancellations (Neecha Bhanga, Combustion, Retrograde, Kemadruma cancellation), Argala/Nadi karakatwa linkages, or Vimshottari Pratyantardasha + Gochar double-transit timing windows.
+  • For Western / Modern Astrologer: aspect geometry & tight orbs, house rulership chains, secondary progressions / transit timing windows, Nodal / Saturn / Chiron evolutionary themes, or relocation angles (using Current Location if present).
+  • For Tarot: clarifying card pull on a specific card or tension, shadow/subconscious dynamics, or practical action check.
+  • For Numerology: Karmic Debt / Master Number dynamics, Personal Year/Month/Day timing alignment, or Name Expression vs Life Path friction.
+- For EACH deeper_analysis item, provide:
+  1. "text": a clear, intriguing user-facing question (10–18 words) in the active language that pairs plain English with the specific lens (so beginners aren't intimidated while advanced users see immediate depth).
+  2. "technical_directive": a concise internal analytical directive (1–2 sentences in English) specifying the exact charts, rules, cancellations, or timing checks to perform if the user clicks it.`;
+
+export const DEFAULT_SUGGESTIONS_CONFIG: SuggestionsConfig = {
+  followups_enabled: true,
+  deeper_analysis_enabled: true,
+  default_expanded: true,
+  max_followups: 4,
+  max_deeper_analysis: 4,
+  followups_rules: DEFAULT_FOLLOWUPS_RULES,
+  deeper_analysis_rules: DEFAULT_DEEPER_ANALYSIS_RULES,
+};
+
+export const DEFAULT_MINI_APPS_CONFIG: MiniAppsGovernanceConfig = {
+  default_model_id: null,
+  daily_live_runs_soft_cap: 40,
+  estimated_input_cost_per_million_usd: 0.15,
+  estimated_output_cost_per_million_usd: 0.6,
+  overrides: {},
 };
 
 export const DEFAULT_PRICING_CONFIG: PricingConfig = {
@@ -313,12 +378,16 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 
 let aiSettingsCache: { value: AiSettingsConfig; expiresAt: number } | null = null;
 let chatbotConfigCache: { value: ChatbotConfig; expiresAt: number } | null = null;
+let suggestionsConfigCache: { value: SuggestionsConfig; expiresAt: number } | null = null;
+let miniAppsConfigCache: { value: MiniAppsGovernanceConfig; expiresAt: number } | null = null;
 let pricingConfigCache: { value: PricingConfig; expiresAt: number } | null = null;
 let promptRecipesCache: { value: PromptRecipeRecord[]; expiresAt: number } | null = null;
 
 export function invalidateAllPlatformCaches(): void {
   aiSettingsCache = null;
   chatbotConfigCache = null;
+  suggestionsConfigCache = null;
+  miniAppsConfigCache = null;
   pricingConfigCache = null;
   promptRecipesCache = null;
 }
@@ -347,7 +416,7 @@ async function readSettingRow<T>(key: string): Promise<Partial<T> | null> {
 }
 
 export async function savePlatformSetting(
-  key: 'ai_config' | 'chatbot_config' | 'pricing_config',
+  key: 'ai_config' | 'chatbot_config' | 'pricing_config' | 'suggestions_config' | 'mini_apps_config',
   value: unknown,
   adminUserId?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
@@ -382,6 +451,8 @@ export async function savePlatformSetting(
 
   if (key === 'ai_config') aiSettingsCache = null;
   if (key === 'chatbot_config') chatbotConfigCache = null;
+  if (key === 'suggestions_config') suggestionsConfigCache = null;
+  if (key === 'mini_apps_config') miniAppsConfigCache = null;
   if (key === 'pricing_config') pricingConfigCache = null;
   return { ok: true };
 }
@@ -572,6 +643,113 @@ export async function getPublicChatbotUiConfig() {
     default_response_length: cfg.default_response_length,
     features: cfg.features,
   };
+}
+
+export async function getSuggestionsConfig(): Promise<SuggestionsConfig> {
+  const now = Date.now();
+  if (suggestionsConfigCache && suggestionsConfigCache.expiresAt > now) {
+    return suggestionsConfigCache.value;
+  }
+
+  const stored = await readSettingRow<SuggestionsConfig>('suggestions_config');
+  const merged: SuggestionsConfig = {
+    followups_enabled:
+      typeof stored?.followups_enabled === 'boolean'
+        ? stored.followups_enabled
+        : DEFAULT_SUGGESTIONS_CONFIG.followups_enabled,
+    deeper_analysis_enabled:
+      typeof stored?.deeper_analysis_enabled === 'boolean'
+        ? stored.deeper_analysis_enabled
+        : DEFAULT_SUGGESTIONS_CONFIG.deeper_analysis_enabled,
+    default_expanded:
+      typeof stored?.default_expanded === 'boolean'
+        ? stored.default_expanded
+        : DEFAULT_SUGGESTIONS_CONFIG.default_expanded,
+    max_followups:
+      typeof stored?.max_followups === 'number' && stored.max_followups >= 1
+        ? Math.min(6, Math.round(stored.max_followups))
+        : DEFAULT_SUGGESTIONS_CONFIG.max_followups,
+    max_deeper_analysis:
+      typeof stored?.max_deeper_analysis === 'number' && stored.max_deeper_analysis >= 1
+        ? Math.min(6, Math.round(stored.max_deeper_analysis))
+        : DEFAULT_SUGGESTIONS_CONFIG.max_deeper_analysis,
+    followups_rules:
+      typeof stored?.followups_rules === 'string' && stored.followups_rules.trim()
+        ? stored.followups_rules.trim()
+        : DEFAULT_SUGGESTIONS_CONFIG.followups_rules,
+    deeper_analysis_rules:
+      typeof stored?.deeper_analysis_rules === 'string' && stored.deeper_analysis_rules.trim()
+        ? stored.deeper_analysis_rules.trim()
+        : DEFAULT_SUGGESTIONS_CONFIG.deeper_analysis_rules,
+  };
+
+  suggestionsConfigCache = { value: merged, expiresAt: now + CACHE_TTL_MS };
+  return merged;
+}
+
+export async function getPublicSuggestionsConfig() {
+  const cfg = await getSuggestionsConfig();
+  return {
+    followups_enabled: cfg.followups_enabled,
+    deeper_analysis_enabled: cfg.deeper_analysis_enabled,
+    default_expanded: cfg.default_expanded,
+    max_followups: cfg.max_followups,
+    max_deeper_analysis: cfg.max_deeper_analysis,
+  };
+}
+
+export async function getMiniAppsConfig(): Promise<MiniAppsGovernanceConfig> {
+  const now = Date.now();
+  if (miniAppsConfigCache && miniAppsConfigCache.expiresAt > now) {
+    return miniAppsConfigCache.value;
+  }
+
+  const stored = await readSettingRow<MiniAppsGovernanceConfig>('mini_apps_config');
+  const rawOverrides =
+    stored?.overrides && typeof stored.overrides === 'object' && !Array.isArray(stored.overrides)
+      ? stored.overrides
+      : {};
+
+  const sanitizedOverrides: Record<string, MiniAppOverrideConfig> = {};
+  for (const [slug, val] of Object.entries(rawOverrides)) {
+    if (!val || typeof val !== 'object') continue;
+    sanitizedOverrides[slug] = {
+      enabled: typeof val.enabled === 'boolean' ? val.enabled : undefined,
+      featured_on_home:
+        typeof val.featured_on_home === 'boolean' ? val.featured_on_home : undefined,
+      model_id:
+        typeof val.model_id === 'string' && val.model_id.trim()
+          ? val.model_id.trim()
+          : val.model_id === null
+          ? null
+          : undefined,
+    };
+  }
+
+  const merged: MiniAppsGovernanceConfig = {
+    default_model_id:
+      typeof stored?.default_model_id === 'string' && stored.default_model_id.trim()
+        ? stored.default_model_id.trim()
+        : null,
+    daily_live_runs_soft_cap:
+      typeof stored?.daily_live_runs_soft_cap === 'number' && stored.daily_live_runs_soft_cap >= 1
+        ? Math.min(500, Math.round(stored.daily_live_runs_soft_cap))
+        : DEFAULT_MINI_APPS_CONFIG.daily_live_runs_soft_cap,
+    estimated_input_cost_per_million_usd:
+      typeof stored?.estimated_input_cost_per_million_usd === 'number' &&
+      stored.estimated_input_cost_per_million_usd >= 0
+        ? stored.estimated_input_cost_per_million_usd
+        : DEFAULT_MINI_APPS_CONFIG.estimated_input_cost_per_million_usd,
+    estimated_output_cost_per_million_usd:
+      typeof stored?.estimated_output_cost_per_million_usd === 'number' &&
+      stored.estimated_output_cost_per_million_usd >= 0
+        ? stored.estimated_output_cost_per_million_usd
+        : DEFAULT_MINI_APPS_CONFIG.estimated_output_cost_per_million_usd,
+    overrides: sanitizedOverrides,
+  };
+
+  miniAppsConfigCache = { value: merged, expiresAt: now + CACHE_TTL_MS };
+  return merged;
 }
 
 export async function getPricingConfig(): Promise<PricingConfig> {

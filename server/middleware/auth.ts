@@ -23,6 +23,7 @@ export interface AppUserRecord {
   default_language: string;
   preferred_call_name?: string | null;
   chat_font_size?: 'sm' | 'base' | 'lg' | null;
+  suggestions_auto_expand?: boolean | null;
   signup_ip_hash?: string | null;
   last_ip_hash?: string | null;
   referral_code: string;

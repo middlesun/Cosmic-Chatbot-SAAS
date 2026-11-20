@@ -249,6 +249,13 @@ export const BirthChartForm: React.FC<BirthChartFormProps> = ({
   const [loadingPlaces, setLoadingPlaces] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  // Current Location (optional — used for relocation context, local timing & transit precision)
+  const [currentPlaceQuery, setCurrentPlaceQuery] = useState('');
+  const [selectedCurrentPlace, setSelectedCurrentPlace] = useState<PlaceSuggestion | null>(null);
+  const [currentSuggestions, setCurrentSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [loadingCurrentPlaces, setLoadingCurrentPlaces] = useState(false);
+  const [showCurrentSuggestions, setShowCurrentSuggestions] = useState(false);
+
   const [relationship, setRelationship] = useState(
     initialValues?.relationship || (isFirstChart ? 'Self' : 'Other')
   );
@@ -260,6 +267,8 @@ export const BirthChartForm: React.FC<BirthChartFormProps> = ({
 
   const placeContainerRef = useRef<HTMLDivElement>(null);
   const placeAbortRef = useRef<AbortController | null>(null);
+  const currentPlaceContainerRef = useRef<HTMLDivElement>(null);
+  const currentPlaceAbortRef = useRef<AbortController | null>(null);
 
   // Sync if initialValues change (e.g., opening Edit Details from Chat confirmation card)
   useEffect(() => {
@@ -287,17 +296,23 @@ export const BirthChartForm: React.FC<BirthChartFormProps> = ({
 
   // Close place suggestions on outside click
   useEffect(() => {
-    if (!showSuggestions) return;
+    if (!showSuggestions && !showCurrentSuggestions) return;
     const handleOutside = (e: MouseEvent) => {
       if (placeContainerRef.current && !placeContainerRef.current.contains(e.target as Node)) {
         setShowSuggestions(false);
       }
+      if (
+        currentPlaceContainerRef.current &&
+        !currentPlaceContainerRef.current.contains(e.target as Node)
+      ) {
+        setShowCurrentSuggestions(false);
+      }
     };
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
-  }, [showSuggestions]);
+  }, [showSuggestions, showCurrentSuggestions]);
 
-  // Debounced natural place autocomplete
+  // Debounced natural place autocomplete (Place of Birth)
   useEffect(() => {
     const trimmed = placeQuery.trim();
     if (
@@ -347,6 +362,56 @@ export const BirthChartForm: React.FC<BirthChartFormProps> = ({
     };
   }, [getAccessToken, isPreviewMode, placeQuery, selectedPlace]);
 
+  // Debounced natural place autocomplete (Current Location)
+  useEffect(() => {
+    const trimmed = currentPlaceQuery.trim();
+    if (
+      isPreviewMode ||
+      trimmed.length < 2 ||
+      (selectedCurrentPlace && selectedCurrentPlace.label === trimmed)
+    ) {
+      setCurrentSuggestions([]);
+      setLoadingCurrentPlaces(false);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      currentPlaceAbortRef.current?.abort();
+      const controller = new AbortController();
+      currentPlaceAbortRef.current = controller;
+      setLoadingCurrentPlaces(true);
+      try {
+        const token = await getAccessToken();
+        if (!token) {
+          setLoadingCurrentPlaces(false);
+          return;
+        }
+        const res = await fetch(`/api/profiles/places?q=${encodeURIComponent(trimmed)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          setCurrentSuggestions([]);
+          setLoadingCurrentPlaces(false);
+          return;
+        }
+        const data = await res.json();
+        setCurrentSuggestions(Array.isArray(data.places) ? data.places : []);
+        setShowCurrentSuggestions(true);
+      } catch (err) {
+        if ((err as Error)?.name !== 'AbortError') {
+          setCurrentSuggestions([]);
+        }
+      } finally {
+        setLoadingCurrentPlaces(false);
+      }
+    }, 320);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [getAccessToken, isPreviewMode, currentPlaceQuery, selectedCurrentPlace]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -378,6 +443,9 @@ export const BirthChartForm: React.FC<BirthChartFormProps> = ({
         setSubmitState('success');
         const cityPart = trimmedPlace.split(',')[0]?.trim() || trimmedPlace;
         const countryPart = trimmedPlace.split(',').slice(-1)[0]?.trim() || '';
+        const trimmedCurrent = currentPlaceQuery.trim();
+        const curCityPart = trimmedCurrent ? trimmedCurrent.split(',')[0]?.trim() || trimmedCurrent : null;
+        const curCountryPart = trimmedCurrent ? trimmedCurrent.split(',').slice(-1)[0]?.trim() || null : null;
         const previewProfile: ChatProfile = {
           id: `preview-prof-${Date.now()}`,
           name: trimmedName,
@@ -387,6 +455,8 @@ export const BirthChartForm: React.FC<BirthChartFormProps> = ({
           birth_time: finalBirthTime,
           birth_city: cityPart,
           birth_country: countryPart,
+          current_city: curCityPart,
+          current_country: curCountryPart,
           relationship,
           is_activated: true,
         };
@@ -425,6 +495,18 @@ export const BirthChartForm: React.FC<BirthChartFormProps> = ({
         if (typeof selectedPlace.timezoneOffset === 'number') {
           payload.timezone_offset = selectedPlace.timezoneOffset;
         }
+      }
+
+      const trimmedCurrent = currentPlaceQuery.trim();
+      if (selectedCurrentPlace) {
+        payload.current_city = selectedCurrentPlace.city;
+        payload.current_state = selectedCurrentPlace.state;
+        payload.current_country = selectedCurrentPlace.country;
+        if (typeof selectedCurrentPlace.timezoneOffset === 'number') {
+          payload.current_timezone_offset = selectedCurrentPlace.timezoneOffset;
+        }
+      } else if (trimmedCurrent) {
+        payload.current_place_query = trimmedCurrent;
       }
 
       const res = await fetch('/api/profiles', {
@@ -618,6 +700,84 @@ export const BirthChartForm: React.FC<BirthChartFormProps> = ({
                   setSelectedPlace(place);
                   setPlaceQuery(place.label);
                   setShowSuggestions(false);
+                }}
+                className="w-full text-left rounded-xl px-3 py-2.5 hover:bg-[#F1ECE3] transition-colors flex items-start gap-2.5"
+              >
+                <MapPin className="h-3.5 w-3.5 text-[#8B7355] shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm text-[#3D3830] font-medium truncate">
+                    {place.city}
+                  </p>
+                  <p className="text-[11px] text-[#8B8275] truncate">
+                    {[place.state, place.country].filter(Boolean).join(', ')}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Current Location (Optional, with 1-tap Same as birth city shortcut) */}
+      <div ref={currentPlaceContainerRef} className="relative">
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <label className="text-xs font-medium text-[#5C5449]">
+            Current Location <span className="text-[#8B8275] font-normal">(optional)</span>
+          </label>
+          {placeQuery.trim() && (
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentPlaceQuery(selectedPlace ? selectedPlace.label : placeQuery.trim());
+                setSelectedCurrentPlace(selectedPlace);
+                setShowCurrentSuggestions(false);
+              }}
+              className="text-[11px] font-medium text-[#8B7355] hover:text-[#3D3830] underline underline-offset-2 transition-colors cursor-pointer"
+            >
+              Same as birth city
+            </button>
+          )}
+        </div>
+        <div className="relative">
+          <MapPin className="h-4 w-4 text-[#8B8275] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={currentPlaceQuery}
+            onFocus={() => {
+              if (currentSuggestions.length > 0) setShowCurrentSuggestions(true);
+            }}
+            onChange={(e) => {
+              setCurrentPlaceQuery(e.target.value);
+              setSelectedCurrentPlace(null);
+            }}
+            placeholder="Where you live today (e.g. Bengaluru, Dubai, New York)"
+            className="w-full min-h-[44px] rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] pl-10 pr-9 py-2.5 text-sm text-[#3D3830] placeholder:text-[#8B8275] focus:border-[#4A453D] focus:outline-none"
+          />
+          {loadingCurrentPlaces ? (
+            <Loader2 className="h-4 w-4 text-[#8B8275] animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
+          ) : selectedCurrentPlace ? (
+            <CheckCircle2 className="h-4 w-4 text-[#2D6A4F] absolute right-3 top-1/2 -translate-y-1/2" />
+          ) : (
+            <Search className="h-3.5 w-3.5 text-[#8B8275]/70 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          )}
+        </div>
+
+        <p className="mt-1 text-[11px] text-[#8B8275]">
+          {selectedCurrentPlace
+            ? `Current city: ${selectedCurrentPlace.label}`
+            : 'Helps calibrate relocation, local timing, and personal context. Editable anytime.'}
+        </p>
+
+        {showCurrentSuggestions && currentSuggestions.length > 0 && (
+          <div className="animate-cc-dropdown-down absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-[0_18px_42px_-12px_rgba(61,56,48,0.22)] p-1.5 max-h-56 overflow-y-auto">
+            {currentSuggestions.map((place, idx) => (
+              <button
+                key={`cur-${place.latitude}-${place.longitude}-${idx}`}
+                type="button"
+                onClick={() => {
+                  setSelectedCurrentPlace(place);
+                  setCurrentPlaceQuery(place.label);
+                  setShowCurrentSuggestions(false);
                 }}
                 className="w-full text-left rounded-xl px-3 py-2.5 hover:bg-[#F1ECE3] transition-colors flex items-start gap-2.5"
               >

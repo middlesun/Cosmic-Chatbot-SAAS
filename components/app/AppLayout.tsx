@@ -4,11 +4,12 @@ import {
   Coins,
   Database,
   Home,
-  LayoutDashboard,
+  LayoutGrid,
   LifeBuoy,
   Lock,
   LogOut,
   Menu,
+  MessageSquare,
   PanelLeftClose,
   ScrollText,
   Settings,
@@ -110,6 +111,12 @@ const AppLayout: React.FC = () => {
     navigate('/app/login');
   };
 
+  const lowCreditsThreshold =
+    appUser?.tier === 'guru' ? 8000 : appUser?.tier === 'pro' ? 2500 : 500;
+  const isLowCredits =
+    typeof appUser?.credits_balance === 'number' &&
+    appUser.credits_balance < lowCreditsThreshold;
+
   const desktopNavLinkClass = ({ isActive }: { isActive: boolean }) =>
     `group flex items-center ${
       isDesktopSidebarOpen ? 'gap-3 px-3' : 'justify-center px-0'
@@ -160,7 +167,7 @@ const AppLayout: React.FC = () => {
           >
             {isDesktopSidebarOpen && (
               <Link
-                to="/app/chat"
+                to="/app/home"
                 className="font-serif text-xl font-medium tracking-tight text-[#3D3830] truncate"
               >
                 Cosmic Council
@@ -207,9 +214,19 @@ const AppLayout: React.FC = () => {
 
           {/* Primary Menu Links */}
           <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-1">
-            <NavLink to="/app/chat" aria-label="Home" className={desktopNavLinkClass}>
+            <NavLink to="/app/home" aria-label="Home" className={desktopNavLinkClass}>
               <Home className="h-4 w-4 shrink-0 text-[#8B7355]" />
               {isDesktopSidebarOpen && <span>Home</span>}
+            </NavLink>
+
+            <NavLink to="/app/chat" aria-label="Chat" className={desktopNavLinkClass}>
+              <MessageSquare className="h-4 w-4 shrink-0 text-[#8B7355]" />
+              {isDesktopSidebarOpen && <span>Chat</span>}
+            </NavLink>
+
+            <NavLink to="/app/apps" aria-label="Apps" className={desktopNavLinkClass}>
+              <LayoutGrid className="h-4 w-4 shrink-0 text-[#8B7355]" />
+              {isDesktopSidebarOpen && <span>Apps</span>}
             </NavLink>
 
             <NavLink to="/app/profiles" aria-label="Profiles" className={desktopNavLinkClass}>
@@ -222,17 +239,27 @@ const AppLayout: React.FC = () => {
               {isDesktopSidebarOpen && <span>Reports</span>}
             </NavLink>
 
-            <NavLink to="/app/dashboard" aria-label="Dashboard" className={desktopNavLinkClass}>
-              <LayoutDashboard className="h-4 w-4 shrink-0 text-[#8B7355]" />
-              {isDesktopSidebarOpen && <span>Dashboard</span>}
-            </NavLink>
-
-            <NavLink to="/app/billing" aria-label="Credits" className={desktopNavLinkClass}>
-              <Coins className="h-4 w-4 shrink-0 text-[#8B7355]" />
+            <NavLink
+              to="/app/billing"
+              aria-label={isLowCredits ? 'Credits (Low balance)' : 'Credits'}
+              className={desktopNavLinkClass}
+            >
+              <Coins
+                className={`h-4 w-4 shrink-0 ${
+                  isLowCredits ? 'text-[#7A3E36]' : 'text-[#8B7355]'
+                }`}
+              />
               {isDesktopSidebarOpen && (
                 <div className="flex flex-1 items-center justify-between gap-2 min-w-0">
                   <span>Credits</span>
-                  <span className="rounded-full bg-[#EAE3D7] px-2 py-0.5 text-[10px] font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-['DM_Sans',sans-serif] tabular-nums whitespace-nowrap ${
+                      isLowCredits
+                        ? 'bg-[#7A3E36]/12 text-[#7A3E36] font-medium'
+                        : 'bg-[#EAE3D7] text-[#3D3830]'
+                    }`}
+                  >
+                    {isLowCredits ? 'Low · ' : ''}
                     {appUser ? appUser.credits_balance.toLocaleString() : '0'}
                   </span>
                 </div>
@@ -367,7 +394,7 @@ const AppLayout: React.FC = () => {
                   <Menu className="h-4 w-4" />
                 </button>
                 <Link
-                  to="/app/chat"
+                  to="/app/home"
                   className="font-serif text-lg font-medium text-[#3D3830]"
                 >
                   Cosmic Council
@@ -377,10 +404,22 @@ const AppLayout: React.FC = () => {
               <div className="flex items-center gap-2 shrink-0">
                 <Link
                   to="/app/billing"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-1.5 text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]"
+                  aria-label={isLowCredits ? 'Credits balance low' : 'Credits balance'}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-['DM_Sans',sans-serif] tabular-nums ${
+                    isLowCredits
+                      ? 'bg-[#7A3E36]/10 border-[#7A3E36]/25 text-[#7A3E36] font-medium'
+                      : 'bg-[#FAF7F2] border-[#3D3830]/10 text-[#3D3830]'
+                  }`}
                 >
-                  <Coins className="h-3.5 w-3.5 text-[#8B7355]" />
-                  <span>{appUser ? appUser.credits_balance.toLocaleString() : '0'}</span>
+                  <Coins
+                    className={`h-3.5 w-3.5 ${
+                      isLowCredits ? 'text-[#7A3E36]' : 'text-[#8B7355]'
+                    }`}
+                  />
+                  <span>
+                    {isLowCredits ? 'Low · ' : ''}
+                    {appUser ? appUser.credits_balance.toLocaleString() : '0'}
+                  </span>
                 </Link>
 
                 <button
@@ -419,12 +458,28 @@ const AppLayout: React.FC = () => {
 
                 <nav className="flex-1 overflow-y-auto p-3 space-y-1">
                   <NavLink
-                    to="/app/chat"
+                    to="/app/home"
                     onClick={() => setShowMobileNavDrawer(false)}
                     className={mobileNavLinkClass}
                   >
                     <Home className="h-4 w-4 text-[#8B7355]" />
                     <span>Home</span>
+                  </NavLink>
+                  <NavLink
+                    to="/app/chat"
+                    onClick={() => setShowMobileNavDrawer(false)}
+                    className={mobileNavLinkClass}
+                  >
+                    <MessageSquare className="h-4 w-4 text-[#8B7355]" />
+                    <span>Chat</span>
+                  </NavLink>
+                  <NavLink
+                    to="/app/apps"
+                    onClick={() => setShowMobileNavDrawer(false)}
+                    className={mobileNavLinkClass}
+                  >
+                    <LayoutGrid className="h-4 w-4 text-[#8B7355]" />
+                    <span>Apps</span>
                   </NavLink>
                   <NavLink
                     to="/app/profiles"
@@ -443,20 +498,24 @@ const AppLayout: React.FC = () => {
                     <span>Reports</span>
                   </NavLink>
                   <NavLink
-                    to="/app/dashboard"
-                    onClick={() => setShowMobileNavDrawer(false)}
-                    className={mobileNavLinkClass}
-                  >
-                    <LayoutDashboard className="h-4 w-4 text-[#8B7355]" />
-                    <span>Dashboard</span>
-                  </NavLink>
-                  <NavLink
                     to="/app/billing"
                     onClick={() => setShowMobileNavDrawer(false)}
                     className={mobileNavLinkClass}
                   >
-                    <Coins className="h-4 w-4 text-[#8B7355]" />
-                    <span>Credits</span>
+                    <Coins
+                      className={`h-4 w-4 ${isLowCredits ? 'text-[#7A3E36]' : 'text-[#8B7355]'}`}
+                    />
+                    <span className="flex-1">Credits</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-['DM_Sans',sans-serif] tabular-nums ${
+                        isLowCredits
+                          ? 'bg-[#7A3E36]/12 text-[#7A3E36] font-medium'
+                          : 'bg-[#EAE3D7] text-[#3D3830]'
+                      }`}
+                    >
+                      {isLowCredits ? 'Low · ' : ''}
+                      {appUser ? appUser.credits_balance.toLocaleString() : '0'}
+                    </span>
                   </NavLink>
                   <button
                     type="button"

@@ -6,6 +6,7 @@ import {
   Coins,
   Cpu,
   LayoutDashboard,
+  LayoutGrid,
   Layers,
   LifeBuoy,
   Menu,
@@ -30,6 +31,7 @@ import AdminAiSettings, { type AiSettingsResponse } from './AdminAiSettings';
 import AdminPricingPlans from './AdminPricingPlans';
 import AdminSupportDesk from './AdminSupportDesk';
 import AdminPlatformHealth from './AdminPlatformHealth';
+import AdminAppsAnalytics from './AdminAppsAnalytics';
 
 type AdminSectionKey =
   | 'dash'
@@ -37,6 +39,7 @@ type AdminSectionKey =
   | 'prompts'
   | 'chatbot'
   | 'reports'
+  | 'apps'
   | 'ai-settings'
   | 'pricing'
   | 'support'
@@ -52,6 +55,9 @@ interface OverviewResponse {
     totalReportOrders: number;
     totalCreditsCirculating: number;
     openSupportTickets: number;
+    totalAppRuns?: number;
+    appCacheHits?: number;
+    appCacheHitRate?: number;
     tierBreakdown: Record<string, number>;
     revenueByCurrency: Record<string, number>;
   };
@@ -117,6 +123,13 @@ const PRIMARY_ADMIN_NAV: SidebarNavItem[] = [
     icon: ScrollText,
   },
   {
+    key: 'apps',
+    label: 'Apps & Usage',
+    path: '/app/admin/apps',
+    description: 'Mini-Apps usage telemetry, cache efficiency, token cost economics, and governance.',
+    icon: LayoutGrid,
+  },
+  {
     key: 'ai-settings',
     label: 'AI settings',
     path: '/app/admin/ai-settings',
@@ -163,6 +176,8 @@ function resolveSectionFromPath(pathname: string): AdminSectionKey {
       return 'chatbot';
     case 'reports':
       return 'reports';
+    case 'apps':
+      return 'apps';
     case 'ai-settings':
       return 'ai-settings';
     case 'pricing':
@@ -684,6 +699,23 @@ const AdminPanel: React.FC = () => {
                             {reports.filter((r) => r.is_active).length} / {reports.length}
                           </span>
                         </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => navigate('/app/admin/apps')}
+                            className="text-[#5C5449] hover:text-[#3D3830] underline underline-offset-4 decoration-[#3D3830]/20 cursor-pointer"
+                          >
+                            Mini-App runs
+                          </button>
+                          <span className="font-mono tabular-nums text-[#3D3830]">
+                            {(overview.metrics.totalAppRuns ?? 0).toLocaleString()}
+                            {(overview.metrics.totalAppRuns ?? 0) > 0 && (
+                              <span className="text-[#2D6A4F] ml-1.5">
+                                ({overview.metrics.appCacheHitRate ?? 0}% cached)
+                              </span>
+                            )}
+                          </span>
+                        </div>
                         <div className="flex items-center justify-between">
                           <span className="text-[#5C5449]">Integrations ready</span>
                           <span className="font-mono tabular-nums text-[#3D3830]">
@@ -823,6 +855,14 @@ const AdminPanel: React.FC = () => {
               onReportDeleted={(deletedId) => {
                 setReports((prev) => prev.filter((r) => r.id !== deletedId));
               }}
+            />
+          )}
+
+          {/* SECTION 5B: Apps & Usage Economics */}
+          {activeSection === 'apps' && (
+            <AdminAppsAnalytics
+              modelOptions={modelOptions}
+              getAccessToken={getAccessToken}
             />
           )}
 

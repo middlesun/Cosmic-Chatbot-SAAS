@@ -13,6 +13,7 @@ import {
   Save,
   Sliders,
   Sparkles,
+  Star,
 } from 'lucide-react';
 import CustomSelect from '../app/CustomSelect';
 import ChatWorkspace from '../app/ChatWorkspace';
@@ -47,6 +48,16 @@ interface ChatbotConfigState {
   conversational_rules: string;
 }
 
+interface SuggestionsConfigState {
+  followups_enabled: boolean;
+  deeper_analysis_enabled: boolean;
+  default_expanded: boolean;
+  max_followups: number;
+  max_deeper_analysis: number;
+  followups_rules: string;
+  deeper_analysis_rules: string;
+}
+
 interface ChatbotPromptSummary {
   id: string;
   slug: string;
@@ -57,6 +68,11 @@ interface ChatbotPromptSummary {
   model_id?: string | null;
   sort_order?: number | null;
 }
+
+const SUGGESTION_COUNT_OPTIONS = ['1', '2', '3', '4', '5', '6'].map((v) => ({
+  value: v,
+  label: `${v} items`,
+}));
 
 interface AdminChatbotControlProps {
   getAccessToken: () => Promise<string | null>;
@@ -133,10 +149,15 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
 
   const [config, setConfig] = useState<ChatbotConfigState | null>(null);
   const [defaultRules, setDefaultRules] = useState('');
+  const [suggestionsConfig, setSuggestionsConfig] = useState<SuggestionsConfigState | null>(null);
+  const [defaultSuggestionsConfig, setDefaultSuggestionsConfig] =
+    useState<SuggestionsConfigState | null>(null);
   const [prompts, setPrompts] = useState<ChatbotPromptSummary[]>([]);
   const [recipes, setRecipes] = useState<PromptRecipeRecord[]>([]);
 
-  const [sectionTab, setSectionTab] = useState<'experience' | 'catalog' | 'rules'>('experience');
+  const [sectionTab, setSectionTab] = useState<
+    'experience' | 'catalog' | 'rules' | 'suggestions'
+  >('experience');
   const [showLivePreview, setShowLivePreview] = useState(false);
   const [previewExpanded, setPreviewExpanded] = useState(false);
   const [previewKey, setPreviewKey] = useState(1);
@@ -153,6 +174,12 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
       if (!res.ok) throw new Error(data.error || 'Failed to load chatbot settings');
       setConfig(data.config);
       setDefaultRules(data.defaultConversationalRules || '');
+      if (data.suggestionsConfig) {
+        setSuggestionsConfig(data.suggestionsConfig as SuggestionsConfigState);
+      }
+      if (data.defaultSuggestionsConfig) {
+        setDefaultSuggestionsConfig(data.defaultSuggestionsConfig as SuggestionsConfigState);
+      }
       setPrompts(data.prompts || []);
       setRecipes(data.recipes || []);
     } catch (err) {
@@ -270,19 +297,48 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
         language_order: languagesList.map((i) => i.slug),
       };
 
-      const res = await fetch('/api/admin/settings/chatbot', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save chatbot configuration');
+      const requests: Array<Promise<Response>> = [
+        fetch('/api/admin/settings/chatbot', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        }),
+      ];
 
-      setConfig(data.config || payload);
-      setFeedback('Chatbot configuration saved. Live users and preview updated.');
+      if (suggestionsConfig) {
+        requests.push(
+          fetch('/api/admin/settings/suggestions', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(suggestionsConfig),
+          })
+        );
+      }
+
+      const [chatbotRes, suggestionsRes] = await Promise.all(requests);
+      const chatbotData = await chatbotRes.json();
+      if (!chatbotRes.ok) {
+        throw new Error(chatbotData.error || 'Failed to save chatbot configuration');
+      }
+      setConfig(chatbotData.config || payload);
+
+      if (suggestionsRes) {
+        const sugData = await suggestionsRes.json();
+        if (!suggestionsRes.ok) {
+          throw new Error(sugData.error || 'Failed to save suggestions configuration');
+        }
+        if (sugData.config) {
+          setSuggestionsConfig(sugData.config as SuggestionsConfigState);
+        }
+      }
+
+      setFeedback('Chatbot & Suggestions configuration saved. Live users and preview updated.');
       setPreviewKey((k) => k + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save chatbot configuration');
@@ -436,6 +492,18 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                 <MessageSquare className="h-3.5 w-3.5" />
                 <span>Conversational Rules</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setSectionTab('suggestions')}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  sectionTab === 'suggestions'
+                    ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                    : 'text-[#5C5449] hover:text-[#3D3830]'
+                }`}
+              >
+                <Star className="h-3.5 w-3.5" />
+                <span>Suggestions</span>
+              </button>
             </div>
 
             {/* TAB 1: Welcome Copy & Feature Toggles */}
@@ -579,11 +647,11 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div className="space-y-1.5">
-                      <span className="text-xs font-medium text-[#5C5449]">Default Expert</span>
+                      <span className="text-xs font-medium text-[#5C5449]">Default Council Guide</span>
                       <CustomSelect
                         value={config.default_expert}
                         onChange={(val) => setConfig({ ...config, default_expert: val })}
-                        ariaLabel="Default expert"
+                        ariaLabel="Default council guide"
                         surface="canvas"
                         className="w-full"
                         options={expertsList.map((p) => ({
@@ -680,15 +748,15 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                   </div>
                 </section>
 
-                {/* Experts Ordering & Visibility */}
+                {/* Council Ordering & Visibility */}
                 <section className="rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-5 sm:p-6 space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <h3 className="font-['Cormorant_Garamond',serif] text-xl font-medium text-[#3D3830]">
-                        Astrology Experts Order &amp; Visibility
+                        Council Order &amp; Visibility
                       </h3>
                       <p className="text-xs text-[#8B8275] mt-0.5">
-                        Reorder how experts appear in the dropdown or toggle visibility live.
+                        Reorder how council guides appear in the dropdown or toggle visibility live.
                       </p>
                     </div>
                     <span className="font-mono text-xs tabular-nums text-[#8B8275]">
@@ -947,6 +1015,219 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                   </span>
                 </div>
               </section>
+            )}
+
+            {/* TAB 4: Suggestions (Followups & Deeper analysis Grandmaster Rules) */}
+            {sectionTab === 'suggestions' && suggestionsConfig && (
+              <div className="space-y-5">
+                <section className="rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-5 sm:p-6 space-y-4">
+                  <div>
+                    <h3 className="font-['Cormorant_Garamond',serif] text-xl font-medium text-[#3D3830]">
+                      Two-Tier Suggestions Controls
+                    </h3>
+                    <p className="text-xs text-[#8B8275] mt-0.5">
+                      Manage the collapsible Followup and Deeper analysis columns generated below each consultation reply.
+                    </p>
+                  </div>
+
+                  <div className="divide-y divide-[#3D3830]/10">
+                    {(
+                      [
+                        {
+                          key: 'followups_enabled',
+                          label: 'Enable Followup column',
+                          description:
+                            'Generates natural, everyday next questions tailored to the user’s reading.',
+                        },
+                        {
+                          key: 'deeper_analysis_enabled',
+                          label: 'Enable Deeper analysis column',
+                          description:
+                            'Generates Grandmaster multi-system analytical lenses (KP Sub-Lords, Vargas, Jaimini, Ashtakavarga, Nadi) with private technical directives.',
+                        },
+                        {
+                          key: 'default_expanded',
+                          label: 'Expand suggestions by default',
+                          description:
+                            'Global default state for new replies (individual members can still collapse by default in Chat Settings).',
+                        },
+                      ] as const
+                    ).map((toggle) => {
+                      const enabled = Boolean(suggestionsConfig[toggle.key]);
+                      return (
+                        <div
+                          key={toggle.key}
+                          className="flex items-center justify-between gap-4 py-3 first:pt-1 last:pb-0"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-[#3D3830]">{toggle.label}</p>
+                            <p className="text-xs text-[#8B8275] mt-0.5">{toggle.description}</p>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={enabled}
+                            aria-label={toggle.label}
+                            onClick={() =>
+                              setSuggestionsConfig({
+                                ...suggestionsConfig,
+                                [toggle.key]: !enabled,
+                              })
+                            }
+                            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors cursor-pointer ${
+                              enabled ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                            }`}
+                          >
+                            <span
+                              className={`h-5 w-5 rounded-full bg-[#FDFBF7] shadow-xs transition-transform ${
+                                enabled ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-[#3D3830]/10">
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-medium text-[#5C5449]">
+                        Max Followups per reply
+                      </span>
+                      <CustomSelect
+                        value={String(suggestionsConfig.max_followups)}
+                        onChange={(val) =>
+                          setSuggestionsConfig({
+                            ...suggestionsConfig,
+                            max_followups: Number(val) || 4,
+                          })
+                        }
+                        ariaLabel="Maximum followups per reply"
+                        surface="canvas"
+                        className="w-full"
+                        options={SUGGESTION_COUNT_OPTIONS}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-medium text-[#5C5449]">
+                        Max Deeper analysis items per reply
+                      </span>
+                      <CustomSelect
+                        value={String(suggestionsConfig.max_deeper_analysis)}
+                        onChange={(val) =>
+                          setSuggestionsConfig({
+                            ...suggestionsConfig,
+                            max_deeper_analysis: Number(val) || 4,
+                          })
+                        }
+                        ariaLabel="Maximum deeper analysis suggestions per reply"
+                        surface="canvas"
+                        className="w-full"
+                        options={SUGGESTION_COUNT_OPTIONS}
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                {/* Followups Rules */}
+                <section className="rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-5 sm:p-6 space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-['Cormorant_Garamond',serif] text-xl font-medium text-[#3D3830]">
+                        Followups Generation Rules
+                      </h3>
+                      <p className="text-xs text-[#8B8275] mt-0.5 max-w-2xl">
+                        Guides how the AI crafts natural, accessible next questions in the Followup column.
+                      </p>
+                    </div>
+                    {defaultSuggestionsConfig?.followups_rules && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSuggestionsConfig({
+                            ...suggestionsConfig,
+                            followups_rules: defaultSuggestionsConfig.followups_rules,
+                          })
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        <span>Reset Default</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <textarea
+                    rows={8}
+                    value={suggestionsConfig.followups_rules}
+                    onChange={(e) =>
+                      setSuggestionsConfig({
+                        ...suggestionsConfig,
+                        followups_rules: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                  />
+
+                  <div className="flex items-center justify-between text-xs text-[#8B8275]">
+                    <span>Injected into the single-turn suggestion block on every eligible reply.</span>
+                    <span className="font-mono tabular-nums">
+                      {suggestionsConfig.followups_rules.length} / 4000 chars
+                    </span>
+                  </div>
+                </section>
+
+                {/* Deeper Analysis Grandmaster Rules */}
+                <section className="rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-5 sm:p-6 space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-['Cormorant_Garamond',serif] text-xl font-medium text-[#3D3830]">
+                        Deeper analysis Grandmaster Rules
+                      </h3>
+                      <p className="text-xs text-[#8B8275] mt-0.5 max-w-2xl">
+                        Instructs the AI to act as an autonomous master practitioner dynamically selecting divisional charts (D9/D10/D12/D16/D30), KP Sub-Lords, Jaimini Karakas, Ashtakavarga, Nadi linkages, Tropical aspects, or Tarot/Numerology checks—never artificially capped to a fixed list.
+                      </p>
+                    </div>
+                    {defaultSuggestionsConfig?.deeper_analysis_rules && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSuggestionsConfig({
+                            ...suggestionsConfig,
+                            deeper_analysis_rules: defaultSuggestionsConfig.deeper_analysis_rules,
+                          })
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        <span>Reset Default</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <textarea
+                    rows={10}
+                    value={suggestionsConfig.deeper_analysis_rules}
+                    onChange={(e) =>
+                      setSuggestionsConfig({
+                        ...suggestionsConfig,
+                        deeper_analysis_rules: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                  />
+
+                  <div className="flex items-center justify-between text-xs text-[#8B8275]">
+                    <span>
+                      Each Deeper analysis option carries a hidden technical directive applied automatically when clicked or edited.
+                    </span>
+                    <span className="font-mono tabular-nums">
+                      {suggestionsConfig.deeper_analysis_rules.length} / 5000 chars
+                    </span>
+                  </div>
+                </section>
+              </div>
             )}
           </div>
         )}

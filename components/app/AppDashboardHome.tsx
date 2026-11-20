@@ -1,12 +1,90 @@
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, MessageSquare, UserPlus, FileText, CreditCard, Plus } from 'lucide-react';
+import {
+  ArrowRight,
+  Compass,
+  CreditCard,
+  FileText,
+  HeartHandshake,
+  LayoutGrid,
+  MessageSquare,
+  Plus,
+  Sparkles,
+  UserPlus,
+} from 'lucide-react';
 import { useAuth } from './AuthContext';
 import TimingRadarDashboard from './TimingRadarDashboard';
 import { getUserProfileDisplayLabel } from './chatUtilities';
+import {
+  CLIENT_MINI_APPS,
+  PREVIEW_HOME_SUMMARY,
+  renderMiniAppIcon,
+} from './miniAppsClientData';
+import type { HomeSummaryResponse, MiniAppDefinition } from './miniAppsTypes';
+
+const formatRelativeDate = (iso: string): string => {
+  const ts = new Date(iso).getTime();
+  if (!Number.isFinite(ts)) return '';
+  const diffMin = Math.floor((Date.now() - ts) / 60000);
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
 
 const AppDashboardHome: React.FC = () => {
-  const { appUser, stats } = useAuth();
+  const { appUser, stats, isPreviewMode, getAccessToken } = useAuth();
+  const [summary, setSummary] = useState<HomeSummaryResponse | null>(() =>
+    isPreviewMode ? PREVIEW_HOME_SUMMARY : null
+  );
+  const [catalogApps, setCatalogApps] = useState<MiniAppDefinition[]>(CLIENT_MINI_APPS);
+  const [summaryLoading, setSummaryLoading] = useState<boolean>(!isPreviewMode);
+
+  const loadHomeSummary = useCallback(async () => {
+    if (isPreviewMode) {
+      setSummary(PREVIEW_HOME_SUMMARY);
+      setCatalogApps(CLIENT_MINI_APPS);
+      setSummaryLoading(false);
+      return;
+    }
+    setSummaryLoading(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setSummaryLoading(false);
+        return;
+      }
+      const [res, catRes] = await Promise.all([
+        fetch('/api/apps/home-summary', {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch('/api/apps/catalog', {
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => null),
+      ]);
+      if (res.ok) {
+        const data = (await res.json()) as HomeSummaryResponse;
+        setSummary(data);
+      }
+      if (catRes && catRes.ok) {
+        const catData = await catRes.json();
+        if (Array.isArray(catData.apps)) {
+          setCatalogApps(catData.apps as MiniAppDefinition[]);
+        }
+      }
+    } catch {
+      // Non-fatal — hub renders cleanly with default guides & featured apps
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [getAccessToken, isPreviewMode]);
+
+  useEffect(() => {
+    void loadHomeSummary();
+  }, [loadHomeSummary]);
 
   const tierProfileLimit =
     appUser?.tier === 'guru' ? 200 : appUser?.tier === 'pro' ? 100 : 10;
@@ -18,10 +96,28 @@ const AppDashboardHome: React.FC = () => {
       ? 'Professional Plan'
       : 'Personal Plan';
 
+  const featuredApps = useMemo(
+    () => catalogApps.filter((a) => a.featuredOnHome),
+    [catalogApps]
+  );
+
+  const guidesToShow = useMemo(() => {
+    if (summary && summary.recentGuides.length > 0) {
+      return summary.recentGuides;
+    }
+    return PREVIEW_HOME_SUMMARY.recentGuides.filter((g) => g.kind === 'council');
+  }, [summary]);
+
+  const lowCreditsThreshold =
+    appUser?.tier === 'guru' ? 8000 : appUser?.tier === 'pro' ? 2500 : 500;
+  const lowCreditsAlert =
+    typeof appUser?.credits_balance === 'number' &&
+    appUser.credits_balance < lowCreditsThreshold;
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-10 pb-8">
       {/* Editorial Greeting Header */}
-      <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-[#3D3830]/10 pb-8">
+      <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-[#3D3830]/10 pb-7">
         <div>
           <p className="text-xs text-[#8B8275] mb-2">
             {tierLabel} · {appUser?.currency_pref || 'INR'} · {getUserProfileDisplayLabel(appUser)}
@@ -45,6 +141,13 @@ const AppDashboardHome: React.FC = () => {
             </Link>
           )}
           <Link
+            to="/app/apps"
+            className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-5 py-3 text-sm font-medium text-[#3D3830] transition-colors hover:bg-[#F1ECE3] whitespace-nowrap shrink-0"
+          >
+            <LayoutGrid className="h-4 w-4 text-[#8B7355]" />
+            <span>Explore Apps</span>
+          </Link>
+          <Link
             to="/app/chat"
             className="min-h-[44px] inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-6 py-3 text-sm font-medium text-[#FAF7F2] transition-colors hover:bg-[#38342E] whitespace-nowrap shrink-0"
           >
@@ -54,10 +157,201 @@ const AppDashboardHome: React.FC = () => {
         </div>
       </section>
 
-      {/* Personal Timing Radar (Observatory Night Surface) */}
+      {/* SECTION 1: CONTINUE CONVERSATIONS (Card Format) */}
+      <section className="space-y-4">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-xs text-[#8B8275]">Recent Threads</p>
+            <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
+              Continue Conversations
+            </h2>
+          </div>
+          <Link
+            to="/app/chat"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors whitespace-nowrap"
+          >
+            <span>Open Chat Studio</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+
+        {summaryLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-32 rounded-3xl bg-[#F1ECE3]/65 border border-[#3D3830]/8 animate-pulse"
+              />
+            ))}
+          </div>
+        ) : summary && summary.recentConversations.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {summary.recentConversations.map((conv) => {
+              const isCompanion = conv.pillar === 'companion';
+              const metaLine = isCompanion
+                ? `Companion · ${conv.companion_role || 'Conversation'}`
+                : `Council${conv.profile_label ? ` · ${conv.profile_label}` : ' · General'}`;
+              return (
+                <Link
+                  key={conv.id}
+                  to={`/app/chat/${conv.id}`}
+                  className="group flex flex-col justify-between rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-[#8B8275]">
+                      <span className="truncate">{metaLine}</span>
+                      <span className="font-mono tabular-nums shrink-0">
+                        {formatRelativeDate(conv.updated_at)}
+                      </span>
+                    </div>
+                    <h3 className="font-serif text-xl font-medium text-[#3D3830] leading-snug line-clamp-2">
+                      {isCompanion && conv.companion_name ? conv.companion_name : conv.title}
+                    </h3>
+                    {isCompanion && conv.title && (
+                      <p className="text-xs text-[#5C5449] truncate">{conv.title}</p>
+                    )}
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-[#3D3830]/8 flex items-center justify-between text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830]">
+                    <span>Resume thread</span>
+                    <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-0.5 transition-transform" />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 md:p-7 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-serif text-xl font-medium text-[#3D3830]">
+                Start your first consultation or companion chat
+              </h3>
+              <p className="mt-1 text-xs text-[#5C5449] max-w-xl leading-relaxed">
+                Ask your Vedic Astrologer about an active timing cycle, pull a Tarot spread, or talk through what is on your mind with a matched Companion.
+              </p>
+            </div>
+            <Link
+              to="/app/chat"
+              className="min-h-[42px] inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors whitespace-nowrap shrink-0"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>Start Chatting</span>
+            </Link>
+          </div>
+        )}
+      </section>
+
+      {/* SECTION 2: GUIDES & COMPANIONS LAST CHATTED WITH */}
+      <section className="space-y-4">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-xs text-[#8B8275]">Council & Companions</p>
+            <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
+              Your Guides & Companions
+            </h2>
+          </div>
+          <Link
+            to="/app/chat?pillar=companion"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors whitespace-nowrap"
+          >
+            <HeartHandshake className="h-3.5 w-3.5 text-[#8B7355]" />
+            <span>Match a Companion</span>
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {guidesToShow.map((guide) => {
+            const href =
+              guide.kind === 'companion' && guide.conversationId
+                ? `/app/chat/${guide.conversationId}`
+                : `/app/chat?pillar=council&expert=${encodeURIComponent(
+                    guide.expertSlug || 'council_synthesis'
+                  )}`;
+            return (
+              <Link
+                key={guide.id}
+                to={href}
+                className="group flex items-start justify-between gap-3.5 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20"
+              >
+                <div className="flex items-start gap-3.5 min-w-0">
+                  <div className="h-10 w-10 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/10 flex items-center justify-center text-[#8B7355] shrink-0">
+                    {guide.kind === 'companion' ? (
+                      <HeartHandshake className="h-4 w-4" />
+                    ) : guide.expertSlug === 'tarot_reader' ? (
+                      <Sparkles className="h-4 w-4" />
+                    ) : (
+                      <Compass className="h-4 w-4" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-[#8B8275]">
+                      {guide.kind === 'companion' ? 'Companion' : 'Council Guide'}
+                      {guide.lastActiveAt ? ` · ${formatRelativeDate(guide.lastActiveAt)}` : ''}
+                    </p>
+                    <h3 className="mt-0.5 font-serif text-xl font-medium text-[#3D3830] truncate">
+                      {guide.title}
+                    </h3>
+                    <p className="mt-1 text-xs text-[#5C5449] line-clamp-1">{guide.subtitle}</p>
+                  </div>
+                </div>
+                <ArrowRight className="mt-1 h-4 w-4 text-[#8B8275] group-hover:text-[#3D3830] group-hover:translate-x-0.5 transition-all shrink-0" />
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* SECTION 3: MOST USED MINI-APPS + GO TO APPS */}
+      <section className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <p className="text-xs text-[#8B8275]">Daily & Chart Tools</p>
+            <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
+              Most Used Apps
+            </h2>
+          </div>
+          <Link
+            to="/app/apps"
+            className="min-h-[40px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/18 bg-[#FDFBF7] px-4 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap self-start sm:self-auto"
+          >
+            <span>Go to All Apps ({catalogApps.length})</span>
+            <ArrowRight className="h-3.5 w-3.5 text-[#8B7355]" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {featuredApps.map((app) => (
+            <Link
+              key={app.slug}
+              to={`/app/apps/${app.slug}`}
+              className="group flex flex-col justify-between rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20"
+            >
+              <div className="space-y-3">
+                <div className="h-10 w-10 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/8 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors">
+                  {renderMiniAppIcon(app.iconKey, 'h-4 w-4')}
+                </div>
+                <div>
+                  <p className="text-[11px] text-[#8B8275]">{app.categoryLabel}</p>
+                  <h3 className="mt-0.5 font-serif text-xl font-medium text-[#3D3830]">
+                    {app.shortTitle}
+                  </h3>
+                  <p className="mt-1 text-xs text-[#5C5449] leading-relaxed line-clamp-2">
+                    {app.tagline}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-[#3D3830]/8 flex items-center justify-between text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830]">
+                <span>Open</span>
+                <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* SECTION 4: PERSONAL TIMING RADAR (Preserved Observatory Night Surface) */}
       <TimingRadarDashboard />
 
-      {/* Account Capacity & Balance Snapshot */}
+      {/* SECTION 5: ACCOUNT CAPACITY & BALANCE SNAPSHOT (Preserved) */}
       <section className="rounded-3xl bg-[#F1ECE3] p-7 md:p-8 border border-[#3D3830]/10 text-[#3D3830]">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
           <div>
@@ -68,6 +362,15 @@ const AppDashboardHome: React.FC = () => {
             <p className="mt-1.5 text-sm text-[#5C5449] max-w-xl">
               Credits power multi-system Vedic consultations and deep research reports.
             </p>
+            {lowCreditsAlert && (
+              <p className="mt-2 text-xs font-medium text-[#7A3E36]">
+                Your credit balance is below 10% remaining —{' '}
+                <Link to="/app/billing" className="underline underline-offset-4">
+                  review top-up options
+                </Link>
+                .
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-6 md:gap-10">
@@ -94,7 +397,7 @@ const AppDashboardHome: React.FC = () => {
         </div>
       </section>
 
-      {/* Primary Workspace Actions */}
+      {/* SECTION 6: PRIMARY WORKSPACE ACTIONS (Preserved) */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         <Link
           to="/app/profiles"

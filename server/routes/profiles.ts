@@ -33,10 +33,28 @@ const TIER_ACTIVATION_CREDITS: Record<string, number> = {
 const BASE_PROFILE_SUMMARY_COLUMNS =
   'id, user_id, name, birth_date, birth_time, birth_city, birth_state, birth_country, latitude, longitude, timezone_offset, gender, relationship, birth_chart_pdf_url, is_activated, activated_at, created_at, updated_at';
 
-const PROFILE_SUMMARY_COLUMNS =
+const V2_PROFILE_SUMMARY_COLUMNS =
   'id, user_id, name, short_name, is_default, birth_date, birth_time, birth_city, birth_state, birth_country, latitude, longitude, timezone_offset, gender, relationship, birth_chart_pdf_url, is_activated, activated_at, created_at, updated_at';
 
+const PROFILE_SUMMARY_COLUMNS =
+  'id, user_id, name, short_name, is_default, birth_date, birth_time, birth_city, birth_state, birth_country, current_city, current_state, current_country, current_timezone_offset, latitude, longitude, timezone_offset, gender, relationship, birth_chart_pdf_url, is_activated, activated_at, created_at, updated_at';
+
 const PROFILE_DETAIL_COLUMNS = `${PROFILE_SUMMARY_COLUMNS}, chart_json`;
+
+function withEmptyCurrentLocation<T extends Record<string, unknown>>(row: T): T & {
+  current_city: null;
+  current_state: null;
+  current_country: null;
+  current_timezone_offset: null;
+} {
+  return {
+    ...row,
+    current_city: null,
+    current_state: null,
+    current_country: null,
+    current_timezone_offset: null,
+  };
+}
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
@@ -54,21 +72,35 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     .order('created_at', { ascending: false });
 
   if (primaryRes.error) {
-    const fallbackRes = await supabaseAdmin
+    const v2Res = await supabaseAdmin
       .from('profiles')
-      .select(BASE_PROFILE_SUMMARY_COLUMNS)
+      .select(V2_PROFILE_SUMMARY_COLUMNS)
       .eq('user_id', req.appUser.id)
       .order('created_at', { ascending: false });
 
-    if (fallbackRes.error) {
-      res.status(500).json({ error: 'Failed to load profiles' });
-      return;
+    if (!v2Res.error && v2Res.data) {
+      rows = (v2Res.data as Array<Record<string, unknown>>).map((r) =>
+        withEmptyCurrentLocation(r)
+      );
+    } else {
+      const fallbackRes = await supabaseAdmin
+        .from('profiles')
+        .select(BASE_PROFILE_SUMMARY_COLUMNS)
+        .eq('user_id', req.appUser.id)
+        .order('created_at', { ascending: false });
+
+      if (fallbackRes.error) {
+        res.status(500).json({ error: 'Failed to load profiles' });
+        return;
+      }
+      rows = (fallbackRes.data || []).map((r) =>
+        withEmptyCurrentLocation({
+          ...r,
+          short_name: null,
+          is_default: false,
+        })
+      );
     }
-    rows = (fallbackRes.data || []).map((r) => ({
-      ...r,
-      short_name: null,
-      is_default: false,
-    }));
   } else {
     rows = (primaryRes.data || []) as Array<Record<string, unknown>>;
   }
@@ -175,34 +207,58 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   const includeChart = req.query.includeChart !== '0';
   const selectColumns = includeChart ? PROFILE_DETAIL_COLUMNS : PROFILE_SUMMARY_COLUMNS;
 
-  let { data, error } = await supabaseAdmin
+  const initialQuery = await supabaseAdmin
     .from('profiles')
     .select(selectColumns)
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
 
-  if (error) {
-    const baseCols = includeChart
-      ? `${BASE_PROFILE_SUMMARY_COLUMNS}, chart_json`
-      : BASE_PROFILE_SUMMARY_COLUMNS;
-    const fallback = await supabaseAdmin
+  let rawProfile: Record<string, unknown> | null = initialQuery.data
+    ? (initialQuery.data as unknown as Record<string, unknown>)
+    : null;
+  let queryError = initialQuery.error;
+
+  if (queryError) {
+    const v2Cols = includeChart
+      ? `${V2_PROFILE_SUMMARY_COLUMNS}, chart_json`
+      : V2_PROFILE_SUMMARY_COLUMNS;
+    const v2Fallback = await supabaseAdmin
       .from('profiles')
-      .select(baseCols)
+      .select(v2Cols)
       .eq('id', req.params.id)
       .eq('user_id', req.appUser.id)
       .maybeSingle();
-    data = fallback.data;
-    error = fallback.error;
+
+    if (!v2Fallback.error && v2Fallback.data) {
+      rawProfile = withEmptyCurrentLocation(
+        v2Fallback.data as unknown as Record<string, unknown>
+      );
+      queryError = null;
+    } else {
+      const baseCols = includeChart
+        ? `${BASE_PROFILE_SUMMARY_COLUMNS}, chart_json`
+        : BASE_PROFILE_SUMMARY_COLUMNS;
+      const fallback = await supabaseAdmin
+        .from('profiles')
+        .select(baseCols)
+        .eq('id', req.params.id)
+        .eq('user_id', req.appUser.id)
+        .maybeSingle();
+      rawProfile = fallback.data
+        ? withEmptyCurrentLocation(fallback.data as unknown as Record<string, unknown>)
+        : null;
+      queryError = fallback.error;
+    }
   }
 
-  if (error || !data) {
+  if (queryError || !rawProfile) {
     res.status(404).json({ error: 'Profile not found' });
     return;
   }
 
   // Silently compile any legacy unactivated profile when inspected so no user ever sees an "Activate" button
-  let profilePayload: Record<string, unknown> = data as unknown as Record<string, unknown>;
+  let profilePayload: Record<string, unknown> = rawProfile;
   if (includeChart && (!profilePayload.is_activated || !profilePayload.chart_json) && isAstrologyApiConfigured()) {
     try {
       const compiled = await compileBirthChart({
@@ -295,6 +351,11 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     birth_city,
     birth_state,
     birth_country,
+    current_place_query,
+    current_city,
+    current_state,
+    current_country,
+    current_timezone_offset,
     latitude,
     longitude,
     timezone_offset,
@@ -304,6 +365,14 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   } = req.body || {};
 
   const parsedPlace = parseNaturalPlace(place_query, birth_city, birth_state, birth_country);
+  const parsedCurrentPlace =
+    current_place_query || current_city || current_country
+      ? parseNaturalPlace(current_place_query, current_city, current_state, current_country)
+      : null;
+  const parsedCurrentTz =
+    typeof current_timezone_offset === 'number' && !Number.isNaN(current_timezone_offset)
+      ? current_timezone_offset
+      : null;
 
   if (!name?.trim() || !birth_date || !birth_time || !parsedPlace.birthCity) {
     res.status(400).json({
@@ -443,31 +512,64 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     activated_at: nowIso,
   };
 
+  const v2ExtraPayload = {
+    short_name:
+      typeof short_name === 'string' && short_name.trim()
+        ? short_name.trim().slice(0, 40)
+        : null,
+    is_default: wantsDefault,
+    chart_fingerprint: chartFingerprint,
+  };
+
+  const currentLocPayload = {
+    current_city: parsedCurrentPlace?.birthCity?.trim() || null,
+    current_state: parsedCurrentPlace?.birthState?.trim() || null,
+    current_country: parsedCurrentPlace?.birthCountry?.trim() || null,
+    current_timezone_offset: parsedCurrentTz,
+  };
+
   let { data, error } = await supabaseAdmin
     .from('profiles')
     .insert({
       ...basePayload,
-      short_name:
-        typeof short_name === 'string' && short_name.trim()
-          ? short_name.trim().slice(0, 40)
-          : null,
-      is_default: wantsDefault,
-      chart_fingerprint: chartFingerprint,
+      ...v2ExtraPayload,
+      ...currentLocPayload,
     })
     .select(PROFILE_SUMMARY_COLUMNS)
     .single();
 
   if (error) {
-    const fallback = await supabaseAdmin
+    // Fallback if migration 005 (current_*) hasn't been executed yet
+    const v2Retry = await supabaseAdmin
       .from('profiles')
-      .insert(basePayload)
-      .select(BASE_PROFILE_SUMMARY_COLUMNS)
+      .insert({
+        ...basePayload,
+        ...v2ExtraPayload,
+      })
+      .select(V2_PROFILE_SUMMARY_COLUMNS)
       .single();
-    if (fallback.error || !fallback.data) {
-      res.status(500).json({ error: 'Failed to save birth chart profile.' });
-      return;
+
+    if (!v2Retry.error && v2Retry.data) {
+      data = withEmptyCurrentLocation(
+        v2Retry.data as unknown as Record<string, unknown>
+      ) as typeof data;
+      error = null;
+    } else {
+      const fallback = await supabaseAdmin
+        .from('profiles')
+        .insert(basePayload)
+        .select(BASE_PROFILE_SUMMARY_COLUMNS)
+        .single();
+      if (fallback.error || !fallback.data) {
+        res.status(500).json({ error: 'Failed to save birth chart profile.' });
+        return;
+      }
+      data = withEmptyCurrentLocation({
+        ...fallback.data,
+        short_name: null,
+        is_default: false,
+      }) as typeof data;
     }
-    data = { ...fallback.data, short_name: null, is_default: false };
   }
 
   // Warm global daily transit cache in background (best effort)
@@ -506,6 +608,11 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     birth_city,
     birth_state,
     birth_country,
+    current_place_query,
+    current_city,
+    current_state,
+    current_country,
+    current_timezone_offset,
     gender,
   } = req.body || {};
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -524,6 +631,43 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
   if (typeof relationship === 'string') updates.relationship = relationship.trim() || null;
   if (typeof birth_chart_pdf_url === 'string') updates.birth_chart_pdf_url = birth_chart_pdf_url.trim() || null;
+
+  // Current Location can always be updated even after chart activation
+  if (
+    current_place_query !== undefined ||
+    current_city !== undefined ||
+    current_state !== undefined ||
+    current_country !== undefined
+  ) {
+    const hasAnyCurrent = Boolean(
+      (typeof current_place_query === 'string' && current_place_query.trim()) ||
+        (typeof current_city === 'string' && current_city.trim()) ||
+        (typeof current_country === 'string' && current_country.trim())
+    );
+    if (!hasAnyCurrent) {
+      updates.current_city = null;
+      updates.current_state = null;
+      updates.current_country = null;
+      updates.current_timezone_offset = null;
+    } else {
+      const parsedCur = parseNaturalPlace(
+        current_place_query,
+        current_city,
+        current_state,
+        current_country
+      );
+      updates.current_city = parsedCur.birthCity || null;
+      updates.current_state = parsedCur.birthState || null;
+      updates.current_country = parsedCur.birthCountry || null;
+      if (typeof current_timezone_offset === 'number' && !Number.isNaN(current_timezone_offset)) {
+        updates.current_timezone_offset = current_timezone_offset;
+      } else if (current_timezone_offset === null) {
+        updates.current_timezone_offset = null;
+      }
+    }
+  } else if (typeof current_timezone_offset === 'number' && !Number.isNaN(current_timezone_offset)) {
+    updates.current_timezone_offset = current_timezone_offset;
+  }
 
   // Birth coordinates/times can only be modified before activation to protect chart integrity
   if (!existing.is_activated) {
@@ -553,21 +697,45 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     .single();
 
   if (error) {
-    const baseUpdates = { ...updates };
-    delete baseUpdates.short_name;
-    delete baseUpdates.is_default;
-    delete baseUpdates.chart_fingerprint;
-    const fallback = await supabaseAdmin
+    const v2Updates = { ...updates };
+    delete v2Updates.current_city;
+    delete v2Updates.current_state;
+    delete v2Updates.current_country;
+    delete v2Updates.current_timezone_offset;
+
+    const v2Retry = await supabaseAdmin
       .from('profiles')
-      .update(baseUpdates)
+      .update(v2Updates)
       .eq('id', existing.id)
-      .select(BASE_PROFILE_SUMMARY_COLUMNS)
+      .select(V2_PROFILE_SUMMARY_COLUMNS)
       .single();
-    if (fallback.error || !fallback.data) {
-      res.status(500).json({ error: 'Failed to update profile' });
-      return;
+
+    if (!v2Retry.error && v2Retry.data) {
+      data = withEmptyCurrentLocation(
+        v2Retry.data as unknown as Record<string, unknown>
+      ) as typeof data;
+      error = null;
+    } else {
+      const baseUpdates = { ...v2Updates };
+      delete baseUpdates.short_name;
+      delete baseUpdates.is_default;
+      delete baseUpdates.chart_fingerprint;
+      const fallback = await supabaseAdmin
+        .from('profiles')
+        .update(baseUpdates)
+        .eq('id', existing.id)
+        .select(BASE_PROFILE_SUMMARY_COLUMNS)
+        .single();
+      if (fallback.error || !fallback.data) {
+        res.status(500).json({ error: 'Failed to update profile' });
+        return;
+      }
+      data = withEmptyCurrentLocation({
+        ...fallback.data,
+        short_name: null,
+        is_default: false,
+      }) as typeof data;
     }
-    data = { ...fallback.data, short_name: null, is_default: false };
   }
 
   res.json({ profile: data });

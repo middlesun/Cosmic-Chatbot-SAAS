@@ -8,12 +8,14 @@ import {
   ArrowLeft,
   AlertCircle,
   Check,
+  MapPin,
   Pencil,
   UserCheck,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import ChartViewer, { type CompiledChartJson } from './ChartViewer';
 import { BirthChartForm } from './BirthChartModal';
+import type { PlaceSuggestion } from './chatTypes';
 
 interface ProfileSummary {
   id: string;
@@ -25,6 +27,10 @@ interface ProfileSummary {
   birth_city: string;
   birth_state: string | null;
   birth_country: string;
+  current_city?: string | null;
+  current_state?: string | null;
+  current_country?: string | null;
+  current_timezone_offset?: number | null;
   gender: string | null;
   relationship: string | null;
   birth_chart_pdf_url: string | null;
@@ -50,9 +56,14 @@ const ProfileManager: React.FC = () => {
   const [selectedProfile, setSelectedProfile] = useState<ProfileSummary | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  // Inline label & default management
+  // Inline label, current location & default management
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [editingShortName, setEditingShortName] = useState('');
+  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [editingLocationQuery, setEditingLocationQuery] = useState('');
+  const [selectedEditLocation, setSelectedEditLocation] = useState<PlaceSuggestion | null>(null);
+  const [locationSuggestions, setLocationSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [loadingLocationSuggestions, setLoadingLocationSuggestions] = useState(false);
   const [updatingMetaId, setUpdatingMetaId] = useState<string | null>(null);
 
   const loadProfiles = useCallback(async () => {
@@ -109,6 +120,96 @@ const ProfileManager: React.FC = () => {
       }
     } catch {
       setError('Network error updating default profile.');
+    } finally {
+      setUpdatingMetaId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!editingLocationId) {
+      setLocationSuggestions([]);
+      setLoadingLocationSuggestions(false);
+      return;
+    }
+    const trimmed = editingLocationQuery.trim();
+    if (
+      isPreviewMode ||
+      trimmed.length < 2 ||
+      (selectedEditLocation && selectedEditLocation.label === trimmed)
+    ) {
+      setLocationSuggestions([]);
+      setLoadingLocationSuggestions(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setLoadingLocationSuggestions(true);
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        const res = await fetch(`/api/profiles/places?q=${encodeURIComponent(trimmed)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setLocationSuggestions(Array.isArray(data.places) ? data.places : []);
+        }
+      } catch {
+        // Ignore abort/network errors on autocomplete
+      } finally {
+        setLoadingLocationSuggestions(false);
+      }
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [editingLocationId, editingLocationQuery, selectedEditLocation, isPreviewMode, getAccessToken]);
+
+  const handleSaveCurrentLocation = async (profileId: string) => {
+    const token = await getAccessToken();
+    if (!token) return;
+    setError(null);
+    setUpdatingMetaId(profileId);
+    try {
+      const trimmed = editingLocationQuery.trim();
+      const body: Record<string, unknown> = selectedEditLocation
+        ? {
+            current_city: selectedEditLocation.city,
+            current_state: selectedEditLocation.state,
+            current_country: selectedEditLocation.country,
+            current_timezone_offset: selectedEditLocation.timezoneOffset,
+          }
+        : trimmed
+        ? { current_place_query: trimmed }
+        : {
+            current_city: '',
+            current_state: '',
+            current_country: '',
+            current_timezone_offset: null,
+          };
+
+      const res = await fetch(`/api/profiles/${profileId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Could not save current location.');
+      } else {
+        setEditingLocationId(null);
+        setSelectedEditLocation(null);
+        setLocationSuggestions([]);
+        await loadProfiles();
+      }
+    } catch {
+      setError('Network error saving current location.');
     } finally {
       setUpdatingMetaId(null);
     }
@@ -423,8 +524,119 @@ const ProfileManager: React.FC = () => {
                   {profile.birth_date} · {profile.birth_time}
                 </p>
                 <p className="mt-1 text-xs text-[#8B8275]">
-                  {[profile.birth_city, profile.birth_state, profile.birth_country].filter(Boolean).join(', ')}
+                  Born in {[profile.birth_city, profile.birth_state, profile.birth_country].filter(Boolean).join(', ')}
                 </p>
+
+                {/* Current Location display + inline edit */}
+                {editingLocationId === profile.id ? (
+                  <div className="mt-2.5 space-y-2 relative">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-medium text-[#5C5449]">Current location</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const birthFormatted = [
+                            profile.birth_city,
+                            profile.birth_state,
+                            profile.birth_country,
+                          ]
+                            .filter(Boolean)
+                            .join(', ');
+                          setEditingLocationQuery(birthFormatted);
+                          setSelectedEditLocation(null);
+                          setLocationSuggestions([]);
+                        }}
+                        className="text-[11px] text-[#8B7355] hover:text-[#3D3830] underline underline-offset-2 cursor-pointer"
+                      >
+                        Same as birth city
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={editingLocationQuery}
+                        onChange={(e) => {
+                          setEditingLocationQuery(e.target.value);
+                          setSelectedEditLocation(null);
+                        }}
+                        placeholder="City, Country (leave blank to clear)"
+                        className="w-full rounded-lg border border-[#3D3830]/20 bg-[#FAF7F2] px-2.5 py-1.5 text-xs text-[#3D3830] placeholder:text-[#8B8275] focus:border-[#4A453D] focus:outline-none"
+                      />
+                      {loadingLocationSuggestions && (
+                        <Loader2 className="h-3.5 w-3.5 text-[#8B8275] animate-spin absolute right-2.5 top-1/2 -translate-y-1/2" />
+                      )}
+                    </div>
+                    {locationSuggestions.length > 0 && (
+                      <div className="rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-lg p-1 max-h-40 overflow-y-auto space-y-0.5">
+                        {locationSuggestions.map((place, idx) => (
+                          <button
+                            key={`edit-loc-${idx}`}
+                            type="button"
+                            onClick={() => {
+                              setSelectedEditLocation(place);
+                              setEditingLocationQuery(place.label);
+                              setLocationSuggestions([]);
+                            }}
+                            className="w-full text-left rounded-lg px-2.5 py-1.5 text-xs text-[#3D3830] hover:bg-[#F1ECE3] flex items-center gap-2 cursor-pointer"
+                          >
+                            <MapPin className="h-3 w-3 text-[#8B7355] shrink-0" />
+                            <span className="truncate">{place.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={updatingMetaId === profile.id}
+                        onClick={() => void handleSaveCurrentLocation(profile.id)}
+                        className="inline-flex items-center gap-1 rounded-full bg-[#4A453D] px-3 py-1 text-[11px] font-medium text-[#FAF7F2] hover:bg-[#38342E] cursor-pointer"
+                      >
+                        <Check className="h-3 w-3" />
+                        <span>Save</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingLocationId(null);
+                          setSelectedEditLocation(null);
+                          setLocationSuggestions([]);
+                        }}
+                        className="text-[11px] text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-1.5 flex items-center gap-2 text-xs text-[#5C5449]">
+                    <span className="truncate">
+                      Lives in:{' '}
+                      <span className="font-medium text-[#3D3830]">
+                        {[profile.current_city, profile.current_state, profile.current_country]
+                          .filter(Boolean)
+                          .join(', ') || 'Not set'}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingLocationId(profile.id);
+                        setEditingLocationQuery(
+                          [profile.current_city, profile.current_state, profile.current_country]
+                            .filter(Boolean)
+                            .join(', ')
+                        );
+                        setSelectedEditLocation(null);
+                        setLocationSuggestions([]);
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] text-[#8B8275] hover:text-[#3D3830] shrink-0 cursor-pointer"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      <span>Edit</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#3D3830]/10">

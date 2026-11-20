@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Router } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
@@ -6,41 +7,82 @@ import {
   countWords,
   detectPromptExtractionAttempt,
   generateConversationTitle,
-  generateFollowUpQuestions,
+  generateStructuredSuggestions,
   isOpenRouterConfiguredAsync,
   runQuickTool,
   sanitizeAssistantOutput,
   streamConsultationResponse,
+  type MessageSuggestions,
 } from '../services/geminiOrchestrator';
 import { isAstrologyApiConfigured } from '../services/astrologyApi';
-import { compileBirthChart } from '../services/chartCompiler';
+import { compileBirthChart, type CompiledChartData } from '../services/chartCompiler';
 import {
   rebuildProfileMemory,
   updateProfileMemoryAfterTurn,
 } from '../services/memoryArchivist';
 import { getPublicChatCatalogCached } from '../services/promptDefaults';
-import { getPricingConfig, getPublicChatbotUiConfig } from '../services/platformSettings';
+import {
+  getPricingConfig,
+  getPublicChatbotUiConfig,
+  getPublicSuggestionsConfig,
+} from '../services/platformSettings';
 import { checkRateLimit } from '../services/abuseGuard';
+import {
+  COMPANION_ARCHETYPES,
+  generateMatchedCompanions,
+  type ChatPillar,
+  type CompanionArchetypeSlug,
+  type CompanionPersona,
+} from '../services/companionEngine';
 
 const router = Router();
 
-const CONVERSATION_LIST_COLUMNS =
+const MAX_ACTIVE_TABS = 5;
+
+const CONVERSATION_LIST_COLUMNS_BASE =
   'id, user_id, profile_id, linked_report_id, title, mode_type, is_bookmarked, total_word_count, use_full_profile_memory, updated_at, created_at';
-const MESSAGE_SELECT_COLUMNS =
+const CONVERSATION_LIST_COLUMNS_V5 = `${CONVERSATION_LIST_COLUMNS_BASE}, ask_later_json`;
+const CONVERSATION_LIST_COLUMNS_V6 = `${CONVERSATION_LIST_COLUMNS_V5}, pillar, is_active_tab, active_tab_order, companion_type, companion_persona_json`;
+
+const MESSAGE_SELECT_COLUMNS_BASE =
   'id, conversation_id, parent_message_id, role, content, word_count, expert_used, mode_used, output_format_used, language_used, is_starred, excluded_from_context, followups_json, credits_charged, created_at';
+const MESSAGE_SELECT_COLUMNS = `${MESSAGE_SELECT_COLUMNS_BASE}, suggestions_json`;
+
+function normalizeConversationDefaults(row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ask_later_json: [],
+    pillar: 'council',
+    is_active_tab: false,
+    active_tab_order: 0,
+    companion_type: null,
+    companion_persona_json: null,
+    ...row,
+  };
+}
+
+function isValidPillar(v: unknown): v is ChatPillar {
+  return v === 'council' || v === 'companion' || v === 'clarity';
+}
+
+function isValidCompanionType(v: unknown): v is CompanionArchetypeSlug {
+  return COMPANION_ARCHETYPES.some((a) => a.slug === v);
+}
 
 // 1. Public-safe Chat Catalog + Dynamic Chatbot UI Config (never raw prompts)
 router.get('/config', requireAuth, async (_req: AuthenticatedRequest, res) => {
-  const [catalog, chatbotConfig, pricingConfig, openrouterReady] = await Promise.all([
-    getPublicChatCatalogCached(),
-    getPublicChatbotUiConfig(),
-    getPricingConfig(),
-    isOpenRouterConfiguredAsync(),
-  ]);
+  const [catalog, chatbotConfig, suggestionsConfig, pricingConfig, openrouterReady] =
+    await Promise.all([
+      getPublicChatCatalogCached(),
+      getPublicChatbotUiConfig(),
+      getPublicSuggestionsConfig(),
+      getPricingConfig(),
+      isOpenRouterConfiguredAsync(),
+    ]);
   res.setHeader('Cache-Control', 'private, no-cache');
   res.json({
     catalog,
     chatbotConfig,
+    suggestionsConfig,
     openrouterConfigured: openrouterReady,
     minCreditsRequired: pricingConfig.min_credits_to_chat,
   });
@@ -57,65 +99,103 @@ router.get('/conversations', requireAuth, async (req: AuthenticatedRequest, res)
   const sortBy = req.query.sort === 'longest' ? 'longest' : 'newest';
   const queryText = typeof req.query.q === 'string' ? req.query.q.trim() : '';
 
-  let convQuery = supabaseAdmin
-    .from('conversations')
-    .select(CONVERSATION_LIST_COLUMNS)
-    .eq('user_id', req.appUser.id);
-
-  if (queryText) {
-    convQuery = convQuery.ilike('title', `%${queryText}%`);
-  }
-
-  if (sortBy === 'longest') {
-    convQuery = convQuery
+  const buildConvQuery = (columns: string) => {
+    let q = supabaseAdmin
+      .from('conversations')
+      .select(columns)
+      .eq('user_id', req.appUser!.id);
+    if (queryText) {
+      q = q.ilike('title', `%${queryText}%`);
+    }
+    if (sortBy === 'longest') {
+      return q
+        .order('is_bookmarked', { ascending: false })
+        .order('total_word_count', { ascending: false })
+        .order('updated_at', { ascending: false });
+    }
+    return q
       .order('is_bookmarked', { ascending: false })
-      .order('total_word_count', { ascending: false })
       .order('updated_at', { ascending: false });
-  } else {
-    convQuery = convQuery
-      .order('is_bookmarked', { ascending: false })
-      .order('updated_at', { ascending: false });
-  }
+  };
 
-  const [convRes, primaryProfRes] = await Promise.all([
-    convQuery,
+  const [convResPrimary, primaryProfRes] = await Promise.all([
+    buildConvQuery(CONVERSATION_LIST_COLUMNS_V6),
     supabaseAdmin
       .from('profiles')
-      .select('id, name, short_name, is_default, birth_date, birth_city, birth_country, relationship, is_activated')
+      .select(
+        'id, name, short_name, is_default, birth_date, birth_city, birth_country, current_city, current_state, current_country, relationship, is_activated'
+      )
       .eq('user_id', req.appUser.id)
       .order('created_at', { ascending: false }),
   ]);
 
-  if (convRes.error) {
-    res.status(500).json({ error: 'Failed to load consultations' });
-    return;
+  let convRows: Array<Record<string, unknown>> = [];
+  if (convResPrimary.error) {
+    const convResV5 = await buildConvQuery(CONVERSATION_LIST_COLUMNS_V5);
+    if (!convResV5.error && convResV5.data) {
+      convRows = ((convResV5.data || []) as unknown as Array<Record<string, unknown>>).map(
+        normalizeConversationDefaults
+      );
+    } else {
+      const convResFallback = await buildConvQuery(CONVERSATION_LIST_COLUMNS_BASE);
+      if (convResFallback.error) {
+        res.status(500).json({ error: 'Failed to load consultations' });
+        return;
+      }
+      convRows = ((convResFallback.data || []) as unknown as Array<Record<string, unknown>>).map(
+        normalizeConversationDefaults
+      );
+    }
+  } else {
+    convRows = ((convResPrimary.data || []) as unknown as Array<Record<string, unknown>>).map(
+      normalizeConversationDefaults
+    );
   }
 
-  let profileRows = primaryProfRes.data;
+  let profileRows: Array<Record<string, unknown>> = [];
   if (primaryProfRes.error) {
-    const fallbackProfRes = await supabaseAdmin
+    const v2ProfRes = await supabaseAdmin
       .from('profiles')
-      .select('id, name, birth_date, birth_city, birth_country, relationship, is_activated')
+      .select('id, name, short_name, is_default, birth_date, birth_city, birth_country, relationship, is_activated')
       .eq('user_id', req.appUser.id)
       .order('created_at', { ascending: false });
-    profileRows = (fallbackProfRes.data || []).map((r) => ({
-      ...r,
-      short_name: null,
-      is_default: false,
-    }));
+    if (!v2ProfRes.error && v2ProfRes.data) {
+      profileRows = (v2ProfRes.data as Array<Record<string, unknown>>).map((r) => ({
+        ...r,
+        current_city: null,
+        current_state: null,
+        current_country: null,
+      }));
+    } else {
+      const fallbackProfRes = await supabaseAdmin
+        .from('profiles')
+        .select('id, name, birth_date, birth_city, birth_country, relationship, is_activated')
+        .eq('user_id', req.appUser.id)
+        .order('created_at', { ascending: false });
+      profileRows = (fallbackProfRes.data || []).map((r) => ({
+        ...r,
+        short_name: null,
+        is_default: false,
+        current_city: null,
+        current_state: null,
+        current_country: null,
+      }));
+    }
+  } else {
+    profileRows = (primaryProfRes.data || []) as Array<Record<string, unknown>>;
   }
 
-  const sortedProfiles = [...(profileRows || [])].sort((a, b) => {
+  const sortedProfiles = [...profileRows].sort((a, b) => {
     return (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0);
   });
 
   res.json({
-    conversations: convRes.data || [],
+    conversations: convRows,
     profiles: sortedProfiles,
   });
 });
 
-// 3. Create new conversation (Profile folder or General / Learn Astrology)
+// 3. Create new conversation (Council, Companion, or Clarity)
 router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin || !req.appUser) {
@@ -123,13 +203,26 @@ router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res
     return;
   }
 
-  const { profile_id, mode_type, title, use_full_profile_memory } = req.body || {};
+  const {
+    profile_id,
+    mode_type,
+    title,
+    use_full_profile_memory,
+    pillar,
+    is_active_tab,
+    active_tab_order,
+    companion_type,
+    companion_persona_json,
+  } = req.body || {};
 
-  if (profile_id) {
+  const normalizedPillar: ChatPillar = isValidPillar(pillar) ? pillar : 'council';
+  const effectiveProfileId = normalizedPillar === 'council' ? profile_id || null : null;
+
+  if (effectiveProfileId) {
     const { data: ownedProfile } = await supabaseAdmin
       .from('profiles')
       .select('id')
-      .eq('id', profile_id)
+      .eq('id', effectiveProfileId)
       .eq('user_id', req.appUser.id)
       .maybeSingle();
 
@@ -144,27 +237,84 @@ router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res
       ? mode_type
       : 'reading';
 
-  const { data, error } = await supabaseAdmin
+  const defaultTitle =
+    normalizedPillar === 'clarity'
+      ? 'Clarity'
+      : normalizedPillar === 'companion'
+      ? (typeof companion_persona_json?.name === 'string' && companion_persona_json.name.trim()
+          ? companion_persona_json.name.trim()
+          : 'Companion Chat')
+      : 'New Consultation';
+
+  const defaultMemory =
+    typeof use_full_profile_memory === 'boolean'
+      ? use_full_profile_memory
+      : normalizedPillar === 'clarity'
+      ? false
+      : true;
+
+  const basePayload = {
+    user_id: req.appUser.id,
+    profile_id: effectiveProfileId,
+    mode_type: normalizedModeType,
+    title: typeof title === 'string' && title.trim() ? title.trim().slice(0, 80) : defaultTitle,
+    use_full_profile_memory: defaultMemory,
+  };
+
+  const extendedPayload = {
+    ...basePayload,
+    pillar: normalizedPillar,
+    is_active_tab: Boolean(is_active_tab),
+    active_tab_order: Number.isFinite(Number(active_tab_order)) ? Math.trunc(Number(active_tab_order)) : 0,
+    companion_type: isValidCompanionType(companion_type) ? companion_type : null,
+    companion_persona_json:
+      companion_persona_json && typeof companion_persona_json === 'object'
+        ? companion_persona_json
+        : null,
+  };
+
+  const primaryInsert = await supabaseAdmin
     .from('conversations')
-    .insert({
-      user_id: req.appUser.id,
-      profile_id: profile_id || null,
-      mode_type: normalizedModeType,
-      title: typeof title === 'string' && title.trim() ? title.trim().slice(0, 80) : 'New Consultation',
-      use_full_profile_memory: typeof use_full_profile_memory === 'boolean' ? use_full_profile_memory : true,
-    })
+    .insert(extendedPayload)
     .select('*')
     .single();
 
-  if (error || !data) {
+  if (!primaryInsert.error && primaryInsert.data) {
+    res.status(201).json({
+      conversation: normalizeConversationDefaults(
+        primaryInsert.data as unknown as Record<string, unknown>
+      ),
+      persistedPillar: true,
+    });
+    return;
+  }
+
+  // Graceful fallback if migration 006 hasn't been executed yet
+  const fallbackInsert = await supabaseAdmin
+    .from('conversations')
+    .insert(basePayload)
+    .select('*')
+    .single();
+
+  if (fallbackInsert.error || !fallbackInsert.data) {
     res.status(500).json({ error: 'Failed to create consultation' });
     return;
   }
 
-  res.status(201).json({ conversation: data });
+  res.status(201).json({
+    conversation: normalizeConversationDefaults({
+      ...(fallbackInsert.data as unknown as Record<string, unknown>),
+      pillar: normalizedPillar,
+      is_active_tab: Boolean(is_active_tab),
+      active_tab_order: extendedPayload.active_tab_order,
+      companion_type: extendedPayload.companion_type,
+      companion_persona_json: extendedPayload.companion_persona_json,
+    }),
+    persistedPillar: false,
+  });
 });
 
-// 4. Update conversation (rename, pin/bookmark, toggle profile memory, attach/switch profile mid-chat)
+// 4. Update conversation (rename, pin/bookmark, toggle profile memory, active tab pinning, attach/switch profile mid-chat)
 router.patch('/conversations/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin || !req.appUser) {
@@ -172,24 +322,36 @@ router.patch('/conversations/:id', requireAuth, async (req: AuthenticatedRequest
     return;
   }
 
-  const { title, is_bookmarked, profile_id, use_full_profile_memory, mode_type } = req.body || {};
-  const updates: Record<string, unknown> = {};
+  const {
+    title,
+    is_bookmarked,
+    profile_id,
+    use_full_profile_memory,
+    mode_type,
+    is_active_tab,
+    active_tab_order,
+    pillar,
+    companion_persona_json,
+  } = req.body || {};
+
+  const baseUpdates: Record<string, unknown> = {};
+  const v6Updates: Record<string, unknown> = {};
 
   if (typeof title === 'string' && title.trim()) {
-    updates.title = title.trim().slice(0, 90);
+    baseUpdates.title = title.trim().slice(0, 90);
   }
   if (typeof is_bookmarked === 'boolean') {
-    updates.is_bookmarked = is_bookmarked;
+    baseUpdates.is_bookmarked = is_bookmarked;
   }
   if (typeof use_full_profile_memory === 'boolean') {
-    updates.use_full_profile_memory = use_full_profile_memory;
+    baseUpdates.use_full_profile_memory = use_full_profile_memory;
   }
   if (mode_type === 'reading' || mode_type === 'learn_astrology' || mode_type === 'report_followup') {
-    updates.mode_type = mode_type;
+    baseUpdates.mode_type = mode_type;
   }
   if (profile_id !== undefined) {
     if (profile_id === null || profile_id === '') {
-      updates.profile_id = null;
+      baseUpdates.profile_id = null;
     } else {
       const { data: ownedProfile } = await supabaseAdmin
         .from('profiles')
@@ -202,29 +364,313 @@ router.patch('/conversations/:id', requireAuth, async (req: AuthenticatedRequest
         res.status(404).json({ error: 'Profile not found' });
         return;
       }
-      updates.profile_id = profile_id;
+      baseUpdates.profile_id = profile_id;
     }
   }
 
-  if (Object.keys(updates).length === 0) {
+  if (typeof is_active_tab === 'boolean') {
+    if (is_active_tab) {
+      // Enforce max 5 active pinned tabs cleanly when column exists
+      const countRes = await supabaseAdmin
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', req.appUser.id)
+        .eq('is_active_tab', true)
+        .neq('id', req.params.id);
+      if (!countRes.error && (countRes.count || 0) >= MAX_ACTIVE_TABS) {
+        res.status(400).json({
+          error: `Maximum ${MAX_ACTIVE_TABS} active tabs allowed. Close one tab first.`,
+          code: 'MAX_ACTIVE_TABS',
+        });
+        return;
+      }
+    }
+    v6Updates.is_active_tab = is_active_tab;
+  }
+  if (Number.isFinite(Number(active_tab_order))) {
+    v6Updates.active_tab_order = Math.trunc(Number(active_tab_order));
+  }
+  if (isValidPillar(pillar)) {
+    v6Updates.pillar = pillar;
+  }
+  if (companion_persona_json !== undefined) {
+    v6Updates.companion_persona_json =
+      companion_persona_json && typeof companion_persona_json === 'object'
+        ? companion_persona_json
+        : null;
+  }
+
+  const allUpdates = { ...baseUpdates, ...v6Updates };
+  if (Object.keys(allUpdates).length === 0) {
     res.status(400).json({ error: 'No valid update fields supplied' });
     return;
   }
 
-  const { data, error } = await supabaseAdmin
+  const primaryPatch = await supabaseAdmin
     .from('conversations')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...allUpdates, updated_at: new Date().toISOString() })
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .select('*')
     .maybeSingle();
 
-  if (error || !data) {
-    res.status(404).json({ error: 'Consultation not found' });
+  if (!primaryPatch.error && primaryPatch.data) {
+    res.json({
+      conversation: normalizeConversationDefaults(
+        primaryPatch.data as unknown as Record<string, unknown>
+      ),
+      persisted: true,
+    });
     return;
   }
 
-  res.json({ conversation: data });
+  // Graceful fallback before migration 006 runs
+  if (Object.keys(v6Updates).length > 0) {
+    if (Object.keys(baseUpdates).length > 0) {
+      const basePatch = await supabaseAdmin
+        .from('conversations')
+        .update({ ...baseUpdates, updated_at: new Date().toISOString() })
+        .eq('id', req.params.id)
+        .eq('user_id', req.appUser.id)
+        .select('*')
+        .maybeSingle();
+      if (!basePatch.error && basePatch.data) {
+        res.json({
+          conversation: normalizeConversationDefaults({
+            ...(basePatch.data as unknown as Record<string, unknown>),
+            ...v6Updates,
+          }),
+          persisted: false,
+        });
+        return;
+      }
+    } else {
+      const existing = await supabaseAdmin
+        .from('conversations')
+        .select(CONVERSATION_LIST_COLUMNS_BASE)
+        .eq('id', req.params.id)
+        .eq('user_id', req.appUser.id)
+        .maybeSingle();
+      if (existing.data) {
+        res.json({
+          conversation: normalizeConversationDefaults({
+            ...(existing.data as unknown as Record<string, unknown>),
+            ...v6Updates,
+          }),
+          persisted: false,
+        });
+        return;
+      }
+    }
+  }
+
+  res.status(404).json({ error: 'Consultation not found' });
+});
+
+// 4b. Dynamic Companion Matching (generates 4 realistic companions: 2 Female, 2 Male)
+router.post('/companions/match', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  if (!req.appUser.is_admin) {
+    const rate = checkRateLimit(`companion_match:${req.appUser.id}`, 18, 10 * 60 * 1000);
+    if (!rate.allowed) {
+      res.status(429).json({
+        error: 'Please pause a moment before generating more companion matches.',
+      });
+      return;
+    }
+  }
+
+  const {
+    companionType,
+    topic,
+    preference,
+    religiousness,
+    primaryReligion,
+    secondaryReligion,
+    excludeNames,
+  } = req.body || {};
+
+  const safeType: CompanionArchetypeSlug = isValidCompanionType(companionType)
+    ? companionType
+    : 'find_someone';
+
+  // Quietly read user's default profile age/gender (if any) strictly for natural relatable age calibration
+  let userAgeHint: number | null = null;
+  let userGenderHint: string | null = null;
+  if (supabaseAdmin) {
+    try {
+      const { data: ownProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('birth_date, gender, is_default')
+        .eq('user_id', req.appUser.id)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (ownProfile?.birth_date) {
+        const year = Number(String(ownProfile.birth_date).slice(0, 4));
+        const currentYear = new Date().getFullYear();
+        if (Number.isFinite(year) && year > 1920 && year < currentYear - 12) {
+          userAgeHint = currentYear - year;
+        }
+      }
+      if (typeof ownProfile?.gender === 'string' && ownProfile.gender.trim()) {
+        userGenderHint = ownProfile.gender.trim();
+      }
+    } catch {
+      // Non-critical calibration hint
+    }
+  }
+
+  const companions = await generateMatchedCompanions({
+    companionType: safeType,
+    topic: typeof topic === 'string' ? topic.trim().slice(0, 400) : undefined,
+    preference: typeof preference === 'string' ? preference.trim().slice(0, 300) : undefined,
+    religiousness: Number.isFinite(Number(religiousness)) ? Number(religiousness) : undefined,
+    primaryReligion:
+      typeof primaryReligion === 'string' ? primaryReligion.trim().slice(0, 80) : undefined,
+    secondaryReligion:
+      typeof secondaryReligion === 'string' ? secondaryReligion.trim().slice(0, 80) : undefined,
+    excludeNames: Array.isArray(excludeNames)
+      ? excludeNames.filter((n): n is string => typeof n === 'string').slice(0, 20)
+      : [],
+    userAgeHint,
+    userGenderHint,
+    preferredCallName: req.appUser.preferred_call_name || req.appUser.full_name || null,
+  });
+
+  res.json({ companions });
+});
+
+// 4c. Start a live Companion conversation with opening greeting persisted
+router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const rawPersona = req.body?.persona as CompanionPersona | undefined;
+  if (!rawPersona || typeof rawPersona !== 'object' || !rawPersona.name) {
+    res.status(400).json({ error: 'Selected companion persona is required' });
+    return;
+  }
+
+  const safeType: CompanionArchetypeSlug = isValidCompanionType(rawPersona.companion_type)
+    ? rawPersona.companion_type
+    : 'find_someone';
+
+  const cleanPersona: CompanionPersona = {
+    id: typeof rawPersona.id === 'string' && rawPersona.id ? rawPersona.id : `comp_${crypto.randomBytes(4).toString('hex')}`,
+    name: String(rawPersona.name).trim().slice(0, 50),
+    age: Number.isFinite(Number(rawPersona.age)) ? Math.round(Number(rawPersona.age)) : 32,
+    gender: rawPersona.gender === 'M' ? 'M' : 'F',
+    companion_type: safeType,
+    role_label: String(rawPersona.role_label || 'Companion').trim().slice(0, 60),
+    background: String(rawPersona.background || '').trim().slice(0, 140),
+    tagline: String(rawPersona.tagline || '').trim().slice(0, 160),
+    bio: String(rawPersona.bio || '').trim().slice(0, 360),
+    conversation_style: String(rawPersona.conversation_style || '').trim().slice(0, 140),
+    opening_message: String(
+      rawPersona.opening_message || `Hey — I am ${rawPersona.name}. What is on your mind today?`
+    )
+      .trim()
+      .slice(0, 400),
+    system_prompt: String(rawPersona.system_prompt || '').trim().slice(0, 2000),
+    topic_context: rawPersona.topic_context
+      ? String(rawPersona.topic_context).trim().slice(0, 300)
+      : undefined,
+    religion_profile: rawPersona.religion_profile,
+  };
+
+  const threadTitle = cleanPersona.topic_context
+    ? `${cleanPersona.name} · ${cleanPersona.topic_context.slice(0, 42)}`
+    : `${cleanPersona.name} · ${cleanPersona.role_label}`;
+
+  const basePayload = {
+    user_id: req.appUser.id,
+    profile_id: null,
+    mode_type: 'reading' as const,
+    title: threadTitle.slice(0, 80),
+    use_full_profile_memory: true,
+  };
+
+  let createdConv: Record<string, unknown> | null = null;
+  let persistedPillar = true;
+
+  const primaryInsert = await supabaseAdmin
+    .from('conversations')
+    .insert({
+      ...basePayload,
+      pillar: 'companion',
+      is_active_tab: Boolean(req.body?.pinAsTab),
+      companion_type: safeType,
+      companion_persona_json: cleanPersona,
+    })
+    .select('*')
+    .single();
+
+  if (!primaryInsert.error && primaryInsert.data) {
+    createdConv = normalizeConversationDefaults(
+      primaryInsert.data as unknown as Record<string, unknown>
+    );
+  } else {
+    persistedPillar = false;
+    const fallbackInsert = await supabaseAdmin
+      .from('conversations')
+      .insert(basePayload)
+      .select('*')
+      .single();
+    if (fallbackInsert.error || !fallbackInsert.data) {
+      res.status(500).json({ error: 'Could not start companion conversation' });
+      return;
+    }
+    createdConv = normalizeConversationDefaults({
+      ...(fallbackInsert.data as unknown as Record<string, unknown>),
+      pillar: 'companion',
+      is_active_tab: Boolean(req.body?.pinAsTab),
+      companion_type: safeType,
+      companion_persona_json: cleanPersona,
+    });
+  }
+
+  // Insert companion's warm opening message so conversation feels alive right away
+  let openingMsgRecord: Record<string, unknown> | null = null;
+  const openingWords = countWords(cleanPersona.opening_message);
+  const { data: msgData } = await supabaseAdmin
+    .from('messages')
+    .insert({
+      conversation_id: String(createdConv.id),
+      role: 'assistant',
+      content: cleanPersona.opening_message,
+      word_count: openingWords,
+      expert_used: `companion:${safeType}`,
+      mode_used: safeType,
+      output_format_used: 'conversational',
+      language_used: req.appUser.default_language || 'English',
+      followups_json: [],
+      tokens_in: 0,
+      tokens_out: 0,
+      credits_charged: 0,
+    })
+    .select('*')
+    .single();
+
+  if (msgData) {
+    openingMsgRecord = msgData as unknown as Record<string, unknown>;
+  }
+
+  res.status(201).json({
+    conversation: createdConv,
+    openingMessage: openingMsgRecord,
+    persistedPillar,
+  });
 });
 
 // 5. Delete conversation
@@ -257,12 +703,41 @@ router.get('/conversations/:id/messages', requireAuth, async (req: Authenticated
     return;
   }
 
-  const { data: conversation } = await supabaseAdmin
+  let conversation: Record<string, unknown> | null = null;
+  const convPrimary = await supabaseAdmin
     .from('conversations')
-    .select(CONVERSATION_LIST_COLUMNS)
+    .select(CONVERSATION_LIST_COLUMNS_V6)
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
+
+  if (convPrimary.error) {
+    const convV5 = await supabaseAdmin
+      .from('conversations')
+      .select(CONVERSATION_LIST_COLUMNS_V5)
+      .eq('id', req.params.id)
+      .eq('user_id', req.appUser.id)
+      .maybeSingle();
+    if (!convV5.error && convV5.data) {
+      conversation = normalizeConversationDefaults(
+        convV5.data as unknown as Record<string, unknown>
+      );
+    } else {
+      const convFallback = await supabaseAdmin
+        .from('conversations')
+        .select(CONVERSATION_LIST_COLUMNS_BASE)
+        .eq('id', req.params.id)
+        .eq('user_id', req.appUser.id)
+        .maybeSingle();
+      conversation = convFallback.data
+        ? normalizeConversationDefaults(convFallback.data as unknown as Record<string, unknown>)
+        : null;
+    }
+  } else {
+    conversation = convPrimary.data
+      ? normalizeConversationDefaults(convPrimary.data as unknown as Record<string, unknown>)
+      : null;
+  }
 
   if (!conversation) {
     res.status(404).json({ error: 'Consultation not found' });
@@ -277,30 +752,155 @@ router.get('/conversations/:id/messages', requireAuth, async (req: Authenticated
     ? req.query.before.trim()
     : '';
 
-  let msgQuery = supabaseAdmin
-    .from('messages')
-    .select(MESSAGE_SELECT_COLUMNS)
-    .eq('conversation_id', conversation.id);
+  const buildMsgQuery = (columns: string) => {
+    let q = supabaseAdmin
+      .from('messages')
+      .select(columns)
+      .eq('conversation_id', String(conversation!.id));
+    if (before) {
+      q = q.lt('created_at', before);
+    }
+    return q.order('created_at', { ascending: false }).limit(limit + 1);
+  };
 
-  if (before) {
-    msgQuery = msgQuery.lt('created_at', before);
+  let rawRows: Array<Record<string, unknown>> = [];
+  const msgPrimary = await buildMsgQuery(MESSAGE_SELECT_COLUMNS);
+  if (msgPrimary.error) {
+    const msgFallback = await buildMsgQuery(MESSAGE_SELECT_COLUMNS_BASE);
+    if (msgFallback.error) {
+      res.status(500).json({ error: 'Failed to load messages' });
+      return;
+    }
+    rawRows = ((msgFallback.data || []) as unknown as Array<Record<string, unknown>>).map((m) => ({
+      ...m,
+      suggestions_json: null,
+    }));
+  } else {
+    rawRows = (msgPrimary.data || []) as unknown as Array<Record<string, unknown>>;
   }
 
-  const { data: rows, error } = await msgQuery
-    .order('created_at', { ascending: false })
-    .limit(limit + 1);
-
-  if (error) {
-    res.status(500).json({ error: 'Failed to load messages' });
-    return;
-  }
-
-  const rawRows = rows || [];
   const hasMore = rawRows.length > limit;
   const pageDesc = hasMore ? rawRows.slice(0, limit) : rawRows;
   const messages = [...pageDesc].reverse();
 
   res.json({ conversation, messages, hasMore });
+});
+
+// 6b. Toggle / Manage Per-Conversation "Ask later" Saved Suggestions
+router.post('/conversations/:id/ask-later', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const { action = 'toggle', item } = req.body || {};
+  const text = typeof item?.text === 'string' ? item.text.trim().slice(0, 260) : '';
+  const itemId = typeof item?.id === 'string' && item.id.trim() ? item.id.trim() : '';
+
+  if (!text && action !== 'remove') {
+    res.status(400).json({ error: 'Suggestion text is required' });
+    return;
+  }
+
+  const { data: convRow, error: convErr } = await supabaseAdmin
+    .from('conversations')
+    .select('id, user_id, ask_later_json')
+    .eq('id', req.params.id)
+    .eq('user_id', req.appUser.id)
+    .maybeSingle();
+
+  if (convErr) {
+    // Graceful fallback if migration 005 hasn't added ask_later_json yet
+    const msg = String(convErr.message || '').toLowerCase();
+    if (convErr.code === '42703' || msg.includes('ask_later_json') || msg.includes('column')) {
+      const normalizedItem = {
+        id: itemId || `ask_${crypto.randomBytes(4).toString('hex')}`,
+        text,
+        tier: item?.tier === 'deeper_analysis' ? 'deeper_analysis' : 'followup',
+        technical_directive:
+          typeof item?.technical_directive === 'string' && item.technical_directive.trim()
+            ? item.technical_directive.trim().slice(0, 600)
+            : undefined,
+        source_message_id:
+          typeof item?.source_message_id === 'string' ? item.source_message_id : undefined,
+        saved_at: new Date().toISOString(),
+      };
+      res.json({
+        items: action === 'remove' ? [] : [normalizedItem],
+        saved: action !== 'remove',
+        persisted: false,
+      });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to load conversation' });
+    return;
+  }
+
+  if (!convRow) {
+    res.status(404).json({ error: 'Consultation not found' });
+    return;
+  }
+
+  type StoredAskLater = {
+    id: string;
+    text: string;
+    tier: 'followup' | 'deeper_analysis';
+    technical_directive?: string;
+    source_message_id?: string;
+    saved_at: string;
+  };
+
+  const currentList: StoredAskLater[] = Array.isArray(convRow.ask_later_json)
+    ? (convRow.ask_later_json as StoredAskLater[])
+    : [];
+
+  const normalizedKey = text.toLowerCase();
+  const existingIndex = currentList.findIndex(
+    (entry) =>
+      (itemId && entry.id === itemId) ||
+      (normalizedKey && String(entry.text || '').trim().toLowerCase() === normalizedKey)
+  );
+
+  let nextList = [...currentList];
+  let saved = false;
+
+  if (action === 'remove' || (action === 'toggle' && existingIndex !== -1)) {
+    if (existingIndex !== -1) {
+      nextList.splice(existingIndex, 1);
+    }
+    saved = false;
+  } else {
+    const newEntry: StoredAskLater = {
+      id: itemId || `ask_${crypto.randomBytes(4).toString('hex')}`,
+      text,
+      tier: item?.tier === 'deeper_analysis' ? 'deeper_analysis' : 'followup',
+      technical_directive:
+        typeof item?.technical_directive === 'string' && item.technical_directive.trim()
+          ? item.technical_directive.trim().slice(0, 600)
+          : undefined,
+      source_message_id:
+        typeof item?.source_message_id === 'string' ? item.source_message_id : undefined,
+      saved_at: new Date().toISOString(),
+    };
+    if (existingIndex === -1) {
+      nextList = [newEntry, ...nextList].slice(0, 50);
+    }
+    saved = true;
+  }
+
+  const { error: updateErr } = await supabaseAdmin
+    .from('conversations')
+    .update({ ask_later_json: nextList })
+    .eq('id', convRow.id)
+    .eq('user_id', req.appUser.id);
+
+  if (updateErr) {
+    res.status(500).json({ error: 'Failed to update Ask later library' });
+    return;
+  }
+
+  res.json({ items: nextList, saved, persisted: true });
 });
 
 // 7. Starred Favorites across conversations (filterable by profileId)
@@ -333,7 +933,7 @@ router.get('/favorites', requireAuth, async (req: AuthenticatedRequest, res) => 
   const convMap = new Map(convs.map((c) => [c.id, c]));
   const { data: starred, error } = await supabaseAdmin
     .from('messages')
-    .select(MESSAGE_SELECT_COLUMNS)
+    .select(MESSAGE_SELECT_COLUMNS_BASE)
     .in('conversation_id', convs.map((c) => c.id))
     .eq('is_starred', true)
     .order('created_at', { ascending: false })
@@ -373,6 +973,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
   const {
     content,
+    technicalDirective,
+    pillar: requestedPillar,
+    companionPersona: requestedCompanionPersona,
     expert,
     mode,
     outputFormat,
@@ -383,6 +986,11 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     attachments,
     parentMessageId,
   } = req.body || {};
+
+  const safeTechnicalDirective =
+    typeof technicalDirective === 'string' && technicalDirective.trim()
+      ? technicalDirective.trim().slice(0, 1200)
+      : null;
 
   const validAttachments: Array<{
     kind: 'image' | 'pdf';
@@ -439,6 +1047,19 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     return;
   }
 
+  const convRecord = conversation as Record<string, unknown>;
+  const activePillar: ChatPillar = isValidPillar(convRecord.pillar)
+    ? (convRecord.pillar as ChatPillar)
+    : isValidPillar(requestedPillar)
+    ? requestedPillar
+    : 'council';
+
+  const activeCompanionPersona: CompanionPersona | null =
+    (convRecord.companion_persona_json as CompanionPersona | null | undefined) ||
+    (requestedCompanionPersona && typeof requestedCompanionPersona === 'object'
+      ? (requestedCompanionPersona as CompanionPersona)
+      : null);
+
   const isExtractionProbe = detectPromptExtractionAttempt(promptText);
   if (isExtractionProbe) {
     const userProbeRate = checkRateLimit(`extract_probe:${req.appUser.id}`, 5, 15 * 60 * 1000);
@@ -448,7 +1069,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
     if (!userProbeRate.allowed || !ipProbeAllowed) {
       res.status(429).json({
-        error: 'Too many invalid policy requests. Please wait a few minutes and ask a chart-related question.',
+        error: 'Too many invalid policy requests. Please wait a few minutes and try again.',
       });
       return;
     }
@@ -472,19 +1093,90 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     }
   }
 
-  let profileData = null;
+  const expertSlug =
+    activePillar === 'companion'
+      ? `companion:${activeCompanionPersona?.companion_type || 'friend'}`
+      : activePillar === 'clarity'
+      ? 'clarity_helper'
+      : typeof expert === 'string' && expert
+      ? expert
+      : req.appUser.default_expert || 'council_synthesis';
+  const modeSlug =
+    activePillar === 'companion'
+      ? activeCompanionPersona?.companion_type || 'companion'
+      : activePillar === 'clarity'
+      ? 'clarity'
+      : typeof mode === 'string' && mode
+      ? mode
+      : conversation.mode_type === 'learn_astrology'
+      ? 'learn_astrology'
+      : 'general';
+  const outputSlug =
+    activePillar === 'council'
+      ? typeof outputFormat === 'string' && outputFormat
+        ? outputFormat
+        : req.appUser.default_output || 'detailed'
+      : 'conversational';
+  const languageSlug =
+    typeof language === 'string' && language
+      ? language
+      : req.appUser.default_language || 'English';
+  const normalizedToneMode = toneMode === 'friendly' ? 'friendly' : 'technical';
+  const normalizedResponseLength = responseLength === 'short' ? 'short' : 'detailed';
+
+  // Fetch heavy chart_json ONLY when Tropical Western/Modern calculation needs raw sidereal degrees
+  const needsChartJson =
+    activePillar === 'council' &&
+    (expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer');
+
+  let profileData: {
+    id: string;
+    name: string;
+    is_activated: boolean;
+    chart_text_context: string | null;
+    chart_json?: CompiledChartData | null;
+    profile_memory_summary: string | null;
+    birth_date: string;
+    birth_time: string;
+    birth_city: string;
+    birth_state?: string | null;
+    birth_country: string;
+    current_city?: string | null;
+    current_state?: string | null;
+    current_country?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    timezone_offset?: number | null;
+  } | null = null;
   let scopeMemoryContext: string | null = null;
-  if (conversation.profile_id) {
-    const { data: prof } = await supabaseAdmin
+
+  if (activePillar === 'council' && conversation.profile_id) {
+    const baseCols =
+      'id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_state, birth_country, gender, relationship, latitude, longitude, timezone_offset';
+    const fullCols = `${baseCols}, current_city, current_state, current_country${
+      needsChartJson ? ', chart_json' : ''
+    }`;
+    const fallbackCols = `${baseCols}${needsChartJson ? ', chart_json' : ''}`;
+
+    const profPrimary = await supabaseAdmin
       .from('profiles')
-      .select(
-        'id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_state, birth_country, gender, relationship, latitude, longitude, timezone_offset'
-      )
+      .select(fullCols)
       .eq('id', conversation.profile_id)
       .eq('user_id', req.appUser.id)
       .maybeSingle();
 
-    if (prof && !prof.chart_text_context && isAstrologyApiConfigured()) {
+    let prof = profPrimary.data as unknown as typeof profileData;
+    if (profPrimary.error) {
+      const profFallback = await supabaseAdmin
+        .from('profiles')
+        .select(fallbackCols)
+        .eq('id', conversation.profile_id)
+        .eq('user_id', req.appUser.id)
+        .maybeSingle();
+      prof = profFallback.data as unknown as typeof profileData;
+    }
+
+    if (prof && (!prof.chart_text_context || (needsChartJson && !prof.chart_json)) && isAstrologyApiConfigured()) {
       try {
         const compiled = await compileBirthChart({
           name: prof.name,
@@ -514,13 +1206,16 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
         prof.is_activated = true;
         prof.chart_text_context = compiled.chartTextContext;
+        if (needsChartJson) {
+          prof.chart_json = compiled.chartJson;
+        }
       } catch {
         // Proceed gracefully even if live ephemeris fetch fails transiently
       }
     }
 
     profileData = prof || null;
-  } else if (conversation.use_full_profile_memory) {
+  } else if (activePillar === 'council' && conversation.use_full_profile_memory) {
     const targetModeType =
       conversation.mode_type === 'learn_astrology' ? 'learn_astrology' : 'reading';
     const { data: priorConvs } = await supabaseAdmin
@@ -554,16 +1249,47 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         scopeMemoryContext = snippets.join('\n').slice(0, 1800);
       }
     }
+  } else if (activePillar === 'clarity' && conversation.use_full_profile_memory) {
+    // Only load prior Clarity threads when the user explicitly turns Memory ON for Clarity
+    const priorClarity = await supabaseAdmin
+      .from('conversations')
+      .select('id, title')
+      .eq('user_id', req.appUser.id)
+      .eq('pillar', 'clarity')
+      .neq('id', conversation.id)
+      .order('updated_at', { ascending: false })
+      .limit(3);
+
+    if (!priorClarity.error && priorClarity.data && priorClarity.data.length > 0) {
+      const priorIds = priorClarity.data.map((c) => c.id);
+      const { data: priorMsgs } = await supabaseAdmin
+        .from('messages')
+        .select('conversation_id, role, content, created_at')
+        .in('conversation_id', priorIds)
+        .eq('excluded_from_context', false)
+        .order('created_at', { ascending: false })
+        .limit(8);
+
+      if (priorMsgs && priorMsgs.length > 0) {
+        const ordered = [...priorMsgs].reverse();
+        scopeMemoryContext = ordered
+          .map((m) => `${m.role === 'user' ? 'User' : 'Clarity'}: ${String(m.content || '').slice(0, 200)}`)
+          .join('\n')
+          .slice(0, 1400);
+      }
+    }
   }
 
-  const extraIdsFiltered = normalizedExtraProfileIds.filter(
-    (id) => id !== conversation.profile_id
-  );
+  const extraIdsFiltered =
+    activePillar === 'council'
+      ? normalizedExtraProfileIds.filter((id) => id !== conversation.profile_id)
+      : [];
   let extraProfilesData: Array<{
     id: string;
     name: string;
     is_activated: boolean;
     chart_text_context: string | null;
+    chart_json?: CompiledChartData | null;
     profile_memory_summary: string | null;
     birth_date: string;
     birth_time: string;
@@ -572,22 +1298,16 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   }> = [];
 
   if (extraIdsFiltered.length > 0) {
+    const extraCols = `id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_country${
+      needsChartJson ? ', chart_json' : ''
+    }`;
     const { data: extraProfs } = await supabaseAdmin
       .from('profiles')
-      .select(
-        'id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_country'
-      )
+      .select(extraCols)
       .in('id', extraIdsFiltered)
       .eq('user_id', req.appUser.id);
-    extraProfilesData = extraProfs || [];
+    extraProfilesData = (extraProfs || []) as unknown as typeof extraProfilesData;
   }
-
-  const expertSlug = typeof expert === 'string' && expert ? expert : req.appUser.default_expert || 'council_synthesis';
-  const modeSlug = typeof mode === 'string' && mode ? mode : (conversation.mode_type === 'learn_astrology' ? 'learn_astrology' : 'general');
-  const outputSlug = typeof outputFormat === 'string' && outputFormat ? outputFormat : req.appUser.default_output || 'detailed';
-  const languageSlug = typeof language === 'string' && language ? language : req.appUser.default_language || 'English';
-  const normalizedToneMode = toneMode === 'friendly' ? 'friendly' : 'technical';
-  const normalizedResponseLength = responseLength === 'short' ? 'short' : 'detailed';
 
   const contextTags: string[] = [];
   if (extraProfilesData.length > 0) {
@@ -712,7 +1432,13 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   try {
     const streamResult = await streamConsultationResponse({
       userId: req.appUser.id,
-      conversation,
+      pillar: activePillar,
+      companionPersona: activeCompanionPersona,
+      conversation: {
+        ...conversation,
+        pillar: activePillar,
+        companion_persona_json: activeCompanionPersona,
+      },
       profile: profileData,
       scopeMemoryContext,
       extraProfiles: extraProfilesData,
@@ -725,6 +1451,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       }>,
       parentQuoteMessage: parentQuote,
       userPrompt: promptText,
+      technicalDirective: activePillar === 'council' ? safeTechnicalDirective : null,
       expertSlug,
       modeSlug,
       outputSlug,
@@ -767,51 +1494,110 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         p_amount: chargeTarget,
         p_tx_type: 'chat_usage',
         p_reference_id: conversation.id,
-        p_description: `Consultation (${expertSlug} · ${modeSlug})`,
+        p_description:
+          activePillar === 'companion'
+            ? `Companion (${activeCompanionPersona?.name || 'Chat'})`
+            : activePillar === 'clarity'
+            ? 'Clarity Sidekick'
+            : `Consultation (${expertSlug} · ${modeSlug})`,
       });
       if (!creditErr && typeof newBal === 'number') {
         updatedBalance = newBal;
       }
     }
 
-    // Generate 5–6 JSON follow-ups + auto-title (if first exchange) in parallel when not aborted/leaked
+    // Two-tier structured suggestions apply strictly to Council consultations (not Companion/Clarity)
     const pendingProfile =
-      !streamResult.aborted && !wasLeakIntercepted ? streamResult.pendingProfile || null : null;
-    const isFirstTurn = (historyRows || []).length === 0 && conversation.title === 'New Consultation';
-    const [followups, generatedTitle] = await Promise.all([
-      streamResult.aborted || wasLeakIntercepted || Boolean(pendingProfile)
-        ? Promise.resolve([])
-        : generateFollowUpQuestions({
+      activePillar === 'council' && !streamResult.aborted && !wasLeakIntercepted
+        ? streamResult.pendingProfile || null
+        : null;
+    const isDefaultUntouchedTitle =
+      conversation.title === 'New Consultation' ||
+      conversation.title === 'Clarity' ||
+      conversation.title === 'Companion Chat';
+    const isFirstUserTurn =
+      (historyRows || []).filter((m) => m.role === 'user').length === 0 && isDefaultUntouchedTitle;
+    const hasInlineSuggestions = Boolean(
+      activePillar === 'council' &&
+        streamResult.suggestions &&
+        (streamResult.suggestions.followups.length > 0 ||
+          streamResult.suggestions.deeper_analysis.length > 0)
+    );
+
+    const [structuredSuggestions, generatedTitle] = await Promise.all([
+      activePillar !== 'council' ||
+      streamResult.aborted ||
+      wasLeakIntercepted ||
+      Boolean(pendingProfile)
+        ? Promise.resolve<MessageSuggestions>({ followups: [], deeper_analysis: [] })
+        : hasInlineSuggestions && streamResult.suggestions
+        ? Promise.resolve<MessageSuggestions>(streamResult.suggestions)
+        : generateStructuredSuggestions({
             userQuestion: promptText,
             assistantAnswer: finalAssistantText,
+            expertSlug,
             modeSlug,
             languageSlug,
             hasProfile: Boolean(profileData?.chart_text_context || profileData?.is_activated),
           }),
-      isFirstTurn && !wasLeakIntercepted
-        ? generateConversationTitle(promptText, profileData?.name)
+      isFirstUserTurn && !wasLeakIntercepted && activePillar !== 'clarity'
+        ? generateConversationTitle(
+            promptText,
+            profileData?.name,
+            activePillar,
+            activeCompanionPersona?.name
+          )
         : Promise.resolve(conversation.title),
     ]);
 
-    const { data: assistantMessage } = await supabaseAdmin
+    const followups = structuredSuggestions.followups.map((item) => item.text);
+    const hasAnyStructured =
+      structuredSuggestions.followups.length > 0 ||
+      structuredSuggestions.deeper_analysis.length > 0;
+    const persistedSuggestionsPayload = hasAnyStructured ? structuredSuggestions : null;
+
+    const baseAssistantRow = {
+      conversation_id: conversation.id,
+      parent_message_id: userMessage.id,
+      role: 'assistant',
+      content: finalAssistantText,
+      word_count: assistantWordCount,
+      expert_used: expertSlug,
+      mode_used: modeSlug,
+      output_format_used: outputSlug,
+      language_used: languageSlug,
+      followups_json: followups,
+      tokens_in: streamResult.tokensIn,
+      tokens_out: streamResult.tokensOut,
+      credits_charged: chargeTarget,
+    };
+
+    let assistantMessage: Record<string, unknown> | null = null;
+    const insertWithSug = await supabaseAdmin
       .from('messages')
       .insert({
-        conversation_id: conversation.id,
-        parent_message_id: userMessage.id,
-        role: 'assistant',
-        content: finalAssistantText,
-        word_count: assistantWordCount,
-        expert_used: expertSlug,
-        mode_used: modeSlug,
-        output_format_used: outputSlug,
-        language_used: languageSlug,
-        followups_json: followups,
-        tokens_in: streamResult.tokensIn,
-        tokens_out: streamResult.tokensOut,
-        credits_charged: chargeTarget,
+        ...baseAssistantRow,
+        suggestions_json: persistedSuggestionsPayload,
       })
       .select('*')
       .single();
+
+    if (insertWithSug.error) {
+      // Graceful fallback if migration 005 (messages.suggestions_json) hasn't run yet
+      const insertBase = await supabaseAdmin
+        .from('messages')
+        .insert(baseAssistantRow)
+        .select('*')
+        .single();
+      assistantMessage = insertBase.data
+        ? {
+            ...(insertBase.data as unknown as Record<string, unknown>),
+            suggestions_json: persistedSuggestionsPayload,
+          }
+        : null;
+    } else {
+      assistantMessage = insertWithSug.data as unknown as Record<string, unknown>;
+    }
 
     // Update conversation total_word_count & title & updated_at
     const nextTotalWords = (conversation.total_word_count || 0) + userWordCount + assistantWordCount;
@@ -826,17 +1612,29 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       .select('*')
       .single();
 
-    // Async non-blocking Profile Memory update
-    if (conversation.profile_id && !streamResult.aborted && !wasLeakIntercepted) {
+    // Async non-blocking Profile Memory update — STRICTLY Council profile threads only (never Clarity or Companion)
+    if (
+      activePillar === 'council' &&
+      conversation.profile_id &&
+      !streamResult.aborted &&
+      !wasLeakIntercepted
+    ) {
       void updateProfileMemoryAfterTurn(conversation.profile_id, req.appUser.id);
     }
+
+    const enrichedConversation = normalizeConversationDefaults({
+      ...((updatedConversation || conversation) as Record<string, unknown>),
+      pillar: activePillar,
+      companion_persona_json: activeCompanionPersona,
+    });
 
     sendEvent({
       type: 'done',
       assistantMessage,
       followups,
+      suggestions: persistedSuggestionsPayload,
       pendingProfile,
-      conversation: updatedConversation || conversation,
+      conversation: enrichedConversation,
       creditsBalance: updatedBalance,
       creditsCharged: chargeTarget,
       aborted: streamResult.aborted,

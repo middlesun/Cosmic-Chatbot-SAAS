@@ -2,12 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
+  ArrowRight,
   Check,
   ChevronDown,
   ChevronUp,
   Copy,
   Eye,
   EyeOff,
+  Lightbulb,
   Plus,
   Reply,
   Sparkles,
@@ -18,14 +20,19 @@ import {
   VolumeX,
 } from 'lucide-react';
 import type {
+  AskLaterItem,
   ChatCatalog,
   ChatMessageRecord,
+  ChatPillar,
   ChatProfile,
+  CompanionPersona,
   ConversationRecord,
   PendingBirthProfileDraft,
+  SuggestionItem,
 } from './chatTypes';
 import type { ChatFontSize } from './ChatSettingsModal';
 import Tooltip from './Tooltip';
+import SuggestionsPanel from './SuggestionsPanel';
 import { ChartCreationProgress } from './BirthChartModal';
 import {
   getWhatsAppShareUrl,
@@ -42,6 +49,9 @@ export interface InlineChartCreationState {
 }
 
 interface MessageThreadProps {
+  activePillar?: ChatPillar;
+  activeCompanionPersona?: CompanionPersona | null;
+  onSelectClarityPrompt?: (prompt: string) => void;
   conversation: ConversationRecord | null;
   profile: ChatProfile | null;
   profiles: ChatProfile[];
@@ -64,6 +74,15 @@ interface MessageThreadProps {
   onToggleExclude: (message: ChatMessageRecord) => void;
   onDeleteMessage: (messageId: string) => void;
   onSelectFollowUp: (question: string) => void;
+  onSubmitSuggestion?: (item: SuggestionItem) => void;
+  onInsertSuggestion?: (item: SuggestionItem) => void;
+  onToggleAskLater?: (
+    item: SuggestionItem,
+    tier: 'followup' | 'deeper_analysis',
+    messageId: string
+  ) => void;
+  askLaterItems?: AskLaterItem[];
+  suggestionsDefaultExpanded?: boolean;
   onSelectProfile: (profileId: string) => void;
   onOpenAddChartModal: () => void;
   onSelectGeneralChart: () => void;
@@ -196,7 +215,25 @@ const FONT_SIZE_STYLES: Record<
   },
 };
 
+const CLARITY_STARTERS = [
+  {
+    title: 'Explain a Jyotish concept simply',
+    prompt: 'Explain Mahadasha and Antardasha in plain, everyday English without jargon.',
+  },
+  {
+    title: 'Craft a sharper Council question',
+    prompt: 'Help me turn a vague worry about my career direction into a focused question I can ask the Council.',
+  },
+  {
+    title: 'Think through a tough decision',
+    prompt: 'Help me untangle a practical life decision calmly, step by step.',
+  },
+];
+
 const MessageThread: React.FC<MessageThreadProps> = ({
+  activePillar = 'council',
+  activeCompanionPersona = null,
+  onSelectClarityPrompt,
   conversation,
   profile,
   profiles,
@@ -218,6 +255,11 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   onToggleExclude,
   onDeleteMessage,
   onSelectFollowUp,
+  onSubmitSuggestion,
+  onInsertSuggestion,
+  onToggleAskLater,
+  askLaterItems = [],
+  suggestionsDefaultExpanded = true,
   onSelectProfile,
   onOpenAddChartModal,
   onSelectGeneralChart,
@@ -437,12 +479,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
   const latestAssistantWithFollowups = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (
-        messages[i].role === 'assistant' &&
-        Array.isArray(messages[i].followups_json) &&
-        messages[i].followups_json.length > 0
-      ) {
-        return messages[i];
+      const m = messages[i];
+      if (m.role !== 'assistant') continue;
+      const hasStructured =
+        (Array.isArray(m.suggestions_json?.followups) && m.suggestions_json!.followups.length > 0) ||
+        (Array.isArray(m.suggestions_json?.deeper_analysis) &&
+          m.suggestions_json!.deeper_analysis.length > 0);
+      const hasLegacy = Array.isArray(m.followups_json) && m.followups_json.length > 0;
+      if (hasStructured || hasLegacy) {
+        return m;
       }
     }
     return null;
@@ -534,10 +579,50 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
   // Minimal Calm Empty State for New Chat
   if (messages.length === 0 && !isStreaming && !inlineChartCreation) {
+    if (activePillar === 'clarity') {
+      return (
+        <div
+          key={conversation?.id || 'empty-clarity'}
+          className="animate-cc-tab-panel flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-8 pb-36 sm:pb-40 flex flex-col items-center"
+        >
+          <div className="w-full max-w-lg my-auto flex flex-col items-center text-center space-y-6">
+            <div className="space-y-2.5">
+              <div className="mx-auto inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/10 text-[#B8965A]">
+                <Lightbulb className="h-5 w-5" />
+              </div>
+              <h2 className="font-['Cormorant_Garamond',serif] text-3xl sm:text-4xl font-medium text-[#3D3830] tracking-tight">
+                Clarity
+              </h2>
+              <p className="text-xs sm:text-sm text-[#5C5449] max-w-md mx-auto leading-relaxed">
+                Your off-record sidekick for quick doubts, prompt drafting, and everyday questions — kept completely separate from your birth chart memory.
+              </p>
+            </div>
+
+            <div className="w-full space-y-2 text-left">
+              {CLARITY_STARTERS.map((starter) => (
+                <button
+                  key={starter.title}
+                  type="button"
+                  onClick={() => onSelectClarityPrompt?.(starter.prompt)}
+                  className="group w-full flex items-center justify-between gap-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-4 py-3 text-left hover:border-[#3D3830]/28 hover:bg-[#F1ECE3]/55 transition-all cursor-pointer"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[#3D3830]">{starter.title}</p>
+                    <p className="text-[11px] text-[#8B8275] truncate mt-0.5">{starter.prompt}</p>
+                  </div>
+                  <ArrowRight className="h-3.5 w-3.5 text-[#8B8275] group-hover:text-[#3D3830] group-hover:translate-x-0.5 transition-all shrink-0" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div
         key={conversation?.id || 'empty'}
-        className="animate-cc-tab-panel flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-8 pb-32 sm:pb-36 flex flex-col items-center"
+        className="animate-cc-tab-panel flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-8 pb-36 sm:pb-40 flex flex-col items-center"
       >
         <div className="w-full max-w-xl my-auto flex flex-col items-center text-center space-y-6">
           {generalReadyMode && !profile ? (
@@ -735,9 +820,36 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         ref={scrollContainerRef}
         onScroll={handleThreadScroll}
         key={conversation?.id || 'thread'}
-        className="animate-cc-tab-panel flex-1 overflow-y-auto px-5 md:px-8 pt-6 pb-32 sm:pb-36"
+        className="animate-cc-tab-panel flex-1 overflow-y-auto px-5 md:px-8 pt-6 pb-36 sm:pb-40"
       >
         <div className="mx-auto max-w-2xl space-y-7">
+          {/* Quiet Companion Identity Strip at top of Companion conversations */}
+          {activePillar === 'companion' && activeCompanionPersona && (
+            <div className="rounded-3xl border border-[#3D3830]/10 bg-[#FDFBF7] px-5 py-4 space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 shrink-0 rounded-full bg-[#EAE3D7] border border-[#3D3830]/10 flex items-center justify-center font-serif text-lg font-semibold text-[#3D3830]">
+                  {activeCompanionPersona.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="font-serif text-lg font-semibold text-[#3D3830] truncate">
+                      {activeCompanionPersona.name}
+                    </h3>
+                    <span className="text-xs font-mono tabular-nums text-[#8B8275]">
+                      {activeCompanionPersona.age}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#5C5449] truncate">
+                    {activeCompanionPersona.role_label} · {activeCompanionPersona.background}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-[#5C5449] leading-relaxed">
+                {activeCompanionPersona.bio}
+              </p>
+            </div>
+          )}
+
           {hasMoreMessages && onLoadEarlierMessages && (
             <div className="flex justify-center">
               <button
@@ -895,7 +1007,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             // Assistant Editorial Prose Card
             const isSpeaking = speakingMsgId === msg.id;
             const showConfirmCard =
-              pendingProfileConfirm?.messageId === msg.id && !inlineChartCreation;
+              activePillar === 'council' &&
+              pendingProfileConfirm?.messageId === msg.id &&
+              !inlineChartCreation;
 
             return (
               <article
@@ -909,6 +1023,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     : ''
                 }`}
               >
+                {activePillar === 'companion' && activeCompanionPersona && (
+                  <p className="text-[11px] font-semibold text-[#5C5449]">
+                    {activeCompanionPersona.name}
+                  </p>
+                )}
+                {activePillar === 'clarity' && (
+                  <p className="text-[11px] font-medium text-[#8B8275]">Clarity</p>
+                )}
+
                 <div className={`space-y-3 ${sizeTokens.body} text-[#3D3830]`}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
@@ -1138,38 +1261,39 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   </div>
                 </div>
 
-                {/* Structured Numbered Follow-Up Questions */}
-                {enableFollowups && isLatestFollowupHolder && idx === messages.length - 1 && (
-                  <div className="pt-4 space-y-2">
-                    <div className="flex items-center justify-between text-[11px] text-[#8B8275]">
-                      <span>Continue exploring</span>
-                      <span className="font-['DM_Sans',sans-serif]">
-                        Click or type 1–{msg.followups_json.length} + Enter
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {msg.followups_json.map((q, qIdx) => (
-                        <button
-                          key={qIdx}
-                          type="button"
-                          onClick={() => onSelectFollowUp(q)}
-                          className="group flex items-start gap-2.5 rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 px-3.5 py-2.5 text-left text-xs text-[#3D3830] hover:bg-[#F1ECE3] active:scale-[0.99] transition-all cursor-pointer"
-                        >
-                          <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#8B8275] pt-0.5 shrink-0">
-                            {qIdx + 1}.
-                          </span>
-                          <span className="leading-relaxed flex-1">{q}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* Two-Tier Followup & Deeper analysis Suggestions Panel (Council only) */}
+                {activePillar === 'council' &&
+                  enableFollowups &&
+                  isLatestFollowupHolder &&
+                  idx === messages.length - 1 && (
+                    <SuggestionsPanel
+                      messageId={msg.id}
+                      suggestions={msg.suggestions_json}
+                      legacyFollowups={msg.followups_json}
+                      askLaterItems={askLaterItems}
+                      defaultExpanded={suggestionsDefaultExpanded}
+                      disabled={isStreaming}
+                      onSubmitSuggestion={(item) => {
+                        if (onSubmitSuggestion) {
+                          onSubmitSuggestion(item);
+                        } else {
+                          onSelectFollowUp(item.text);
+                        }
+                      }}
+                      onInsertSuggestion={(item) => {
+                        onInsertSuggestion?.(item);
+                      }}
+                      onToggleAskLater={(item, tier, sourceMsgId) => {
+                        onToggleAskLater?.(item, tier, sourceMsgId);
+                      }}
+                    />
+                  )}
               </article>
             );
           })}
 
           {/* Phase 3: Inline Chart Creation Status & Progress */}
-          {inlineChartCreation && (
+          {activePillar === 'council' && inlineChartCreation && (
             <article className="animate-cc-message-in space-y-3 pb-4">
               {inlineChartCreation.status === 'creating' && (
                 <p className={`${sizeTokens.body} text-[#3D3830]`}>
@@ -1189,6 +1313,14 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           {/* Live Streaming Response */}
           {isStreaming && (
             <article className="animate-cc-message-in space-y-3 pb-6">
+              {activePillar === 'companion' && activeCompanionPersona && (
+                <p className="text-[11px] font-semibold text-[#5C5449]">
+                  {activeCompanionPersona.name}
+                </p>
+              )}
+              {activePillar === 'clarity' && (
+                <p className="text-[11px] font-medium text-[#8B8275]">Clarity</p>
+              )}
               {streamingText ? (
                 <div className={`space-y-3 ${sizeTokens.body} text-[#3D3830]`}>
                   <ReactMarkdown
@@ -1200,7 +1332,11 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 </div>
               ) : (
                 <div className="text-xs text-[#8B8275]">
-                  Synthesizing chart positions, Dasha periods, and Gochar transits...
+                  {activePillar === 'companion'
+                    ? `${activeCompanionPersona?.name || 'Companion'} is typing...`
+                    : activePillar === 'clarity'
+                    ? 'Thinking clearly...'
+                    : 'Synthesizing chart positions, Dasha periods, and Gochar transits...'}
                 </div>
               )}
             </article>

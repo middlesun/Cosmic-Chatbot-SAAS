@@ -8,13 +8,16 @@ import {
   ChevronRight,
   ChevronUp,
   FileText,
+  HeartHandshake,
   HelpCircle,
   Image as ImageIcon,
+  Lightbulb,
   Loader2,
   Lock,
   Mic,
   MicOff,
   Plus,
+  RefreshCw,
   Reply,
   RotateCcw,
   Settings2,
@@ -27,18 +30,41 @@ import {
 } from 'lucide-react';
 import CustomSelect from './CustomSelect';
 import Tooltip from './Tooltip';
+import ComposerTabStrip from './ComposerTabStrip';
 import type { ChatFontSize } from './ChatSettingsModal';
 import type {
+  ActiveChatTab,
   ChatAttachmentInput,
   ChatCatalog,
   ChatMessageRecord,
+  ChatPillar,
   ChatProfile,
   ChatResponseLength,
   ChatToneMode,
+  CompanionArchetypeSlug,
+  CompanionPersona,
+  ConversationRecord,
   CustomPromptRecord,
 } from './chatTypes';
 
 interface ChatComposerProps {
+  activePillar: ChatPillar;
+  activeCompanionPersona?: CompanionPersona | null;
+  tabs: ActiveChatTab[];
+  activeTabId: string;
+  maxActiveTabs?: number;
+  pastCompanionConversations: ConversationRecord[];
+  recentConversations: ConversationRecord[];
+  isStreamingTabId?: string | null;
+  composerDisabled?: boolean;
+  composerDisabledHint?: string;
+  onSelectTab: (tabId: string) => void;
+  onCloseTab: (tabId: string) => void;
+  onAddCouncilTab: (expertSlug: string) => void;
+  onAddCompanionArchetypeTab: (archetype: CompanionArchetypeSlug) => void;
+  onOpenExistingConversationAsTab: (conv: ConversationRecord) => void;
+  onResetClarity?: () => void;
+  onStartNewCompanion?: () => void;
   draftText: string;
   onDraftChange: (text: string) => void;
   catalog: ChatCatalog | null;
@@ -81,6 +107,8 @@ interface ChatComposerProps {
   onNewChat: () => void;
   onSendMessage: (overrideText?: string) => void;
   onStopGeneration: () => void;
+  pendingDirectiveLabel?: string | null;
+  onClearPendingDirective?: () => void;
   focusTrigger?: number;
   composerPlaceholder?: string;
   enableVoiceInput?: boolean;
@@ -201,6 +229,23 @@ async function readPdfFile(file: File): Promise<ChatAttachmentInput> {
 }
 
 const ChatComposer: React.FC<ChatComposerProps> = ({
+  activePillar,
+  activeCompanionPersona = null,
+  tabs,
+  activeTabId,
+  maxActiveTabs = 5,
+  pastCompanionConversations,
+  recentConversations,
+  isStreamingTabId = null,
+  composerDisabled = false,
+  composerDisabledHint,
+  onSelectTab,
+  onCloseTab,
+  onAddCouncilTab,
+  onAddCompanionArchetypeTab,
+  onOpenExistingConversationAsTab,
+  onResetClarity,
+  onStartNewCompanion,
   draftText,
   onDraftChange,
   catalog,
@@ -243,6 +288,8 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   onNewChat,
   onSendMessage,
   onStopGeneration,
+  pendingDirectiveLabel = null,
+  onClearPendingDirective,
   focusTrigger = 0,
   composerPlaceholder = '',
   enableVoiceInput = true,
@@ -298,6 +345,13 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
       window.setTimeout(() => textareaRef.current?.focus(), 40);
     }
   }, [focusTrigger]);
+
+  // Reset pillar-specific submenus when switching pillar/tab
+  useEffect(() => {
+    setPlusSubMenu(null);
+    setIsPlusOpen(false);
+    setShowQuestionResults(false);
+  }, [activePillar, activeTabId]);
 
   // Cleanup speech recognition on unmount
   useEffect(() => {
@@ -620,14 +674,19 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (isStreaming || inlineToolRunning) return;
+      if (composerDisabled || isStreaming || inlineToolRunning) return;
       if (isPreviewMode) {
         onSendMessage(draftText.trim() || 'preview');
         return;
       }
 
       const trimmed = draftText.trim();
-      if (/^[1-6]$/.test(trimmed) && activeFollowups.length > 0 && attachments.length === 0) {
+      if (
+        activePillar === 'council' &&
+        /^[1-6]$/.test(trimmed) &&
+        activeFollowups.length > 0 &&
+        attachments.length === 0
+      ) {
         const idx = Number(trimmed) - 1;
         if (activeFollowups[idx]) {
           onDraftChange('');
@@ -645,9 +704,31 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   };
 
   const canSend =
+    !composerDisabled &&
     !isStreaming &&
     !inlineToolRunning &&
     (Boolean(draftText.trim()) || attachments.length > 0);
+
+  const effectivePlaceholder = useMemo(() => {
+    if (composerDisabled) {
+      return composerDisabledHint || 'Choose a companion above to begin talking...';
+    }
+    if (activePillar === 'companion') {
+      return activeCompanionPersona
+        ? `Message ${activeCompanionPersona.name}...`
+        : 'Choose a companion above to start talking...';
+    }
+    if (activePillar === 'clarity') {
+      return 'Ask Clarity a quick doubt, untangle a thought, or refine a prompt...';
+    }
+    return composerPlaceholder || 'Ask anything about your chart, timing, or Vedic astrology...';
+  }, [
+    composerDisabled,
+    composerDisabledHint,
+    activePillar,
+    activeCompanionPersona,
+    composerPlaceholder,
+  ]);
 
   return (
     <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-30 bg-transparent px-2.5 sm:px-4 md:px-6 pb-3 pt-1">
@@ -701,6 +782,28 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
             >
               <X className="h-3.5 w-3.5" />
             </button>
+          </div>
+        )}
+
+        {/* Attached Deeper Analysis Focus Notice (when inserted via '+' for editing) */}
+        {pendingDirectiveLabel && (
+          <div className="animate-cc-drawer-in flex items-center justify-between gap-2 rounded-xl bg-[#F1ECE3] border border-[#B8965A]/30 px-3 py-1.5 text-[11px] text-[#5C5449] shadow-sm">
+            <span className="inline-flex items-center gap-1.5 min-w-0">
+              <Sparkles className="h-3 w-3 text-[#B8965A] shrink-0" />
+              <span className="truncate">
+                Deeper analysis focus attached · Edit your question freely or press send
+              </span>
+            </span>
+            {onClearPendingDirective && (
+              <button
+                type="button"
+                onClick={onClearPendingDirective}
+                aria-label="Clear deeper analysis focus"
+                className="text-[#8B8275] hover:text-[#3D3830] shrink-0 cursor-pointer"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
         )}
 
@@ -851,28 +954,48 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
           </div>
         )}
 
-        {/* FLOATING COMPOSER CARD + OUTER EXPAND TAB */}
+        {/* FLOATING COMPOSER CARD + TOP-EDGE MULTI-THREAD TAB STRIP & EXPAND TAB */}
         <div className="relative">
-          {/* Outer Expand Tab (Positioned outside right above top-right edge; hides when expanded) */}
-          {!isExpanded && (
-            <button
-              type="button"
-              onClick={() => {
-                setIsExpanded(true);
-                setIsPlusOpen(false);
-                setPlusSubMenu(null);
-              }}
-              aria-expanded={false}
-              aria-label="Expand composer tools and controls"
-              className="absolute -top-5 right-5 z-20 inline-flex h-5 w-8 items-center justify-center rounded-t-xl border border-b-0 border-[#3D3830]/18 bg-[#FDFBF7] text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830] shadow-xs transition-all duration-150 cursor-pointer"
-            >
-              <ChevronUp className="h-3.5 w-3.5" />
-            </button>
-          )}
+          {/* Unified Top Edge: Multi-Thread Tabs (Left) + Outer Expand ChevronUp Tab (Right) */}
+          <div className="relative flex items-end justify-between z-20">
+            <div className="min-w-0 flex-1">
+              <ComposerTabStrip
+                tabs={tabs}
+                activeTabId={activeTabId}
+                maxTabs={maxActiveTabs}
+                catalog={catalog}
+                pastCompanionConversations={pastCompanionConversations}
+                recentConversations={recentConversations}
+                isStreamingTabId={isStreamingTabId}
+                onSelectTab={onSelectTab}
+                onCloseTab={onCloseTab}
+                onAddCouncilTab={onAddCouncilTab}
+                onAddCompanionArchetypeTab={onAddCompanionArchetypeTab}
+                onOpenExistingConversationAsTab={onOpenExistingConversationAsTab}
+              />
+            </div>
+
+            {!isExpanded && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExpanded(true);
+                  setIsPlusOpen(false);
+                  setPlusSubMenu(null);
+                }}
+                aria-expanded={false}
+                aria-label="Expand composer tools and controls"
+                className="absolute right-3 sm:right-5 bottom-0 z-20 inline-flex h-[24px] w-8 items-center justify-center rounded-t-xl border border-b-0 border-[#3D3830]/18 bg-[#FDFBF7] text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830] shadow-xs transition-all duration-150 cursor-pointer"
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
 
           {/* Main Floating Rounded Box (100% solid opaque surface) */}
           <div
             onDragOver={(e) => {
+              if (composerDisabled) return;
               e.preventDefault();
               setIsDraggingOver(true);
             }}
@@ -884,7 +1007,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                 : 'border-[#3D3830]/18 bg-[#FDFBF7] focus-within:border-[#3D3830]/35'
             }`}
           >
-            {/* SMOOTH SLIDING EXPANDED PANEL (Both Open & Close animate smoothly) */}
+            {/* SMOOTH SLIDING ADAPTIVE EXPANDED PANEL (Council vs Companion vs Clarity) */}
             <div
               aria-hidden={!isExpanded}
               className={`grid transition-[grid-template-rows,opacity,transform,margin] duration-[240ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
@@ -894,342 +1017,596 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
               }`}
             >
               <div className="min-h-0 overflow-hidden">
-                <div className="border-b border-[#3D3830]/10 pb-2.5 pt-0.5 space-y-2.5">
-                  {/* ROW 1: [ Expert | Mode | Output | Language | Font ] + [ Settings | Collapse ] */}
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
-                      <div className="min-w-0">
-                        <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                          {isThreadLocked && <Lock className="h-2.5 w-2.5" />}
-                          <span>Expert</span>
-                        </span>
-                        <CustomSelect
-                          value={expertSlug}
-                          onChange={onChangeExpert}
-                          disabled={isThreadLocked}
-                          ariaLabel="Astrological expert"
-                          size="xs"
-                          surface="canvas"
-                          placement="top"
-                          minMenuWidth={230}
-                          className="w-full"
-                          options={(catalog?.experts || []).map((opt) => ({
-                            value: opt.slug,
-                            label: opt.displayName,
-                          }))}
-                        />
+                {activePillar === 'council' ? (
+                  <div className="border-b border-[#3D3830]/10 pb-2.5 pt-0.5 space-y-2.5">
+                    {/* ROW 1: [ Council | Mode | Output | Language | Font ] + [ Settings | Collapse ] */}
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
+                        <div className="min-w-0">
+                          <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
+                            {isThreadLocked && <Lock className="h-2.5 w-2.5" />}
+                            <span>Council</span>
+                          </span>
+                          <CustomSelect
+                            value={expertSlug}
+                            onChange={onChangeExpert}
+                            disabled={isThreadLocked}
+                            ariaLabel="Council guide"
+                            size="xs"
+                            surface="canvas"
+                            placement="top"
+                            minMenuWidth={230}
+                            className="w-full"
+                            options={(catalog?.experts || []).map((opt) => ({
+                              value: opt.slug,
+                              label: opt.displayName,
+                            }))}
+                          />
+                        </div>
+
+                        <div className="min-w-0">
+                          <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
+                            {isThreadLocked && <Lock className="h-2.5 w-2.5" />}
+                            <span>Mode</span>
+                          </span>
+                          <CustomSelect
+                            value={modeSlug}
+                            onChange={onChangeMode}
+                            disabled={isThreadLocked}
+                            ariaLabel="Area of life"
+                            size="xs"
+                            surface="canvas"
+                            placement="top"
+                            minMenuWidth={230}
+                            className="w-full"
+                            options={(catalog?.modes || []).map((opt) => ({
+                              value: opt.slug,
+                              label: opt.displayName,
+                            }))}
+                          />
+                        </div>
+
+                        <div className="min-w-0">
+                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
+                            Output
+                          </span>
+                          <CustomSelect
+                            value={outputSlug}
+                            onChange={onChangeOutput}
+                            ariaLabel="Output style"
+                            size="xs"
+                            surface="canvas"
+                            placement="top"
+                            minMenuWidth={240}
+                            className="w-full"
+                            options={(catalog?.outputs || []).map((opt) => ({
+                              value: opt.slug,
+                              label: opt.displayName,
+                            }))}
+                          />
+                        </div>
+
+                        <div className="min-w-0">
+                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
+                            Language
+                          </span>
+                          <CustomSelect
+                            value={languageSlug}
+                            onChange={onChangeLanguage}
+                            ariaLabel="Consultation language"
+                            size="xs"
+                            surface="canvas"
+                            placement="top"
+                            align="right"
+                            minMenuWidth={195}
+                            className="w-full"
+                            options={(catalog?.languages || []).map((opt) => ({
+                              value: opt.slug,
+                              label: opt.displayName,
+                            }))}
+                          />
+                        </div>
+
+                        <div className="min-w-0 col-span-2 sm:col-span-1">
+                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
+                            Font
+                          </span>
+                          <CustomSelect
+                            value={fontSize}
+                            onChange={(val) => onChangeFontSize(val as ChatFontSize)}
+                            ariaLabel="Reading font size"
+                            size="xs"
+                            surface="canvas"
+                            placement="top"
+                            align="right"
+                            minMenuWidth={168}
+                            className="w-full"
+                            options={[
+                              { value: 'sm', label: 'Compact' },
+                              { value: 'base', label: 'Balanced' },
+                              { value: 'lg', label: 'Large' },
+                            ]}
+                          />
+                        </div>
                       </div>
 
-                      <div className="min-w-0">
-                        <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                          {isThreadLocked && <Lock className="h-2.5 w-2.5" />}
-                          <span>Mode</span>
-                        </span>
-                        <CustomSelect
-                          value={modeSlug}
-                          onChange={onChangeMode}
-                          disabled={isThreadLocked}
-                          ariaLabel="Area of life"
-                          size="xs"
-                          surface="canvas"
-                          placement="top"
-                          minMenuWidth={230}
-                          className="w-full"
-                          options={(catalog?.modes || []).map((opt) => ({
-                            value: opt.slug,
-                            label: opt.displayName,
-                          }))}
-                        />
-                      </div>
-
-                      <div className="min-w-0">
-                        <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                          Output
-                        </span>
-                        <CustomSelect
-                          value={outputSlug}
-                          onChange={onChangeOutput}
-                          ariaLabel="Output style"
-                          size="xs"
-                          surface="canvas"
-                          placement="top"
-                          minMenuWidth={240}
-                          className="w-full"
-                          options={(catalog?.outputs || []).map((opt) => ({
-                            value: opt.slug,
-                            label: opt.displayName,
-                          }))}
-                        />
-                      </div>
-
-                      <div className="min-w-0">
-                        <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                          Language
-                        </span>
-                        <CustomSelect
-                          value={languageSlug}
-                          onChange={onChangeLanguage}
-                          ariaLabel="Consultation language"
-                          size="xs"
-                          surface="canvas"
-                          placement="top"
-                          align="right"
-                          minMenuWidth={195}
-                          className="w-full"
-                          options={(catalog?.languages || []).map((opt) => ({
-                            value: opt.slug,
-                            label: opt.displayName,
-                          }))}
-                        />
-                      </div>
-
-                      <div className="min-w-0 col-span-2 sm:col-span-1">
-                        <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                          Font
-                        </span>
-                        <CustomSelect
-                          value={fontSize}
-                          onChange={(val) => onChangeFontSize(val as ChatFontSize)}
-                          ariaLabel="Reading font size"
-                          size="xs"
-                          surface="canvas"
-                          placement="top"
-                          align="right"
-                          minMenuWidth={168}
-                          className="w-full"
-                          options={[
-                            { value: 'sm', label: 'Compact' },
-                            { value: 'base', label: 'Balanced' },
-                            { value: 'lg', label: 'Large' },
-                          ]}
-                        />
+                      {/* Settings Gear + Collapse Arrow */}
+                      <div className="flex items-center gap-1 shrink-0 pt-4">
+                        <button
+                          type="button"
+                          onClick={onOpenSettings}
+                          aria-label="Open Chat Settings"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                        >
+                          <Settings2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsExpanded(false)}
+                          aria-expanded={true}
+                          aria-label="Collapse composer tools"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/15 bg-[#F1ECE3] text-[#3D3830] hover:bg-[#EAE3D7] transition-colors cursor-pointer"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
 
-                    {/* Settings Gear + Collapse Arrow (sits cleanly inside Row 1) */}
-                    <div className="flex items-center gap-1 shrink-0 pt-4">
-                      <button
-                        type="button"
-                        onClick={onOpenSettings}
-                        aria-label="Open Chat Settings"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
-                      >
-                        <Settings2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsExpanded(false)}
-                        aria-expanded={true}
-                        aria-label="Collapse composer tools"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/15 bg-[#F1ECE3] text-[#3D3830] hover:bg-[#EAE3D7] transition-colors cursor-pointer"
-                      >
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      </button>
+                    {/* ROW 2: Left = [ Question | Expander | Optimizer ], Right = [ Technical | Detailed | Memory ] */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      {enableQuickTools && (
+                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                          <Tooltip
+                            content={
+                              areToolsActive
+                                ? 'Generate deeper follow-up questions from your draft'
+                                : 'Type at least 5 words to activate Question Generator'
+                            }
+                            placement="top"
+                          >
+                            <button
+                              type="button"
+                              disabled={!areToolsActive || inlineToolRunning !== null}
+                              onClick={() => void handleRunQuestionGenerator()}
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all ${
+                                areToolsActive
+                                  ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E] shadow-xs cursor-pointer'
+                                  : 'border-[#3D3830]/10 bg-[#F1ECE3]/55 text-[#8B8275] opacity-50 cursor-not-allowed'
+                              }`}
+                            >
+                              {inlineToolRunning === 'question_generator' ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <HelpCircle className="h-3 w-3" />
+                              )}
+                              <span>Question Generator</span>
+                            </button>
+                          </Tooltip>
+
+                          <Tooltip
+                            content={
+                              areToolsActive
+                                ? 'Expand your draft inline'
+                                : 'Type at least 5 words to activate Expander'
+                            }
+                            placement="top"
+                          >
+                            <button
+                              type="button"
+                              disabled={!areToolsActive || inlineToolRunning !== null}
+                              onClick={() => void handleRunInlineTool('prompt_expander')}
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all ${
+                                areToolsActive
+                                  ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E] shadow-xs cursor-pointer'
+                                  : 'border-[#3D3830]/10 bg-[#F1ECE3]/55 text-[#8B8275] opacity-50 cursor-not-allowed'
+                              }`}
+                            >
+                              {inlineToolRunning === 'prompt_expander' ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Sparkles className="h-3 w-3" />
+                              )}
+                              <span>Expander</span>
+                            </button>
+                          </Tooltip>
+
+                          <Tooltip
+                            content={
+                              areToolsActive
+                                ? 'Optimize your draft inline'
+                                : 'Type at least 5 words to activate Optimizer'
+                            }
+                            placement="top"
+                          >
+                            <button
+                              type="button"
+                              disabled={!areToolsActive || inlineToolRunning !== null}
+                              onClick={() => void handleRunInlineTool('prompt_optimizer')}
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all ${
+                                areToolsActive
+                                  ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E] shadow-xs cursor-pointer'
+                                  : 'border-[#3D3830]/10 bg-[#F1ECE3]/55 text-[#8B8275] opacity-50 cursor-not-allowed'
+                              }`}
+                            >
+                              {inlineToolRunning === 'prompt_optimizer' ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Wand2 className="h-3 w-3" />
+                              )}
+                              <span>Optimizer</span>
+                            </button>
+                          </Tooltip>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+                        <Tooltip
+                          content={
+                            toneMode === 'friendly'
+                              ? 'Easy to understand'
+                              : 'With full technical insights'
+                          }
+                          placement="top"
+                        >
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={toneMode === 'friendly'}
+                            aria-label="Toggle Friendly or Technical response mode"
+                            onClick={() =>
+                              onChangeToneMode(toneMode === 'technical' ? 'friendly' : 'technical')
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
+                          >
+                            <span
+                              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
+                                toneMode === 'friendly' ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                              }`}
+                            >
+                              <span
+                                className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
+                                  toneMode === 'friendly' ? 'translate-x-3' : 'translate-x-0'
+                                }`}
+                              />
+                            </span>
+                            <span className="font-medium select-none">
+                              {toneMode === 'friendly' ? 'Friendly' : 'Technical'}
+                            </span>
+                          </button>
+                        </Tooltip>
+
+                        <Tooltip
+                          content={
+                            responseLength === 'short'
+                              ? 'Quick & fast response'
+                              : 'With comprehensive explanations'
+                          }
+                          placement="top"
+                        >
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={responseLength === 'short'}
+                            aria-label="Toggle Short or Detailed response length"
+                            onClick={() =>
+                              onChangeResponseLength(
+                                responseLength === 'detailed' ? 'short' : 'detailed'
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
+                          >
+                            <span
+                              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
+                                responseLength === 'short' ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                              }`}
+                            >
+                              <span
+                                className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
+                                  responseLength === 'short' ? 'translate-x-3' : 'translate-x-0'
+                                }`}
+                              />
+                            </span>
+                            <span className="font-medium select-none">
+                              {responseLength === 'short' ? 'Short' : 'Detailed'}
+                            </span>
+                          </button>
+                        </Tooltip>
+
+                        <Tooltip
+                          content="Storing this chat in memory for better analysis"
+                          placement="top"
+                        >
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={useFullProfileMemory}
+                            aria-label="Toggle longitudinal context memory"
+                            onClick={onToggleMemory}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
+                          >
+                            <span
+                              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
+                                useFullProfileMemory ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                              }`}
+                            >
+                              <span
+                                className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
+                                  useFullProfileMemory ? 'translate-x-3' : 'translate-x-0'
+                                }`}
+                              />
+                            </span>
+                            <Brain className="h-3 w-3 text-[#8B7355]" />
+                            <span className="font-medium select-none">Memory</span>
+                          </button>
+                        </Tooltip>
+                      </div>
                     </div>
                   </div>
+                ) : activePillar === 'companion' ? (
+                  /* COMPANION ADAPTIVE CONTROL PANEL: Companion Bio + Language, Font, Memory */
+                  <div className="border-b border-[#3D3830]/10 pb-2.5 pt-0.5 space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      {activeCompanionPersona ? (
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1 rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-2">
+                          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EAE3D7] font-serif text-sm font-semibold text-[#3D3830]">
+                            {activeCompanionPersona.name.charAt(0).toUpperCase()}
+                          </span>
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <p className="text-xs font-semibold text-[#3D3830] truncate">
+                              {activeCompanionPersona.name}{' '}
+                              <span className="font-mono text-[11px] font-normal tabular-nums text-[#8B8275]">
+                                {activeCompanionPersona.age}
+                              </span>
+                              <span className="font-normal text-[#5C5449]">
+                                {' '}· {activeCompanionPersona.role_label}
+                              </span>
+                            </p>
+                            <p className="text-[11px] text-[#5C5449] leading-snug line-clamp-2">
+                              {activeCompanionPersona.bio}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-[#5C5449] py-1">
+                          <HeartHandshake className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
+                          <span>Select a companion above to view their profile and begin chatting.</span>
+                        </div>
+                      )}
 
-                  {/* ROW 2: Left = [ Question | Expander | Optimizer ], Right = [ Technical | Detailed | Memory ] */}
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    {/* Left: All 3 Prompt Tools (activate at >= 5 words) */}
-                    {enableQuickTools && (
-                    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                      <Tooltip
-                        content={
-                          areToolsActive
-                            ? 'Generate deeper follow-up questions from your draft'
-                            : 'Type at least 5 words to activate Question Generator'
-                        }
-                        placement="top"
-                      >
+                      <div className="flex items-center gap-1 shrink-0 pt-0.5">
                         <button
                           type="button"
-                          disabled={!areToolsActive || inlineToolRunning !== null}
-                          onClick={() => void handleRunQuestionGenerator()}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all ${
-                            areToolsActive
-                              ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E] shadow-xs cursor-pointer'
-                              : 'border-[#3D3830]/10 bg-[#F1ECE3]/55 text-[#8B8275] opacity-50 cursor-not-allowed'
-                          }`}
+                          onClick={onOpenSettings}
+                          aria-label="Open Chat Settings"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
                         >
-                          {inlineToolRunning === 'question_generator' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <HelpCircle className="h-3 w-3" />
-                          )}
-                          <span>Question Generator</span>
+                          <Settings2 className="h-3.5 w-3.5" />
                         </button>
-                      </Tooltip>
-
-                      <Tooltip
-                        content={
-                          areToolsActive
-                            ? 'Expand your draft inline'
-                            : 'Type at least 5 words to activate Expander'
-                        }
-                        placement="top"
-                      >
                         <button
                           type="button"
-                          disabled={!areToolsActive || inlineToolRunning !== null}
-                          onClick={() => void handleRunInlineTool('prompt_expander')}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all ${
-                            areToolsActive
-                              ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E] shadow-xs cursor-pointer'
-                              : 'border-[#3D3830]/10 bg-[#F1ECE3]/55 text-[#8B8275] opacity-50 cursor-not-allowed'
-                          }`}
+                          onClick={() => setIsExpanded(false)}
+                          aria-expanded={true}
+                          aria-label="Collapse companion controls"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/15 bg-[#F1ECE3] text-[#3D3830] hover:bg-[#EAE3D7] transition-colors cursor-pointer"
                         >
-                          {inlineToolRunning === 'prompt_expander' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Sparkles className="h-3 w-3" />
-                          )}
-                          <span>Expander</span>
+                          <ChevronDown className="h-3.5 w-3.5" />
                         </button>
-                      </Tooltip>
-
-                      <Tooltip
-                        content={
-                          areToolsActive
-                            ? 'Optimize your draft inline'
-                            : 'Type at least 5 words to activate Optimizer'
-                        }
-                        placement="top"
-                      >
-                        <button
-                          type="button"
-                          disabled={!areToolsActive || inlineToolRunning !== null}
-                          onClick={() => void handleRunInlineTool('prompt_optimizer')}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all ${
-                            areToolsActive
-                              ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E] shadow-xs cursor-pointer'
-                              : 'border-[#3D3830]/10 bg-[#F1ECE3]/55 text-[#8B8275] opacity-50 cursor-not-allowed'
-                          }`}
-                        >
-                          {inlineToolRunning === 'prompt_optimizer' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Wand2 className="h-3 w-3" />
-                          )}
-                          <span>Optimizer</span>
-                        </button>
-                      </Tooltip>
+                      </div>
                     </div>
-                    )}
 
-                    {/* Right: [ Technical | Detailed | Memory ] iPhone-style Toggles */}
-                    <div className="flex flex-wrap items-center gap-1.5 ml-auto">
-                      {/* Toggle 1: Technical / Friendly */}
-                      <Tooltip
-                        content={
-                          toneMode === 'friendly'
-                            ? 'Easy to understand'
-                            : 'With full technical insights'
-                        }
-                        placement="top"
-                      >
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={toneMode === 'friendly'}
-                          aria-label="Toggle Friendly or Technical response mode"
-                          onClick={() =>
-                            onChangeToneMode(toneMode === 'technical' ? 'friendly' : 'technical')
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
+                    <div className="flex flex-wrap items-end justify-between gap-2">
+                      <div className="flex items-end gap-2 flex-1 min-w-[200px] max-w-sm">
+                        <div className="flex-1 min-w-0">
+                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
+                            Language
+                          </span>
+                          <CustomSelect
+                            value={languageSlug}
+                            onChange={onChangeLanguage}
+                            ariaLabel="Conversation language"
+                            size="xs"
+                            surface="canvas"
+                            placement="top"
+                            minMenuWidth={185}
+                            className="w-full"
+                            options={(catalog?.languages || []).map((opt) => ({
+                              value: opt.slug,
+                              label: opt.displayName,
+                            }))}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
+                            Font
+                          </span>
+                          <CustomSelect
+                            value={fontSize}
+                            onChange={(val) => onChangeFontSize(val as ChatFontSize)}
+                            ariaLabel="Reading font size"
+                            size="xs"
+                            surface="canvas"
+                            placement="top"
+                            minMenuWidth={155}
+                            className="w-full"
+                            options={[
+                              { value: 'sm', label: 'Compact' },
+                              { value: 'base', label: 'Balanced' },
+                              { value: 'lg', label: 'Large' },
+                            ]}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        {onStartNewCompanion && activeCompanionPersona && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsExpanded(false);
+                              onStartNewCompanion();
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2.5 py-1 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                          >
+                            <RefreshCw className="h-3 w-3 text-[#8B7355]" />
+                            <span>Match another</span>
+                          </button>
+                        )}
+                        <Tooltip
+                          content="Keep continuity across your companion conversation (separate from your birth chart)"
+                          placement="top"
                         >
-                          <span
-                            className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
-                              toneMode === 'friendly' ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
-                            }`}
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={useFullProfileMemory}
+                            aria-label="Toggle companion conversation memory"
+                            onClick={onToggleMemory}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
                           >
                             <span
-                              className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
-                                toneMode === 'friendly' ? 'translate-x-3' : 'translate-x-0'
+                              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
+                                useFullProfileMemory ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
                               }`}
-                            />
-                          </span>
-                          <span className="font-medium select-none">
-                            {toneMode === 'friendly' ? 'Friendly' : 'Technical'}
-                          </span>
-                        </button>
-                      </Tooltip>
-
-                      {/* Toggle 2: Detailed / Short */}
-                      <Tooltip
-                        content={
-                          responseLength === 'short'
-                            ? 'Quick & fast response'
-                            : 'With comprehensive explanations'
-                        }
-                        placement="top"
-                      >
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={responseLength === 'short'}
-                          aria-label="Toggle Short or Detailed response length"
-                          onClick={() =>
-                            onChangeResponseLength(
-                              responseLength === 'detailed' ? 'short' : 'detailed'
-                            )
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
-                        >
-                          <span
-                            className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
-                              responseLength === 'short' ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
-                            }`}
-                          >
-                            <span
-                              className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
-                                responseLength === 'short' ? 'translate-x-3' : 'translate-x-0'
-                              }`}
-                            />
-                          </span>
-                          <span className="font-medium select-none">
-                            {responseLength === 'short' ? 'Short' : 'Detailed'}
-                          </span>
-                        </button>
-                      </Tooltip>
-
-                      {/* Toggle 3: Memory (Default ON for Profiles, General & Learning) */}
-                      <Tooltip
-                        content="Storing this chat in memory for better analysis"
-                        placement="top"
-                      >
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={useFullProfileMemory}
-                          aria-label="Toggle longitudinal context memory"
-                          onClick={onToggleMemory}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
-                        >
-                          <span
-                            className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
-                              useFullProfileMemory ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
-                            }`}
-                          >
-                            <span
-                              className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
-                                useFullProfileMemory ? 'translate-x-3' : 'translate-x-0'
-                              }`}
-                            />
-                          </span>
-                          <Brain className="h-3 w-3 text-[#8B7355]" />
-                          <span className="font-medium select-none">Memory</span>
-                        </button>
-                      </Tooltip>
+                            >
+                              <span
+                                className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
+                                  useFullProfileMemory ? 'translate-x-3' : 'translate-x-0'
+                                }`}
+                              />
+                            </span>
+                            <Brain className="h-3 w-3 text-[#8B7355]" />
+                            <span className="font-medium select-none">Memory</span>
+                          </button>
+                        </Tooltip>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  /* CLARITY ADAPTIVE CONTROL PANEL: Language, Font, Memory (default OFF) + Reset */
+                  <div className="border-b border-[#3D3830]/10 pb-2.5 pt-0.5 space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <Lightbulb className="h-3.5 w-3.5 text-[#B8965A] mt-0.5 shrink-0" />
+                        <p className="text-[11px] text-[#5C5449] leading-relaxed">
+                          <span className="font-semibold text-[#3D3830]">Clarity</span> · Off-record sidekick for quick doubts, prompt drafting &amp; general questions. Never mixed with your birth chart memory.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={onOpenSettings}
+                          aria-label="Open Chat Settings"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                        >
+                          <Settings2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsExpanded(false)}
+                          aria-expanded={true}
+                          aria-label="Collapse Clarity controls"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/15 bg-[#F1ECE3] text-[#3D3830] hover:bg-[#EAE3D7] transition-colors cursor-pointer"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-end justify-between gap-2">
+                      <div className="flex items-end gap-2 flex-1 min-w-[200px] max-w-sm">
+                        <div className="flex-1 min-w-0">
+                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
+                            Language
+                          </span>
+                          <CustomSelect
+                            value={languageSlug}
+                            onChange={onChangeLanguage}
+                            ariaLabel="Clarity language"
+                            size="xs"
+                            surface="canvas"
+                            placement="top"
+                            minMenuWidth={185}
+                            className="w-full"
+                            options={(catalog?.languages || []).map((opt) => ({
+                              value: opt.slug,
+                              label: opt.displayName,
+                            }))}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
+                            Font
+                          </span>
+                          <CustomSelect
+                            value={fontSize}
+                            onChange={(val) => onChangeFontSize(val as ChatFontSize)}
+                            ariaLabel="Reading font size"
+                            size="xs"
+                            surface="canvas"
+                            placement="top"
+                            minMenuWidth={155}
+                            className="w-full"
+                            options={[
+                              { value: 'sm', label: 'Compact' },
+                              { value: 'base', label: 'Balanced' },
+                              { value: 'lg', label: 'Large' },
+                            ]}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        {onResetClarity && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsExpanded(false);
+                              onResetClarity();
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2.5 py-1 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                          >
+                            <RotateCcw className="h-3 w-3 text-[#8B7355]" />
+                            <span>Clear Clarity</span>
+                          </button>
+                        )}
+                        <Tooltip
+                          content="Off by default — Clarity stays off-record and never touches your birth chart memory"
+                          placement="top"
+                        >
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={useFullProfileMemory}
+                            aria-label="Toggle Clarity memory"
+                            onClick={onToggleMemory}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
+                          >
+                            <span
+                              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
+                                useFullProfileMemory ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                              }`}
+                            >
+                              <span
+                                className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
+                                  useFullProfileMemory ? 'translate-x-3' : 'translate-x-0'
+                                }`}
+                              />
+                            </span>
+                            <Brain className="h-3 w-3 text-[#8B7355]" />
+                            <span className="font-medium select-none">Memory</span>
+                          </button>
+                        </Tooltip>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Attachment & Extra Profile Chips (0px when empty) */}
-            {(attachments.length > 0 || attachedExtraProfiles.length > 0) && (
+            {(attachments.length > 0 || (activePillar === 'council' && attachedExtraProfiles.length > 0)) && (
               <div className="mb-1.5 flex items-center gap-2 overflow-x-auto pb-1">
-                {attachedExtraProfiles.map((prof) => (
+                {activePillar === 'council' && attachedExtraProfiles.map((prof) => (
                   <div
                     key={`prof-${prof.id}`}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-[#B8965A]/35 bg-[#F1ECE3] px-2.5 py-1 text-[11px] text-[#3D3830] shrink-0"
@@ -1287,8 +1664,8 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
               ref={textareaRef}
               rows={1}
               value={draftText}
-              disabled={inlineToolRunning !== null}
-              placeholder={composerPlaceholder || undefined}
+              disabled={composerDisabled || inlineToolRunning !== null}
+              placeholder={effectivePlaceholder}
               onChange={(e) => {
                 onDraftChange(e.target.value);
                 if (undoSnapshot) setUndoSnapshot(null);
@@ -1296,7 +1673,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               aria-label="Message input"
-              className="w-full resize-none bg-transparent px-1 py-0 text-sm text-[#3D3830] placeholder:text-[#8B8275]/80 leading-[22px] focus:outline-none disabled:opacity-60"
+              className="w-full resize-none bg-transparent px-1 py-0 text-sm text-[#3D3830] placeholder:text-[#8B8275]/80 leading-[22px] focus:outline-none disabled:opacity-55 disabled:cursor-not-allowed"
             />
 
             {/* Bottom Row: Bottom-Left '+' Menu | Bottom-Right Voice + Send */}
@@ -1305,6 +1682,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
               <div ref={plusMenuRef} className="relative">
                 <button
                   type="button"
+                  disabled={composerDisabled}
                   onClick={() => {
                     setIsPlusOpen((v) => {
                       const next = !v;
@@ -1315,7 +1693,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                   }}
                   aria-expanded={isPlusOpen}
                   aria-label="Add image, PDF, profile, saved prompt, or start new chat"
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-all active:scale-95 cursor-pointer ${
+                  className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${
                     isPlusOpen
                       ? 'border-[#3D3830]/30 bg-[#4A453D] text-[#FAF7F2]'
                       : 'border-[#3D3830]/12 bg-[#F1ECE3] text-[#3D3830] hover:bg-[#EAE3D7]'
@@ -1503,24 +1881,26 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                           </>
                         )}
 
-                        <button
-                          type="button"
-                          onMouseEnter={() => setPlusSubMenu('profiles')}
-                          onClick={() =>
-                            setPlusSubMenu((s) => (s === 'profiles' ? null : 'profiles'))
-                          }
-                          className={`w-full flex items-center justify-between gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors text-left cursor-pointer ${
-                            plusSubMenu === 'profiles'
-                              ? 'bg-[#F1ECE3] text-[#3D3830]'
-                              : 'text-[#3D3830] hover:bg-[#F1ECE3]'
-                          }`}
-                        >
-                          <span className="inline-flex items-center gap-2.5">
-                            <UserPlus className="h-3.5 w-3.5 text-[#8B7355]" />
-                            <span>Profile</span>
-                          </span>
-                          <ChevronRight className="h-3.5 w-3.5 text-[#8B8275]" />
-                        </button>
+                        {activePillar === 'council' && (
+                          <button
+                            type="button"
+                            onMouseEnter={() => setPlusSubMenu('profiles')}
+                            onClick={() =>
+                              setPlusSubMenu((s) => (s === 'profiles' ? null : 'profiles'))
+                            }
+                            className={`w-full flex items-center justify-between gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors text-left cursor-pointer ${
+                              plusSubMenu === 'profiles'
+                                ? 'bg-[#F1ECE3] text-[#3D3830]'
+                                : 'text-[#3D3830] hover:bg-[#F1ECE3]'
+                            }`}
+                          >
+                            <span className="inline-flex items-center gap-2.5">
+                              <UserPlus className="h-3.5 w-3.5 text-[#8B7355]" />
+                              <span>Profile</span>
+                            </span>
+                            <ChevronRight className="h-3.5 w-3.5 text-[#8B8275]" />
+                          </button>
+                        )}
 
                         <button
                           type="button"
@@ -1549,12 +1929,24 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                           onClick={() => {
                             setIsPlusOpen(false);
                             setPlusSubMenu(null);
-                            onNewChat();
+                            if (activePillar === 'companion' && onStartNewCompanion) {
+                              onStartNewCompanion();
+                            } else if (activePillar === 'clarity' && onResetClarity) {
+                              onResetClarity();
+                            } else {
+                              onNewChat();
+                            }
                           }}
                           className="w-full flex items-center gap-2.5 rounded-xl bg-[#4A453D] px-3 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors text-left cursor-pointer"
                         >
                           <SquarePen className="h-3.5 w-3.5 shrink-0" />
-                          <span>New Chat</span>
+                          <span>
+                            {activePillar === 'companion'
+                              ? 'New Companion'
+                              : activePillar === 'clarity'
+                              ? 'New Clarity Chat'
+                              : 'New Chat'}
+                          </span>
                         </button>
                       </div>
 
@@ -1701,9 +2093,10 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                   >
                     <button
                       type="button"
+                      disabled={composerDisabled}
                       onClick={toggleVoiceInput}
                       aria-label={isListening ? 'Stop voice dictation' : 'Voice dictation'}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full active:scale-95 transition-all cursor-pointer ${
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${
                         isListening
                           ? 'bg-[#7A3E36] text-[#FAF7F2] animate-pulse'
                           : 'bg-[#F1ECE3] text-[#5C5449] hover:bg-[#EAE3D7] hover:text-[#3D3830]'
@@ -1730,8 +2123,9 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                 ) : (
                   <button
                     type="button"
-                    disabled={!isPreviewMode && !canSend}
+                    disabled={composerDisabled || (!isPreviewMode && !canSend)}
                     onClick={() => {
+                      if (composerDisabled) return;
                       if (isPreviewMode) {
                         onSendMessage(draftText.trim() || 'preview');
                         return;
@@ -1744,7 +2138,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                     }}
                     aria-label="Send message"
                     className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#4A453D] text-[#FAF7F2] transition-all cursor-pointer ${
-                      isPreviewMode
+                      isPreviewMode && !composerDisabled
                         ? 'opacity-45 hover:opacity-65'
                         : 'hover:bg-[#38342E] active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed'
                     }`}

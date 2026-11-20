@@ -1,5 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowUpRight, Check, Coins, Copy, Gift, Plus, Receipt, Shield, Sparkles, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import {
+  Activity,
+  AlertTriangle,
+  ArrowUpRight,
+  Check,
+  Coins,
+  Copy,
+  Gift,
+  LayoutGrid,
+  Plus,
+  Receipt,
+  Shield,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 type SupportedCurrency = 'INR' | 'USD' | 'AED' | 'EUR';
@@ -40,6 +55,27 @@ interface ReferralItem {
   rewarded_at: string | null;
 }
 
+interface UsageSummaryResponse {
+  periodDays: number;
+  creditsBalance: number;
+  creditBaseline: number;
+  lowCreditsThreshold: number;
+  isLowCredits: boolean;
+  miniApps: {
+    totalRuns: number;
+    cachedRuns: number;
+    freshRuns: number;
+    topApps: Array<{
+      slug: string;
+      title: string;
+      runs: number;
+      lastUsedAt: string;
+    }>;
+  };
+  chatQuestions30d: number;
+  reportOrders30d: number;
+}
+
 const CURRENCY_SYMBOLS: Record<SupportedCurrency, string> = {
   INR: '₹',
   USD: '$',
@@ -48,7 +84,7 @@ const CURRENCY_SYMBOLS: Record<SupportedCurrency, string> = {
 };
 
 const BillingCredits: React.FC = () => {
-  const { appUser, getAccessToken, refreshUser } = useAuth();
+  const { appUser, isPreviewMode, getAccessToken, refreshUser } = useAuth();
   const [currency, setCurrency] = useState<SupportedCurrency>(
     (appUser?.currency_pref as SupportedCurrency) || 'INR'
   );
@@ -56,6 +92,7 @@ const BillingCredits: React.FC = () => {
   const [tiers, setTiers] = useState<MembershipTierItem[]>([]);
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [referrals, setReferrals] = useState<ReferralItem[]>([]);
+  const [usageSummary, setUsageSummary] = useState<UsageSummaryResponse | null>(null);
   const [dodoConfigured, setDodoConfigured] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [checkoutLoadingSlug, setCheckoutLoadingSlug] = useState<string | null>(null);
@@ -73,11 +110,40 @@ const BillingCredits: React.FC = () => {
   const loadBillingData = useCallback(async () => {
     setIsLoading(true);
     try {
+      if (isPreviewMode) {
+        setUsageSummary({
+          periodDays: 30,
+          creditsBalance: appUser?.credits_balance ?? 5000,
+          creditBaseline: 5000,
+          lowCreditsThreshold: 500,
+          isLowCredits: (appUser?.credits_balance ?? 5000) < 500,
+          miniApps: {
+            totalRuns: 9,
+            cachedRuns: 6,
+            freshRuns: 3,
+            topApps: [
+              { slug: 'daily-horoscope', title: 'Daily Forecast', runs: 4, lastUsedAt: new Date().toISOString() },
+              { slug: 'current-transits', title: 'Current Transits', runs: 3, lastUsedAt: new Date().toISOString() },
+              { slug: 'dasha-analysis', title: 'Dasha Explorer', runs: 2, lastUsedAt: new Date().toISOString() },
+            ],
+          },
+          chatQuestions30d: 14,
+          reportOrders30d: 1,
+        });
+        setIsLoading(false);
+        return;
+      }
+
       const token = await getAccessToken();
       if (!token) return;
-      const res = await fetch('/api/payments/catalog', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const [res, usageRes] = await Promise.all([
+        fetch('/api/payments/catalog', {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch('/api/apps/usage-summary', {
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => null),
+      ]);
       if (res.ok) {
         const data = await res.json();
         setCreditPacks(data.creditPacks || []);
@@ -86,12 +152,16 @@ const BillingCredits: React.FC = () => {
         setReferrals(data.referrals || []);
         setDodoConfigured(Boolean(data.dodoConfigured));
       }
+      if (usageRes && usageRes.ok) {
+        const uData = (await usageRes.json()) as UsageSummaryResponse;
+        setUsageSummary(uData);
+      }
     } catch {
       setErrorMessage('Unable to load billing catalog.');
     } finally {
       setIsLoading(false);
     }
-  }, [getAccessToken]);
+  }, [appUser?.credits_balance, getAccessToken, isPreviewMode]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -175,6 +245,14 @@ const BillingCredits: React.FC = () => {
       : 'Personal Plan';
 
   const currentActivationRate = 'Free';
+
+  const creditBaseline =
+    appUser?.tier === 'guru' ? 80000 : appUser?.tier === 'pro' ? 25000 : 5000;
+  const lowCreditsThreshold =
+    usageSummary?.lowCreditsThreshold ?? Math.round(creditBaseline * 0.1);
+  const isLowCredits =
+    typeof appUser?.credits_balance === 'number' &&
+    appUser.credits_balance < lowCreditsThreshold;
 
   const scrollToSection = (sectionId: string) => {
     const el = document.getElementById(sectionId);
@@ -266,7 +344,14 @@ const BillingCredits: React.FC = () => {
             <p className="mt-1 font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium text-[#F4EFE6]">
               {(appUser?.credits_balance ?? 0).toLocaleString()}
             </p>
-            <p className="mt-1 text-xs text-[#F4EFE6]/60">Credits ready to use</p>
+            {isLowCredits ? (
+              <p className="mt-1 text-xs font-medium text-[#E5B391] inline-flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                <span>Below 10% remaining</span>
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-[#F4EFE6]/60">Credits ready to use</p>
+            )}
           </div>
         </div>
 
@@ -310,6 +395,25 @@ const BillingCredits: React.FC = () => {
           </div>
         </div>
       </section>
+
+      {isLowCredits && (
+        <div className="rounded-2xl border border-[#7A3E36]/25 bg-[#7A3E36]/8 px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 text-xs text-[#7A3E36]">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>
+              Your credit balance is below 10% ({(appUser?.credits_balance ?? 0).toLocaleString()} /{' '}
+              {creditBaseline.toLocaleString()} baseline). Top up below whenever you are ready to continue consultations or reports.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => scrollToSection('add-credits')}
+            className="font-medium underline underline-offset-4 whitespace-nowrap cursor-pointer"
+          >
+            View top-up packs
+          </button>
+        </div>
+      )}
 
       {statusMessage && (
         <div className="rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/15 px-5 py-3.5 text-xs text-[#3D3830]">
@@ -514,6 +618,86 @@ const BillingCredits: React.FC = () => {
           </button>
         </div>
       </section>
+
+      {/* Calm 30-Day Activity & Feature Usage Summary */}
+      {usageSummary && (
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-[#8B8275]" />
+                <h2 className="font-serif text-2xl font-medium text-[#3D3830]">
+                  Activity &amp; Feature Usage
+                </h2>
+              </div>
+              <p className="mt-1 text-xs text-[#5C5449]">
+                Your activity across the last {usageSummary.periodDays} days. Daily &amp; chart Mini-Apps are included complimentary; credits are reserved for consultations and multi-pass research reports.
+              </p>
+            </div>
+            <Link
+              to="/app/apps"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors whitespace-nowrap"
+            >
+              <LayoutGrid className="h-3.5 w-3.5 text-[#8B7355]" />
+              <span>Explore Apps</span>
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 space-y-1.5">
+              <p className="text-xs text-[#8B8275]">Mini-Apps Opened</p>
+              <p className="font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium text-[#3D3830]">
+                {usageSummary.miniApps.totalRuns.toLocaleString()}
+              </p>
+              <p className="text-xs text-[#5C5449]">
+                {usageSummary.miniApps.freshRuns} fresh · {usageSummary.miniApps.cachedRuns} instant cached · Complimentary
+              </p>
+            </div>
+
+            <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 space-y-1.5">
+              <p className="text-xs text-[#8B8275]">Chat Questions</p>
+              <p className="font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium text-[#3D3830]">
+                {usageSummary.chatQuestions30d.toLocaleString()}
+              </p>
+              <p className="text-xs text-[#5C5449]">
+                Across Council, Companions &amp; Clarity threads
+              </p>
+            </div>
+
+            <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 space-y-1.5">
+              <p className="text-xs text-[#8B8275]">Research Reports</p>
+              <p className="font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium text-[#3D3830]">
+                {usageSummary.reportOrders30d.toLocaleString()}
+              </p>
+              <p className="text-xs text-[#5C5449]">
+                Multi-pass dossiers generated this month
+              </p>
+            </div>
+          </div>
+
+          {usageSummary.miniApps.topApps.length > 0 && (
+            <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 space-y-3">
+              <p className="text-xs font-medium text-[#8B8275]">
+                Most Reopened Mini-Apps (Last {usageSummary.periodDays} Days)
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {usageSummary.miniApps.topApps.map((item) => (
+                  <Link
+                    key={item.slug}
+                    to={`/app/apps/${item.slug}`}
+                    className="group flex items-center justify-between gap-2 rounded-2xl border border-[#3D3830]/10 bg-[#FAF7F2] px-3.5 py-2.5 text-xs hover:border-[#3D3830]/22 hover:bg-[#F1ECE3]/70 transition-colors"
+                  >
+                    <span className="font-medium text-[#3D3830] truncate">{item.title}</span>
+                    <span className="font-mono tabular-nums text-[#8B8275] group-hover:text-[#3D3830] shrink-0">
+                      {item.runs}×
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Credit Transaction Ledger */}
       <section className="space-y-4">

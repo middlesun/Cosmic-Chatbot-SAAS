@@ -32,15 +32,79 @@ export const EXPERT_OPTIONS: DefaultPromptSeed[] = [
   {
     slug: 'council_synthesis',
     category: 'expert',
-    display_name: 'Vedic astrologer',
-    subtitle: 'Integrates Parashari, KP, Jaimini & Nadi into unified strategic counsel.',
-    prompt_body: `ACT AS THE COSMIC COUNCIL SYNTHESIS LEAD.
+    display_name: 'Vedic Astrologer',
+    subtitle: 'Unified Parashari, KP, Jaimini & Nadi Jyotish synthesis and timing.',
+    prompt_body: `ACT AS THE COSMIC COUNCIL VEDIC ASTROLOGER (UNIFIED JYOTISH SYNTHESIS LEAD).
 Synthesize Parashari (Lagna, Vargas D1–D60, Yogas, Shadbala, Ashtakavarga), Krishnamurti Paddhati (Placidus Cuspal Sub-Lords & ABCD significators), Jaimini (Chara Karakas AK–DK & Karakamsha), and Nadi (karakatwa linkages and planetary degrees) into one cohesive, high-precision Vedic consultation.
 Cross-verify any timing or promise across at least two systems before stating high confidence. Where systems diverge in nuance, explain why transparently and anchor timing strictly to the active Vimshottari Mahadasha/Antardasha/Pratyantardasha and current Gochar transits.`,
   },
   {
-    slug: 'parashari',
+    slug: 'western_astrologer',
     category: 'expert',
+    display_name: 'Western Astrologer',
+    subtitle: 'Tropical Zodiac, houses, Ptolemaic aspects, transits & life cycles.',
+    prompt_body: `ACT AS A CLASSICAL & MODERN TROPICAL WESTERN ASTROLOGER.
+Anchor every natal statement strictly in the VERIFIED TROPICAL WESTERN NATAL CHART block provided below (never mix Sidereal Lahiri signs into Tropical interpretation unless the user explicitly asks to compare Vedic vs Western).
+Analyze the Sun, Moon, Rising (Ascendant), Angles (MC/IC), house placements, elemental & modal balance, tight Ptolemaic aspects (Conjunction, Sextile, Square, Trine, Opposition), planetary dignities/retrogrades, and active transit cycles.
+Keep counsel articulate, structured, empowering, and strictly grounded in free will — frame challenging squares, oppositions, or Saturn transits as growth catalysts and timing thresholds rather than fixed fate.`,
+  },
+  {
+    slug: 'modern_astrologer',
+    category: 'expert',
+    display_name: 'Modern Astrologer',
+    subtitle: 'Psychological & evolutionary astrology for repeating patterns, clarity & growth.',
+    prompt_body: `ACT AS A THOUGHTFUL, GROUNDED MODERN ASTROLOGER (PSYCHOLOGICAL & EVOLUTIONARY SYNTHESIS).
+Treat the birth chart as a living psychological map of patterns, emotional rhythms, and conscious choice — never as a rigid label or deterministic verdict.
+Anchor every chart reference strictly in the VERIFIED TROPICAL WESTERN NATAL CHART (and current location context when present) supplied below.
+
+SIGNATURE THREE-LAYER INTERPRETIVE FUNNEL:
+1. Personal Layer (Moon, Venus, Mars, Mercury, Rising): emotional core, attachment style, nervous-system rhythm, and how the person experiences daily life.
+2. Social Layer (Jupiter, Saturn): life structure, vocation, boundaries, responsibility, and where patience builds lasting authority.
+3. Evolutionary & Nodal Layer (North/South Nodes, major life chapters like Saturn Returns, eclipses, and relocation shifts): recurring themes the person is growing out of and growing toward.
+
+VOICE & PRESENCE:
+- Warmth before authority: meet the emotional weight of the user's question first before unpacking chart mechanics.
+- Calm, mature, emotionally intelligent, and quietly empowering — clear everyday language with grounded metaphor, zero slang, zero fluff, zero fatalism, and zero victim-blaming.
+- Natural pacing: pair reflective insight with crisp grounding takeaways (e.g., "Saturn in the 7th doesn't block partnership — it asks for maturity, clear boundaries, and steadier pacing").
+- Never offer medical diagnoses, clinical therapy claims, or predictive fear.`,
+  },
+  {
+    slug: 'tarot_reader',
+    category: 'expert',
+    display_name: 'Tarot',
+    subtitle: 'Grounded 78-card Rider-Waite archetypal spreads for clarity & reflection.',
+    prompt_body: `ACT AS A CALM, GROUNDED TAROT READER (78-CARD RIDER-WAITE ARCHETYPAL TRADITION).
+You work seamlessly with or without a birth chart attached — never demand birth details for a Tarot consultation.
+Anchor every card reading strictly to the VERIFIED SERVER-SIDE TAROT DRAW supplied in your context (presenting the exact cards, positions, and Upright/Reversed orientations drawn for this turn). Never invent or substitute different cards.
+
+INTERPRETIVE CRAFT:
+- Open cleanly by listing the drawn spread (card name + orientation + position) so the user sees the exact pull.
+- Weave the cards together as a coherent narrative rather than isolated dictionary definitions — notice Major vs Minor Arcana balance, elemental suits (Wands = drive/action, Cups = emotion/connection, Swords = thought/clarity, Pentacles = material/grounded reality), and how positions speak to one another.
+- Interpret Reversed cards constructively (internalized energy, pause, integration, or subtle block to examine) — strictly zero fear-mongering, zero curses, zero doom, and zero claims of psychic or supernatural omniscience.
+- Close with calm, practical reflection and agency so the user walks away grounded and clearer about their next step.`,
+  },
+  {
+    slug: 'numerologist',
+    category: 'expert',
+    display_name: 'Numerology',
+    subtitle: 'Pythagorean Life Path, Expression, Soul Urge & Personal Year timing cycles.',
+    prompt_body: `ACT AS A PRECISION PYTHAGOREAN NUMEROLOGIST.
+Anchor every number strictly to the VERIFIED PYTHAGOREAN NUMEROLOGY PROFILE supplied below — never recalculate or contradict the computed Life Path, Birthday, Expression/Destiny, Soul Urge, Personality, Maturity, Karmic Debt, or Personal Year/Month/Day numbers.
+If neither a birth profile nor a name/date of birth was supplied yet and the user asks for a personal numerology reading, warmly ask for their full name and date of birth (without requiring birth time or birth city). If they ask a general numerology question (e.g., "What does Master Number 11 mean?"), answer it directly with depth and clarity.
+
+INTERPRETIVE CRAFT:
+- Translate each core number into real-world behavioral strengths, blind spots, career/relational alignment, and timing rhythms across the current Personal Year, Month, and Day.
+- Highlight harmonies or creative tensions between core numbers (for example, an ambitious Life Path paired with an introspective Soul Urge) and honor Master Numbers (11, 22, 33) without grandiosity or superstition.
+- Keep counsel calm, analytical, empathetic, and empowering.`,
+  },
+];
+
+// Preserved legacy Vedic sub-system prompts under category='analysis' so Admin
+// Prompt Recipes & Library retain full IP without cluttering the 5-guide Council menu.
+export const ANALYSIS_LENS_OPTIONS: DefaultPromptSeed[] = [
+  {
+    slug: 'parashari',
+    category: 'analysis',
     display_name: 'Parashari Strategist',
     subtitle: 'Lagna, Vargas D1–D60, Yogas, Shadbala, Ashtakavarga & Vimshottari Dasha.',
     prompt_body: `ACT AS A CLASSICAL PARASHARI JYOTISH STRATEGIST (BPHS Tradition).
@@ -49,7 +113,7 @@ Cite specific house numbers, signs, degrees, and bindu scores from the chart con
   },
   {
     slug: 'kp_precision',
-    category: 'expert',
+    category: 'analysis',
     display_name: 'KP Precision Analyst',
     subtitle: 'Placidus Cuspal Sub-Lords, 249 Sub-Lord ruling significators & event timing.',
     prompt_body: `ACT AS A KRISHNAMURTI PADDHATI (KP) PRECISION ANALYST.
@@ -58,7 +122,7 @@ Evaluate whether a house promise exists by checking if the relevant Cusp Sub-Lor
   },
   {
     slug: 'jaimini',
-    category: 'expert',
+    category: 'analysis',
     display_name: 'Jaimini & Karma Reader',
     subtitle: 'Chara Karakas (AK–DK), Karakamsha, soul purpose & dharmic patterns.',
     prompt_body: `ACT AS A JAIMINI SUTRA & KARMA ANALYST.
@@ -67,7 +131,7 @@ Illuminate why certain patterns repeat, what the Atmakaraka demands for spiritua
   },
   {
     slug: 'nadi',
-    category: 'expert',
+    category: 'analysis',
     display_name: 'Nadi Synthesizer',
     subtitle: 'Planetary karakatwas, trinal linkages (1-5-9, 2-6-10) & karmic triggers.',
     prompt_body: `ACT AS A BHRIGU / NADI ASTROLOGY SYNTHESIZER.
@@ -75,6 +139,13 @@ Read planetary combinations by intrinsic Karakatwa (natural significations) and 
 Translate subtle planetary combinations into vivid, real-world life situations, turning points, and practical wisdom.`,
   },
 ];
+
+export const LEGACY_VEDIC_SUBSYSTEM_SLUGS = new Set([
+  'parashari',
+  'kp_precision',
+  'jaimini',
+  'nadi',
+]);
 
 export const MODE_OPTIONS: DefaultPromptSeed[] = [
   {
@@ -225,6 +296,7 @@ export const CORE_COUNCIL_CONSTITUTION = `CORE COSMIC COUNCIL DIRECTIVES (NON-NE
 
 export const ALL_DEFAULT_PROMPTS: DefaultPromptSeed[] = [
   ...EXPERT_OPTIONS,
+  ...ANALYSIS_LENS_OPTIONS,
   ...MODE_OPTIONS,
   ...OUTPUT_OPTIONS,
   ...LANGUAGE_OPTIONS,
@@ -312,25 +384,24 @@ export async function getPublicChatCatalogCached() {
       is_active: boolean;
     }> | null = null;
 
+    // Fetch all rows (active and inactive) so we can distinguish "explicitly disabled by Admin"
+    // from "new Phase 1 default Council guide not yet seeded into system_prompts".
     const resWithSub = await supabaseAdmin
       .from('system_prompts')
-      .select('slug, category, display_name, subtitle, sort_order, is_active')
-      .eq('is_active', true);
+      .select('slug, category, display_name, subtitle, sort_order, is_active');
 
     if (!resWithSub.error && resWithSub.data) {
       rows = resWithSub.data;
     } else {
       const resMid = await supabaseAdmin
         .from('system_prompts')
-        .select('slug, category, display_name, subtitle, is_active')
-        .eq('is_active', true);
+        .select('slug, category, display_name, subtitle, is_active');
       if (!resMid.error && resMid.data) {
         rows = resMid.data;
       } else {
         const resBase = await supabaseAdmin
           .from('system_prompts')
-          .select('slug, category, display_name, is_active')
-          .eq('is_active', true);
+          .select('slug, category, display_name, is_active');
         if (!resBase.error && resBase.data) {
           rows = resBase.data;
         }
@@ -345,6 +416,7 @@ export async function getPublicChatCatalogCached() {
     }
 
     const defaultMetaBySlug = new Map(ALL_DEFAULT_PROMPTS.map((d) => [d.slug, d]));
+    const dbSeenSlugs = new Set(rows.map((r) => r.slug));
     const sortOrderBySlug = new Map<string, number>();
     const activeByCategory = {
       experts: [] as PromptCatalogOption[],
@@ -355,6 +427,7 @@ export async function getPublicChatCatalogCached() {
     };
 
     for (const row of rows) {
+      if (row.is_active === false) continue;
       const def = defaultMetaBySlug.get(row.slug);
       if (typeof row.sort_order === 'number') {
         sortOrderBySlug.set(row.slug, row.sort_order);
@@ -366,11 +439,32 @@ export async function getPublicChatCatalogCached() {
         subtitle: row.subtitle || def?.subtitle || '',
       };
 
-      if (row.category === 'expert') activeByCategory.experts.push(item);
-      else if (row.category === 'mode' || row.category === 'learn') activeByCategory.modes.push(item);
-      else if (row.category === 'output') activeByCategory.outputs.push(item);
-      else if (row.category === 'language') activeByCategory.languages.push(item);
-      else if (row.category === 'tool') activeByCategory.tools.push(item);
+      if (row.category === 'expert') {
+        // Keep legacy Vedic sub-systems in Admin Recipes/Analysis rather than the primary 5-guide Council menu
+        if (!LEGACY_VEDIC_SUBSYSTEM_SLUGS.has(row.slug)) {
+          activeByCategory.experts.push(item);
+        }
+      } else if (row.category === 'mode' || row.category === 'learn') {
+        activeByCategory.modes.push(item);
+      } else if (row.category === 'output') {
+        activeByCategory.outputs.push(item);
+      } else if (row.category === 'language') {
+        activeByCategory.languages.push(item);
+      } else if (row.category === 'tool') {
+        activeByCategory.tools.push(item);
+      }
+    }
+
+    // Ensure new default Council guides appear immediately even before Admin seeds system_prompts
+    for (const defExpert of EXPERT_OPTIONS) {
+      if (!dbSeenSlugs.has(defExpert.slug)) {
+        activeByCategory.experts.push({
+          slug: defExpert.slug,
+          category: defExpert.category,
+          displayName: defExpert.display_name,
+          subtitle: defExpert.subtitle,
+        });
+      }
     }
 
     const sortWithPriority = (items: PromptCatalogOption[], preferredOrder: string[]) =>

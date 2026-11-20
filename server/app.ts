@@ -7,6 +7,7 @@ import paymentsRouter, { dodoWebhookMiddleware } from './routes/payments';
 import radarRouter from './routes/radar';
 import reportsRouter from './routes/reports';
 import adminRouter from './routes/admin';
+import appsRouter from './routes/apps';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './services/astrologyApi';
 import { fetchSanityBlogPosts, isSanityConfigured } from '../lib/sanity';
 
@@ -105,8 +106,9 @@ export function createExpressApp(): Express {
       default_language,
       preferred_call_name,
       chat_font_size,
+      suggestions_auto_expand,
     } = req.body || {};
-    const updates: Record<string, string | null> = {};
+    const updates: Record<string, string | boolean | null> = {};
 
     if (typeof full_name === 'string' && full_name.trim()) {
       updates.full_name = full_name.trim().slice(0, 100);
@@ -129,6 +131,9 @@ export function createExpressApp(): Express {
     if (['sm', 'base', 'lg'].includes(chat_font_size)) {
       updates.chat_font_size = chat_font_size;
     }
+    if (typeof suggestions_auto_expand === 'boolean') {
+      updates.suggestions_auto_expand = suggestions_auto_expand;
+    }
 
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ error: 'No valid preference fields supplied' });
@@ -143,8 +148,32 @@ export function createExpressApp(): Express {
       .single();
 
     if (error) {
-      // Safe fallback if 002_v2_foundations.sql columns aren't migrated yet
-      const baseUpdates = { ...updates };
+      // Safe fallback if migration 005 or 002 columns aren't migrated yet
+      const v2Updates = { ...updates };
+      delete v2Updates.suggestions_auto_expand;
+
+      if (Object.keys(v2Updates).length > 0) {
+        const v2Fallback = await supabaseAdmin
+          .from('users')
+          .update({ ...v2Updates, updated_at: new Date().toISOString() })
+          .eq('id', req.appUser.id)
+          .select('*')
+          .single();
+
+        if (!v2Fallback.error && v2Fallback.data) {
+          res.json({
+            user: {
+              ...v2Fallback.data,
+              ...(typeof suggestions_auto_expand === 'boolean'
+                ? { suggestions_auto_expand }
+                : {}),
+            },
+          });
+          return;
+        }
+      }
+
+      const baseUpdates = { ...v2Updates };
       delete baseUpdates.preferred_call_name;
       delete baseUpdates.chat_font_size;
 
@@ -160,6 +189,18 @@ export function createExpressApp(): Express {
           res.json({ user: fallback.data });
           return;
         }
+      }
+
+      // If only suggestions_auto_expand was sent before 005 ran, return non-blocking success
+      if (Object.keys(updates).length === 1 && typeof suggestions_auto_expand === 'boolean') {
+        res.json({
+          user: {
+            ...req.appUser,
+            suggestions_auto_expand,
+          },
+          persisted: false,
+        });
+        return;
       }
 
       res.status(500).json({ error: 'Failed to update preferences' });
@@ -253,6 +294,7 @@ export function createExpressApp(): Express {
   app.use('/api/radar', radarRouter);
   app.use('/api/reports', reportsRouter);
   app.use('/api/admin', adminRouter);
+  app.use('/api/apps', appsRouter);
 
   app.get('/api/blog/posts', async (_req, res) => {
     const posts = await fetchSanityBlogPosts();
