@@ -16,8 +16,9 @@ import {
   Star,
   X,
 } from 'lucide-react';
-import { useAuth } from './AuthContext';
+import { useAuth, type AstrologyMode } from './AuthContext';
 import { useAppShell } from './AppLayout';
+import AstrologyModeToggle from './AstrologyModeToggle';
 import ChatSidebar from './ChatSidebar';
 import MessageThread, { type InlineChartCreationState } from './MessageThread';
 import ChatComposer from './ChatComposer';
@@ -254,7 +255,16 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { appUser, isPreviewMode, exitPreviewMode, signOut, getAccessToken, refreshUser } = useAuth();
+  const {
+    appUser,
+    isPreviewMode,
+    exitPreviewMode,
+    signOut,
+    getAccessToken,
+    refreshUser,
+    astrologyMode,
+    setAstrologyMode,
+  } = useAuth();
   const { openAccountSettings } = useAppShell();
 
   const [catalog, setCatalog] = useState<ChatCatalog | null>(null);
@@ -338,10 +348,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const [inChatQuery, setInChatQuery] = useState('');
   const [activeMatchIdx, setActiveMatchIdx] = useState(0);
 
+  const [savedNoteMsgIds, setSavedNoteMsgIds] = useState<Set<string>>(() => new Set());
+  const [savingNoteMsgId, setSavingNoteMsgId] = useState<string | null>(null);
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const inChatSearchInputRef = useRef<HTMLInputElement | null>(null);
   const headerThreadMenuRef = useRef<HTMLDivElement | null>(null);
   const seededQueryRef = useRef<string>('');
+  const seededExpertRef = useRef<boolean>(false);
   const seededCouncilFreshRef = useRef<boolean>(false);
   const didLoadInitialTabConvRef = useRef<boolean>(false);
   const tabCacheRef = useRef<Record<string, TabStateSnapshot>>({});
@@ -852,9 +866,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     const seedPrompt = searchParams.get('prompt');
     const seedPillar = searchParams.get('pillar');
     const seedExpert = searchParams.get('expert');
-    if (!seedProfileId && !seedPrompt && !seedPillar && !seedExpert) return;
+    const seedSystem = searchParams.get('system');
+    const seedNew = searchParams.get('new') === '1';
+    if (!seedProfileId && !seedPrompt && !seedPillar && !seedExpert && !seedSystem && !seedNew) {
+      return;
+    }
 
-    const queryKey = `${seedProfileId || ''}::${seedPrompt || ''}::${seedPillar || ''}::${seedExpert || ''}`;
+    const queryKey = `${seedProfileId || ''}::${seedPrompt || ''}::${seedPillar || ''}::${seedExpert || ''}::${seedSystem || ''}::${seedNew ? '1' : '0'}`;
     if (seededQueryRef.current === queryKey) return;
     seededQueryRef.current = queryKey;
 
@@ -868,11 +886,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       if (clarityTab) {
         activateTab(clarityTab, { skipSnapshot: true });
       }
-    } else if (seedPillar === 'council' || seedExpert || seedProfileId || seedPrompt) {
+    } else if (seedPillar === 'council' || seedExpert || seedSystem || seedProfileId || seedPrompt || seedNew) {
       const councilTab = tabs.find((t) => t.tabId === 'core-council') || tabs.find((t) => t.pillar === 'council');
       if (councilTab) {
         setActiveTabId(councilTab.tabId);
-        if (seedExpert || seedPrompt) {
+        if (seedExpert || seedSystem || seedPrompt || seedNew) {
           seededCouncilFreshRef.current = true;
           setActiveConversation(null);
           setMessages([]);
@@ -888,7 +906,17 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       }
     }
 
-    if (seedExpert) setExpertSlug(seedExpert);
+    if (seedSystem === 'western' || seedSystem === 'vedic') {
+      setAstrologyMode(seedSystem);
+      if (!seedExpert) {
+        seededExpertRef.current = false;
+        setExpertSlug(seedSystem === 'western' ? 'western_astrologer' : 'council_synthesis');
+      }
+    }
+    if (seedExpert) {
+      seededExpertRef.current = true;
+      setExpertSlug(seedExpert);
+    }
     if (seedPrompt) setDraftText(seedPrompt);
     if (seedProfileId) setPendingProfileId(seedProfileId);
 
@@ -897,8 +925,18 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     nextParams.delete('prompt');
     nextParams.delete('pillar');
     nextParams.delete('expert');
+    nextParams.delete('system');
+    nextParams.delete('new');
     setSearchParams(nextParams, { replace: true });
-  }, [embeddedPreview, routeConversationId, searchParams, setSearchParams, tabs, activateTab]);
+  }, [
+    embeddedPreview,
+    routeConversationId,
+    searchParams,
+    setSearchParams,
+    tabs,
+    activateTab,
+    setAstrologyMode,
+  ]);
 
   // On fresh /app/chat reload (no URL conversationId and no deep-link seed), load messages for the hydrated active tab
   useEffect(() => {
@@ -958,6 +996,35 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     suggestionsAutoExpand && (suggestionsConfig?.default_expanded ?? true);
 
   const isThreadLocked = messages.length > 0 || isStreaming;
+
+  // Keep fresh Council consultations synced with the user's active AstrologyMode
+  useEffect(() => {
+    if (isThreadLocked || activeConversation || activePillar !== 'council' || seededExpertRef.current) {
+      return;
+    }
+    if (astrologyMode === 'western' && expertSlug === 'council_synthesis') {
+      setExpertSlug('western_astrologer');
+    } else if (
+      astrologyMode === 'vedic' &&
+      (expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer')
+    ) {
+      setExpertSlug('council_synthesis');
+    }
+  }, [astrologyMode, isThreadLocked, activeConversation, activePillar, expertSlug]);
+
+  const handleChangeChatAstrologyMode = (nextMode: AstrologyMode) => {
+    seededExpertRef.current = false;
+    setAstrologyMode(nextMode);
+    if (!isThreadLocked) {
+      if (nextMode === 'western') {
+        if (expertSlug !== 'modern_astrologer') {
+          setExpertSlug('western_astrologer');
+        }
+      } else {
+        setExpertSlug('council_synthesis');
+      }
+    }
+  };
 
   // In-chat keyword search match tracking
   const matchedMessageIds = useMemo(() => {
@@ -1571,6 +1638,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       handleResetClarity();
       return;
     }
+    seededExpertRef.current = false;
     setActiveConversation(null);
     setAskLaterItems([]);
     setPendingProfileId(null);
@@ -1894,9 +1962,15 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
     await loadConversations();
 
+    const isWesternExpert =
+      expertSlug === 'western_astrologer' ||
+      expertSlug === 'modern_astrologer' ||
+      (astrologyMode === 'western' && expertSlug === 'council_synthesis');
+    const systemWord = isWesternExpert ? 'Western' : 'Vedic';
+
     const readingPrompt = originalQuestion
-      ? `The birth chart for ${createdProfile.name} is now saved and attached to this consultation. Please provide the full Vedic astrology reading for: ${originalQuestion}`
-      : `The birth chart for ${createdProfile.name} is now saved and attached to this consultation. Please proceed with a detailed Vedic astrology reading.`;
+      ? `The birth chart for ${createdProfile.name} is now saved and attached to this consultation. Please provide the full ${systemWord} astrology reading for: ${originalQuestion}`
+      : `The birth chart for ${createdProfile.name} is now saved and attached to this consultation. Please proceed with a detailed ${systemWord} astrology reading.`;
 
     void handleSendMessage(readingPrompt, updatedConv || undefined);
   };
@@ -2061,6 +2135,89 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     if (res.ok) {
       setMessages((prev) => prev.filter((m) => m.id !== msgId));
       await loadConversations();
+    }
+  };
+
+  const handleSaveMessageToNotes = async (msg: ChatMessageRecord) => {
+    if (savingNoteMsgId === msg.id || savedNoteMsgIds.has(msg.id)) return;
+
+    if (isPreviewMode) {
+      setSavedNoteMsgIds((prev) => {
+        const next = new Set(prev);
+        next.add(msg.id);
+        return next;
+      });
+      return;
+    }
+
+    const token = await getAccessToken();
+    if (!token) return;
+
+    setSavingNoteMsgId(msg.id);
+    try {
+      const sourceType =
+        activePillar === 'companion'
+          ? 'companion'
+          : activePillar === 'clarity'
+          ? 'personal'
+          : 'council';
+
+      const firstLine = msg.content
+        .replace(/^#+\s*/gm, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .split('\n')
+        .find((line) => line.trim().length > 0)
+        ?.trim()
+        .slice(0, 90);
+
+      const convTitle = activeConversation?.title?.trim();
+      const noteTitle =
+        convTitle &&
+        convTitle.toLowerCase() !== 'new consultation' &&
+        convTitle.toLowerCase() !== 'new chat'
+          ? convTitle.slice(0, 120)
+          : firstLine || 'Saved Insight';
+
+      const msgExpert = msg.expert_used || expertSlug;
+      const inferredMode: AstrologyMode | null =
+        sourceType === 'council'
+          ? msgExpert === 'western_astrologer' || msgExpert === 'modern_astrologer'
+            ? 'western'
+            : msgExpert === 'council_synthesis'
+            ? 'vedic'
+            : astrologyMode
+          : null;
+
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: noteTitle,
+          content: msg.content,
+          source_type: sourceType,
+          source_ref_id: msg.id,
+          profile_id: activePillar === 'council' ? effectiveProfileId || null : null,
+          astrology_mode: inferredMode,
+        }),
+      });
+
+      if (res.ok) {
+        setSavedNoteMsgIds((prev) => {
+          const next = new Set(prev);
+          next.add(msg.id);
+          return next;
+        });
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setErrorBanner(errData.error || 'Could not save this message to Notes.');
+      }
+    } catch {
+      setErrorBanner('Network error while saving to Notes.');
+    } finally {
+      setSavingNoteMsgId(null);
     }
   };
 
@@ -2490,6 +2647,26 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
               </Tooltip>
             )}
 
+            {activePillar === 'council' && !isThreadLocked && (
+              <AstrologyModeToggle
+                size="xs"
+                value={astrologyMode}
+                onChange={handleChangeChatAstrologyMode}
+              />
+            )}
+
+            {activePillar === 'council' && isThreadLocked && (
+              <span className="hidden sm:inline-flex items-center rounded-xl border border-[#3D3830]/12 bg-[#FDFBF7] px-2.5 py-1 text-[11px] font-medium text-[#5C5449]">
+                {expertSlug === 'tarot_reader'
+                  ? 'Tarot'
+                  : expertSlug === 'numerologist'
+                  ? 'Numerology'
+                  : expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer'
+                  ? 'Western'
+                  : 'Vedic'}
+              </span>
+            )}
+
             {activePillar === 'council' && (
               <Tooltip
                 content={
@@ -2729,6 +2906,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
               ((suggestionsConfig?.followups_enabled ?? true) ||
                 (suggestionsConfig?.deeper_analysis_enabled ?? true))
             }
+            astrologyMode={astrologyMode}
+            expertSlug={expertSlug}
+            onSaveToNotes={(msg) => void handleSaveMessageToNotes(msg)}
+            savedNoteMsgIds={savedNoteMsgIds}
+            savingNoteMsgId={savingNoteMsgId}
           />
         )}
 
@@ -2773,7 +2955,17 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           isThreadLocked={isThreadLocked}
           isPreviewMode={isPreviewMode}
           getAccessToken={getAccessToken}
-          onChangeExpert={setExpertSlug}
+          onChangeExpert={(nextExpert) => {
+            seededExpertRef.current = true;
+            setExpertSlug(nextExpert);
+            if (!isThreadLocked) {
+              if (nextExpert === 'western_astrologer' || nextExpert === 'modern_astrologer') {
+                setAstrologyMode('western');
+              } else if (nextExpert === 'council_synthesis') {
+                setAstrologyMode('vedic');
+              }
+            }
+          }}
           onChangeMode={setModeSlug}
           onChangeOutput={setOutputSlug}
           onChangeLanguage={setLanguageSlug}

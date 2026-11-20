@@ -3,12 +3,14 @@
 
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import {
+  computeWesternDailyTransits,
   formatDMS,
   getDignity,
   getNakshatraAndSubs,
   normalizeDeg,
   SIGNS,
   type PlanetPosition,
+  type WesternPlanetPosition,
 } from './jyotishMath';
 
 const BASE_URL = 'https://json.freeastrologyapi.com';
@@ -410,12 +412,37 @@ export function normalizeExtendedPlanets(raw: unknown): PlanetPosition[] {
   }));
 }
 
+function parseWesternApiPlanets(
+  raw: unknown
+): Array<{ name: string; longitude: number; isRetrograde?: boolean }> {
+  const root = raw as Record<string, unknown>;
+  const list = Array.isArray(root?.output)
+    ? root.output
+    : Array.isArray(root)
+    ? root
+    : [];
+
+  const result: Array<{ name: string; longitude: number; isRetrograde?: boolean }> = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue;
+    const obj = item as Record<string, unknown>;
+    const rawName = String(obj.planet?.toString() || obj.name || obj.planet_name || '').trim();
+    const lon = Number(obj.fullDegree ?? obj.longitude ?? obj.normDegree ?? NaN);
+    if (!rawName || Number.isNaN(lon)) continue;
+    const retroRaw = obj.isRetro ?? obj.is_retrograde ?? obj.retrograde;
+    result.push({
+      name: rawName,
+      longitude: normalizeDeg(lon),
+      isRetrograde: retroRaw === true || retroRaw === 'true' || retroRaw === 'R' || retroRaw === 1,
+    });
+  }
+  return result;
+}
+
 export async function fetchChartFromApi(payload: BirthApiPayload): Promise<{
   planets: PlanetPosition[];
-  apiNavamsa?: unknown;
-  apiDasamsa?: unknown;
-  apiVimsottari?: unknown;
   apiShadBala?: unknown;
+  apiWesternPlanets?: Array<{ name: string; longitude: number; isRetrograde?: boolean }> | null;
 }> {
   const planetsRaw = await postAstrologyEndpoint('/planets/extended', payload as unknown as Record<string, unknown>);
   const planets = normalizeExtendedPlanets(planetsRaw);
@@ -424,42 +451,40 @@ export async function fetchChartFromApi(payload: BirthApiPayload): Promise<{
     throw new Error('FreeAstrologyAPI returned incomplete planetary positions.');
   }
 
-  // Optional auxiliary endpoints (wrapped cleanly so deterministic JyotishMath covers any variation)
-  let apiNavamsa: unknown = null;
-  let apiDasamsa: unknown = null;
-  let apiVimsottari: unknown = null;
+  // Optional auxiliary endpoints (deterministic JyotishMath & Meeus calculators cover any gaps cleanly)
   let apiShadBala: unknown = null;
+  let apiWesternPlanets: Array<{ name: string; longitude: number; isRetrograde?: boolean }> | null = null;
 
   try {
-    apiNavamsa = await postAstrologyEndpoint('/navamsa-chart-info', payload as unknown as Record<string, unknown>);
-  } catch {
-    apiNavamsa = null;
-  }
-
-  try {
-    apiDasamsa = await postAstrologyEndpoint('/d10-chart-information', payload as unknown as Record<string, unknown>);
-  } catch {
-    apiDasamsa = null;
-  }
-
-  try {
-    apiVimsottari = await postAstrologyEndpoint('/vimsottari/maha-dasas-and-antar-dasas', payload as unknown as Record<string, unknown>);
-  } catch {
-    apiVimsottari = null;
-  }
-
-  try {
-    apiShadBala = await postAstrologyEndpoint('/shad-bala/summary', payload as unknown as Record<string, unknown>);
+    apiShadBala = await postAstrologyEndpoint('/shad-bala/summary', payload as unknown as Record<string, unknown>, 0);
   } catch {
     apiShadBala = null;
   }
 
+  try {
+    const westernPayload = {
+      year: payload.year,
+      month: payload.month,
+      date: payload.date,
+      hours: payload.hours,
+      minutes: payload.minutes,
+      seconds: payload.seconds,
+      latitude: payload.latitude,
+      longitude: payload.longitude,
+      timezone: payload.timezone,
+      config: { observation_point: 'geocentric', house_system: 'Placidus', language: 'en' },
+    };
+    const westernRaw = await postAstrologyEndpoint('/western/planets', westernPayload, 0);
+    const parsed = parseWesternApiPlanets(westernRaw);
+    if (parsed.length > 0) apiWesternPlanets = parsed;
+  } catch {
+    apiWesternPlanets = null;
+  }
+
   return {
     planets,
-    apiNavamsa,
-    apiDasamsa,
-    apiVimsottari,
     apiShadBala,
+    apiWesternPlanets,
   };
 }
 
@@ -467,13 +492,26 @@ let dailyTransitsMemoryCache: {
   transitDate: string;
   planets: PlanetPosition[];
   transitsText: string;
+  westernPlanets: WesternPlanetPosition[];
+  westernTransitsText: string;
 } | null = null;
 
-// Global Daily Transit (Gochar) Cache — maximum 1 API call per UTC day across ALL users
+function buildWesternTransitsText(westernPlanets: WesternPlanetPosition[], dateISO: string): string {
+  return [
+    `GLOBAL WESTERN TRANSITS FOR ${dateISO} (Tropical Zodiac):`,
+    ...westernPlanets.map(
+      (p) => `- ${p.name}: ${p.sign} ${p.dms}${p.isRetrograde ? ' [Rx]' : ''}`
+    ),
+  ].join('\n');
+}
+
+// Global Daily Transit (Gochar + Western Tropical) Cache — maximum 1 API call per UTC day across ALL users
 export async function getOrFetchDailyTransits(): Promise<{
   transitDate: string;
   planets: PlanetPosition[];
   transitsText: string;
+  westernPlanets: WesternPlanetPosition[];
+  westernTransitsText: string;
 }> {
   const todayISO = new Date().toISOString().slice(0, 10);
 
@@ -491,10 +529,14 @@ export async function getOrFetchDailyTransits(): Promise<{
       .maybeSingle();
 
     if (cached) {
+      const planets = cached.transits_json as PlanetPosition[];
+      const westernPlanets = computeWesternDailyTransits(planets, todayISO);
       dailyTransitsMemoryCache = {
         transitDate: todayISO,
-        planets: cached.transits_json as PlanetPosition[],
+        planets,
         transitsText: cached.transits_text as string,
+        westernPlanets,
+        westernTransitsText: buildWesternTransitsText(westernPlanets, todayISO),
       };
       return dailyTransitsMemoryCache;
     }
@@ -511,6 +553,9 @@ export async function getOrFetchDailyTransits(): Promise<{
         `- ${p.name}: ${p.sign} ${p.dms} | ${p.nakshatra} (Pada ${p.pada})${p.isRetrograde ? ' [Retrograde]' : ''}`
     ),
   ].join('\n');
+
+  const westernPlanets = computeWesternDailyTransits(planets, todayISO);
+  const westernTransitsText = buildWesternTransitsText(westernPlanets, todayISO);
 
   if (supabaseAdmin) {
     await supabaseAdmin
@@ -529,6 +574,8 @@ export async function getOrFetchDailyTransits(): Promise<{
     transitDate: todayISO,
     planets,
     transitsText,
+    westernPlanets,
+    westernTransitsText,
   };
   return dailyTransitsMemoryCache;
 }

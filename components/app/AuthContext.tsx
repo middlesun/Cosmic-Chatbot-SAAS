@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import type { Session, User as SupabaseAuthUser } from '@supabase/supabase-js';
 import {
   getSupabaseClient,
@@ -6,6 +6,8 @@ import {
   loadSupabasePublicConfig,
 } from '../../lib/supabaseClient';
 import { PREVIEW_APP_USER } from './previewFixtures';
+
+export type AstrologyMode = 'vedic' | 'western';
 
 export interface AppUser {
   id: string;
@@ -17,6 +19,7 @@ export interface AppUser {
   default_expert: string;
   default_output: string;
   default_language: string;
+  default_astrology_mode?: AstrologyMode | null;
   preferred_call_name?: string | null;
   chat_font_size?: 'sm' | 'base' | 'lg' | null;
   suggestions_auto_expand?: boolean | null;
@@ -41,6 +44,8 @@ interface AuthContextValue {
   authUser: SupabaseAuthUser | null;
   appUser: AppUser | null;
   stats: UserStats;
+  astrologyMode: AstrologyMode;
+  setAstrologyMode: (mode: AstrologyMode) => void;
   isPasswordRecovery: boolean;
   error: string | null;
   refreshUser: () => Promise<void>;
@@ -55,6 +60,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const REFERRAL_STORAGE_KEY = 'cc_pending_referral_code';
 const PREVIEW_STORAGE_KEY = 'cc_ui_preview_mode';
+const ASTROLOGY_MODE_STORAGE_KEY = 'cc_active_astrology_mode';
 
 export const storePendingReferral = (code: string) => {
   if (code && code.trim()) {
@@ -85,8 +91,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [stats, setStats] = useState<UserStats>({ savedProfiles: 0, successfulReferrals: 0 });
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [astrologyModeState, setAstrologyModeState] = useState<AstrologyMode>(() => {
+    const saved = sessionStorage.getItem(ASTROLOGY_MODE_STORAGE_KEY);
+    return saved === 'western' ? 'western' : 'vedic';
+  });
 
+  const inFlightFetchRef = useRef<{ token: string; promise: Promise<void> } | null>(null);
   const isPreviewMode = previewRequested && !session;
+
+  const setAstrologyMode = useCallback((mode: AstrologyMode) => {
+    setAstrologyModeState(mode);
+    sessionStorage.setItem(ASTROLOGY_MODE_STORAGE_KEY, mode);
+  }, []);
 
   const enterPreviewMode = useCallback(() => {
     sessionStorage.setItem(PREVIEW_STORAGE_KEY, '1');
@@ -98,49 +114,66 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setPreviewRequested(false);
   }, []);
 
-  const fetchAppUser = useCallback(async (activeSession: Session | null) => {
-    if (!activeSession?.access_token) {
+  const fetchAppUser = useCallback(async (activeSession: Session | null, force = false) => {
+    const accessToken = activeSession?.access_token;
+    if (!accessToken) {
+      inFlightFetchRef.current = null;
       setAppUser(null);
       setStats({ savedProfiles: 0, successfulReferrals: 0 });
       setIsLoading(false);
       return;
     }
 
-    try {
-      const pendingRef = getPendingReferral();
-      if (pendingRef) {
-        await fetch('/api/app/referral/apply', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${activeSession.access_token}`,
-          },
-          body: JSON.stringify({ referralCode: pendingRef }),
-        }).catch(() => null);
-        clearPendingReferral();
-      }
-
-      const res = await fetch('/api/app/me', {
-        headers: {
-          Authorization: `Bearer ${activeSession.access_token}`,
-        },
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setError(body.error || 'Unable to load account profile');
-        setAppUser(null);
-      } else {
-        const data = await res.json();
-        setAppUser(data.user);
-        setStats(data.stats || { savedProfiles: 0, successfulReferrals: 0 });
-        setError(null);
-      }
-    } catch {
-      setError('Network error while connecting to Cosmic Council backend.');
-    } finally {
-      setIsLoading(false);
+    if (!force && inFlightFetchRef.current?.token === accessToken) {
+      return inFlightFetchRef.current.promise;
     }
+
+    const promise = (async () => {
+      try {
+        const pendingRef = getPendingReferral();
+        if (pendingRef) {
+          await fetch('/api/app/referral/apply', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ referralCode: pendingRef }),
+          }).catch(() => null);
+          clearPendingReferral();
+        }
+
+        const res = await fetch('/api/app/me', {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setError(body.error || 'Unable to load account profile');
+          setAppUser(null);
+        } else {
+          const data = await res.json();
+          setAppUser(data.user);
+          setStats(data.stats || { savedProfiles: 0, successfulReferrals: 0 });
+          setError(null);
+          if (!sessionStorage.getItem(ASTROLOGY_MODE_STORAGE_KEY) && data.user?.default_astrology_mode) {
+            setAstrologyModeState(data.user.default_astrology_mode === 'western' ? 'western' : 'vedic');
+          }
+        }
+      } catch {
+        setError('Network error while connecting to Cosmic Council backend.');
+      } finally {
+        if (inFlightFetchRef.current?.token === accessToken) {
+          inFlightFetchRef.current = null;
+        }
+        setIsLoading(false);
+      }
+    })();
+
+    inFlightFetchRef.current = { token: accessToken, promise };
+    return promise;
   }, []);
 
   useEffect(() => {
@@ -202,7 +235,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!supabase) return;
     const { data } = await supabase.auth.getSession();
     setSession(data.session);
-    await fetchAppUser(data.session);
+    await fetchAppUser(data.session, true);
   }, [fetchAppUser]);
 
   const signOut = useCallback(async () => {
@@ -211,6 +244,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await supabase.auth.signOut();
     }
     sessionStorage.removeItem(PREVIEW_STORAGE_KEY);
+    sessionStorage.removeItem(ASTROLOGY_MODE_STORAGE_KEY);
     setPreviewRequested(false);
     setSession(null);
     setAppUser(null);
@@ -239,6 +273,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authUser: session?.user ?? null,
         appUser: effectiveAppUser,
         stats: effectiveStats,
+        astrologyMode: astrologyModeState,
+        setAstrologyMode,
         isPasswordRecovery,
         error,
         refreshUser,

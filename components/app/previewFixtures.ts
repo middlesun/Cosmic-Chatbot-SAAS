@@ -18,6 +18,7 @@ export const PREVIEW_APP_USER: AppUser = {
   default_expert: 'council_synthesis',
   default_output: 'detailed',
   default_language: 'English',
+  default_astrology_mode: 'vedic',
   preferred_call_name: null,
   chat_font_size: 'base',
   suggestions_auto_expand: true,

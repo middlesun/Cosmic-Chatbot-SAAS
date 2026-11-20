@@ -5,16 +5,20 @@ import remarkGfm from 'remark-gfm';
 import {
   ArrowLeft,
   ArrowRight,
+  Bookmark,
   Check,
+  Clock,
   Copy,
   Heart,
   Loader2,
   MessageSquare,
   RefreshCw,
   RotateCcw,
+  Sparkles,
   UserPlus,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import AstrologyModeToggle from './AstrologyModeToggle';
 import CustomSelect from './CustomSelect';
 import CustomDatePicker from './CustomDatePicker';
 import {
@@ -26,6 +30,7 @@ import {
 } from './miniAppsClientData';
 import type {
   BreakdownDomain,
+  MiniAppPastReading,
   MiniAppRunResponse,
   PlanetStrengthQuestion,
 } from './miniAppsTypes';
@@ -89,7 +94,7 @@ const MiniAppRunner: React.FC = () => {
   const { appSlug } = useParams<{ appSlug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { isPreviewMode, getAccessToken } = useAuth();
+  const { isPreviewMode, getAccessToken, astrologyMode, setAstrologyMode } = useAuth();
 
   const appDef = useMemo(
     () => CLIENT_MINI_APPS.find((a) => a.slug === appSlug) || null,
@@ -128,6 +133,11 @@ const MiniAppRunner: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [result, setResult] = useState<MiniAppRunResponse | null>(null);
   const [copied, setCopied] = useState(false);
+  const [pastReadings, setPastReadings] = useState<MiniAppPastReading[]>([]);
+  const [isLoadingReadings, setIsLoadingReadings] = useState(false);
+  const [savingToNotes, setSavingToNotes] = useState(false);
+  const [savedToNotes, setSavedToNotes] = useState(false);
+  const [saveNoteError, setSaveNoteError] = useState<string | null>(null);
 
   // Template B: Birth Chart Breakdown state
   const [breakdownDomains] = useState<BreakdownDomain[]>(CLIENT_BREAKDOWN_DOMAINS);
@@ -200,11 +210,43 @@ const MiniAppRunner: React.FC = () => {
     };
   }, [getAccessToken, isPreviewMode, searchParams]);
 
+  const loadPastReadings = useCallback(async () => {
+    if (!appDef || isPreviewMode) {
+      setPastReadings([]);
+      return;
+    }
+    const token = await getAccessToken();
+    if (!token) return;
+    setIsLoadingReadings(true);
+    try {
+      const qs = new URLSearchParams();
+      if (selectedProfileId) qs.set('profileId', selectedProfileId);
+      const res = await fetch(
+        `/api/apps/${encodeURIComponent(appDef.slug)}/readings${qs.toString() ? `?${qs.toString()}` : ''}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setPastReadings(Array.isArray(data.readings) ? data.readings : []);
+      }
+    } catch {
+      // Ignore fetch errors
+    } finally {
+      setIsLoadingReadings(false);
+    }
+  }, [appDef, getAccessToken, isPreviewMode, selectedProfileId]);
+
+  useEffect(() => {
+    void loadPastReadings();
+  }, [loadPastReadings]);
+
   // Reset transient state when switching app slug
   useEffect(() => {
     setResult(null);
     setErrorMsg(null);
     setCopied(false);
+    setSavedToNotes(false);
+    setSaveNoteError(null);
     setActiveTopicId(null);
     setQuizStep('select');
     setSelectedPlanet(null);
@@ -219,9 +261,12 @@ const MiniAppRunner: React.FC = () => {
       inputs?: Record<string, unknown>;
       partnerProfileId?: string | null;
       action?: 'run' | 'generate_quiz';
+      overrideMode?: 'vedic' | 'western';
     }): Promise<MiniAppRunResponse | null> => {
       if (!appDef) return null;
+      const effectiveMode = opts?.overrideMode || astrologyMode;
       setErrorMsg(null);
+      setSaveNoteError(null);
       setIsLoading(true);
 
       try {
@@ -235,6 +280,7 @@ const MiniAppRunner: React.FC = () => {
               structured: null,
               cacheHit: false,
               cachedAt: new Date().toISOString(),
+              astrologyMode: effectiveMode,
               questions: CLIENT_PLANET_QUIZ_PREVIEW.Sun,
               planetNatalContext: {
                 planet,
@@ -246,8 +292,9 @@ const MiniAppRunner: React.FC = () => {
             };
             return previewRes;
           }
-          const mock = buildPreviewAppResult(appDef.slug, opts?.inputs);
+          const mock = buildPreviewAppResult(appDef.slug, opts?.inputs, effectiveMode);
           setResult(mock);
+          setSavedToNotes(false);
           return mock;
         }
 
@@ -267,6 +314,7 @@ const MiniAppRunner: React.FC = () => {
             profileId: selectedProfileId || null,
             partnerProfileId: opts?.partnerProfileId || null,
             forceRefresh: Boolean(opts?.forceRefresh),
+            astrologyMode: effectiveMode,
             action: opts?.action || 'run',
             inputs: opts?.inputs || {},
           }),
@@ -281,6 +329,10 @@ const MiniAppRunner: React.FC = () => {
         const typed = data as MiniAppRunResponse;
         if (opts?.action !== 'generate_quiz') {
           setResult(typed);
+          setSavedToNotes(false);
+          if (!typed.cacheHit) {
+            void loadPastReadings();
+          }
         }
         return typed;
       } catch {
@@ -290,24 +342,28 @@ const MiniAppRunner: React.FC = () => {
         setIsLoading(false);
       }
     },
-    [appDef, getAccessToken, isPreviewMode, selectedProfileId]
+    [appDef, astrologyMode, getAccessToken, isPreviewMode, loadPastReadings, selectedProfileId]
   );
-
-  // Auto-run Template A (auto_brief) when ready or when profile changes
-  useEffect(() => {
-    if (!appDef || appDef.template !== 'auto_brief' || !profilesLoaded) return;
-    if (appDef.requiresProfile && !selectedProfileId) return;
-    void executeMiniApp({ forceRefresh: false });
-  }, [appDef, profilesLoaded, selectedProfileId, executeMiniApp]);
 
   const handleProfileChange = (nextPid: string) => {
     setSelectedProfileId(nextPid);
+    setResult(null);
+    setSavedToNotes(false);
     setBreakdownLocalCache({});
     setActiveTopicId(null);
     const nextParams = new URLSearchParams(searchParams);
     if (nextPid) nextParams.set('profileId', nextPid);
     else nextParams.delete('profileId');
     setSearchParams(nextParams, { replace: true });
+  };
+
+  const handleModeSwitch = (nextMode: 'vedic' | 'western') => {
+    if (nextMode === astrologyMode) return;
+    void setAstrologyMode(nextMode);
+    setResult(null);
+    setSavedToNotes(false);
+    setSaveNoteError(null);
+    setActiveTopicId(null);
   };
 
   const handleToggleFavorite = async () => {
@@ -345,10 +401,83 @@ const MiniAppRunner: React.FC = () => {
     window.setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleSaveToNotes = async () => {
+    if (!appDef || !result?.markdown || savingToNotes) return;
+    setSaveNoteError(null);
+
+    if (isPreviewMode) {
+      setSavedToNotes(true);
+      return;
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      setSaveNoteError('Please sign in to save notes.');
+      return;
+    }
+
+    setSavingToNotes(true);
+    try {
+      const modeUsed = result.astrologyMode || astrologyMode;
+      const modeTag = modeUsed === 'western' ? 'Western' : 'Vedic';
+      const title =
+        appDef.slug === 'birth-chart-breakdown' && activeTopic?.label
+          ? `${appDef.title}: ${activeTopic.label} (${modeTag})`
+          : appDef.slug === 'planet-strength-tester' && selectedPlanet
+          ? `${appDef.title}: ${selectedPlanet} (${modeTag})`
+          : `${appDef.title} (${modeTag})`;
+
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title,
+          content: result.markdown,
+          source_type: 'apps',
+          source_ref_id: result.readingId || `${appDef.slug}:${result.cachedAt}`,
+          profile_id: selectedProfileId || null,
+          astrology_mode: modeUsed,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || 'Could not save note');
+      }
+      setSavedToNotes(true);
+    } catch (err) {
+      setSaveNoteError(err instanceof Error ? err.message : 'Could not save to Notes');
+    } finally {
+      setSavingToNotes(false);
+    }
+  };
+
+  const handleOpenPastReading = (reading: MiniAppPastReading) => {
+    setErrorMsg(null);
+    setSaveNoteError(null);
+    setSavedToNotes(false);
+    setResult({
+      slug: reading.app_slug,
+      markdown: reading.markdown,
+      structured: reading.structured_json,
+      cacheHit: true,
+      cachedAt: reading.created_at,
+      astrologyMode: reading.astrology_mode,
+      readingId: reading.id,
+      profileUsed: reading.profile_name
+        ? { id: reading.profile_id || '', name: reading.profile_name }
+        : null,
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleDiscussInChat = () => {
     if (!appDef) return;
     const params = new URLSearchParams();
     params.set('pillar', 'council');
+    params.set('system', result?.astrologyMode || astrologyMode);
     if (selectedProfileId) params.set('profileId', selectedProfileId);
     const seed =
       appDef.slug === 'birth-chart-breakdown' && activeTopicId
@@ -377,9 +506,10 @@ const MiniAppRunner: React.FC = () => {
     forceRefresh = false
   ) => {
     setActiveTopicId(topicId);
-    const localKey = `${selectedProfileId}:${domainId}:${topicId}`;
+    const localKey = `${selectedProfileId}:${astrologyMode}:${domainId}:${topicId}`;
     if (!forceRefresh && breakdownLocalCache[localKey]) {
       setResult(breakdownLocalCache[localKey]);
+      setSavedToNotes(false);
       return;
     }
     const res = await executeMiniApp({
@@ -463,10 +593,17 @@ const MiniAppRunner: React.FC = () => {
   }));
   const needsProfileWall = appDef.requiresProfile && profilesLoaded && profiles.length === 0;
 
+  const selectedProfileLabel = useMemo(() => {
+    const found = profiles.find((p) => p.id === selectedProfileId);
+    if (!found) return null;
+    if (found.is_default) return found.short_name ? `You (${found.short_name})` : 'You';
+    return found.short_name?.trim() || found.name;
+  }, [profiles, selectedProfileId]);
+
   return (
     <div className="max-w-4xl mx-auto space-y-7 pb-12">
       {/* Calm Top Navigation & Context Bar */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#3D3830]/10 pb-5">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#3D3830]/10 pb-5">
         <div className="flex items-start gap-3.5 min-w-0">
           <Link
             to="/app/apps"
@@ -485,7 +622,12 @@ const MiniAppRunner: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <AstrologyModeToggle
+            value={astrologyMode}
+            onChange={handleModeSwitch}
+            size="sm"
+          />
           {profiles.length > 0 && (
             <div className="w-44">
               <CustomSelect
@@ -523,7 +665,7 @@ const MiniAppRunner: React.FC = () => {
             Add Birth Details to Personalize {appDef.title}
           </h2>
           <p className="text-sm text-[#5C5449] max-w-md mx-auto leading-relaxed">
-            Cosmic Council grounds every reading in your exact Sidereal planetary degrees, Dasha periods, and house placements — never generic sun-sign summaries.
+            Cosmic Council grounds every reading in your exact planetary degrees, houses, and active timing cycles — never generic sun-sign summaries.
           </p>
           <div className="pt-2">
             <Link
@@ -537,6 +679,50 @@ const MiniAppRunner: React.FC = () => {
         </section>
       ) : (
         <>
+          {/* TEMPLATE A: PRE-ANALYSIS LANDING CARD */}
+          {appDef.template === 'auto_brief' && !result && !isLoading && (
+            <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 md:p-9 space-y-6">
+              <div className="flex items-start gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/10 flex items-center justify-center text-[#8B7355] shrink-0">
+                  {renderMiniAppIcon(appDef.iconKey, 'h-5 w-5')}
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[#8B8275]">
+                    <span>{appDef.categoryLabel}</span>
+                    <span>·</span>
+                    <span className="font-medium text-[#3D3830]">
+                      ({astrologyMode === 'western' ? 'Western Tropical' : 'Vedic Sidereal'})
+                    </span>
+                    {selectedProfileLabel && (
+                      <>
+                        <span>·</span>
+                        <span>Profile: {selectedProfileLabel}</span>
+                      </>
+                    )}
+                  </div>
+                  <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
+                    Ready to generate your {appDef.title}
+                  </h2>
+                  <p className="text-sm text-[#5C5449] leading-relaxed max-w-2xl">
+                    {appDef.description}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => void executeMiniApp({ forceRefresh: false })}
+                  className="min-h-[46px] inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-6 py-3 text-sm font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors cursor-pointer"
+                >
+                  <Sparkles className="h-4 w-4 text-[#B8965A]" />
+                  <span>Generate Analysis</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            </section>
+          )}
+
           {/* TEMPLATE B: BIRTH CHART BREAKDOWN EXPLORER */}
           {appDef.template === 'domain_explorer' && (
             <section className="space-y-5">
@@ -888,7 +1074,9 @@ const MiniAppRunner: React.FC = () => {
                       Compare two birth charts
                     </h2>
                     <p className="text-xs text-[#5C5449] mt-0.5">
-                      Pick a saved partner profile for full Moon, Nakshatra &amp; Navamsa matching, or enter partner birth details below.
+                      {astrologyMode === 'western'
+                        ? 'Pick a saved partner profile for full Sun, Moon, Rising & Placidus synastry, or enter partner birth details below.'
+                        : 'Pick a saved partner profile for full Moon, Nakshatra & Navamsa matching, or enter partner birth details below.'}
                     </p>
                   </div>
 
@@ -1336,10 +1524,10 @@ const MiniAppRunner: React.FC = () => {
               <Loader2 className="h-6 w-6 text-[#B8965A] animate-spin" />
               <p className="font-serif text-xl text-[#3D3830]">
                 {appDef.slug === 'current-transits'
-                  ? 'Mapping current Sidereal sky positions...'
+                  ? `Mapping current ${astrologyMode === 'western' ? 'Tropical' : 'Sidereal'} sky positions...`
                   : appDef.slug === 'numerology'
                   ? 'Calculating verified Pythagorean matrix...'
-                  : 'Preparing your observatory reading...'}
+                  : 'Preparing your reading...'}
               </p>
               <p className="text-xs text-[#8B8275]">
                 Grounding insight directly in your chart placements and active timing cycles.
@@ -1347,7 +1535,7 @@ const MiniAppRunner: React.FC = () => {
             </section>
           )}
 
-          {/* DETERMINISTIC OBSERVATORY NIGHT HEADER (Transits Table / Dasha Ladder / Numerology Grid) */}
+          {/* DETERMINISTIC STRUCTURED HEADER (Transits Table / Dasha Ladder / Numerology Grid) */}
           {!isLoading && result?.structured && (
             <section className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-6 md:p-7 text-[#F4EFE6] space-y-5">
               <div>
@@ -1424,12 +1612,18 @@ const MiniAppRunner: React.FC = () => {
           {!isLoading && result?.markdown && (
             <article className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 md:p-9 space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#3D3830]/8 text-xs text-[#8B8275]">
-                <span>
-                  {result.profileUsed ? `${result.profileUsed.short_name || result.profileUsed.name} · ` : ''}
-                  {result.cacheHit ? 'Loaded instantly from your observatory cache' : 'Freshly synthesized'}
-                  {result.cachedAt ? ` · ${new Date(result.cachedAt).toLocaleDateString()}` : ''}
-                </span>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>
+                    {result.profileUsed ? `${result.profileUsed.short_name || result.profileUsed.name} · ` : ''}
+                    {result.cacheHit ? 'Loaded from saved reading' : 'Freshly synthesized'}
+                    {result.cachedAt ? ` · ${new Date(result.cachedAt).toLocaleDateString()}` : ''}
+                  </span>
+                  <span className="font-medium text-[#3D3830]">
+                    ({(result.astrologyMode || astrologyMode) === 'western' ? 'Western' : 'Vedic'})
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
                   {appDef.template === 'auto_brief' && (
                     <button
                       type="button"
@@ -1437,7 +1631,7 @@ const MiniAppRunner: React.FC = () => {
                       className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-3 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
                     >
                       <RefreshCw className="h-3.5 w-3.5" />
-                      <span>Refresh</span>
+                      <span>Analyse again</span>
                     </button>
                   )}
                   {appDef.template === 'domain_explorer' && activeTopic && (
@@ -1454,9 +1648,31 @@ const MiniAppRunner: React.FC = () => {
                       className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-3 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
                     >
                       <RefreshCw className="h-3.5 w-3.5" />
-                      <span>Refresh</span>
+                      <span>Analyse again</span>
                     </button>
                   )}
+                  <button
+                    type="button"
+                    disabled={savingToNotes}
+                    onClick={() => void handleSaveToNotes()}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-55 ${
+                      savedToNotes
+                        ? 'border-[#2D6A4F]/30 bg-[#2D6A4F]/10 text-[#2D6A4F]'
+                        : 'border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3]'
+                    }`}
+                  >
+                    {savedToNotes ? (
+                      <>
+                        <Check className="h-3.5 w-3.5" />
+                        <span>Saved to Notes</span>
+                      </>
+                    ) : (
+                      <>
+                        <Bookmark className="h-3.5 w-3.5" />
+                        <span>{savingToNotes ? 'Saving...' : 'Save to Notes'}</span>
+                      </>
+                    )}
+                  </button>
                   <button
                     type="button"
                     onClick={handleCopyMarkdown}
@@ -1477,8 +1693,93 @@ const MiniAppRunner: React.FC = () => {
                 </div>
               </div>
 
-              <div className="prose prose-sm md:prose-base max-w-none text-[#5C5449] prose-headings:font-serif prose-headings:font-medium prose-headings:text-[#3D3830] prose-h3:text-2xl prose-h3:mt-7 prose-h3:mb-2.5 prose-strong:text-[#3D3830] prose-strong:font-semibold prose-blockquote:border-[#B8965A]/45 prose-blockquote:bg-[#FAF7F2] prose-blockquote:rounded-2xl prose-blockquote:py-3 prose-blockquote:px-5 prose-blockquote:not-italic prose-li:marker:text-[#B8965A] leading-relaxed">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.markdown}</ReactMarkdown>
+              {saveNoteError && (
+                <div className="rounded-2xl bg-[#7A3E36]/8 border border-[#7A3E36]/20 px-4 py-2.5 text-xs text-[#7A3E36]">
+                  {saveNoteError}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    h1: ({ children }) => (
+                      <h2 className="font-serif text-3xl font-medium text-[#3D3830] pt-2 pb-1 border-b border-[#3D3830]/10">
+                        {children}
+                      </h2>
+                    ),
+                    h2: ({ children }) => (
+                      <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830] pt-3">
+                        {children}
+                      </h2>
+                    ),
+                    h3: ({ children }) => (
+                      <h3 className="font-serif text-2xl font-medium text-[#3D3830] pt-4">
+                        {children}
+                      </h3>
+                    ),
+                    h4: ({ children }) => (
+                      <h4 className="font-serif text-lg font-medium text-[#3D3830] pt-2">
+                        {children}
+                      </h4>
+                    ),
+                    p: ({ children }) => (
+                      <p className="text-sm md:text-[15px] text-[#5C5449] leading-[1.78]">
+                        {children}
+                      </p>
+                    ),
+                    ul: ({ children }) => (
+                      <ul className="list-disc pl-5 space-y-1.5 text-sm md:text-[15px] text-[#5C5449] marker:text-[#B8965A]">
+                        {children}
+                      </ul>
+                    ),
+                    ol: ({ children }) => (
+                      <ol className="list-decimal pl-5 space-y-1.5 text-sm md:text-[15px] text-[#5C5449] marker:text-[#B8965A]">
+                        {children}
+                      </ol>
+                    ),
+                    li: ({ children }) => <li className="leading-[1.7]">{children}</li>,
+                    strong: ({ children }) => (
+                      <strong className="font-semibold text-[#3D3830]">{children}</strong>
+                    ),
+                    em: ({ children }) => (
+                      <em className="italic text-[#5C5449]">{children}</em>
+                    ),
+                    blockquote: ({ children }) => (
+                      <blockquote className="border-l-2 border-[#B8965A]/55 bg-[#FAF7F2] rounded-2xl py-3 px-5 text-sm text-[#5C5449]">
+                        {children}
+                      </blockquote>
+                    ),
+                    hr: () => <hr className="border-[#3D3830]/10 my-5" />,
+                    table: ({ children }) => (
+                      <div className="overflow-x-auto my-4 rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2]">
+                        <table className="w-full text-xs text-left border-collapse">
+                          {children}
+                        </table>
+                      </div>
+                    ),
+                    thead: ({ children }) => (
+                      <thead className="bg-[#F1ECE3] text-[#3D3830]">{children}</thead>
+                    ),
+                    th: ({ children }) => (
+                      <th className="px-4 py-2.5 font-medium border-b border-[#3D3830]/12">
+                        {children}
+                      </th>
+                    ),
+                    td: ({ children }) => (
+                      <td className="px-4 py-2.5 border-b border-[#3D3830]/8 text-[#5C5449]">
+                        {children}
+                      </td>
+                    ),
+                    code: ({ children }) => (
+                      <code className="font-mono text-xs bg-[#F1ECE3] px-1.5 py-0.5 rounded text-[#3D3830]">
+                        {children}
+                      </code>
+                    ),
+                  }}
+                >
+                  {result.markdown}
+                </ReactMarkdown>
               </div>
 
               {/* Seamless Handoff to Chat + Reset for Quiz */}
@@ -1515,10 +1816,63 @@ const MiniAppRunner: React.FC = () => {
                   to="/app/apps"
                   className="text-xs font-medium text-[#5C5449] hover:text-[#3D3830] underline underline-offset-4"
                 >
-                  Browse all apps
+                  Back to Apps
                 </Link>
               </div>
             </article>
+          )}
+
+          {/* PAST READINGS HISTORY */}
+          {!isLoading && (isLoadingReadings || pastReadings.length > 0) && (
+            <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 md:p-7 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-[#8B7355]" />
+                  <h3 className="font-serif text-xl font-medium text-[#3D3830]">
+                    Past Readings
+                  </h3>
+                </div>
+                {pastReadings.length > 0 && (
+                  <span className="font-mono text-xs text-[#8B8275] tabular-nums">
+                    {pastReadings.length} saved
+                  </span>
+                )}
+              </div>
+
+              {isLoadingReadings && pastReadings.length === 0 ? (
+                <p className="text-xs text-[#8B8275]">Loading past readings...</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {pastReadings.map((reading) => {
+                    const isOpen = result?.readingId === reading.id;
+                    return (
+                      <button
+                        key={reading.id}
+                        type="button"
+                        onClick={() => handleOpenPastReading(reading)}
+                        className={`rounded-2xl border p-4 text-left transition-colors cursor-pointer flex items-center justify-between gap-3 ${
+                          isOpen
+                            ? 'bg-[#F1ECE3] border-[#3D3830]/28'
+                            : 'bg-[#FAF7F2] border-[#3D3830]/10 hover:bg-[#F1ECE3]/70'
+                        }`}
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-medium text-[#3D3830] truncate">
+                            {reading.title}
+                          </p>
+                          <p className="text-[11px] text-[#8B8275] truncate">
+                            {reading.profile_name ? `${reading.profile_name} · ` : ''}
+                            {reading.astrology_mode === 'western' ? 'Western' : 'Vedic'} ·{' '}
+                            {new Date(reading.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-[#8B7355] shrink-0" />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           )}
         </>
       )}

@@ -59,6 +59,8 @@ export interface MiniAppRunResponse {
   structured?: MiniAppStructuredHeader | null;
   cacheHit: boolean;
   cachedAt: string;
+  astrologyMode?: 'vedic' | 'western';
+  readingId?: string | null;
   profileUsed?: { id: string; name: string; short_name?: string | null } | null;
   questions?: PlanetStrengthQuestion[];
   planetNatalContext?: {
@@ -69,6 +71,19 @@ export interface MiniAppRunResponse {
     dignity?: string;
     isRetrograde?: boolean;
   } | null;
+}
+
+export interface MiniAppPastReading {
+  id: string;
+  app_slug: string;
+  profile_id: string | null;
+  profile_name?: string | null;
+  astrology_mode: 'vedic' | 'western';
+  title: string | null;
+  inputs_json?: Record<string, unknown> | null;
+  structured_json?: MiniAppStructuredHeader | null;
+  markdown: string;
+  created_at: string;
 }
 
 export interface HomeSummaryResponse {
@@ -101,10 +116,10 @@ export interface HomeSummaryResponse {
 export const MINI_APP_CATEGORIES: Array<{ id: 'all' | 'popular' | MiniAppCategory | 'favorites'; label: string }> = [
   { id: 'all', label: 'All' },
   { id: 'popular', label: 'Most Popular' },
-  { id: 'daily_timing', label: 'Daily & Timing' },
-  { id: 'self_chart', label: 'Self & Chart' },
+  { id: 'favorites', label: 'Favourites' },
+  { id: 'daily_timing', label: 'Timing' },
+  { id: 'self_chart', label: 'Identity' },
   { id: 'love', label: 'Love' },
   { id: 'money_career', label: 'Money & Career' },
   { id: 'mind_wellness', label: 'Mind & Wellness' },
-  { id: 'favorites', label: 'Saved' },
 ];

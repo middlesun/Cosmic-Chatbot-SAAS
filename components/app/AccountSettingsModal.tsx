@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Check, KeyRound, Loader2, Settings2, X } from 'lucide-react';
-import { useAuth } from './AuthContext';
+import { useAuth, type AstrologyMode } from './AuthContext';
 import { getSupabaseClient } from '../../lib/supabaseClient';
+import AstrologyModeToggle from './AstrologyModeToggle';
 import CustomSelect from './CustomSelect';
 import UserAvatar from './UserAvatar';
 import type { ChatCatalog } from './chatTypes';
@@ -36,12 +37,15 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { appUser, isPreviewMode, getAccessToken, refreshUser } = useAuth();
+  const { appUser, isPreviewMode, getAccessToken, refreshUser, setAstrologyMode } = useAuth();
   const [catalog, setCatalog] = useState<ChatCatalog | null>(null);
 
   const [fullName, setFullName] = useState(appUser?.full_name || '');
   const [callName, setCallName] = useState(appUser?.preferred_call_name || '');
   const [fontSize, setFontSize] = useState<ChatFontSize>(appUser?.chat_font_size || 'base');
+  const [defaultAstrologyMode, setDefaultAstrologyMode] = useState<AstrologyMode>(
+    appUser?.default_astrology_mode === 'western' ? 'western' : 'vedic'
+  );
   const [currencyPref, setCurrencyPref] = useState<'INR' | 'USD' | 'AED' | 'EUR'>(
     appUser?.currency_pref || 'INR'
   );
@@ -63,6 +67,9 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
       setFullName(appUser.full_name || '');
       setCallName(appUser.preferred_call_name || '');
       setFontSize(appUser.chat_font_size || 'base');
+      setDefaultAstrologyMode(
+        appUser.default_astrology_mode === 'western' ? 'western' : 'vedic'
+      );
       setCurrencyPref(appUser.currency_pref || 'INR');
       setDefaultExpert(appUser.default_expert || 'council_synthesis');
       setDefaultOutput(appUser.default_output || 'detailed');
@@ -113,6 +120,7 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
     setSaveMessage(null);
 
     if (isPreviewMode) {
+      setAstrologyMode(defaultAstrologyMode);
       setSaveMessage('Preview mode: Sign in to save permanent account preferences.');
       return;
     }
@@ -132,6 +140,7 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
           full_name: fullName.trim(),
           preferred_call_name: callName.trim(),
           chat_font_size: fontSize,
+          default_astrology_mode: defaultAstrologyMode,
           currency_pref: currencyPref,
           default_expert: defaultExpert,
           default_output: defaultOutput,
@@ -141,6 +150,7 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Could not save settings.');
 
+      setAstrologyMode(defaultAstrologyMode);
       await refreshUser();
       setSaveMessage('Settings and defaults saved.');
     } catch (err) {
@@ -227,6 +237,28 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
                 className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-2.5 text-sm text-[#3D3830] placeholder:text-[#8B8275] focus:border-[#4A453D] focus:outline-none"
               />
             </div>
+          </div>
+
+          {/* Default Astrology Mode: Vedic | Western */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl bg-[#F1ECE3]/75 border border-[#3D3830]/10 p-4">
+            <div>
+              <p className="text-xs font-medium text-[#3D3830]">Default Astrology Mode</p>
+              <p className="text-[11px] text-[#8B8275] mt-0.5">
+                Sets default chart view, readings, and default astrologer alignment.
+              </p>
+            </div>
+            <AstrologyModeToggle
+              value={defaultAstrologyMode}
+              onChange={(mode) => {
+                setDefaultAstrologyMode(mode);
+                if (mode === 'western' && defaultExpert === 'council_synthesis') {
+                  setDefaultExpert('western_astrologer');
+                } else if (mode === 'vedic' && defaultExpert === 'western_astrologer') {
+                  setDefaultExpert('council_synthesis');
+                }
+              }}
+              size="sm"
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

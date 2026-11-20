@@ -8,8 +8,8 @@ import {
   safeExtractJson,
 } from '../services/openrouter';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from '../services/astrologyApi';
-import type { CompiledChartData } from '../services/chartCompiler';
-import type { PlanetPosition } from '../services/jyotishMath';
+import { enrichCompiledChart, type CompiledChartData } from '../services/chartCompiler';
+import type { PlanetPosition, WesternPlanetPosition } from '../services/jyotishMath';
 import {
   BIRTH_CHART_DOMAINS,
   FALLBACK_PLANET_QUIZ,
@@ -114,6 +114,41 @@ function formatTransitsSummary(
       const sav = savArr.length === 12 ? `SAV ${savArr[p.signIndex] ?? 28}` : '';
       const extra = [hLagna, hMoon, sav].filter(Boolean).join(', ');
       return `- ${p.name}${p.isRetrograde ? ' (R)' : ''}: ${p.sign} ${p.dms} (${p.nakshatra})${extra ? ` [${extra}]` : ''}`;
+    })
+    .join('\n');
+}
+
+function formatWesternTransitsSummary(
+  westernPlanets: WesternPlanetPosition[],
+  chartJson?: CompiledChartData | null
+): string {
+  if (!westernPlanets.length) return '';
+  const western = chartJson?.western;
+  const ascLon = western?.angles?.ascendant?.longitude;
+  const ascIdx = typeof ascLon === 'number' ? Math.floor(ascLon / 30) : null;
+  const cusps = western?.cusps || [];
+
+  const findPlacidusHouse = (lon: number): string => {
+    if (cusps.length !== 12) return '';
+    for (let i = 0; i < 12; i++) {
+      const cStart = cusps[i].longitude;
+      const cNext = cusps[(i + 1) % 12].longitude;
+      if (cStart < cNext) {
+        if (lon >= cStart && lon < cNext) return `Placidus H${cusps[i].house}`;
+      } else if (lon >= cStart || lon < cNext) {
+        return `Placidus H${cusps[i].house}`;
+      }
+    }
+    return '';
+  };
+
+  return westernPlanets
+    .filter((p) => p.name !== 'Ascendant')
+    .map((p) => {
+      const pHouse = findPlacidusHouse(p.longitude);
+      const wsHouse = ascIdx !== null ? `WS H${((p.signIndex - ascIdx + 12) % 12) + 1}` : '';
+      const extra = [pHouse, wsHouse].filter(Boolean).join(', ');
+      return `- ${p.name}${p.isRetrograde ? ' (Rx)' : ''}: ${p.sign} ${p.dms}${extra ? ` [${extra}]` : ''}`;
     })
     .join('\n');
 }
@@ -447,44 +482,48 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     };
   });
 
-  // 3. Recently chatted Guides & Companions
-  const recentGuides: Array<{
-    kind: 'council' | 'companion';
+  // 3. Guides & Companions (Always return all 5 Council guides + 1 Companion card)
+  let latestCompanion: {
+    kind: 'companion';
     id: string;
     title: string;
     subtitle: string;
-    expertSlug?: string;
     conversationId?: string;
     lastActiveAt?: string;
-  }> = [];
+  } | null = null;
 
-  const seenCompanionIds = new Set<string>();
   for (const c of visibleConvs) {
     if (c.pillar === 'companion' || c.companion_persona_json?.name) {
       const cname = c.companion_persona_json?.name || c.title.split('·')[0].trim();
       const crole = c.companion_persona_json?.role_label || 'Companion';
-      if (!seenCompanionIds.has(cname.toLowerCase())) {
-        seenCompanionIds.add(cname.toLowerCase());
-        recentGuides.push({
-          kind: 'companion',
-          id: `comp-${c.id}`,
-          title: cname,
-          subtitle: crole,
-          conversationId: c.id,
-          lastActiveAt: c.updated_at,
-        });
-      }
-      if (recentGuides.length >= 3) break;
+      latestCompanion = {
+        kind: 'companion',
+        id: `comp-${c.id}`,
+        title: cname ? `Companion · ${cname}` : 'Companion',
+        subtitle: crole,
+        conversationId: c.id,
+        lastActiveAt: c.updated_at,
+      };
+      break;
     }
   }
 
-  // Look up distinct recent Council guides used across recent conversations
+  if (!latestCompanion) {
+    latestCompanion = {
+      kind: 'companion',
+      id: 'comp-starter',
+      title: 'Companion',
+      subtitle: 'Feel better talking through thoughts & stress',
+    };
+  }
+
+  // Look up latest activity per Council guide across recent conversations
   const councilConvIds = visibleConvs
     .filter((c) => c.pillar !== 'companion' && !c.companion_persona_json?.name)
-    .slice(0, 8)
+    .slice(0, 12)
     .map((c) => c.id);
 
-  const seenExperts = new Set<string>();
+  const expertActivity = new Map<string, { conversationId: string; lastActiveAt: string }>();
   if (councilConvIds.length > 0) {
     const { data: msgExperts } = await supabaseAdmin
       .from('messages')
@@ -493,43 +532,51 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
       .eq('role', 'assistant')
       .not('expert_used', 'is', null)
       .order('created_at', { ascending: false })
-      .limit(24);
+      .limit(36);
 
     for (const m of msgExperts || []) {
       const slug = String(m.expert_used || '').trim();
-      if (!slug || slug.startsWith('companion') || slug === 'clarity' || seenExperts.has(slug)) {
+      if (!slug || slug.startsWith('companion') || slug === 'clarity' || expertActivity.has(slug)) {
         continue;
       }
-      const meta = EXPERT_META[slug];
-      if (!meta) continue;
-      seenExperts.add(slug);
-      recentGuides.push({
-        kind: 'council',
-        id: `expert-${slug}`,
-        title: meta.title,
-        subtitle: meta.subtitle,
-        expertSlug: slug,
+      expertActivity.set(slug, {
         conversationId: String(m.conversation_id),
         lastActiveAt: String(m.created_at),
       });
     }
   }
 
-  // Ensure default signature Council guides appear even for brand-new accounts
-  for (const fallbackSlug of ['council_synthesis', 'tarot_reader', 'western_astrologer', 'numerologist']) {
-    if (recentGuides.length >= 6) break;
-    if (!seenExperts.has(fallbackSlug)) {
-      seenExperts.add(fallbackSlug);
-      const meta = EXPERT_META[fallbackSlug];
-      recentGuides.push({
-        kind: 'council',
-        id: `expert-${fallbackSlug}`,
+  const orderedSlugs = [
+    'council_synthesis',
+    'modern_astrologer',
+    'western_astrologer',
+    'tarot_reader',
+    'numerologist',
+  ] as const;
+
+  const recentGuides: Array<{
+    kind: 'council' | 'companion';
+    id: string;
+    title: string;
+    subtitle: string;
+    expertSlug?: string;
+    conversationId?: string;
+    lastActiveAt?: string;
+  }> = [
+    ...orderedSlugs.map((slug) => {
+      const meta = EXPERT_META[slug];
+      const act = expertActivity.get(slug);
+      return {
+        kind: 'council' as const,
+        id: `expert-${slug}`,
         title: meta.title,
         subtitle: meta.subtitle,
-        expertSlug: fallbackSlug,
-      });
-    }
-  }
+        expertSlug: slug,
+        ...(act ? { conversationId: act.conversationId, lastActiveAt: act.lastActiveAt } : {}),
+      };
+    }),
+    latestCompanion,
+  ];
 
   // 4. Favorites & recent Mini-App runs
   let favoriteAppSlugs: string[] = [];
@@ -574,7 +621,87 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
 });
 
 // =============================================================================
-// POST /api/apps/:slug/run — Execute any Wave 1 Mini-App with DB caching & logs
+// GET /api/apps/:slug/readings — Past readings history for a Mini-App
+// =============================================================================
+router.get('/:slug/readings', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const slug = String(req.params.slug || '').trim();
+  if (!MINI_APPS_BY_SLUG[slug]) {
+    res.status(404).json({ error: 'Mini-App not found' });
+    return;
+  }
+
+  const profileId =
+    typeof req.query.profileId === 'string' && req.query.profileId.trim()
+      ? req.query.profileId.trim()
+      : null;
+  const astrologyMode =
+    req.query.astrologyMode === 'vedic' || req.query.astrologyMode === 'western'
+      ? req.query.astrologyMode
+      : null;
+
+  try {
+    let query = supabaseAdmin
+      .from('mini_app_readings')
+      .select('id, profile_id, app_slug, astrology_mode, title, inputs_json, structured_json, markdown, created_at')
+      .eq('user_id', req.appUser.id)
+      .eq('app_slug', slug)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (profileId) {
+      query = query.eq('profile_id', profileId);
+    }
+    if (astrologyMode) {
+      query = query.eq('astrology_mode', astrologyMode);
+    }
+
+    const { data: rows, error } = await query;
+    if (error || !rows) {
+      res.json({ readings: [] });
+      return;
+    }
+
+    const { data: profRows } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, short_name, is_default')
+      .eq('user_id', req.appUser.id);
+    const profMap = new Map<string, string>();
+    for (const p of profRows || []) {
+      const label = p.is_default
+        ? p.short_name
+          ? `You (${p.short_name})`
+          : 'You'
+        : String(p.short_name || p.name);
+      profMap.set(String(p.id), label);
+    }
+
+    const readings = rows.map((r) => ({
+      id: r.id,
+      profile_id: r.profile_id,
+      profile_name: r.profile_id ? profMap.get(String(r.profile_id)) || null : null,
+      app_slug: r.app_slug,
+      astrology_mode: (r.astrology_mode === 'western' ? 'western' : 'vedic') as 'vedic' | 'western',
+      title: r.title,
+      inputs_json: r.inputs_json,
+      structured_json: (r.structured_json as MiniAppStructuredHeader | null) || null,
+      markdown: r.markdown,
+      created_at: r.created_at,
+    }));
+
+    res.json({ readings });
+  } catch {
+    res.json({ readings: [] });
+  }
+});
+
+// =============================================================================
+// POST /api/apps/:slug/run — Execute any Mini-App with DB caching, history & logs
 // =============================================================================
 router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
@@ -594,7 +721,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
   const appOverride = miniAppsCfg.overrides[slug];
   if (appOverride && appOverride.enabled === false) {
     res.status(403).json({
-      error: 'This Mini-App is currently paused by the observatory administrator.',
+      error: 'This app is currently paused.',
       code: 'APP_DISABLED',
     });
     return;
@@ -604,9 +731,19 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     profileId?: string | null;
     partnerProfileId?: string | null;
     forceRefresh?: boolean;
+    astrologyMode?: 'vedic' | 'western' | string;
     action?: 'run' | 'generate_quiz';
     inputs?: Record<string, unknown>;
   };
+
+  const astrologyMode: 'vedic' | 'western' =
+    body.astrologyMode === 'western'
+      ? 'western'
+      : body.astrologyMode === 'vedic'
+      ? 'vedic'
+      : req.appUser.default_astrology_mode === 'western'
+      ? 'western'
+      : 'vedic';
 
   const inputs = body.inputs || {};
   const forceRefresh = Boolean(body.forceRefresh);
@@ -682,6 +819,18 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     }
   }
 
+  // Enrich legacy Vedic-only compiled charts in memory when running in Western mode
+  if (profile?.chart_json && !profile.chart_json.western && profile.chart_json.planets?.length) {
+    try {
+      profile = {
+        ...profile,
+        chart_json: enrichCompiledChart(profile.chart_json).chartJson,
+      };
+    } catch {
+      // Keep original chart_json if enrichment fails
+    }
+  }
+
   // Special flow: Planet Strength Tester — Generate Quiz Questions
   if (slug === 'planet-strength-tester' && body.action === 'generate_quiz') {
     const rawPlanet = String(inputs.planet || 'Sun').trim();
@@ -689,6 +838,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
       ? rawPlanet
       : 'Sun';
 
+    const westernPlanet = profile?.chart_json?.western?.planets?.find((p) => p.name === planet) || null;
     const natalPlanet = profile?.chart_json?.planets?.find((p) => p.name === planet) || null;
     let questions: PlanetStrengthQuestion[] = FALLBACK_PLANET_QUIZ[planet] || FALLBACK_PLANET_QUIZ.Sun;
 
@@ -725,20 +875,29 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
       structured: null,
       cacheHit: false,
       cachedAt: new Date().toISOString(),
+      astrologyMode,
       profileUsed: profile
         ? { id: profile.id, name: profile.name, short_name: profile.short_name ?? null }
         : null,
       questions,
-      planetNatalContext: natalPlanet
-        ? {
-            planet: natalPlanet.name,
-            sign: natalPlanet.sign,
-            house: natalPlanet.house,
-            nakshatra: natalPlanet.nakshatra,
-            dignity: natalPlanet.dignity,
-            isRetrograde: natalPlanet.isRetrograde,
-          }
-        : null,
+      planetNatalContext:
+        astrologyMode === 'western' && westernPlanet
+          ? {
+              planet: westernPlanet.name,
+              sign: westernPlanet.sign,
+              house: westernPlanet.house,
+              isRetrograde: westernPlanet.isRetrograde,
+            }
+          : natalPlanet
+          ? {
+              planet: natalPlanet.name,
+              sign: natalPlanet.sign,
+              house: natalPlanet.house,
+              nakshatra: natalPlanet.nakshatra,
+              dignity: natalPlanet.dignity,
+              isRetrograde: natalPlanet.isRetrograde,
+            }
+          : null,
     });
     return;
   }
@@ -751,13 +910,14 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     return;
   }
 
-  // Compute cache key for cacheable apps
+  // Compute cache key for cacheable apps (mode-scoped!)
   const isCacheable = appDef.cacheScope !== 'none';
   const cacheKey = computeAppCacheKey(appDef, {
     domainId: typeof inputs.domainId === 'string' ? inputs.domainId : undefined,
     topicId: typeof inputs.topicId === 'string' ? inputs.topicId : undefined,
+    astrologyMode,
   });
-  const memKey = `${req.appUser.id}:${profile?.id || 'none'}:${slug}:${cacheKey}`;
+  const memKey = `${req.appUser.id}:${profile?.id || 'none'}:${slug}:${astrologyMode}:${cacheKey}`;
 
   if (isCacheable && !forceRefresh) {
     // 1. Check Supabase app_cache first
@@ -788,6 +948,8 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
           structured: (cachedRow.structured_json as MiniAppStructuredHeader | null) || null,
           cacheHit: true,
           cachedAt: String(cachedRow.updated_at),
+          astrologyMode,
+          readingId: null,
           profileUsed: profile
             ? { id: profile.id, name: profile.name, short_name: profile.short_name ?? null }
             : null,
@@ -816,6 +978,8 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
         structured: memHit.structured,
         cacheHit: true,
         cachedAt: memHit.cachedAt,
+        astrologyMode,
+        readingId: null,
         profileUsed: profile
           ? { id: profile.id, name: profile.name, short_name: profile.short_name ?? null }
           : null,
@@ -832,6 +996,20 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     body.partnerProfileId.trim()
   ) {
     partnerProfile = await loadSingleProfile(body.partnerProfileId.trim());
+    if (
+      partnerProfile?.chart_json &&
+      !partnerProfile.chart_json.western &&
+      partnerProfile.chart_json.planets?.length
+    ) {
+      try {
+        partnerProfile = {
+          ...partnerProfile,
+          chart_json: enrichCompiledChart(partnerProfile.chart_json).chartJson,
+        };
+      } catch {
+        // Keep original partner chart_json
+      }
+    }
   }
 
   // Enforce generous daily live-run soft cap (cached reads never count against cap; admins exempt)
@@ -858,7 +1036,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     }
   }
 
-  // Fetch live platform-cached Gochar transits for timing-aware apps
+  // Fetch live platform-cached Gochar + Tropical transits for timing-aware apps
   const needsTransits = [
     'daily-horoscope',
     'weekly-horoscope',
@@ -874,11 +1052,13 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
   ].includes(slug);
 
   let transitPlanets: PlanetPosition[] = [];
+  let westernTransitPlanets: WesternPlanetPosition[] = [];
   let transitDate: string | null = null;
   if (needsTransits && isAstrologyApiConfigured()) {
     try {
       const gochar = await getOrFetchDailyTransits();
       transitPlanets = gochar.planets;
+      westernTransitPlanets = gochar.westernPlanets || [];
       transitDate = gochar.transitDate;
     } catch {
       // Proceed gracefully without Gochar table if API temporarily unavailable
@@ -891,12 +1071,19 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     birthDate: profile?.birth_date,
     chartJson: profile?.chart_json || null,
     transitPlanets,
+    westernTransitPlanets,
     transitDate,
+    astrologyMode,
   });
 
-  const transitSummary = formatTransitsSummary(transitPlanets, profile?.chart_json || null);
+  const transitSummary =
+    astrologyMode === 'western'
+      ? formatWesternTransitsSummary(westernTransitPlanets, profile?.chart_json || null)
+      : formatTransitsSummary(transitPlanets, profile?.chart_json || null);
+
   const promptSpec = buildMiniAppPrompt({
     slug,
+    astrologyMode,
     profile,
     partnerProfile,
     transitSummary: transitSummary || null,
@@ -933,6 +1120,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
       slug,
       profileName: profile?.name,
       inputs,
+      astrologyMode,
     });
   }
 
@@ -984,6 +1172,39 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     }
   }
 
+  // Persist reading to mini_app_readings for Past Readings history (best-effort)
+  let readingId: string | null = null;
+  try {
+    const modeTag = astrologyMode === 'western' ? 'Western' : 'Vedic';
+    const readingTitle =
+      slug === 'birth-chart-breakdown' && typeof inputs.topicLabel === 'string'
+        ? `${appDef.title}: ${inputs.topicLabel} (${modeTag})`
+        : slug === 'planet-strength-tester' && typeof inputs.planet === 'string'
+        ? `${appDef.title}: ${inputs.planet} (${modeTag})`
+        : `${appDef.title} (${modeTag})`;
+
+    const { data: insertedReading } = await supabaseAdmin
+      .from('mini_app_readings')
+      .insert({
+        user_id: req.appUser.id,
+        profile_id: profile?.id || null,
+        app_slug: slug,
+        astrology_mode: astrologyMode,
+        title: readingTitle.slice(0, 140),
+        inputs_json: inputs || {},
+        structured_json: structured || {},
+        markdown,
+      })
+      .select('id')
+      .single();
+
+    if (insertedReading?.id) {
+      readingId = String(insertedReading.id);
+    }
+  } catch {
+    // Non-fatal if migration 008 hasn't run yet
+  }
+
   // Record token usage for telemetry (free for user — zero credit deduction)
   void logAppUsageSafe({
     userId: req.appUser.id,
@@ -1001,6 +1222,8 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     structured,
     cacheHit: false,
     cachedAt: nowIso,
+    astrologyMode,
+    readingId,
     profileUsed: profile
       ? { id: profile.id, name: profile.name, short_name: profile.short_name ?? null }
       : null,

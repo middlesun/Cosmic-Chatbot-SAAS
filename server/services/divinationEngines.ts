@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { CompiledChartData } from './chartCompiler';
+import { enrichCompiledChart, formatChartForLLM, type CompiledChartData } from './chartCompiler';
 import { SIGNS } from './jyotishMath';
 
 // =============================================================================
@@ -96,6 +96,14 @@ export function formatTropicalWesternContext(params: {
   const chart = params.chartJson;
   if (!chart || !Array.isArray(chart.planets) || chart.planets.length === 0) {
     return null;
+  }
+
+  const enriched = enrichCompiledChart(chart).chartJson;
+  if (enriched.western) {
+    const jsonBlock = formatChartForLLM(enriched, 'western');
+    return params.currentLocationLabel
+      ? `${jsonBlock}\nCurrent Residence / Relocation Context: ${params.currentLocationLabel}`
+      : jsonBlock;
   }
 
   const ayanamsa = computeLahiriAyanamsa(params.birthDate || chart.meta?.birthDate || '2000-01-01');

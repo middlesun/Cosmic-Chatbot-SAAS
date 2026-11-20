@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   ArrowRight,
+  Bookmark,
   Check,
   ChevronDown,
   ChevronUp,
@@ -10,6 +11,7 @@ import {
   Eye,
   EyeOff,
   Lightbulb,
+  Loader2,
   Plus,
   Reply,
   Sparkles,
@@ -94,6 +96,11 @@ interface MessageThreadProps {
   enableListen?: boolean;
   enableWhatsappShare?: boolean;
   enableFollowups?: boolean;
+  astrologyMode?: 'vedic' | 'western';
+  expertSlug?: string;
+  onSaveToNotes?: (message: ChatMessageRecord) => void;
+  savedNoteMsgIds?: Set<string>;
+  savingNoteMsgId?: string | null;
 }
 
 const escapeRegExp = (str: string) =>
@@ -271,7 +278,19 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   enableListen = true,
   enableWhatsappShare = true,
   enableFollowups = true,
+  astrologyMode = 'vedic',
+  expertSlug = 'council_synthesis',
+  onSaveToNotes,
+  savedNoteMsgIds,
+  savingNoteMsgId = null,
 }) => {
+  const isWesternSystem =
+    expertSlug === 'western_astrologer' ||
+    expertSlug === 'modern_astrologer' ||
+    (astrologyMode === 'western' &&
+      expertSlug !== 'council_synthesis' &&
+      expertSlug !== 'tarot_reader' &&
+      expertSlug !== 'numerologist');
   const [confirmDeleteMsgId, setConfirmDeleteMsgId] = useState<string | null>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [activeUserMsgId, setActiveUserMsgId] = useState<string | null>(null);
@@ -629,8 +648,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             <div className="w-full max-w-lg space-y-5">
               <div className="rounded-3xl border border-[#3D3830]/10 bg-[#FDFBF7] px-6 py-6 text-left shadow-xs">
                 <p className={`${sizeTokens.body} text-[#3D3830]`}>
-                  {generalReadyMessage ||
-                    "Great, I'm ready to answer any question you may have regarding Vedic Astrology."}
+                  {isWesternSystem &&
+                  (!generalReadyMessage ||
+                    generalReadyMessage ===
+                      "Great, I'm ready to answer any question you may have regarding Vedic Astrology.")
+                    ? "Great, I'm ready to answer any question you may have regarding Western Astrology."
+                    : generalReadyMessage ||
+                      "Great, I'm ready to answer any question you may have regarding Vedic Astrology."}
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2.5">
@@ -1031,6 +1055,19 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 {activePillar === 'clarity' && (
                   <p className="text-[11px] font-medium text-[#8B8275]">Clarity</p>
                 )}
+                {activePillar === 'council' && msg.expert_used && (
+                  <p className="text-[11px] font-medium text-[#8B8275]">
+                    {msg.expert_used === 'western_astrologer'
+                      ? 'Western Astrologer (Western)'
+                      : msg.expert_used === 'modern_astrologer'
+                      ? 'Modern Astrologer (Western)'
+                      : msg.expert_used === 'tarot_reader'
+                      ? 'Tarot'
+                      : msg.expert_used === 'numerologist'
+                      ? 'Numerology'
+                      : 'Vedic Astrologer (Vedic)'}
+                  </p>
+                )}
 
                 <div className={`space-y-3 ${sizeTokens.body} text-[#3D3830]`}>
                   <ReactMarkdown
@@ -1172,6 +1209,43 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                         >
                           <WhatsAppOutlineIcon className="h-3.5 w-3.5" />
                         </a>
+                      </Tooltip>
+                    )}
+
+                    {onSaveToNotes && (
+                      <Tooltip
+                        content={
+                          savedNoteMsgIds?.has(msg.id)
+                            ? 'Saved to Notes'
+                            : 'Save to Notes'
+                        }
+                        placement="top"
+                      >
+                        <button
+                          type="button"
+                          disabled={savingNoteMsgId === msg.id}
+                          onClick={() => onSaveToNotes(msg)}
+                          aria-label={
+                            savedNoteMsgIds?.has(msg.id)
+                              ? 'Saved to Notes'
+                              : 'Save insight to Notes'
+                          }
+                          className={`inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer disabled:opacity-50 ${
+                            savedNoteMsgIds?.has(msg.id)
+                              ? 'text-[#2D6A4F]'
+                              : 'hover:text-[#3D3830]'
+                          }`}
+                        >
+                          {savingNoteMsgId === msg.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Bookmark
+                              className={`h-3.5 w-3.5 ${
+                                savedNoteMsgIds?.has(msg.id) ? 'fill-current' : ''
+                              }`}
+                            />
+                          )}
+                        </button>
                       </Tooltip>
                     )}
 
@@ -1336,6 +1410,8 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     ? `${activeCompanionPersona?.name || 'Companion'} is typing...`
                     : activePillar === 'clarity'
                     ? 'Thinking clearly...'
+                    : isWesternSystem
+                    ? 'Synthesizing Tropical chart positions, houses, aspects, and transits...'
                     : 'Synthesizing chart positions, Dasha periods, and Gochar transits...'}
                 </div>
               )}

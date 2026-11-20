@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './astrologyApi';
-import type { CompiledChartData } from './chartCompiler';
+import { formatChartForLLM, type CompiledChartData } from './chartCompiler';
 import {
   drawTarotSpread,
   extractNumerologyHintsFromPrompt,
@@ -554,9 +554,16 @@ async function buildStaticSystemInstruction(params: {
   } else {
     // Vedic Astrologer (default Council guide) & legacy analysis modes
     if (params.profile) {
-      if (params.profile.chart_text_context) {
+      const richVedicContext =
+        params.profile.chart_text_context?.startsWith('VERIFIED CANONICAL VEDIC CHART JSON:')
+          ? params.profile.chart_text_context
+          : params.profile.chart_json
+          ? formatChartForLLM(params.profile.chart_json, 'vedic')
+          : params.profile.chart_text_context;
+
+      if (richVedicContext) {
         sections.push(
-          `ACTIVE NATAL CHART CONTEXT (VERIFIED EPHEMERIS):\n${params.profile.chart_text_context}${
+          `ACTIVE NATAL CHART CONTEXT (VERIFIED EPHEMERIS):\n${richVedicContext}${
             currentLocationLabel
               ? `\n\nCURRENT RESIDENCE / LOCATION: ${currentLocationLabel} (Note for relocation, foreign settlement, travel, and local transit timing context).`
               : ''
@@ -739,7 +746,10 @@ export async function streamConsultationResponse(
     if (needsTransits && isAstrologyApiConfigured()) {
       try {
         const daily = await getOrFetchDailyTransits();
-        gocharContext = daily.transitsText;
+        gocharContext =
+          params.expertSlug === 'western_astrologer' || params.expertSlug === 'modern_astrologer'
+            ? daily.westernTransitsText
+            : daily.transitsText;
       } catch {
         gocharContext = '';
       }

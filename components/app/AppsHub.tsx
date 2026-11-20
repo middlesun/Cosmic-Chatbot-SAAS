@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Heart, Search, UserPlus } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import AstrologyModeToggle from './AstrologyModeToggle';
 import CustomSelect from './CustomSelect';
 import {
   CLIENT_MINI_APPS,
@@ -26,7 +27,7 @@ interface ProfileOption {
 const FAVORITES_STORAGE_KEY = 'cc_favorite_apps_v1';
 
 const AppsHub: React.FC = () => {
-  const { isPreviewMode, getAccessToken } = useAuth();
+  const { isPreviewMode, getAccessToken, astrologyMode, setAstrologyMode } = useAuth();
   const navigate = useNavigate();
 
   const [apps, setApps] = useState<MiniAppDefinition[]>(CLIENT_MINI_APPS);
@@ -198,18 +199,25 @@ const AppsHub: React.FC = () => {
       <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-[#3D3830]/10 pb-7">
         <div className="space-y-2 max-w-2xl">
           <p className="text-xs text-[#8B8275]">
-            Observatory Tools · {apps.length} interactive apps · Grounded in your verified chart
+            Astrology Apps · {apps.length} interactive apps · Grounded in your verified chart
           </p>
           <h1 className="font-serif text-4xl md:text-5xl font-medium text-[#3D3830] tracking-tight">
             Apps
           </h1>
           <p className="text-sm text-[#5C5449] leading-relaxed">
-            Focused daily forecasts, transit monitors, chart explorers, and reflection tools — all powered by your saved Sidereal birth chart and live sky positions.
+            {astrologyMode === 'western'
+              ? 'Focused daily forecasts, transit monitors, chart explorers, and reflection tools — all powered by your saved Tropical Placidus birth chart and live sky positions.'
+              : 'Focused daily forecasts, transit monitors, chart explorers, and reflection tools — all powered by your saved Sidereal birth chart and live sky positions.'}
           </p>
         </div>
 
-        {/* Active Chart Selector */}
+        {/* Mode Toggle + Active Chart Selector */}
         <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <AstrologyModeToggle
+            value={astrologyMode}
+            onChange={(next) => void setAstrologyMode(next)}
+            size="sm"
+          />
           {profiles.length > 0 ? (
             <div className="flex items-center gap-2.5">
               <span className="text-xs text-[#8B8275] whitespace-nowrap">Reading for</span>

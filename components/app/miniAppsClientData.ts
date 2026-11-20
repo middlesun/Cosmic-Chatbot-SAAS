@@ -40,7 +40,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
     description:
       'Combines today’s Sidereal sky movements, active Moon Nakshatra, and your current Vimshottari Dasha into clear, grounded daily counsel.',
     category: 'daily_timing',
-    categoryLabel: 'Daily & Timing',
+    categoryLabel: 'Timing',
     template: 'auto_brief',
     iconKey: 'sun',
     popular: true,
@@ -58,7 +58,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
     description:
       'Maps the week’s lunar arc and planetary aspects against your natal houses so you know which days suit action and which invite reflection.',
     category: 'daily_timing',
-    categoryLabel: 'Daily & Timing',
+    categoryLabel: 'Timing',
     template: 'auto_brief',
     iconKey: 'calendar-days',
     popular: true,
@@ -76,7 +76,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
     description:
       'Synthesizes slow-moving Jupiter, Saturn, and nodal transits with your Antardasha cycle to frame key priorities for the month.',
     category: 'daily_timing',
-    categoryLabel: 'Daily & Timing',
+    categoryLabel: 'Timing',
     template: 'auto_brief',
     iconKey: 'moon',
     popular: true,
@@ -94,7 +94,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
     description:
       'Inspect exact current Gochar planetary degrees, retrogrades, Ashtakavarga bindus, and how today’s sky activates your Lagna and Moon.',
     category: 'daily_timing',
-    categoryLabel: 'Daily & Timing',
+    categoryLabel: 'Timing',
     template: 'auto_brief',
     iconKey: 'orbit',
     popular: true,
@@ -112,7 +112,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
     description:
       'Decodes the exact planetary chapters governing your life right now, upcoming sub-period pivots, and practical ways to align with them.',
     category: 'daily_timing',
-    categoryLabel: 'Daily & Timing',
+    categoryLabel: 'Timing',
     template: 'auto_brief',
     iconKey: 'hourglass',
     popular: true,
@@ -130,7 +130,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
     description:
       'Browse natural gifts, shadow traits, planetary strength, Raja Yogas, marriage, career, wealth, health, and roots — cached per chart.',
     category: 'self_chart',
-    categoryLabel: 'Self & Chart',
+    categoryLabel: 'Identity',
     template: 'domain_explorer',
     iconKey: 'compass',
     popular: true,
@@ -202,7 +202,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
     description:
       'Computes exact Pythagorean numbers (preserving Master Numbers 11, 22, 33) and translates them into career, love, and timing clarity.',
     category: 'self_chart',
-    categoryLabel: 'Self & Chart',
+    categoryLabel: 'Identity',
     template: 'auto_brief',
     iconKey: 'hash',
     popular: false,
@@ -220,7 +220,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
     description:
       'Test how Sun, Moon, Mars, Mercury, Jupiter, Venus, or Saturn expresses in daily life — cross-referenced against your actual chart placement.',
     category: 'self_chart',
-    categoryLabel: 'Self & Chart',
+    categoryLabel: 'Identity',
     template: 'guided_quiz',
     iconKey: 'gauge',
     popular: false,
@@ -365,7 +365,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
     description:
       'Maps your lifelong growth arc from familiar past strengths (Ketu) toward uncharted purpose (Rahu), anchored by your Jaimini Atmakaraka and 9th house.',
     category: 'self_chart',
-    categoryLabel: 'Self & Chart',
+    categoryLabel: 'Identity',
     template: 'auto_brief',
     iconKey: 'sparkles',
     popular: true,
@@ -401,7 +401,7 @@ export const CLIENT_MINI_APPS: MiniAppDefinition[] = [
     description:
       'Distills your Ascendant, Moon Nakshatra, dominant planetary lord, and Atmakaraka into a concise editorial portrait of how you think, decide, and lead.',
     category: 'self_chart',
-    categoryLabel: 'Self & Chart',
+    categoryLabel: 'Identity',
     template: 'auto_brief',
     iconKey: 'flame',
     popular: false,
@@ -692,19 +692,11 @@ export const PREVIEW_HOME_SUMMARY: HomeSummaryResponse = {
       lastActiveAt: '2026-11-17T18:30:00.000Z',
     },
     {
-      kind: 'companion',
-      id: 'comp-preview-conv-companion-1',
-      title: 'Nadia',
-      subtitle: 'Thoughtful Confidante',
-      conversationId: 'preview-conv-companion-1',
-      lastActiveAt: '2026-11-17T17:15:00.000Z',
-    },
-    {
       kind: 'council',
-      id: 'expert-tarot_reader',
-      title: 'Tarot',
-      subtitle: '78-card Rider-Waite symbolic spreads',
-      expertSlug: 'tarot_reader',
+      id: 'expert-modern_astrologer',
+      title: 'Modern Astrologer',
+      subtitle: 'Psychological & evolutionary astrology',
+      expertSlug: 'modern_astrologer',
     },
     {
       kind: 'council',
@@ -715,10 +707,25 @@ export const PREVIEW_HOME_SUMMARY: HomeSummaryResponse = {
     },
     {
       kind: 'council',
+      id: 'expert-tarot_reader',
+      title: 'Tarot',
+      subtitle: '78-card Rider-Waite symbolic spreads',
+      expertSlug: 'tarot_reader',
+    },
+    {
+      kind: 'council',
       id: 'expert-numerologist',
       title: 'Numerology',
       subtitle: 'Pythagorean Life Path & timing cycles',
       expertSlug: 'numerologist',
+    },
+    {
+      kind: 'companion',
+      id: 'comp-preview-conv-companion-1',
+      title: 'Companion · Nadia',
+      subtitle: 'Thoughtful Confidante',
+      conversationId: 'preview-conv-companion-1',
+      lastActiveAt: '2026-11-17T17:15:00.000Z',
     },
   ],
   favoriteAppSlugs: ['daily-horoscope', 'dasha-analysis', 'birth-chart-breakdown'],
@@ -730,19 +737,64 @@ export const PREVIEW_HOME_SUMMARY: HomeSummaryResponse = {
 
 export function buildPreviewAppResult(
   slug: string,
-  inputs?: Record<string, unknown>
+  inputs?: Record<string, unknown>,
+  astrologyMode: 'vedic' | 'western' = 'vedic'
 ): MiniAppRunResponse {
   const nowIso = new Date().toISOString();
+  const formattedDate = new Date().toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
   const profileUsed = { id: 'preview-prof-1', name: 'Aarav Mehta (Sample)', short_name: 'Aarav' };
+  const modeTag = astrologyMode === 'western' ? 'Western' : 'Vedic';
 
   if (slug === 'current-transits') {
+    if (astrologyMode === 'western') {
+      return {
+        slug,
+        cacheHit: true,
+        cachedAt: nowIso,
+        astrologyMode: 'western',
+        profileUsed,
+        structured: {
+          eyebrow: `Verified Tropical Sky · Sample Preview (Western)`,
+          headline: 'Live Tropical Sky Mapped to Aarav’s Libra Rising',
+          table: {
+            columns: ['Planet', 'Tropical Sign & Degree', 'Placidus House', 'Whole-Sign House'],
+            rows: [
+              ['Sun', 'Scorpio 28°14\'', 'H2', 'H2'],
+              ['Moon', 'Libra 12°08\'', 'H1', 'H1'],
+              ['Mercury (R)', 'Sagittarius 09°33\'', 'H3', 'H3'],
+              ['Venus', 'Capricorn 04°51\'', 'H4', 'H4'],
+              ['Mars', 'Cancer 17°20\'', 'H10', 'H10'],
+              ['Jupiter (R)', 'Gemini 18°42\'', 'H9', 'H9'],
+              ['Saturn', 'Pisces 11°09\'', 'H6', 'H6'],
+            ],
+          },
+        },
+        markdown: `### Sky Weather Overview (Western)
+Today’s Tropical alignment pairs **Jupiter retrograde in your 9th house (Gemini)** trining your **Libra Moon**, while **Saturn in Pisces** steadies daily routines in your 6th house. Strategic perspective and clear written agreements remain strongly supported.
+
+### Key House & Aspect Activations
+- **9th House (Strategy & Perspective):** Jupiter expands higher-level planning, publishing, and international conversations.
+- **6th House (Systems & Craft):** Saturn asks for sustainable workflows and realistic commitments.
+- **4th House (Home & Values):** Venus in Capricorn highlights grounded affection and long-term security.
+
+### Practical Navigation
+- Revisit one high-potential conversation from the past month rather than forcing cold outreach.
+- Keep scope expectations crisp and realistic before finalizing terms.`,
+      };
+    }
+
     return {
       slug,
       cacheHit: true,
       cachedAt: nowIso,
+      astrologyMode: 'vedic',
       profileUsed,
       structured: {
-        eyebrow: 'Verified Sidereal Gochar · Sample Observatory Sky',
+        eyebrow: 'Verified Sidereal Gochar · Sample Sky (Vedic)',
         headline: 'Live Sky Mapped to Aarav’s Virgo Lagna',
         table: {
           columns: ['Planet', 'Sign & Degree', 'Nakshatra', 'From Lagna', 'From Moon', 'SAV'],
@@ -756,7 +808,7 @@ export function buildPreviewAppResult(
           ],
         },
       },
-      markdown: `### Sky Weather Overview
+      markdown: `### Sky Weather Overview (Vedic)
 Today’s Sidereal alignment pairs **Jupiter retrograde in your 10th house (Gemini, 33 SAV)** with **Saturn steadying your 7th house (Pisces, 29 SAV)**. Visibility and structured negotiations remain strongly supported.
 
 ### Key House Activations
@@ -775,9 +827,10 @@ Today’s Sidereal alignment pairs **Jupiter retrograde in your 10th house (Gemi
       slug,
       cacheHit: true,
       cachedAt: nowIso,
+      astrologyMode,
       profileUsed,
       structured: {
-        eyebrow: 'Active Vimshottari Ladder · Virgo Lagna · Hasta Moon',
+        eyebrow: `Active Vimshottari Ladder · Virgo Lagna · Hasta Moon (${modeTag})`,
         headline: 'Saturn–Jupiter Planetary Chapter',
         metrics: [
           { label: 'Mahadasha', value: 'Saturn', hint: '2018-04-10 → 2037-04-10' },
@@ -785,7 +838,7 @@ Today’s Sidereal alignment pairs **Jupiter retrograde in your 10th house (Gemi
           { label: 'Pratyantardasha', value: 'Mercury', hint: '2026-09-20 → 2027-01-28' },
         ],
       },
-      markdown: `### Your Active Planetary Chapter
+      markdown: `### Your Active Planetary Chapter (${modeTag})
 You are moving through **Saturn Mahadasha → Jupiter Antardasha → Mercury Pratyantardasha**. Together, these three lords activate structured mastery (5th/6th Saturn), strategic counsel & partnership wisdom (4th/7th Jupiter), and vocal career leverage (1st/10th Mercury).
 
 ### Psychological & Material Themes Right Now
@@ -805,9 +858,10 @@ Keep commitments lean, document milestones clearly, and protect regular weekly q
       slug,
       cacheHit: true,
       cachedAt: nowIso,
+      astrologyMode,
       profileUsed,
       structured: {
-        eyebrow: 'Deterministic Pythagorean Matrix · 1992-08-14',
+        eyebrow: `Deterministic Pythagorean Matrix · 1992-08-14 (${modeTag})`,
         headline: 'Aarav Mehta Core Numbers',
         metrics: [
           { label: 'Life Path', value: '7', hint: 'Analytical Seeker' },
@@ -831,21 +885,57 @@ Your **Personal Year 4** rewards clean foundations — repeatable workflows, tra
   }
 
   if (slug === 'daily-horoscope') {
+    if (astrologyMode === 'western') {
+      return {
+        slug,
+        cacheHit: true,
+        cachedAt: nowIso,
+        astrologyMode: 'western',
+        profileUsed,
+        structured: {
+          eyebrow: 'Aarav Mehta · Leo Sun · Libra Moon · Libra Rising (Western)',
+          headline: `Today’s Horoscope`,
+          metrics: [
+            { label: 'Sun Sign', value: 'Leo', hint: 'House 11 Placidus' },
+            { label: 'Today’s Moon', value: 'Libra', hint: 'Harmonizing 1st House' },
+            { label: 'Jupiter Transit', value: 'Gemini', hint: 'Trine natal Moon' },
+          ],
+        },
+        markdown: `Here is your daily horoscope report for **${formattedDate}** (**Aarav Mehta**) — **(Western)**:
+
+### Today’s Rhythm & Tone
+With the **transiting Moon in Libra** crossing your Ascendant while **Jupiter in Gemini** forms a clear trine to your natal placements, today brings crisp social and intellectual flow.
+
+### Work, Decisions & Timing
+- Use morning hours for collaborative briefings, strategic writing, and constructive negotiations.
+- Saturn in your 6th house favors documented milestones over rushed verbal promises.
+
+### Heart & Relationships
+Lead with warmth and unhurried listening tonight. Sharing one honest reflection rather than offering instant fixes deepens mutual trust.
+
+### Practical Grounding Focus
+Close one open priority cleanly before evening instead of splitting focus across parallel tasks.`,
+      };
+    }
+
     return {
       slug,
       cacheHit: true,
       cachedAt: nowIso,
+      astrologyMode: 'vedic',
       profileUsed,
       structured: {
-        eyebrow: 'Aarav Mehta · Virgo Lagna · Hasta Moon',
-        headline: 'Today’s Observatory Brief',
+        eyebrow: 'Aarav Mehta · Virgo Lagna · Hasta Moon (Vedic)',
+        headline: `Today’s Horoscope`,
         metrics: [
           { label: 'Active Dasha', value: 'Saturn–Jupiter', hint: 'PD: Mercury' },
           { label: 'Today’s Moon', value: 'Virgo', hint: 'Hasta Nakshatra' },
           { label: 'Jupiter Gochar', value: 'Gemini', hint: 'House 10 from Lagna' },
         ],
       },
-      markdown: `### Today’s Rhythm & Tone
+      markdown: `Here is your daily horoscope report for **${formattedDate}** (**Aarav Mehta**) — **(Vedic)**:
+
+### Today’s Rhythm & Tone
 With **Mercury Pratyantardasha** synchronized with **Jupiter in your 10th house (33 SAV)**, today brings crisp executive clarity. Conversations that felt slightly circular earlier in the month click cleanly into focus when you lead with concise written points.
 
 ### Work, Decisions & Timing
@@ -866,15 +956,18 @@ Close one open strategic decision cleanly before sunset instead of starting thre
       slug,
       cacheHit: true,
       cachedAt: nowIso,
+      astrologyMode,
       profileUsed,
       structured: null,
-      markdown: `### ${topicLabel}
-Anchored by **Virgo Lagna** and **Hasta Moon**, your chart combines tactile precision with clear strategic synthesis. Mercury as both 1st and 10th lord places intellect, language, and systems craftsmanship directly at the center of your public reputation.
+      markdown: `### ${topicLabel} (${modeTag})
+${astrologyMode === 'western'
+  ? `Anchored by **Libra Rising**, **Leo Sun**, and **Libra Moon**, your Tropical chart blends diplomacy with crisp analytical taste. Mercury and Venus work closely across your angular and succedent houses to turn clarity into trusted influence.`
+  : `Anchored by **Virgo Lagna** and **Hasta Moon**, your chart combines tactile precision with clear strategic synthesis. Mercury as both 1st and 10th lord places intellect, language, and systems craftsmanship directly at the center of your public reputation.`}
 
 ### Verified Planetary Mechanics
-- **Lagna & 10th Lord Mercury (Magha, 11H):** Translates specialized expertise into respected networks and executive counsel.
-- **Amatyakaraka Saturn (5H Capricorn):** Adds uncommon endurance — you build credibility steadily rather than relying on short-lived momentum.
-- **Navamsa (D9) Alignment:** Confirms that your sharpest capabilities mature substantially after age 30 as clarity replaces self-doubt.
+${astrologyMode === 'western'
+  ? `- **Ascendant & Midheaven Balance:** Frames how you open conversations with calm poise while aiming for durable visible achievement.\n- **Harmonic Aspects:** Sun–Saturn discipline gives lasting endurance — your natural judgment strengthens steadily with experience.`
+  : `- **Lagna & 10th Lord Mercury (Magha, 11H):** Translates specialized expertise into respected networks and executive counsel.\n- **Amatyakaraka Saturn (5H Capricorn):** Adds uncommon endurance — you build credibility steadily rather than relying on short-lived momentum.\n- **Navamsa (D9) Alignment:** Confirms that your sharpest capabilities mature substantially after age 30 as clarity replaces self-doubt.`}
 
 ### Practical Takeaway
 Lean into work that rewards careful judgment and clear architecture rather than high-noise reactive environments.`,
@@ -887,8 +980,9 @@ Lean into work that rewards careful judgment and clear architecture rather than 
       slug,
       cacheHit: false,
       cachedAt: nowIso,
+      astrologyMode,
       profileUsed,
-      markdown: `### Compatibility Overview & Core Chemistry
+      markdown: `### Compatibility Overview & Core Chemistry (${modeTag})
 Between **Aarav** and **${partnerName}**, the dominant tone is **grounded mutual respect paired with complementary pacing**. Where one brings analytical steadiness and careful planning, the other contributes warmth and fresh perspective.
 
 ### Astrological & Moon/Venus Resonance
@@ -909,8 +1003,9 @@ Between **Aarav** and **${partnerName}**, the dominant tone is **grounded mutual
       slug,
       cacheHit: false,
       cachedAt: nowIso,
+      astrologyMode,
       profileUsed,
-      markdown: `### Functional Status: Balanced & Expressive (${score}/20)
+      markdown: `### Functional Status: Balanced & Expressive (${score}/20) · (${modeTag})
 Your lived responses align closely with a constructively placed **${planet}** in your chart. Core expression is steady and conscious, with modest room to refine pacing under high-pressure weeks.
 
 ### How ${planet} Is Showing Up in Daily Life
@@ -929,33 +1024,48 @@ Your lived responses align closely with a constructively placed **${planet}** in
       slug,
       cacheHit: true,
       cachedAt: nowIso,
+      astrologyMode,
       profileUsed,
       structured: {
-        eyebrow: 'Aarav Mehta · Core Sidereal Signature',
+        eyebrow: `Aarav Mehta · Core ${astrologyMode === 'western' ? 'Tropical' : 'Sidereal'} Signature (${modeTag})`,
         headline:
           slug === 'soul-compass'
-            ? 'Nodal Axis & Dharma Compass'
+            ? astrologyMode === 'western'
+              ? 'North/South Node Compass'
+              : 'Nodal Axis & Dharma Compass'
+            : astrologyMode === 'western'
+            ? 'Leo Sun · Libra Moon · Libra Rising'
             : 'Virgo Lagna · Hasta Moon',
-        metrics: [
-          { label: 'Ascendant (Lagna)', value: 'Virgo', hint: 'Uttara Phalguni Pada 3' },
-          { label: 'Natal Moon', value: 'Virgo', hint: 'Hasta · House 1' },
-          { label: 'Atmakaraka (AK)', value: 'Saturn', hint: 'Capricorn · Soul significator' },
-          { label: 'Rahu / Ketu Axis', value: 'H5 / H11', hint: 'Capricorn ↔ Cancer' },
-        ],
+        metrics: astrologyMode === 'western'
+          ? [
+              { label: 'Ascendant (Rising)', value: 'Libra', hint: 'Placidus Chart Ruler: Venus' },
+              { label: 'Natal Sun / Moon', value: 'Leo / Libra', hint: 'Creative clarity & balance' },
+              { label: 'North / South Node', value: 'H3 / H9', hint: 'Sagittarius ↔ Gemini' },
+            ]
+          : [
+              { label: 'Ascendant (Lagna)', value: 'Virgo', hint: 'Uttara Phalguni Pada 3' },
+              { label: 'Natal Moon', value: 'Virgo', hint: 'Hasta · House 1' },
+              { label: 'Atmakaraka (AK)', value: 'Saturn', hint: 'Capricorn · Soul significator' },
+              { label: 'Rahu / Ketu Axis', value: 'H5 / H11', hint: 'Capricorn ↔ Cancer' },
+            ],
       },
       markdown:
         slug === 'soul-compass'
-          ? `### Your Evolutionary Arc (Ketu to Rahu)
-Ketu in your 11th house reflects natural mastery in collaborative circles and networks, while Rahu in the 5th house invites you toward original creative authorship, independent conviction, and visible leadership.
+          ? `### Your Evolutionary Arc (${modeTag})
+${astrologyMode === 'western'
+  ? `Your South Node reflects ease in broad conceptual frameworks, while your North Node invites you into clear everyday dialogue, tangible craft, and decisive curiosity.`
+  : `Ketu in your 11th house reflects natural mastery in collaborative circles and networks, while Rahu in the 5th house invites you toward original creative authorship, independent conviction, and visible leadership.`}
 
-### Atmakaraka & Core Life Lesson
-With Saturn as Atmakaraka in Capricorn, enduring satisfaction arrives through craft, restraint, and building systems that outlast short-term noise.
+### Core Life Lesson
+Enduring satisfaction arrives through craft, restraint, and building systems that outlast short-term noise.
 
 ### Living Your Compass Practically
 1. Carve out dedicated time each week for original creative or strategic work that reflects your personal voice.
 2. Trade perfectionistic hesitation for steady, principled iteration.`
-          : `### Your Signature Archetype: The Quiet Architect
-Virgo Lagna paired with Hasta Moon and Capricorn Saturn blends keen analytical discernment with steady long-range craftsmanship.
+          : `### Your Signature Archetype: The Quiet Architect (${modeTag})
+${astrologyMode === 'western'
+  ? `Leo Sun paired with Libra Rising & Moon blends radiant conviction with diplomatic precision.`
+  : `Virgo Lagna paired with Hasta Moon and Capricorn Saturn blends keen analytical discernment with steady long-range craftsmanship.`}
 
 ### How You Think, Feel & Decide
 You prefer clear facts, calm pacing, and tangible outcomes — noticing small inconsistencies long before they surface publicly.
@@ -970,18 +1080,27 @@ Watch for quietly carrying more operational load than necessary; explicit scope 
       slug,
       cacheHit: true,
       cachedAt: nowIso,
+      astrologyMode,
       profileUsed,
       structured: {
-        eyebrow: 'Aarav Mehta · Jupiter Expansion Telemetry',
-        headline: 'Jupiter transiting Gemini (House 10)',
-        metrics: [
-          { label: 'Natal Jupiter', value: 'Gemini · H10', hint: 'Mrigashira · Digbala' },
-          { label: 'Gochar Position', value: 'Gemini 16°11′', hint: 'House 10 · SAV 33 bindus' },
-          { label: 'Active Dasha', value: 'Jupiter–Saturn', hint: 'Structured expansion window' },
-        ],
+        eyebrow: `Aarav Mehta · Jupiter Expansion Summary (${modeTag})`,
+        headline:
+          astrologyMode === 'western'
+            ? 'Jupiter transiting Gemini (House 9 Placidus)'
+            : 'Jupiter transiting Gemini (House 10)',
+        metrics: astrologyMode === 'western'
+          ? [
+              { label: 'Natal Jupiter', value: 'Virgo · H12', hint: 'Tropical Chart' },
+              { label: 'Transit Position', value: 'Gemini 16°11′', hint: 'House 9 Placidus' },
+            ]
+          : [
+              { label: 'Natal Jupiter', value: 'Gemini · H10', hint: 'Mrigashira · Digbala' },
+              { label: 'Gochar Position', value: 'Gemini 16°11′', hint: 'House 10 · SAV 33 bindus' },
+              { label: 'Active Dasha', value: 'Jupiter–Saturn', hint: 'Structured expansion window' },
+            ],
       },
-      markdown: `### Jupiter’s Current Role in Your Chart
-Transiting Jupiter over your 10th house (with strong 33-bindu Ashtakavarga support) activates career visibility, credible alliances, and strategic advisory opportunities.
+      markdown: `### Jupiter’s Current Role in Your Chart (${modeTag})
+Transiting Jupiter activates career visibility, credible alliances, and strategic advisory opportunities.
 
 ### Where Expansion Naturally Opens Next
 - **Leadership & Craft:** Roles rewarding deep synthesis, teaching, or architectural judgment gain clear traction.
@@ -996,12 +1115,13 @@ Document flagship outcomes now and proactively initiate two high-trust conversat
     slug,
     cacheHit: false,
     cachedAt: nowIso,
+    astrologyMode,
     profileUsed,
-    markdown: `### Observatory Reading for Aarav Mehta
-This sample reading demonstrates Cosmic Council’s grounded editorial Mini-App format. Sign in to run personalized readings powered by your verified Sidereal chart, live Gochar transits, and Pythagorean calculations.
+    markdown: `### Personalized Reading for Aarav Mehta (${modeTag})
+This sample reading demonstrates Cosmic Council’s grounded editorial Mini-App format. Sign in to run personalized readings powered by your verified ${astrologyMode === 'western' ? 'Western Tropical' : 'Vedic Sidereal'} chart and live sky data.
 
 ### Key Highlights
 - **Clarity Over Clutter:** Structured, calm counsel grounded in exact planetary placements.
-- **Zero Per-Run Friction:** Revisit cached briefs anytime or continue directly into Consultation Chat.`,
+- **Zero Per-Run Friction:** Revisit past readings anytime, save highlights to Notes, or continue directly into Chat.`,
   };
 }

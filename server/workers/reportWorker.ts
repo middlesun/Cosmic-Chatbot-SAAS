@@ -1,3 +1,4 @@
+import { enrichCompiledChart, formatChartForLLM, type CompiledChartData } from '../services/chartCompiler';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from '../services/astrologyApi';
 import { sendReportReadyEmail } from '../services/email';
@@ -28,20 +29,28 @@ export interface StepOutputRecord {
 
 const activeWorkers = new Set<string>();
 
-export function enqueueReportOrder(orderId: string, appOrigin?: string): void {
+export function enqueueReportOrder(
+  orderId: string,
+  appOrigin?: string,
+  astrologyMode?: 'vedic' | 'western'
+): void {
   if (activeWorkers.has(orderId)) return;
   activeWorkers.add(orderId);
 
   scheduleBackgroundTask(async () => {
     try {
-      await processReportOrder(orderId, appOrigin);
+      await processReportOrder(orderId, appOrigin, astrologyMode);
     } finally {
       activeWorkers.delete(orderId);
     }
   });
 }
 
-async function processReportOrder(orderId: string, appOrigin?: string): Promise<void> {
+async function processReportOrder(
+  orderId: string,
+  appOrigin?: string,
+  passedMode?: 'vedic' | 'western'
+): Promise<void> {
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin) return;
 
@@ -54,6 +63,12 @@ async function processReportOrder(orderId: string, appOrigin?: string): Promise<
   if (!order || order.status === 'completed' || order.status === 'failed') {
     return;
   }
+
+  const mode: 'vedic' | 'western' =
+    (order as { astrology_mode?: string }).astrology_mode === 'western' || passedMode === 'western'
+      ? 'western'
+      : 'vedic';
+  const modeLabel = mode === 'western' ? 'Western' : 'Vedic';
 
   const refundOrderOnFailure = async (reason: string) => {
     await supabaseAdmin
@@ -71,7 +86,7 @@ async function processReportOrder(orderId: string, appOrigin?: string): Promise<
         p_amount: order.credits_charged,
         p_tx_type: 'refund',
         p_reference_id: orderId,
-        p_description: 'Automatic refund: Deep Research report synthesis failed',
+        p_description: 'Automatic refund: Research report synthesis failed',
       });
     }
   };
@@ -112,20 +127,45 @@ async function processReportOrder(orderId: string, appOrigin?: string): Promise<
         : [
             {
               stepNumber: 1,
-              title: 'Pass 1 · Comprehensive Chart & Dasha Synthesis',
+              title:
+                mode === 'western'
+                  ? 'Pass 1 · Comprehensive Tropical Chart & Transit Synthesis'
+                  : 'Pass 1 · Comprehensive Chart & Dasha Synthesis',
               instruction:
-                'Deliver a complete multi-system Vedic astrology synthesis grounded in the provided birth chart and active Dashas.',
+                mode === 'western'
+                  ? 'Deliver a complete Western Tropical & Placidus astrology synthesis grounded in the provided birth chart, planetary aspects, and active transits.'
+                  : 'Deliver a complete multi-system Vedic astrology synthesis grounded in the provided birth chart and active Dashas.',
             },
           ]
     ) as ReportPromptStep[];
 
-    let gocharText = '';
+    // Resolve Western or Vedic chart context
+    let activeChartText = String(profile.chart_text_context || '');
+    if (mode === 'western' && profile.chart_json) {
+      let resolvedJson = profile.chart_json as CompiledChartData;
+      if (!resolvedJson.western && resolvedJson.planets?.length) {
+        try {
+          resolvedJson = enrichCompiledChart(resolvedJson).chartJson;
+        } catch {
+          // Keep original
+        }
+      }
+      const westernFormatted = formatChartForLLM(resolvedJson, 'western');
+      if (westernFormatted) {
+        activeChartText = westernFormatted;
+      }
+    }
+
+    let transitsText = '';
     if (isAstrologyApiConfigured()) {
       try {
         const gochar = await getOrFetchDailyTransits();
-        gocharText = gochar.transitsText;
+        transitsText =
+          mode === 'western'
+            ? gochar.westernTransitsText || ''
+            : gochar.transitsText || '';
       } catch {
-        gocharText = '';
+        transitsText = '';
       }
     }
 
@@ -147,7 +187,7 @@ async function processReportOrder(orderId: string, appOrigin?: string): Promise<
       .from('report_orders')
       .update({
         status: 'processing',
-        progress_step: `Starting sequential analysis (${steps.length} passes)`,
+        progress_step: `Starting sequential analysis (${steps.length} passes · ${modeLabel})`,
       })
       .eq('id', orderId);
 
@@ -201,9 +241,16 @@ async function processReportOrder(orderId: string, appOrigin?: string): Promise<
 
       const fullStepDirective = assembledDirectiveParts.join('\n\n---\n\n');
 
-      const prompt = `REPORT: ${catalogItem.name} (${catalogItem.category})
+      const systemModeRule =
+        mode === 'western'
+          ? `ASTROLOGY SYSTEM REQUIREMENT (STRICT): Deliver this entire dossier strictly using **Western Astrology (Tropical Zodiac, Placidus Houses, Sun/Moon/Rising, Midheaven, Major Aspects, Elements & Modalities, and Tropical Transits)**. Translate any domain focus into authentic Western astrology methodology. Always label **(${modeLabel})** clearly in the main dossier header.`
+          : `ASTROLOGY SYSTEM REQUIREMENT (STRICT): Deliver this dossier in **Vedic Astrology (Sidereal Lahiri Zodiac, Parashari, KP, Jaimini, Nakshatras & Vimshottari Dasha)**. Always label **(${modeLabel})** clearly in the main dossier header.`;
+
+      const prompt = `REPORT: ${catalogItem.name} (${catalogItem.category}) — **(${modeLabel})**
 CLIENT PROFILE: ${profile.name} (${profile.birth_date} ${profile.birth_time}, ${profile.birth_city}, ${profile.birth_country})
 LANGUAGE: ${languagePref}
+
+${systemModeRule}
 
 ${userQuestionsText}
 
@@ -213,7 +260,9 @@ ${fullStepDirective}
 
 ${
   isFinalPass
-    ? `FINAL EDITORIAL REQUIREMENT: Assemble the definitive, publication-ready complete dossier in rich Markdown (# title, ## major sections, clear tables where helpful, bulleted action takeaways). Preserve all exact planetary evidence, degrees, and Dasha timing windows discovered in earlier passes, and explicitly answer every user question.`
+    ? `FINAL EDITORIAL REQUIREMENT: Assemble the definitive, publication-ready complete dossier in rich Markdown (# title including (${modeLabel}), ## major sections, clear tables where helpful, bulleted action takeaways). Preserve all exact planetary evidence, degrees, and ${mode === 'western' ? 'aspect/transit timing windows' : 'Dasha timing windows'} discovered in earlier passes, and explicitly answer every user question.`
+    : mode === 'western'
+    ? `Produce a dense, accurate technical & strategic working brief for this pass with exact Tropical signs, Placidus houses, degrees, major aspects, Chiron/Node placements, and transit dates.`
     : `Produce a dense, accurate technical & strategic working brief for this pass with exact planetary signs, houses, degrees, Nakshatras, KP sub-lords, and Dasha dates.`
 }`;
 
@@ -222,10 +271,12 @@ ${
         maxTokens: runtime.tokenLimits.report_pass,
         system: `${CORE_COUNCIL_CONSTITUTION}
 
-ACTIVE NATAL CHART CONTEXT:
-${profile.chart_text_context}
+SELECTED ASTROLOGY MODE: ${mode === 'western' ? 'Western Tropical (Placidus)' : 'Vedic Sidereal (Lahiri)'}
 
-${gocharText ? `\n${gocharText}` : ''}`,
+ACTIVE NATAL CHART CONTEXT (${modeLabel}):
+${activeChartText}
+
+${transitsText ? `\n${transitsText}` : ''}`,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.4,
       });
@@ -254,7 +305,7 @@ ${gocharText ? `\n${gocharText}` : ''}`,
       .from('report_orders')
       .update({
         status: 'generating_pdf',
-        progress_step: 'Typesetting Observatory PDF & creating Chat follow-up thread',
+        progress_step: 'Typesetting PDF dossier & creating Chat follow-up thread',
         step_outputs_json: stepOutputs,
         final_markdown: finalMarkdown,
       })
@@ -262,10 +313,12 @@ ${gocharText ? `\n${gocharText}` : ''}`,
 
     // Build binary PDF & upload to Supabase Storage 'reports' bucket (best-effort)
     const birthSummary = `${profile.birth_date} ${profile.birth_time} · ${profile.birth_city}, ${profile.birth_country}`;
+    const pdfModeLabel =
+      mode === 'western' ? 'Western Astrology (Tropical)' : 'Vedic Astrology (Sidereal)';
     const pdfBuffer = await generateReportPdfBuffer({
       orderId,
       reportTitle: catalogItem.name,
-      category: catalogItem.category,
+      category: `${catalogItem.category} · ${pdfModeLabel}`,
       profileName: profile.name,
       birthSummary,
       generatedAt: new Date().toISOString(),
@@ -285,7 +338,7 @@ ${gocharText ? `\n${gocharText}` : ''}`,
       // On-demand /api/reports/orders/:id/pdf endpoint always renders directly from final_markdown as fallback
     }
 
-    // Automatic Report-to-Chat: create interactive follow-up conversation inside Chat Studio
+    // Automatic Report-to-Chat: create interactive follow-up conversation inside Chat
     let linkedConversationId: string | null = null;
     try {
       const introExcerpt = finalMarkdown.slice(0, 12000);
@@ -305,7 +358,7 @@ ${gocharText ? `\n${gocharText}` : ''}`,
           user_id: order.user_id,
           profile_id: profile.id,
           linked_report_id: orderId,
-          title: `${catalogItem.name} — ${profile.name}`.slice(0, 85),
+          title: `${catalogItem.name} (${modeLabel}) — ${profile.name}`.slice(0, 85),
           mode_type: 'report_followup',
           use_full_profile_memory: true,
           total_word_count: countWords(introExcerpt),
@@ -318,9 +371,9 @@ ${gocharText ? `\n${gocharText}` : ''}`,
         await supabaseAdmin.from('messages').insert({
           conversation_id: convo.id,
           role: 'assistant',
-          content: `Your **${catalogItem.name}** for **${profile.name}** is ready. Below is the complete dossier loaded into our consultation context so you can ask follow-up questions about any timeline, planetary combination, or decision.\n\n---\n\n${finalMarkdown}`,
+          content: `Your **${catalogItem.name} (${modeLabel})** for **${profile.name}** is ready. Below is the complete dossier loaded into our consultation context so you can ask follow-up questions about any timeline, planetary combination, or decision.\n\n---\n\n${finalMarkdown}`,
           word_count: countWords(finalMarkdown),
-          expert_used: 'council_synthesis',
+          expert_used: mode === 'western' ? 'western_astrologer' : 'council_synthesis',
           mode_used: 'general',
           output_format_used: 'detailed',
           language_used: languagePref,

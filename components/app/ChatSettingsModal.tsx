@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Brain, Check, Loader2, Lock, UserCheck, X } from 'lucide-react';
+import { useAuth, type AstrologyMode } from './AuthContext';
+import AstrologyModeToggle from './AstrologyModeToggle';
 import CustomSelect from './CustomSelect';
 import type {
   ChatCatalog,
@@ -81,7 +83,11 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
   onSaved,
   onClose,
 }) => {
+  const { appUser, setAstrologyMode, refreshUser } = useAuth();
   const [fontSize, setFontSize] = useState<ChatFontSize>(initialFontSize);
+  const [defaultAstrologyMode, setDefaultAstrologyMode] = useState<AstrologyMode>(
+    appUser?.default_astrology_mode === 'western' ? 'western' : 'vedic'
+  );
   const [suggestionsAutoExpand, setSuggestionsAutoExpand] = useState<boolean>(
     initialSuggestionsAutoExpand
   );
@@ -91,10 +97,13 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setFontSize(initialFontSize);
+      setDefaultAstrologyMode(
+        appUser?.default_astrology_mode === 'western' ? 'western' : 'vedic'
+      );
       setSuggestionsAutoExpand(initialSuggestionsAutoExpand);
       setError(null);
     }
-  }, [isOpen, initialFontSize, initialSuggestionsAutoExpand]);
+  }, [isOpen, initialFontSize, initialSuggestionsAutoExpand, appUser?.default_astrology_mode]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -121,6 +130,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
     setError(null);
 
     if (isPreviewMode) {
+      setAstrologyMode(defaultAstrologyMode);
       onSaved({
         chatFontSize: fontSize,
         defaultExpert: expertSlug,
@@ -145,6 +155,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
         },
         body: JSON.stringify({
           chat_font_size: fontSize,
+          default_astrology_mode: defaultAstrologyMode,
           default_expert: expertSlug,
           default_output: outputSlug,
           default_language: languageSlug,
@@ -157,6 +168,8 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
         throw new Error(data.error || 'Could not update chat settings');
       }
 
+      setAstrologyMode(defaultAstrologyMode);
+      await refreshUser();
       onSaved({
         chatFontSize: fontSize,
         defaultExpert: expertSlug,
@@ -397,6 +410,30 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
                   />
                 </button>
               </div>
+            </div>
+
+            {/* Default Astrology Mode */}
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-2.5">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-[#3D3830]">Default Astrology Mode</p>
+                <p className="text-[11px] text-[#8B8275]">
+                  Charts, apps &amp; default astrologer frame
+                </p>
+              </div>
+              <AstrologyModeToggle
+                value={defaultAstrologyMode}
+                onChange={(mode) => {
+                  setDefaultAstrologyMode(mode);
+                  if (!isThreadLocked) {
+                    if (mode === 'western' && expertSlug === 'council_synthesis') {
+                      onChangeExpert('western_astrologer');
+                    } else if (mode === 'vedic' && expertSlug === 'western_astrologer') {
+                      onChangeExpert('council_synthesis');
+                    }
+                  }
+                }}
+                size="xs"
+              />
             </div>
 
             {/* Reading Font Size */}

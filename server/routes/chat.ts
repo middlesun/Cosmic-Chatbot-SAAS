@@ -1093,6 +1093,13 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     }
   }
 
+  const fallbackCouncilExpert =
+    req.appUser.default_astrology_mode === 'western'
+      ? req.appUser.default_expert === 'modern_astrologer'
+        ? 'modern_astrologer'
+        : 'western_astrologer'
+      : req.appUser.default_expert || 'council_synthesis';
+
   const expertSlug =
     activePillar === 'companion'
       ? `companion:${activeCompanionPersona?.companion_type || 'friend'}`
@@ -1100,7 +1107,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       ? 'clarity_helper'
       : typeof expert === 'string' && expert
       ? expert
-      : req.appUser.default_expert || 'council_synthesis';
+      : fallbackCouncilExpert;
   const modeSlug =
     activePillar === 'companion'
       ? activeCompanionPersona?.companion_type || 'companion'

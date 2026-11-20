@@ -10,10 +10,12 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  NotebookPen,
   PanelLeftClose,
   ScrollText,
   Settings,
   ShieldCheck,
+  Star,
   Unlock,
   Users,
   X,
@@ -224,14 +226,24 @@ const AppLayout: React.FC = () => {
               {isDesktopSidebarOpen && <span>Chat</span>}
             </NavLink>
 
-            <NavLink to="/app/apps" aria-label="Apps" className={desktopNavLinkClass}>
-              <LayoutGrid className="h-4 w-4 shrink-0 text-[#8B7355]" />
-              {isDesktopSidebarOpen && <span>Apps</span>}
+            <NavLink to="/app/notes" aria-label="Notes" className={desktopNavLinkClass}>
+              <NotebookPen className="h-4 w-4 shrink-0 text-[#8B7355]" />
+              {isDesktopSidebarOpen && <span>Notes</span>}
+            </NavLink>
+
+            <NavLink to="/app/favourites" aria-label="Favourites" className={desktopNavLinkClass}>
+              <Star className="h-4 w-4 shrink-0 text-[#8B7355]" />
+              {isDesktopSidebarOpen && <span>Favourites</span>}
             </NavLink>
 
             <NavLink to="/app/profiles" aria-label="Profiles" className={desktopNavLinkClass}>
               <Users className="h-4 w-4 shrink-0 text-[#8B7355]" />
               {isDesktopSidebarOpen && <span>Profiles</span>}
+            </NavLink>
+
+            <NavLink to="/app/apps" aria-label="Apps" className={desktopNavLinkClass}>
+              <LayoutGrid className="h-4 w-4 shrink-0 text-[#8B7355]" />
+              {isDesktopSidebarOpen && <span>Apps</span>}
             </NavLink>
 
             <NavLink to="/app/reports" aria-label="Reports" className={desktopNavLinkClass}>
@@ -266,16 +278,6 @@ const AppLayout: React.FC = () => {
               )}
             </NavLink>
 
-            <button
-              type="button"
-              onClick={() => setShowSupportModal(true)}
-              aria-label="Support"
-              className={desktopActionBtnClass}
-            >
-              <LifeBuoy className="h-4 w-4 shrink-0 text-[#8B7355]" />
-              {isDesktopSidebarOpen && <span>Support</span>}
-            </button>
-
             {appUser?.is_admin && (
               <div className="pt-2 mt-2 border-t border-[#3D3830]/10">
                 <Tooltip
@@ -292,7 +294,7 @@ const AppLayout: React.FC = () => {
             )}
           </nav>
 
-          {/* Bottom Anchored Utility Controls: Settings, Backup, Sign Out */}
+          {/* Bottom Anchored Utility Controls: Profile ID, Settings, Backup, Support, Sign Out */}
           <div className="mt-auto border-t border-[#3D3830]/10 px-2.5 py-3 space-y-1">
             {isPreviewMode ? (
               isDesktopSidebarOpen && (
@@ -357,6 +359,16 @@ const AppLayout: React.FC = () => {
             >
               <Database className="h-4 w-4 shrink-0 text-[#8B7355]" />
               {isDesktopSidebarOpen && <span>Backup</span>}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowSupportModal(true)}
+              aria-label="Support"
+              className={desktopActionBtnClass}
+            >
+              <LifeBuoy className="h-4 w-4 shrink-0 text-[#8B7355]" />
+              {isDesktopSidebarOpen && <span>Support</span>}
             </button>
 
             <button
@@ -474,12 +486,20 @@ const AppLayout: React.FC = () => {
                     <span>Chat</span>
                   </NavLink>
                   <NavLink
-                    to="/app/apps"
+                    to="/app/notes"
                     onClick={() => setShowMobileNavDrawer(false)}
                     className={mobileNavLinkClass}
                   >
-                    <LayoutGrid className="h-4 w-4 text-[#8B7355]" />
-                    <span>Apps</span>
+                    <NotebookPen className="h-4 w-4 text-[#8B7355]" />
+                    <span>Notes</span>
+                  </NavLink>
+                  <NavLink
+                    to="/app/favourites"
+                    onClick={() => setShowMobileNavDrawer(false)}
+                    className={mobileNavLinkClass}
+                  >
+                    <Star className="h-4 w-4 text-[#8B7355]" />
+                    <span>Favourites</span>
                   </NavLink>
                   <NavLink
                     to="/app/profiles"
@@ -488,6 +508,14 @@ const AppLayout: React.FC = () => {
                   >
                     <Users className="h-4 w-4 text-[#8B7355]" />
                     <span>Profiles</span>
+                  </NavLink>
+                  <NavLink
+                    to="/app/apps"
+                    onClick={() => setShowMobileNavDrawer(false)}
+                    className={mobileNavLinkClass}
+                  >
+                    <LayoutGrid className="h-4 w-4 text-[#8B7355]" />
+                    <span>Apps</span>
                   </NavLink>
                   <NavLink
                     to="/app/reports"
@@ -517,17 +545,6 @@ const AppLayout: React.FC = () => {
                       {appUser ? appUser.credits_balance.toLocaleString() : '0'}
                     </span>
                   </NavLink>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMobileNavDrawer(false);
-                      setShowSupportModal(true);
-                    }}
-                    className="w-full flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-[#5C5449] hover:bg-[#FAF7F2]/70 hover:text-[#3D3830]"
-                  >
-                    <LifeBuoy className="h-4 w-4 text-[#8B7355]" />
-                    <span>Support</span>
-                  </button>
                   {appUser?.is_admin && (
                     <div className="pt-2 mt-2 border-t border-[#3D3830]/10">
                       <NavLink
@@ -543,6 +560,21 @@ const AppLayout: React.FC = () => {
                 </nav>
 
                 <div className="mt-auto border-t border-[#3D3830]/10 p-3 space-y-1">
+                  {!isPreviewMode && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileNavDrawer(false);
+                        setShowAccountSettingsModal(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-[#FAF7F2]/70 transition-colors"
+                    >
+                      <UserAvatar size="sm" />
+                      <span className="truncate text-xs font-medium text-[#3D3830]">
+                        {getUserProfileDisplayLabel(appUser, 'Signed In')}
+                      </span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -564,6 +596,17 @@ const AppLayout: React.FC = () => {
                   >
                     <Database className="h-4 w-4 text-[#8B7355]" />
                     <span>Backup</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMobileNavDrawer(false);
+                      setShowSupportModal(true);
+                    }}
+                    className="w-full flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-[#5C5449] hover:bg-[#FAF7F2]/70 hover:text-[#3D3830]"
+                  >
+                    <LifeBuoy className="h-4 w-4 text-[#8B7355]" />
+                    <span>Support</span>
                   </button>
                   <button
                     type="button"

@@ -4,6 +4,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   ArrowLeft,
+  Bookmark,
+  Check,
   CheckCircle2,
   Download,
   Loader2,
@@ -21,6 +23,7 @@ interface StepOutputRecord {
 
 interface ReportOrderFull {
   id: string;
+  astrology_mode?: 'vedic' | 'western';
   status: 'queued' | 'processing' | 'generating_pdf' | 'completed' | 'failed';
   progress_step: string | null;
   user_questions: string | null;
@@ -62,6 +65,8 @@ const ReportOrderDetail: React.FC = () => {
   const [profile, setProfile] = useState<ProfileMeta | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [savingToNotes, setSavingToNotes] = useState(false);
+  const [savedToNotes, setSavedToNotes] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchOrder = useCallback(async (pollOnly = false) => {
@@ -157,10 +162,49 @@ const ReportOrderDetail: React.FC = () => {
     }
   };
 
+  const handleSaveToNotes = async () => {
+    if (!order?.final_markdown || savingToNotes) return;
+    setSavingToNotes(true);
+    setError(null);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Authentication required');
+
+      const mode = order.astrology_mode === 'western' ? 'western' : 'vedic';
+      const modeTag = mode === 'western' ? 'Western' : 'Vedic';
+      const title = `${reportMeta?.name || 'Research Dossier'} (${modeTag})`;
+
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title,
+          content: order.final_markdown,
+          source_type: 'reports',
+          source_ref_id: order.id,
+          profile_id: profile?.id || null,
+          astrology_mode: mode,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Could not save report to Notes');
+      }
+      setSavedToNotes(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save to Notes');
+    } finally {
+      setSavingToNotes(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="py-12 text-sm text-[#5C5449]">
-        Loading Deep Research Dossier...
+        Loading Report Dossier...
       </div>
     );
   }
@@ -173,7 +217,7 @@ const ReportOrderDetail: React.FC = () => {
           className="inline-flex items-center gap-1.5 text-xs text-[#5C5449] hover:text-[#3D3830]"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          <span>Back to Reports Store</span>
+          <span>Back to Reports</span>
         </Link>
         <p className="text-sm text-[#7A3E36]">
           {error || 'Report order not found.'}
@@ -182,6 +226,7 @@ const ReportOrderDetail: React.FC = () => {
     );
   }
 
+  const modeTag = order.astrology_mode === 'western' ? 'Western' : 'Vedic';
   const completedPasses =
     typeof order.completed_passes === 'number'
       ? order.completed_passes
@@ -193,7 +238,7 @@ const ReportOrderDetail: React.FC = () => {
       ? reportMeta.pass_titles
       : [
           'Pass 1 · Natal Foundations',
-          'Pass 2 · KP & Jaimini Synthesis',
+          modeTag === 'Western' ? 'Pass 2 · Aspect & House Synthesis' : 'Pass 2 · KP & Jaimini Synthesis',
           'Pass 3 · Multi-Year Timing',
           'Pass 4 · Strategic Synthesis',
         ];
@@ -206,24 +251,25 @@ const ReportOrderDetail: React.FC = () => {
           className="inline-flex items-center gap-1.5 text-xs text-[#5C5449] hover:text-[#3D3830]"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          <span>Back to Reports Store</span>
+          <span>Back to Reports</span>
         </Link>
 
-        <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
-          Order {order.id.slice(0, 8)} · {order.credits_charged.toLocaleString()} Credits
+        <span className="text-xs font-mono tabular-nums text-[#8B8275]">
+          Order {order.id.slice(0, 8)} · ({modeTag}) · {order.credits_charged.toLocaleString()} Credits
         </span>
       </div>
 
-      {/* Observatory Night Status / Action Banner */}
+      {/* Header Status / Action Banner */}
       <section className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-7 md:p-9 text-[#F4EFE6] shadow-[0_24px_60px_-24px_rgba(31,34,41,0.45)] space-y-6">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
           <div>
             <p className="text-xs text-[#B8965A] mb-1.5">
-              {reportMeta?.category || 'Deep Research Dossier'}
+              {reportMeta?.category || 'Research Dossier'}
               {profile ? ` · ${profile.name}` : ''}
+              {` · (${modeTag})`}
             </p>
             <h1 className="font-serif text-3xl md:text-4xl font-medium text-[#F4EFE6]">
-              {reportMeta?.name || 'Vedic Research Dossier'}
+              {reportMeta?.name || `${modeTag} Research Dossier`}
             </h1>
             {profile && (
               <p className="mt-2 text-xs text-[#F4EFE6]/65">
@@ -237,9 +283,32 @@ const ReportOrderDetail: React.FC = () => {
             <div className="flex flex-wrap items-center gap-3 shrink-0">
               <button
                 type="button"
+                disabled={savingToNotes}
+                onClick={() => void handleSaveToNotes()}
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-55 ${
+                  savedToNotes
+                    ? 'border-[#B8965A]/60 bg-[#B8965A]/20 text-[#F4EFE6]'
+                    : 'border-[#F4EFE6]/25 bg-[#F4EFE6]/8 text-[#F4EFE6] hover:bg-[#F4EFE6]/16'
+                }`}
+              >
+                {savedToNotes ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 text-[#B8965A]" />
+                    <span>Saved to Notes</span>
+                  </>
+                ) : (
+                  <>
+                    <Bookmark className="h-3.5 w-3.5" />
+                    <span>{savingToNotes ? 'Saving...' : 'Save to Notes'}</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
                 disabled={isDownloadingPdf}
                 onClick={() => void handleDownloadPdf()}
-                className="inline-flex items-center gap-2 rounded-full bg-[#F4EFE6] px-5 py-2.5 text-xs font-medium text-[#1F2229] hover:bg-[#EAE3D7] transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-full bg-[#F4EFE6] px-5 py-2.5 text-xs font-medium text-[#1F2229] hover:bg-[#EAE3D7] transition-colors disabled:opacity-50 cursor-pointer"
               >
                 <Download className="h-3.5 w-3.5" />
                 <span>{isDownloadingPdf ? 'Preparing PDF...' : 'Download PDF'}</span>

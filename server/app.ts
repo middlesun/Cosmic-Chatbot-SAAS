@@ -8,6 +8,8 @@ import radarRouter from './routes/radar';
 import reportsRouter from './routes/reports';
 import adminRouter from './routes/admin';
 import appsRouter from './routes/apps';
+import notesRouter from './routes/notes';
+import favouritesRouter from './routes/favourites';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './services/astrologyApi';
 import { fetchSanityBlogPosts, isSanityConfigured } from '../lib/sanity';
 
@@ -61,25 +63,28 @@ export function createExpressApp(): Express {
       null;
     const cityHeader = (req.headers['x-vercel-ip-city'] as string) || null;
 
-    await supabaseAdmin
-      .from('users')
-      .update({
-        last_active_at: new Date().toISOString(),
-        ...(countryHeader && !req.appUser.location_country ? { location_country: countryHeader } : {}),
-        ...(cityHeader && !req.appUser.location_city ? { location_city: decodeURIComponent(cityHeader) } : {}),
-      })
-      .eq('id', req.appUser.id);
+    void Promise.resolve(
+      supabaseAdmin
+        .from('users')
+        .update({
+          last_active_at: new Date().toISOString(),
+          ...(countryHeader && !req.appUser.location_country ? { location_country: countryHeader } : {}),
+          ...(cityHeader && !req.appUser.location_city ? { location_city: decodeURIComponent(cityHeader) } : {}),
+        })
+        .eq('id', req.appUser.id)
+    ).catch(() => null);
 
-    const { count: profileCount } = await supabaseAdmin
-      .from('profiles')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', req.appUser.id);
-
-    const { count: referralCount } = await supabaseAdmin
-      .from('referrals')
-      .select('id', { count: 'exact', head: true })
-      .eq('referrer_id', req.appUser.id)
-      .eq('status', 'rewarded');
+    const [{ count: profileCount }, { count: referralCount }] = await Promise.all([
+      supabaseAdmin
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', req.appUser.id),
+      supabaseAdmin
+        .from('referrals')
+        .select('id', { count: 'exact', head: true })
+        .eq('referrer_id', req.appUser.id)
+        .eq('status', 'rewarded'),
+    ]);
 
     res.json({
       user: req.appUser,
@@ -104,6 +109,7 @@ export function createExpressApp(): Express {
       default_expert,
       default_output,
       default_language,
+      default_astrology_mode,
       preferred_call_name,
       chat_font_size,
       suggestions_auto_expand,
@@ -124,6 +130,9 @@ export function createExpressApp(): Express {
     }
     if (typeof default_language === 'string' && default_language.trim()) {
       updates.default_language = default_language.trim();
+    }
+    if (default_astrology_mode === 'vedic' || default_astrology_mode === 'western') {
+      updates.default_astrology_mode = default_astrology_mode;
     }
     if (typeof preferred_call_name === 'string') {
       updates.preferred_call_name = preferred_call_name.trim().slice(0, 60) || null;
@@ -148,8 +157,30 @@ export function createExpressApp(): Express {
       .single();
 
     if (error) {
-      // Safe fallback if migration 005 or 002 columns aren't migrated yet
-      const v2Updates = { ...updates };
+      // Safe fallback if migration 008 / 005 / 002 columns aren't migrated yet
+      const v7Updates = { ...updates };
+      delete v7Updates.default_astrology_mode;
+
+      if (Object.keys(v7Updates).length > 0) {
+        const v7Fallback = await supabaseAdmin
+          .from('users')
+          .update({ ...v7Updates, updated_at: new Date().toISOString() })
+          .eq('id', req.appUser.id)
+          .select('*')
+          .single();
+
+        if (!v7Fallback.error && v7Fallback.data) {
+          res.json({
+            user: {
+              ...v7Fallback.data,
+              ...(default_astrology_mode ? { default_astrology_mode } : {}),
+            },
+          });
+          return;
+        }
+      }
+
+      const v2Updates = { ...v7Updates };
       delete v2Updates.suggestions_auto_expand;
 
       if (Object.keys(v2Updates).length > 0) {
@@ -167,6 +198,7 @@ export function createExpressApp(): Express {
               ...(typeof suggestions_auto_expand === 'boolean'
                 ? { suggestions_auto_expand }
                 : {}),
+              ...(default_astrology_mode ? { default_astrology_mode } : {}),
             },
           });
           return;
@@ -191,12 +223,16 @@ export function createExpressApp(): Express {
         }
       }
 
-      // If only suggestions_auto_expand was sent before 005 ran, return non-blocking success
-      if (Object.keys(updates).length === 1 && typeof suggestions_auto_expand === 'boolean') {
+      // If only newer-migration fields were sent before migration ran, return non-blocking success
+      if (
+        (Object.keys(updates).length === 1 && typeof suggestions_auto_expand === 'boolean') ||
+        (Object.keys(updates).length === 1 && Boolean(default_astrology_mode))
+      ) {
         res.json({
           user: {
             ...req.appUser,
-            suggestions_auto_expand,
+            ...(typeof suggestions_auto_expand === 'boolean' ? { suggestions_auto_expand } : {}),
+            ...(default_astrology_mode ? { default_astrology_mode } : {}),
           },
           persisted: false,
         });
@@ -295,6 +331,8 @@ export function createExpressApp(): Express {
   app.use('/api/reports', reportsRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/apps', appsRouter);
+  app.use('/api/notes', notesRouter);
+  app.use('/api/favourites', favouritesRouter);
 
   app.get('/api/blog/posts', async (_req, res) => {
     const posts = await fetchSanityBlogPosts();
@@ -439,6 +477,7 @@ export function createExpressApp(): Express {
         default_expert: req.appUser.default_expert,
         default_output: req.appUser.default_output,
         default_language: req.appUser.default_language,
+        default_astrology_mode: req.appUser.default_astrology_mode ?? 'vedic',
       },
       profiles: profilesRes.data || [],
       customPrompts: promptsRes.data || [],
@@ -494,6 +533,9 @@ export function createExpressApp(): Express {
       }
       if (typeof p.default_language === 'string' && p.default_language.trim()) {
         prefUpdates.default_language = p.default_language.trim();
+      }
+      if (p.default_astrology_mode === 'vedic' || p.default_astrology_mode === 'western') {
+        prefUpdates.default_astrology_mode = p.default_astrology_mode;
       }
       if (Object.keys(prefUpdates).length > 0) {
         await supabaseAdmin

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, LifeBuoy, Loader2, Send, X } from 'lucide-react';
 import CustomSelect from './CustomSelect';
 import { useAuth } from './AuthContext';
@@ -14,12 +14,16 @@ const SUPPORT_TOPICS = [
   { value: 'Chart & Readings', label: 'Chart & Readings' },
   { value: 'Billing & Invoices', label: 'Billing & Invoices' },
   { value: 'Professional / Business', label: 'Professional / Business' },
+  { value: 'Feature request', label: 'Feature request' },
   { value: 'Bug Report', label: 'Technical Issue / Bug' },
 ];
 
 const SupportModal: React.FC<SupportModalProps> = ({ isOpen, onClose }) => {
   const { appUser, isPreviewMode, getAccessToken } = useAuth();
-  const [name, setName] = useState(appUser?.full_name || '');
+  const [name, setName] = useState(
+    appUser?.preferred_call_name?.trim() || appUser?.full_name?.trim() || ''
+  );
+  const nameTouchedRef = useRef(false);
   const [email, setEmail] = useState(appUser?.email || '');
   const [category, setCategory] = useState('General Support');
   const [subject, setSubject] = useState('');
@@ -29,13 +33,48 @@ const SupportModal: React.FC<SupportModalProps> = ({ isOpen, onClose }) => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      setName(appUser?.full_name || '');
-      setEmail(appUser?.email || '');
-      setError(null);
-      setSuccessMsg(null);
+    if (!isOpen) return;
+    let active = true;
+    const baseFallback =
+      appUser?.preferred_call_name?.trim() || appUser?.full_name?.trim() || '';
+    setName(baseFallback);
+    nameTouchedRef.current = false;
+    setEmail(appUser?.email || '');
+    setError(null);
+    setSuccessMsg(null);
+
+    if (isPreviewMode) {
+      return;
     }
-  }, [isOpen, appUser?.full_name, appUser?.email]);
+
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token || !active) return;
+        const res = await fetch('/api/profiles', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok || !active) return;
+        const data = await res.json();
+        const profiles = (data.profiles || []) as Array<{ name?: string; is_default?: boolean }>;
+        const youProfile = profiles.find((p) => p.is_default);
+        const preferredName =
+          youProfile?.name?.trim() ||
+          appUser?.preferred_call_name?.trim() ||
+          appUser?.full_name?.trim() ||
+          '';
+        if (preferredName && active) {
+          setName((prev) => (nameTouchedRef.current ? prev : preferredName));
+        }
+      } catch {
+        // Keep base fallback cleanly
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, isPreviewMode, getAccessToken, appUser?.preferred_call_name, appUser?.full_name, appUser?.email]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -78,7 +117,7 @@ const SupportModal: React.FC<SupportModalProps> = ({ isOpen, onClose }) => {
         },
         body: JSON.stringify({
           name: name.trim(),
-          email: email.trim(),
+          email: (appUser?.email || email).trim(),
           category,
           subject: subject.trim(),
           message: message.trim(),
@@ -141,7 +180,10 @@ const SupportModal: React.FC<SupportModalProps> = ({ isOpen, onClose }) => {
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  nameTouchedRef.current = true;
+                  setName(e.target.value);
+                }}
                 required
                 className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
               />
@@ -154,9 +196,9 @@ const SupportModal: React.FC<SupportModalProps> = ({ isOpen, onClose }) => {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+                readOnly
+                aria-readonly="true"
+                className="w-full rounded-xl border border-[#3D3830]/12 bg-[#F1ECE3]/80 px-3.5 py-2.5 text-sm text-[#5C5449] cursor-not-allowed focus:outline-none"
               />
             </div>
           </div>

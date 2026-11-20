@@ -5,6 +5,8 @@ import {
   Compass,
   CreditCard,
   FileText,
+  Hash,
+  Heart,
   HeartHandshake,
   LayoutGrid,
   MessageSquare,
@@ -13,6 +15,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import AstrologyModeToggle from './AstrologyModeToggle';
 import TimingRadarDashboard from './TimingRadarDashboard';
 import { getUserProfileDisplayLabel } from './chatUtilities';
 import {
@@ -20,7 +23,14 @@ import {
   PREVIEW_HOME_SUMMARY,
   renderMiniAppIcon,
 } from './miniAppsClientData';
-import type { HomeSummaryResponse, MiniAppDefinition } from './miniAppsTypes';
+import {
+  MINI_APP_CATEGORIES,
+  type HomeSummaryResponse,
+  type MiniAppCategory,
+  type MiniAppDefinition,
+} from './miniAppsTypes';
+
+const FAVORITES_STORAGE_KEY = 'cc_favorite_apps_v1';
 
 const formatRelativeDate = (iso: string): string => {
   const ts = new Date(iso).getTime();
@@ -36,17 +46,31 @@ const formatRelativeDate = (iso: string): string => {
 };
 
 const AppDashboardHome: React.FC = () => {
-  const { appUser, stats, isPreviewMode, getAccessToken } = useAuth();
+  const { appUser, stats, isPreviewMode, getAccessToken, astrologyMode, setAstrologyMode } = useAuth();
   const [summary, setSummary] = useState<HomeSummaryResponse | null>(() =>
     isPreviewMode ? PREVIEW_HOME_SUMMARY : null
   );
   const [catalogApps, setCatalogApps] = useState<MiniAppDefinition[]>(CLIENT_MINI_APPS);
   const [summaryLoading, setSummaryLoading] = useState<boolean>(!isPreviewMode);
+  const [activeAppCategory, setActiveAppCategory] = useState<
+    'all' | 'popular' | MiniAppCategory | 'favorites'
+  >('popular');
+  const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>(() => {
+    if (isPreviewMode) return PREVIEW_HOME_SUMMARY.favoriteAppSlugs;
+    try {
+      const raw = localStorage.getItem(FAVORITES_STORAGE_KEY);
+      if (raw) return JSON.parse(raw) as string[];
+    } catch {
+      // Ignore storage errors
+    }
+    return [];
+  });
 
   const loadHomeSummary = useCallback(async () => {
     if (isPreviewMode) {
       setSummary(PREVIEW_HOME_SUMMARY);
       setCatalogApps(CLIENT_MINI_APPS);
+      setFavoriteSlugs(PREVIEW_HOME_SUMMARY.favoriteAppSlugs);
       setSummaryLoading(false);
       return;
     }
@@ -68,11 +92,22 @@ const AppDashboardHome: React.FC = () => {
       if (res.ok) {
         const data = (await res.json()) as HomeSummaryResponse;
         setSummary(data);
+        if (Array.isArray(data.favoriteAppSlugs)) {
+          setFavoriteSlugs(data.favoriteAppSlugs);
+          try {
+            localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(data.favoriteAppSlugs));
+          } catch {
+            // Ignore quota
+          }
+        }
       }
       if (catRes && catRes.ok) {
         const catData = await catRes.json();
         if (Array.isArray(catData.apps)) {
           setCatalogApps(catData.apps as MiniAppDefinition[]);
+        }
+        if (Array.isArray(catData.favoriteSlugs)) {
+          setFavoriteSlugs(catData.favoriteSlugs as string[]);
         }
       }
     } catch {
@@ -86,6 +121,34 @@ const AppDashboardHome: React.FC = () => {
     void loadHomeSummary();
   }, [loadHomeSummary]);
 
+  const handleToggleFavorite = async (e: React.MouseEvent, appSlug: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const currentlyFav = favoriteSlugs.includes(appSlug);
+    const nextFavs = currentlyFav
+      ? favoriteSlugs.filter((s) => s !== appSlug)
+      : [...favoriteSlugs, appSlug];
+
+    setFavoriteSlugs(nextFavs);
+    try {
+      localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(nextFavs));
+    } catch {
+      // Ignore storage
+    }
+
+    if (isPreviewMode) return;
+    const token = await getAccessToken();
+    if (!token) return;
+    await fetch('/api/apps/favorites/toggle', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ appSlug, desired: !currentlyFav }),
+    }).catch(() => {});
+  };
+
   const tierProfileLimit =
     appUser?.tier === 'guru' ? 200 : appUser?.tier === 'pro' ? 100 : 10;
 
@@ -96,17 +159,43 @@ const AppDashboardHome: React.FC = () => {
       ? 'Professional Plan'
       : 'Personal Plan';
 
-  const featuredApps = useMemo(
-    () => catalogApps.filter((a) => a.featuredOnHome),
-    [catalogApps]
-  );
+  const displayedApps = useMemo(() => {
+    if (activeAppCategory === 'all') {
+      const featured = catalogApps.filter((a) => a.featuredOnHome);
+      return featured.length > 0 ? featured : catalogApps.slice(0, 8);
+    }
+    if (activeAppCategory === 'popular') {
+      return catalogApps.filter((a) => a.popular).slice(0, 8);
+    }
+    if (activeAppCategory === 'favorites') {
+      return catalogApps.filter((a) => favoriteSlugs.includes(a.slug));
+    }
+    return catalogApps.filter((a) => a.category === activeAppCategory);
+  }, [catalogApps, activeAppCategory, favoriteSlugs]);
 
   const guidesToShow = useMemo(() => {
-    if (summary && summary.recentGuides.length > 0) {
-      return summary.recentGuides;
+    const base =
+      summary && summary.recentGuides.length > 0
+        ? summary.recentGuides
+        : PREVIEW_HOME_SUMMARY.recentGuides;
+
+    if (astrologyMode === 'western') {
+      const westernPriority = [
+        'expert-western_astrologer',
+        'expert-modern_astrologer',
+        'expert-council_synthesis',
+      ];
+      return [...base].sort((a, b) => {
+        const idxA = westernPriority.indexOf(a.id);
+        const idxB = westernPriority.indexOf(b.id);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return 0;
+      });
     }
-    return PREVIEW_HOME_SUMMARY.recentGuides.filter((g) => g.kind === 'council');
-  }, [summary]);
+    return base;
+  }, [summary, astrologyMode]);
 
   const lowCreditsThreshold =
     appUser?.tier === 'guru' ? 8000 : appUser?.tier === 'pro' ? 2500 : 500;
@@ -117,7 +206,7 @@ const AppDashboardHome: React.FC = () => {
   return (
     <div className="space-y-10 pb-8">
       {/* Editorial Greeting Header */}
-      <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-[#3D3830]/10 pb-7">
+      <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-[#3D3830]/10 pb-7">
         <div>
           <p className="text-xs text-[#8B8275] mb-2">
             {tierLabel} · {appUser?.currency_pref || 'INR'} · {getUserProfileDisplayLabel(appUser)}
@@ -126,11 +215,12 @@ const AppDashboardHome: React.FC = () => {
             Welcome back
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-[#5C5449] leading-relaxed">
-            Your personal Vedic astrologer. Analyse charts, generate reports, track dashas and transits and get real time insights
+            Your personal {astrologyMode === 'western' ? 'Western' : 'Vedic'} astrologer. Analyse charts, generate reports, track timing and transits and get real time insights
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <AstrologyModeToggle value={astrologyMode} onChange={setAstrologyMode} />
           {stats.savedProfiles === 0 && (
             <Link
               to="/app/profiles"
@@ -157,7 +247,7 @@ const AppDashboardHome: React.FC = () => {
         </div>
       </section>
 
-      {/* SECTION 1: CONTINUE CONVERSATIONS (Card Format) */}
+      {/* SECTION 1: CONTINUE CONVERSATIONS (Dark-Warm Bento Cards) */}
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-4">
           <div>
@@ -170,7 +260,7 @@ const AppDashboardHome: React.FC = () => {
             to="/app/chat"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors whitespace-nowrap"
           >
-            <span>Open Chat Studio</span>
+            <span>Open Chat</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
@@ -180,7 +270,7 @@ const AppDashboardHome: React.FC = () => {
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="h-32 rounded-3xl bg-[#F1ECE3]/65 border border-[#3D3830]/8 animate-pulse"
+                className="h-32 rounded-3xl bg-[#EAE3D7]/70 border border-[#3D3830]/12 animate-pulse"
               />
             ))}
           </div>
@@ -195,7 +285,7 @@ const AppDashboardHome: React.FC = () => {
                 <Link
                   key={conv.id}
                   to={`/app/chat/${conv.id}`}
-                  className="group flex flex-col justify-between rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20"
+                  className="group flex flex-col justify-between rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/15 p-5 transition-colors hover:bg-[#EAE3D7] hover:border-[#3D3830]/25"
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2 text-[11px] text-[#8B8275]">
@@ -211,7 +301,7 @@ const AppDashboardHome: React.FC = () => {
                       <p className="text-xs text-[#5C5449] truncate">{conv.title}</p>
                     )}
                   </div>
-                  <div className="mt-4 pt-3 border-t border-[#3D3830]/8 flex items-center justify-between text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830]">
+                  <div className="mt-4 pt-3 border-t border-[#3D3830]/12 flex items-center justify-between text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830]">
                     <span>Resume thread</span>
                     <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-0.5 transition-transform" />
                   </div>
@@ -220,13 +310,13 @@ const AppDashboardHome: React.FC = () => {
             })}
           </div>
         ) : (
-          <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 md:p-7 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/15 p-6 md:p-7 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h3 className="font-serif text-xl font-medium text-[#3D3830]">
                 Start your first consultation or companion chat
               </h3>
               <p className="mt-1 text-xs text-[#5C5449] max-w-xl leading-relaxed">
-                Ask your Vedic Astrologer about an active timing cycle, pull a Tarot spread, or talk through what is on your mind with a matched Companion.
+                Ask your {astrologyMode === 'western' ? 'Western' : 'Vedic'} Astrologer about an active timing cycle, pull a Tarot spread, or talk through what is on your mind with a matched Companion.
               </p>
             </div>
             <Link
@@ -240,7 +330,7 @@ const AppDashboardHome: React.FC = () => {
         )}
       </section>
 
-      {/* SECTION 2: GUIDES & COMPANIONS LAST CHATTED WITH */}
+      {/* SECTION 2: GUIDES & COMPANIONS (All 6 — Dark-Warm Bento Cards) */}
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-4">
           <div>
@@ -261,8 +351,10 @@ const AppDashboardHome: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {guidesToShow.map((guide) => {
             const href =
-              guide.kind === 'companion' && guide.conversationId
-                ? `/app/chat/${guide.conversationId}`
+              guide.kind === 'companion'
+                ? guide.conversationId
+                  ? `/app/chat/${guide.conversationId}`
+                  : '/app/chat?pillar=companion'
                 : `/app/chat?pillar=council&expert=${encodeURIComponent(
                     guide.expertSlug || 'council_synthesis'
                   )}`;
@@ -270,14 +362,16 @@ const AppDashboardHome: React.FC = () => {
               <Link
                 key={guide.id}
                 to={href}
-                className="group flex items-start justify-between gap-3.5 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20"
+                className="group flex items-start justify-between gap-3.5 rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/15 p-5 transition-colors hover:bg-[#EAE3D7] hover:border-[#3D3830]/25"
               >
                 <div className="flex items-start gap-3.5 min-w-0">
-                  <div className="h-10 w-10 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/10 flex items-center justify-center text-[#8B7355] shrink-0">
+                  <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/12 flex items-center justify-center text-[#8B7355] shrink-0">
                     {guide.kind === 'companion' ? (
                       <HeartHandshake className="h-4 w-4" />
                     ) : guide.expertSlug === 'tarot_reader' ? (
                       <Sparkles className="h-4 w-4" />
+                    ) : guide.expertSlug === 'numerologist' ? (
+                      <Hash className="h-4 w-4" />
                     ) : (
                       <Compass className="h-4 w-4" />
                     )}
@@ -300,13 +394,13 @@ const AppDashboardHome: React.FC = () => {
         </div>
       </section>
 
-      {/* SECTION 3: MOST USED MINI-APPS + GO TO APPS */}
+      {/* SECTION 3: APPS BY CATEGORY + GO TO APPS */}
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
             <p className="text-xs text-[#8B8275]">Daily & Chart Tools</p>
             <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
-              Most Used Apps
+              Apps
             </h2>
           </div>
           <Link
@@ -318,34 +412,92 @@ const AppDashboardHome: React.FC = () => {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {featuredApps.map((app) => (
-            <Link
-              key={app.slug}
-              to={`/app/apps/${app.slug}`}
-              className="group flex flex-col justify-between rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20"
-            >
-              <div className="space-y-3">
-                <div className="h-10 w-10 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/8 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors">
-                  {renderMiniAppIcon(app.iconKey, 'h-4 w-4')}
-                </div>
-                <div>
-                  <p className="text-[11px] text-[#8B8275]">{app.categoryLabel}</p>
-                  <h3 className="mt-0.5 font-serif text-xl font-medium text-[#3D3830]">
-                    {app.shortTitle}
-                  </h3>
-                  <p className="mt-1 text-xs text-[#5C5449] leading-relaxed line-clamp-2">
-                    {app.tagline}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-[#3D3830]/8 flex items-center justify-between text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830]">
-                <span>Open</span>
-                <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-0.5 transition-transform" />
-              </div>
-            </Link>
-          ))}
+        {/* Aligned 8 Category Tabs */}
+        <div
+          role="tablist"
+          aria-label="Filter home apps by category"
+          className="flex items-center gap-1 overflow-x-auto no-scrollbar p-1 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/8 w-full sm:w-fit max-w-full"
+        >
+          {MINI_APP_CATEGORIES.map((cat) => {
+            const isActive = activeAppCategory === cat.id;
+            const favSuffix =
+              cat.id === 'favorites' && favoriteSlugs.length > 0
+                ? ` (${favoriteSlugs.length})`
+                : '';
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActiveAppCategory(cat.id)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  isActive
+                    ? 'bg-[#4A453D] text-[#FAF7F2] shadow-xs'
+                    : 'text-[#5C5449] hover:text-[#3D3830] hover:bg-[#FAF7F2]/60'
+                }`}
+              >
+                {cat.label}
+                {favSuffix}
+              </button>
+            );
+          })}
         </div>
+
+        {displayedApps.length === 0 ? (
+          <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-8 text-center space-y-2">
+            <p className="font-serif text-xl text-[#3D3830]">No favourite apps saved yet</p>
+            <p className="text-xs text-[#5C5449]">
+              Tap the heart icon on any app to keep quick access right here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {displayedApps.map((app) => {
+              const isFav = favoriteSlugs.includes(app.slug);
+              return (
+                <Link
+                  key={app.slug}
+                  to={`/app/apps/${app.slug}`}
+                  className="group flex flex-col justify-between rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="h-10 w-10 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/8 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors">
+                        {renderMiniAppIcon(app.iconKey, 'h-4 w-4')}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => void handleToggleFavorite(e, app.slug)}
+                        aria-label={isFav ? `Remove ${app.title} from favourites` : `Add ${app.title} to favourites`}
+                        className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                          isFav
+                            ? 'text-[#B8965A] bg-[#B8965A]/12'
+                            : 'text-[#8B8275] hover:text-[#3D3830] hover:bg-[#EAE3D7]/60'
+                        }`}
+                      >
+                        <Heart className={`h-3.5 w-3.5 ${isFav ? 'fill-current' : ''}`} />
+                      </button>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-[#8B8275]">{app.categoryLabel}</p>
+                      <h3 className="mt-0.5 font-serif text-xl font-medium text-[#3D3830]">
+                        {app.shortTitle}
+                      </h3>
+                      <p className="mt-1 text-xs text-[#5C5449] leading-relaxed line-clamp-2">
+                        {app.tagline}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-[#3D3830]/8 flex items-center justify-between text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830]">
+                    <span>Open</span>
+                    <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-0.5 transition-transform" />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* SECTION 4: PERSONAL TIMING RADAR (Preserved Observatory Night Surface) */}

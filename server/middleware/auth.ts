@@ -21,6 +21,7 @@ export interface AppUserRecord {
   default_expert: string;
   default_output: string;
   default_language: string;
+  default_astrology_mode?: 'vedic' | 'western' | null;
   preferred_call_name?: string | null;
   chat_font_size?: 'sm' | 'base' | 'lg' | null;
   suggestions_auto_expand?: boolean | null;
