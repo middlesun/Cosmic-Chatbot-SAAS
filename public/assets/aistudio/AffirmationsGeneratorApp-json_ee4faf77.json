@@ -1,0 +1,122 @@
+import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { ThemeMode, UserProfile } from '../types';
+import { GoogleGenAI } from '@google/genai';
+
+interface AffirmationsGeneratorAppProps {
+  theme: ThemeMode;
+  userProfile: UserProfile | null;
+  onBack: () => void;
+  onOpenProfile: () => void;
+}
+
+const AffirmationsGeneratorApp: React.FC<AffirmationsGeneratorAppProps> = ({ theme, userProfile, onBack, onOpenProfile }) => {
+  const [loading, setLoading] = useState(false);
+  const [situation, setSituation] = useState("");
+  const [affirmations, setAffirmations] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const isLight = theme === ThemeMode.LIGHT;
+
+  const generateAffirmations = async () => {
+    if (!userProfile) return;
+    setLoading(true);
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const prompt = `User's birth details: Sex ${userProfile.sex}, Born ${userProfile.dob} at ${userProfile.tob}.
+    Specific Situation provided by user: "${situation}".
+    Generate a set of high-vibration, real-time affirmations using their 2nd house (wealth), Venus (love), and Jupiter (expansion) placements.
+    Include specific astrological reasoning for each affirmation (e.g., 'Because your Jupiter is in Cancer...').
+    IMPORTANT: Use bold (**) for the affirmation itself. Use italics (*) for the astrological reasoning. Use blockquotes (>) for supplementary mantras.
+    Format as a beautiful, mystical list in Markdown.`;
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+      });
+      setAffirmations(response.text || "The cosmos is currently quiet. Try again in a moment.");
+    } catch (error) {
+      setAffirmations("Vibrational match failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!affirmations) return;
+    navigator.clipboard.writeText(affirmations);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const markdownComponents = {
+    h3: ({node, ...props}: any) => <h3 className="text-xl font-black text-fuchsia-500 mb-6" {...props} />,
+    strong: ({node, ...props}: any) => <strong className="text-fuchsia-500 block mb-2 font-black tracking-tight" {...props} />,
+    em: ({node, ...props}: any) => <em className="text-purple-400 block mb-6 not-italic opacity-70 font-medium" {...props} />,
+    blockquote: ({node, ...props}: any) => <blockquote className="border-l-4 border-fuchsia-500 bg-fuchsia-500/5 py-4 px-6 rounded-r-2xl italic mb-6" {...props} />,
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 py-8 md:py-16 w-full animate-in fade-in slide-in-from-bottom-4 duration-700 custom-scrollbar">
+      <div className="max-w-4xl mx-auto flex flex-col items-center">
+        <div className="w-full mb-8 flex items-center justify-between">
+           <button onClick={onBack} className={`w-12 h-12 flex items-center justify-center rounded-full transition-all shadow-lg border-2 ${isLight ? 'bg-white border-purple-50 text-purple-600 hover:border-purple-400' : 'bg-slate-900 border-white/5 text-purple-400 hover:border-white/20'}`} title="Back to Apps">
+             <i className="fa-solid fa-arrow-left text-lg"></i>
+           </button>
+           <h2 className="text-2xl font-serif font-black tracking-tighter">Affirmations Generator</h2>
+           <div className="w-12" />
+        </div>
+
+        {!userProfile ? (
+          <div className={`p-12 rounded-[3rem] text-center border-2 ${isLight ? 'bg-white border-purple-50' : 'bg-slate-900/60 border-white/5'}`}>
+            <i className="fa-solid fa-quote-left text-5xl text-purple-500 mb-6"></i>
+            <h3 className="text-2xl font-serif font-black mb-4">Chart Identity Required</h3>
+            <p className="opacity-70 mb-8 max-w-sm mx-auto">To craft affirmations that resonate with your specific houses, we need your birth details.</p>
+            <button onClick={onOpenProfile} className="px-10 py-4 rounded-2xl bg-purple-600 text-white font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-purple-500/20">Set Up Profile</button>
+          </div>
+        ) : (
+          <div className="w-full space-y-8">
+            <div className={`p-8 rounded-[3rem] border-2 transition-all ${isLight ? 'bg-white border-purple-50' : 'bg-slate-900/60 border-white/5'}`}>
+              <label className="text-[10px] uppercase font-black tracking-widest mb-4 block opacity-60">Describe your current specific situation or struggle:</label>
+              <textarea 
+                className={`w-full p-4 rounded-2xl border-2 outline-none focus:ring-4 focus:ring-purple-500/20 transition-all min-h-[120px] mb-6 ${isLight ? 'bg-slate-50 border-purple-100 text-slate-900' : 'bg-white/5 border-white/10 text-white'}`}
+                placeholder="Example: Struggling to find a career path that feels like my true calling..."
+                value={situation}
+                onChange={(e) => setSituation(e.target.value)}
+              />
+              <button 
+                disabled={loading || !situation.trim()}
+                onClick={generateAffirmations}
+                className="w-full py-5 rounded-2xl bg-gradient-to-tr from-purple-600 to-fuchsia-600 text-white text-[11px] font-black uppercase tracking-[0.4em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-30"
+              >
+                {loading ? 'Consulting Your Houses...' : 'Generate My Affirmations'}
+              </button>
+            </div>
+
+            {affirmations && !loading && (
+              <div className={`w-full p-8 md:p-12 rounded-[3rem] border-2 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-1000 ${isLight ? 'bg-white border-purple-50' : 'bg-slate-900/40 border-purple-500/10 backdrop-blur-xl'}`}>
+                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-purple-400 to-fuchsia-600"></div>
+                <div className="absolute top-6 right-8">
+                   <button onClick={handleCopy} className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${copied ? 'bg-emerald-600 text-white border-emerald-600' : 'border-purple-500/20 hover:bg-purple-600 hover:text-white'}`}>
+                      <i className={`fa-solid ${copied ? 'fa-check' : 'fa-copy'}`}></i>
+                      {copied ? 'Copied' : 'Copy'}
+                   </button>
+                </div>
+                <div className={`prose prose-lg max-w-none ${isLight ? 'prose-slate' : 'prose-invert'}`}>
+                  <ReactMarkdown components={markdownComponents}>{affirmations}</ReactMarkdown>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <button onClick={onBack} className={`mt-16 mb-8 px-12 py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl hover:scale-105 active:scale-95 ${isLight ? 'bg-white border-2 border-purple-100 text-purple-600' : 'bg-slate-900 border-2 border-white/5 text-purple-400'}`}>
+          <i className="fa-solid fa-arrow-left mr-3"></i>
+          Back to Apps
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default AffirmationsGeneratorApp;

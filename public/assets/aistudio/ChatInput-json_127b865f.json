@@ -1,0 +1,168 @@
+import React, { useState, useRef, useEffect } from 'react';
+
+interface ChatInputProps {
+  onSend: (text: string, images: string[]) => void;
+  onStop: () => void;
+  isGenerating: boolean;
+  draft: string;
+  setDraft: (text: string) => void;
+  isLight?: boolean;
+  showUpload?: boolean;
+  placeholder?: string;
+}
+
+const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerating, draft, setDraft, isLight, showUpload = true, placeholder = "Ask the council anything..." }) => {
+  const [images, setImages] = useState<string[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textAreaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []) as File[];
+    const remainingSlots = 4 - images.length;
+    const newFiles = files.slice(0, remainingSlots);
+    
+    newFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImages(prev => [...prev, reader.result as string].slice(0, 4));
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleSend = () => {
+    if ((draft.trim() || images.length > 0) && !isGenerating) {
+      onSend(draft, images);
+      setDraft('');
+      setImages([]);
+    }
+  };
+
+  const toggleVoice = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not supported in your browser.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.onstart = () => setIsRecording(true);
+    recognition.onend = () => setIsRecording(false);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setDraft(draft + (draft ? ' ' : '') + transcript);
+    };
+    recognition.start();
+  };
+
+  const cropImage = (index: number) => {
+    alert("Manual cropping triggered for image " + (index + 1));
+  };
+
+  useEffect(() => {
+    const textarea = textAreaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto'; 
+      const calculatedHeight = Math.min(Math.max(textarea.scrollHeight, 40), 120);
+      textarea.style.height = `${calculatedHeight}px`;
+      textarea.style.overflowY = textarea.scrollHeight > 120 ? 'auto' : 'hidden';
+    }
+  }, [draft]);
+
+  return (
+    <div className="w-full px-2 sm:px-4 pb-2 sm:pb-4 transition-all duration-300">
+      <div className={`w-full max-w-5xl mx-auto rounded-3xl border transition-all duration-500 overflow-hidden shadow-2xl ${isLight ? 'bg-white border-purple-100 shadow-purple-200/50' : 'bg-slate-900 border-white/5 shadow-black/50'} backdrop-blur-2xl`}>
+        
+        {images.length > 0 && (
+          <div className="flex gap-2 p-3 overflow-x-auto no-scrollbar border-b border-white/5">
+            {images.map((img, idx) => (
+              <div key={idx} className="relative group shrink-0 animate-in zoom-in-95">
+                <img src={img} alt="Preview" className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-xl border border-white/10" />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity rounded-xl">
+                  <button onClick={() => cropImage(idx)} title="Crop" className="w-7 h-7 bg-[#7C3AED] rounded-lg flex items-center justify-center hover:scale-110 active:scale-90 transition-transform">
+                    <i className="fa-solid fa-crop-simple text-[10px] text-white"></i>
+                  </button>
+                  <button onClick={() => setImages(prev => prev.filter((_, i) => i !== idx))} title="Remove" className="w-7 h-7 bg-rose-600 rounded-lg flex items-center justify-center hover:scale-110 active:scale-90 transition-transform">
+                    <i className="fa-solid fa-trash-can text-[10px] text-white"></i>
+                  </button>
+                </div>
+              </div>
+            ))}
+            {images.length < 4 && (
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className={`w-16 h-16 sm:w-20 sm:h-20 rounded-xl border-2 border-dashed flex flex-col items-center justify-center opacity-30 hover:opacity-100 transition-all ${isLight ? 'border-purple-200' : 'border-white/10'}`}
+              >
+                <i className="fa-solid fa-plus text-lg mb-1"></i>
+                <span className="text-[8px] uppercase font-black tracking-widest">Add</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-end gap-2 p-2 sm:p-3">
+          {showUpload && images.length === 0 && (
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all shrink-0 ${isLight ? 'bg-purple-50 text-purple-600 hover:bg-purple-100' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+              title="Attach data"
+            >
+              <i className="fa-solid fa-paperclip text-lg"></i>
+            </button>
+          )}
+          <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={handleFileChange} />
+          
+          <div className={`flex-1 flex flex-col min-w-0 rounded-2xl border transition-all ${isLight ? 'bg-slate-50 border-slate-100 focus-within:bg-white focus-within:border-purple-200' : 'bg-white/5 border-transparent focus-within:bg-slate-950/50 focus-within:border-purple-500/20'}`}>
+            <textarea
+              ref={textAreaRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={placeholder}
+              className={`w-full bg-transparent border-none outline-none px-4 py-2.5 resize-none placeholder-slate-500 font-medium text-base sm:text-lg min-h-[40px] transition-all ${isLight ? 'text-slate-900' : 'text-slate-100'}`}
+              rows={1}
+            />
+          </div>
+
+          <button 
+            onClick={toggleVoice}
+            className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all shrink-0 ${isRecording ? 'bg-rose-500 text-white animate-pulse shadow-lg shadow-rose-500/30' : (isLight ? 'bg-purple-50 text-purple-600 hover:bg-purple-100' : 'bg-white/5 text-slate-400 hover:text-white')}`}
+            title="Voice input"
+          >
+            <i className={`fa-solid ${isRecording ? 'fa-microphone' : 'fa-microphone-lines'} text-lg`}></i>
+          </button>
+
+          {isGenerating ? (
+            <button 
+              onClick={onStop}
+              className="w-10 h-10 sm:w-11 sm:h-11 bg-rose-500 text-white rounded-xl transition-all shadow-xl shadow-rose-500/30 shrink-0 flex items-center justify-center hover:scale-105 active:scale-95"
+              title="Stop generating"
+            >
+              <i className="fa-solid fa-stop text-lg"></i>
+            </button>
+          ) : (
+            <button 
+              onClick={handleSend}
+              disabled={!draft.trim() && images.length === 0}
+              className={`relative w-10 h-10 sm:w-11 sm:h-11 rounded-xl transition-all shadow-xl shrink-0 flex items-center justify-center overflow-hidden ${
+                !draft.trim() && images.length === 0 
+                  ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-30' 
+                  : `bg-gradient-to-b from-[#A855F7] via-[#7C3AED] to-[#5B21B6] hover:from-[#9333EA] hover:via-[#6D28D9] hover:to-[#4C1D95] text-white hover:scale-105 active:scale-95 shadow-purple-600/40`
+              }`}
+            >
+              <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/30 to-transparent pointer-events-none opacity-40"></div>
+              <i className="fa-solid fa-paper-plane text-lg relative z-10"></i>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ChatInput;

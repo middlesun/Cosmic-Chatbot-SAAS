@@ -1,0 +1,124 @@
+
+import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { ThemeMode, UserProfile } from '../types';
+import { GoogleGenAI } from '@google/genai';
+
+interface LoveSpellsAppProps {
+  theme: ThemeMode;
+  userProfile: UserProfile | null;
+  onBack: () => void;
+  onOpenProfile: () => void;
+}
+
+const LoveSpellsApp: React.FC<LoveSpellsAppProps> = ({ theme, userProfile, onBack, onOpenProfile }) => {
+  const [loading, setLoading] = useState(false);
+  const [intention, setIntention] = useState("");
+  const [ritual, setRitual] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const isLight = theme === ThemeMode.LIGHT;
+
+  const generateSpell = async () => {
+    if (!intention.trim() || !userProfile) return;
+    setLoading(true);
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const prompt = `Generate a personalized "Love Ritual" (Spell) for ${userProfile.firstName} BASED ON THE CURRENT CELESTIAL ALIGNMENT OF ${dateStr}, ${timeStr}.
+    User Born: ${userProfile.dob}. Intention: "${intention}".
+    Using current and upcoming planetary transits (Moon phase, Venus placement as of today):
+    1. The Ritual: A step-by-step personalized ritual (e.g., 'Burn pink paper under a Libra Moon while chanting your Chiron placement').
+    2. Planetary Timing: The exact best window of time to perform this based on today's actual date.
+    3. Celestial Tools: Specific herbs, candles, or symbols aligned with their Venus sign.
+    IMPORTANT: Use Headers (###). Use bold (**) for ritual actions. Use italics (*) for the energetic focus.
+    Tone: Mystical, reverent, and empowering. Ignore training data cutoffs; ${dateStr} is the actual current date.`;
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+      });
+      setRitual(response.text || "The ritual elements are not aligning today.");
+    } catch (error) {
+      setRitual("The cosmic altar is currently being prepared. Try later.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!ritual) return;
+    navigator.clipboard.writeText(ritual);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const markdownComponents = {
+    h3: ({node, ...props}: any) => <h3 className="text-4xl font-black text-rose-500 mb-10 mt-12 tracking-tighter" {...props} />,
+    strong: ({node, ...props}: any) => <strong className="text-pink-400 font-black underline decoration-pink-500/20 text-2xl" {...props} />,
+    p: ({node, ...props}: any) => <p className="leading-relaxed font-serif italic text-xl mb-4 last:mb-0" {...props} />,
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 py-8 md:py-16 w-full animate-in fade-in slide-in-from-bottom-4 duration-700 custom-scrollbar">
+      <div className="max-w-4xl mx-auto flex flex-col items-center">
+        <div className="w-full mb-8 flex items-center justify-between">
+           <button onClick={onBack} className={`flex items-center gap-2 text-xs font-black uppercase tracking-widest transition-all ${isLight ? 'text-purple-600' : 'text-purple-400'}`}>
+             <i className="fa-solid fa-arrow-left"></i>
+             Back to Apps
+           </button>
+           <h2 className="text-2xl font-serif font-black tracking-tighter text-rose-500">Love Spells</h2>
+           <div className="w-20" />
+        </div>
+
+        {!userProfile ? (
+          <div className={`p-12 rounded-[3rem] text-center border-2 ${isLight ? 'bg-white border-purple-50' : 'bg-slate-900/60 border-white/5'}`}>
+            <i className="fa-solid fa-fire-burner text-5xl text-rose-500 mb-6"></i>
+            <h3 className="text-2xl font-serif font-black mb-4">Celestial ID Required</h3>
+            <p className="opacity-70 mb-8 max-w-sm mx-auto">We need your Venus data to time your ritual perfectly.</p>
+            <button onClick={onOpenProfile} className="px-10 py-4 rounded-2xl bg-rose-600 text-white font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-rose-500/20">Set Up Profile</button>
+          </div>
+        ) : (
+          <div className="w-full space-y-8">
+            <div className={`p-8 rounded-[3rem] border-2 shadow-xl ${isLight ? 'bg-white border-purple-50' : 'bg-slate-900/60 border-white/5'}`}>
+              <label className="text-[10px] uppercase font-black tracking-widest mb-4 block opacity-60">What is your romantic intention?</label>
+              <textarea 
+                className={`w-full p-4 rounded-2xl border-2 outline-none focus:ring-4 focus:ring-rose-500/20 transition-all min-h-[100px] mb-6 font-serif italic text-lg ${isLight ? 'bg-slate-50 border-purple-100 text-slate-900' : 'bg-white/5 border-white/10 text-white'}`}
+                placeholder="I wish to attract a partner who honors my creativity and soul..."
+                value={intention}
+                onChange={(e) => setIntention(e.target.value)}
+              />
+              <button 
+                disabled={loading || !intention.trim()}
+                onClick={generateSpell}
+                className="w-full py-5 rounded-2xl bg-gradient-to-tr from-rose-600 to-pink-800 text-white text-[11px] font-black uppercase tracking-[0.4em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-30"
+              >
+                {loading ? 'Consulting the Lunar Rhythms...' : 'Generate My Love Ritual'}
+              </button>
+            </div>
+
+            {ritual && !loading && (
+              <div className={`w-full p-8 md:p-12 rounded-[3rem] border-2 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-1000 ${isLight ? 'bg-white border-purple-50' : 'bg-slate-900/40 border-rose-500/10 backdrop-blur-xl'}`}>
+                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-rose-400 via-pink-500 to-rose-700"></div>
+                <div className="absolute top-6 right-8">
+                   <button onClick={handleCopy} className={`flex items-center gap-3 px-8 py-4 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest transition-all ${copied ? 'bg-emerald-600 text-white border-emerald-600' : 'border-rose-500/20 hover:bg-rose-600 hover:text-white'}`}>
+                      <i className={`fa-solid ${copied ? 'fa-check' : 'fa-copy'}`}></i>
+                      {copied ? 'Spell Bound' : 'Copy Ritual'}
+                   </button>
+                </div>
+                <div className={`prose prose-lg max-w-none ${isLight ? 'prose-slate' : 'prose-invert'}`}>
+                  <ReactMarkdown components={markdownComponents}>{ritual}</ReactMarkdown>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default LoveSpellsApp;

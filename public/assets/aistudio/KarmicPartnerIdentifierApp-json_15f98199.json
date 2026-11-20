@@ -1,0 +1,120 @@
+
+import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { ThemeMode, UserProfile } from '../types';
+import { GoogleGenAI } from '@google/genai';
+
+interface KarmicPartnerIdentifierAppProps {
+  theme: ThemeMode;
+  userProfile: UserProfile | null;
+  onBack: () => void;
+  onOpenProfile: () => void;
+}
+
+const KarmicPartnerIdentifierApp: React.FC<KarmicPartnerIdentifierAppProps> = ({ theme, userProfile, onBack, onOpenProfile }) => {
+  const [loading, setLoading] = useState(false);
+  const [partnerDob, setPartnerDob] = useState("");
+  const [report, setReport] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const isLight = theme === ThemeMode.LIGHT;
+
+  const identifyConnection = async () => {
+    if (!partnerDob || !userProfile) return;
+    setLoading(true);
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const prompt = `Perform a "Karmic Partner Identification" analysis between:
+    Person A (User): Born ${userProfile.dob}.
+    Person B (Partner): Born ${partnerDob}.
+    Analyze Rahu/Ketu (Lunar Nodes) and 12th house overlays to reveal:
+    1. Connection Type: Is this a Soulmate, Karmic Lesson, or Ancestral Connection?
+    2. The Past Life Backstory: A brief archetypal history of their shared soul path.
+    3. Red Flags: Planetary aspects that indicate potential friction or karmic debt.
+    IMPORTANT: Use Headers (###). Use bold (**) for the connection type. Highlight red flags in red/bold.
+    Tone: Deep, mysterious, and profound.`;
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+      });
+      setReport(response.text || "The karmic threads are tangled beyond reading.");
+    } catch (error) {
+      setReport("The akashic records for this pair are currently inaccessible.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!report) return;
+    navigator.clipboard.writeText(report);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const markdownComponents = {
+    h3: ({node, ...props}: any) => <h3 className="text-4xl font-black text-violet-400 mb-10 mt-12 tracking-tighter" {...props} />,
+    strong: ({node, ...props}: any) => <strong className="text-purple-400 font-black text-3xl" {...props} />,
+    p: ({node, ...props}: any) => <p className="leading-relaxed font-serif italic text-xl mb-4 last:mb-0" {...props} />,
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 py-8 md:py-16 w-full animate-in fade-in slide-in-from-bottom-4 duration-700 custom-scrollbar">
+      <div className="max-w-4xl mx-auto flex flex-col items-center">
+        <div className="w-full mb-8 flex items-center justify-between">
+           <button onClick={onBack} className={`flex items-center gap-2 text-xs font-black uppercase tracking-widest transition-all ${isLight ? 'text-purple-600' : 'text-purple-400'}`}>
+             <i className="fa-solid fa-arrow-left"></i>
+             Back to Apps
+           </button>
+           <h2 className="text-2xl font-serif font-black tracking-tighter text-violet-500">Karmic Partner Identifier</h2>
+           <div className="w-20" />
+        </div>
+
+        {!userProfile ? (
+          <div className={`p-12 rounded-[3rem] text-center border-2 ${isLight ? 'bg-white border-purple-50' : 'bg-slate-900/60 border-white/5'}`}>
+            <i className="fa-solid fa-infinity text-5xl text-violet-500 mb-6"></i>
+            <h3 className="text-2xl font-serif font-black mb-4">Celestial ID Required</h3>
+            <p className="opacity-70 mb-8 max-w-sm mx-auto">We need your birth data to trace your soul's history with another.</p>
+            <button onClick={onOpenProfile} className="px-10 py-4 rounded-2xl bg-violet-600 text-white font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-violet-500/20">Set Up Profile</button>
+          </div>
+        ) : (
+          <div className="w-full space-y-8">
+            <div className={`p-8 rounded-[3rem] border-2 shadow-xl ${isLight ? 'bg-white border-purple-50' : 'bg-slate-900/60 border-white/5'}`}>
+              <div className="grid grid-cols-1 gap-6 mb-6">
+                <div>
+                  <label className="text-[10px] uppercase font-black tracking-widest mb-1 block opacity-60">Partner's Birth Date</label>
+                  <input type="date" className={`w-full p-3 rounded-xl border outline-none ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10 text-white'}`} value={partnerDob} onChange={e => setPartnerDob(e.target.value)} />
+                </div>
+              </div>
+              <button 
+                disabled={loading || !partnerDob}
+                onClick={identifyConnection}
+                className="w-full py-5 rounded-2xl bg-gradient-to-tr from-violet-600 to-purple-900 text-white text-[11px] font-black uppercase tracking-[0.4em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-30"
+              >
+                {loading ? 'Tracing Soul Threads Across Lifetimes...' : 'Identify Our Connection'}
+              </button>
+            </div>
+
+            {report && !loading && (
+              <div className={`w-full p-8 md:p-12 rounded-[3rem] border-2 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-1000 ${isLight ? 'bg-white border-purple-50' : 'bg-slate-900/40 border-violet-500/10 backdrop-blur-xl'}`}>
+                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-violet-400 via-purple-500 to-indigo-800"></div>
+                <div className="absolute top-6 right-8">
+                   <button onClick={handleCopy} className={`flex items-center gap-3 px-8 py-4 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest transition-all ${copied ? 'bg-emerald-600 text-white border-emerald-600' : 'border-violet-500/20 hover:bg-violet-600 hover:text-white'}`}>
+                      <i className={`fa-solid ${copied ? 'fa-check' : 'fa-copy'}`}></i>
+                      {copied ? 'Identified' : 'Copy Identification'}
+                   </button>
+                </div>
+                <div className={`prose prose-lg max-w-none ${isLight ? 'prose-slate' : 'prose-invert'}`}>
+                  <ReactMarkdown components={markdownComponents}>{report}</ReactMarkdown>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default KarmicPartnerIdentifierApp;
