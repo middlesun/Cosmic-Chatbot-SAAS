@@ -3,8 +3,11 @@ import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './astrologyAp
 import {
   createOpenRouterCompletion,
   getConsultationModel,
+  getConsultationModelAsync,
   getUtilityModel,
+  getUtilityModelAsync,
   isOpenRouterConfigured,
+  isOpenRouterConfiguredAsync,
   safeExtractJson,
   streamOpenRouterCompletion,
   type OpenRouterContentPart,
@@ -15,6 +18,13 @@ import {
   resolvePromptModules,
 } from './promptDefaults';
 import {
+  getActiveRecipeForTarget,
+  getChatbotConfig,
+  getPricingConfig,
+  getResolvedOpenRouterRuntime,
+  type ChatBillingWeights,
+} from './platformSettings';
+import {
   PROMPT_EXTRACTION_REFUSAL,
   containsInternalPromptLeak,
   detectPromptExtractionAttempt,
@@ -23,7 +33,9 @@ import {
 
 export {
   getConsultationModel,
+  getConsultationModelAsync,
   isOpenRouterConfigured,
+  isOpenRouterConfiguredAsync,
   detectPromptExtractionAttempt,
   PROMPT_EXTRACTION_REFUSAL,
   sanitizeAssistantOutput,
@@ -38,12 +50,17 @@ export function countWords(text: string): number {
 export function calculateCreditsFromUsage(
   tokensIn: number,
   tokensOut: number,
-  responseText: string
+  responseText: string,
+  weights?: ChatBillingWeights
 ): number {
+  const outWeight = weights?.output_token_weight ?? 0.25;
+  const inWeight = weights?.input_token_weight ?? 0.015;
+  const minCredits = weights?.min_credits_per_reply ?? 25;
+  const maxCredits = weights?.max_credits_per_reply ?? 1500;
   const estimatedOut = tokensOut > 0 ? tokensOut : Math.ceil(responseText.length / 4);
   const estimatedIn = tokensIn > 0 ? tokensIn : 600;
-  const weighted = Math.ceil(estimatedOut * 0.25 + estimatedIn * 0.015);
-  return Math.max(25, Math.min(weighted, 1500));
+  const weighted = Math.ceil(estimatedOut * outWeight + estimatedIn * inWeight);
+  return Math.max(minCredits, Math.min(weighted, maxCredits));
 }
 
 export interface ConsultationAttachmentInput {
@@ -230,27 +247,55 @@ async function buildStaticSystemInstruction(params: {
   toneMode: 'friendly' | 'technical';
   responseLength: 'short' | 'detailed';
   preferredCallName?: string | null;
+  turnCount: number;
   profile: StreamConsultationParams['profile'];
   extraProfiles?: ConsultationProfileRecord[];
 }): Promise<{ systemInstruction: string; modelOverride: string | null }> {
-  const { bodies: promptBodies, models: promptModels } = await resolvePromptModules([
-    params.expertSlug,
-    params.modeSlug,
-    params.outputSlug,
-    params.languageSlug,
+  const [chatbotConfig, activeModeRecipe] = await Promise.all([
+    getChatbotConfig(),
+    getActiveRecipeForTarget('mode', params.modeSlug),
   ]);
 
+  const recipeSteps = activeModeRecipe
+    ? (activeModeRecipe.steps_json || []).filter((s) => s && s.enabled !== false && s.prompt_slug)
+    : [];
+  const slugsToResolve = Array.from(
+    new Set([
+      params.expertSlug,
+      params.modeSlug,
+      params.outputSlug,
+      params.languageSlug,
+      ...recipeSteps.map((s) => s.prompt_slug),
+    ])
+  );
+
+  const { bodies: promptBodies, models: promptModels } = await resolvePromptModules(slugsToResolve);
+
   const modelOverride =
+    activeModeRecipe?.model_id ||
     promptModels[params.expertSlug] ||
     promptModels[params.modeSlug] ||
     promptModels[params.outputSlug] ||
     promptModels[params.languageSlug] ||
     null;
 
+  const recipeBlocks: string[] = [];
+  for (const step of recipeSteps) {
+    const body =
+      typeof step.inline_override === 'string' && step.inline_override.trim()
+        ? step.inline_override.trim()
+        : promptBodies[step.prompt_slug];
+    if (body) {
+      recipeBlocks.push(body);
+    }
+  }
+
   const sections: string[] = [
     CORE_COUNCIL_CONSTITUTION,
+    chatbotConfig.conversational_rules || '',
     promptBodies[params.expertSlug] || '',
     promptBodies[params.modeSlug] || '',
+    ...recipeBlocks,
     promptBodies[params.outputSlug] || '',
     promptBodies[params.languageSlug] || '',
   ].filter(Boolean);
@@ -276,7 +321,16 @@ async function buildStaticSystemInstruction(params: {
   }
 
   if (params.preferredCallName?.trim()) {
-    sections.push(`USER ADDRESS PREFERENCE: Address the user warmly and naturally as "${params.preferredCallName.trim()}" when appropriate.`);
+    const safeName = params.preferredCallName.trim();
+    sections.push(
+      `USER NAME CONTEXT: The person you are speaking with goes by "${safeName}". NEVER start your message with "Hello ${safeName},", "Hi ${safeName},", "Dear ${safeName},", or any email-style salutation header. Respond directly to their question in natural conversation, and only weave their name in sparingly inside a sentence if it feels genuinely organic.`
+    );
+  }
+
+  if (params.turnCount > 0) {
+    sections.push(
+      `ONGOING CONVERSATION CONTINUITY (Message #${params.turnCount + 1} in this thread): Continue the live dialogue naturally from the previous exchange. Do NOT greet the user again, do NOT say hello, and do NOT re-introduce yourself.`
+    );
   }
 
   if (params.profile) {
@@ -291,7 +345,7 @@ Note: Full planetary ephemeris data is being prepared for this profile. Do not g
   } else {
     sections.push(`SESSION SCOPE: GENERAL / LEARN ASTROLOGY (No primary natal chart attached yet).`);
 
-    if (params.modeType !== 'learn_astrology') {
+    if (params.modeType !== 'learn_astrology' && chatbotConfig.features.auto_intake !== false) {
       sections.push(`CONVERSATIONAL BIRTH CHART INTAKE (WHEN NO CHART IS ATTACHED):
 - If the user asks a general Vedic astrology question (concepts, transits, remedies, meanings), answer it directly and helpfully without demanding birth details.
 - If the user asks for a personal reading or shares someone's birth details in natural language (for example: "Hey I need a reading about Sam, born on 11th July 2001"), NEVER invent or guess Lagna, Moon sign, planetary degrees, or Dashas from memory.
@@ -327,8 +381,14 @@ Note: Full planetary ephemeris data is being prepared for this profile. Do not g
 export async function streamConsultationResponse(
   params: StreamConsultationParams
 ): Promise<StreamConsultationResult> {
+  const [runtime, pricingConfig] = await Promise.all([
+    getResolvedOpenRouterRuntime(),
+    getPricingConfig(),
+  ]);
+
   const toneMode = params.toneMode === 'friendly' ? 'friendly' : 'technical';
   const responseLength = params.responseLength === 'short' ? 'short' : 'detailed';
+  const activeHistory = params.historyMessages.filter((m) => !m.excluded_from_context);
 
   const { systemInstruction: staticSystemInstruction, modelOverride } =
     await buildStaticSystemInstruction({
@@ -340,11 +400,17 @@ export async function streamConsultationResponse(
       toneMode,
       responseLength,
       preferredCallName: params.preferredCallName,
+      turnCount: activeHistory.length,
       profile: params.profile,
       extraProfiles: params.extraProfiles,
     });
 
-  const model = modelOverride || getConsultationModel();
+  const model = modelOverride || runtime.consultationModel || getConsultationModel();
+  const maxOutputTokens =
+    responseLength === 'short'
+      ? runtime.tokenLimits.chat_short
+      : runtime.tokenLimits.chat_detailed;
+  const maxHistoryTurns = runtime.tokenLimits.max_history_turns || 24;
 
   // Fetch today's cached Gochar transits (max 1 API call/day across platform)
   let gocharContext = '';
@@ -382,9 +448,8 @@ export async function streamConsultationResponse(
     .filter(Boolean)
     .join('\n\n---\n\n');
 
-  // Filter out messages excluded from context
-  const activeHistory = params.historyMessages.filter((m) => !m.excluded_from_context);
-  const messages: OpenRouterMessage[] = activeHistory.slice(-24).map((m) => ({
+  // Filter out messages excluded from context (already filtered above)
+  const messages: OpenRouterMessage[] = activeHistory.slice(-maxHistoryTurns).map((m) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
     content: m.content,
   }));
@@ -450,6 +515,7 @@ User's specific question: ${finalUserText}`;
       model,
       system: systemInstructionWithDynamic,
       messages,
+      maxTokens: maxOutputTokens,
       abortSignal: internalAbortController.signal,
       onChunk: (chunkText) => {
         if (leakIntercepted) return;
@@ -518,7 +584,8 @@ User's specific question: ${finalUserText}`;
     const creditsCharged = calculateCreditsFromUsage(
       streamResult.tokensIn,
       streamResult.tokensOut,
-      sanitized.text
+      sanitized.text,
+      pricingConfig.chat_billing
     );
 
     return {
@@ -543,8 +610,16 @@ export async function generateFollowUpQuestions(params: {
   hasProfile: boolean;
 }): Promise<string[]> {
   try {
+    const [chatbotConfig, runtime] = await Promise.all([
+      getChatbotConfig(),
+      getResolvedOpenRouterRuntime(),
+    ]);
+    if (chatbotConfig.features.followups === false) {
+      return [];
+    }
     const completion = await createOpenRouterCompletion({
-      model: getUtilityModel(),
+      model: runtime.utilityModel || getUtilityModel(),
+      maxTokens: runtime.tokenLimits.utility,
       jsonMode: true,
       temperature: 0.4,
       messages: [
@@ -587,8 +662,10 @@ export async function generateConversationTitle(
   profileName?: string | null
 ): Promise<string> {
   try {
+    const runtime = await getResolvedOpenRouterRuntime();
     const completion = await createOpenRouterCompletion({
-      model: getUtilityModel(),
+      model: runtime.utilityModel || getUtilityModel(),
+      maxTokens: Math.min(120, runtime.tokenLimits.utility),
       temperature: 0.3,
       messages: [
         {
@@ -615,11 +692,12 @@ export async function runQuickTool(params: {
   userId: string;
 }): Promise<{ items?: string[]; resultText: string }> {
   const supabaseAdmin = getSupabaseAdmin();
-  const { bodies: promptBodies, models: promptModels } = await resolvePromptModules([
-    params.toolSlug,
+  const [{ bodies: promptBodies, models: promptModels }, runtime] = await Promise.all([
+    resolvePromptModules([params.toolSlug]),
+    getResolvedOpenRouterRuntime(),
   ]);
   const toolInstruction = promptBodies[params.toolSlug] || '';
-  const toolModel = promptModels[params.toolSlug] || getUtilityModel();
+  const toolModel = promptModels[params.toolSlug] || runtime.utilityModel || getUtilityModel();
 
   let profileContext = '';
   if (params.profileId && supabaseAdmin) {

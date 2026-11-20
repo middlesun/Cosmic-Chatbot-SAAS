@@ -254,3 +254,42 @@ export async function sendSupportInquiryEmail(params: {
   }
 }
 
+export async function sendSupportReplyEmail(params: {
+  to: string;
+  name?: string | null;
+  subject: string;
+  originalMessage?: string | null;
+  replyText: string;
+}): Promise<SendEmailResult> {
+  const displayName = params.name?.trim() || 'Member';
+  const escapeHtml = (input: string) =>
+    input
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br/>');
+
+  const safeReply = escapeHtml(params.replyText);
+  const safeOriginal = params.originalMessage ? escapeHtml(params.originalMessage.slice(0, 600)) : '';
+
+  const html = wrapObservatoryLayout(
+    `Re: ${params.subject}`,
+    `<p>Namaste ${escapeHtml(displayName)},</p>
+     <div style="font-size:14px;line-height:1.7;color:#3D3830;">${safeReply}</div>
+     ${
+       safeOriginal
+         ? `<div style="margin-top:22px;padding:14px 18px;background:#F1ECE3;border-radius:12px;font-size:12px;color:#5C5449;">
+              <div style="font-weight:600;margin-bottom:6px;color:#8B8275;">Your earlier note:</div>
+              <div>${safeOriginal}</div>
+            </div>`
+         : ''
+     }
+     <p style="margin-top:20px;">Warm regards,<br/><strong>Cosmic Council Support</strong></p>`
+  );
+
+  return sendResendEmail({
+    to: params.to,
+    subject: `Re: ${params.subject}`,
+    html,
+  });
+}

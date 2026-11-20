@@ -7,7 +7,7 @@ import {
   detectPromptExtractionAttempt,
   generateConversationTitle,
   generateFollowUpQuestions,
-  isOpenRouterConfigured,
+  isOpenRouterConfiguredAsync,
   runQuickTool,
   sanitizeAssistantOutput,
   streamConsultationResponse,
@@ -19,24 +19,30 @@ import {
   updateProfileMemoryAfterTurn,
 } from '../services/memoryArchivist';
 import { getPublicChatCatalogCached } from '../services/promptDefaults';
+import { getPricingConfig, getPublicChatbotUiConfig } from '../services/platformSettings';
 import { checkRateLimit } from '../services/abuseGuard';
 
 const router = Router();
 
-const MIN_CREDITS_TO_CHAT = 25;
 const CONVERSATION_LIST_COLUMNS =
   'id, user_id, profile_id, linked_report_id, title, mode_type, is_bookmarked, total_word_count, use_full_profile_memory, updated_at, created_at';
 const MESSAGE_SELECT_COLUMNS =
   'id, conversation_id, parent_message_id, role, content, word_count, expert_used, mode_used, output_format_used, language_used, is_starred, excluded_from_context, followups_json, credits_charged, created_at';
 
-// 1. Public-safe Chat Catalog (Experts, Modes, Output Formats, Languages, Quick Tools — never raw prompts)
+// 1. Public-safe Chat Catalog + Dynamic Chatbot UI Config (never raw prompts)
 router.get('/config', requireAuth, async (_req: AuthenticatedRequest, res) => {
-  const catalog = await getPublicChatCatalogCached();
+  const [catalog, chatbotConfig, pricingConfig, openrouterReady] = await Promise.all([
+    getPublicChatCatalogCached(),
+    getPublicChatbotUiConfig(),
+    getPricingConfig(),
+    isOpenRouterConfiguredAsync(),
+  ]);
   res.setHeader('Cache-Control', 'private, no-cache');
   res.json({
     catalog,
-    openrouterConfigured: isOpenRouterConfigured(),
-    minCreditsRequired: MIN_CREDITS_TO_CHAT,
+    chatbotConfig,
+    openrouterConfigured: openrouterReady,
+    minCreditsRequired: pricingConfig.min_credits_to_chat,
   });
 });
 
@@ -447,14 +453,19 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       return;
     }
   } else {
-    if (!isOpenRouterConfigured()) {
+    const [openrouterReady, pricingConfig] = await Promise.all([
+      isOpenRouterConfiguredAsync(),
+      getPricingConfig(),
+    ]);
+    if (!openrouterReady) {
       res.status(503).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' });
       return;
     }
 
-    if (req.appUser.credits_balance < MIN_CREDITS_TO_CHAT) {
+    const minCredits = pricingConfig.min_credits_to_chat;
+    if (req.appUser.credits_balance < minCredits) {
       res.status(402).json({
-        error: `Minimum ${MIN_CREDITS_TO_CHAT} credits required to start a consultation. Please top up credits.`,
+        error: `Minimum ${minCredits} credits required to start a consultation. Please top up credits.`,
         code: 'INSUFFICIENT_CREDITS',
       });
       return;
@@ -956,7 +967,7 @@ router.post('/tools', requireAuth, async (req: AuthenticatedRequest, res) => {
     res.status(503).json({ error: 'Backend unavailable' });
     return;
   }
-  if (!isOpenRouterConfigured()) {
+  if (!(await isOpenRouterConfiguredAsync())) {
     res.status(503).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' });
     return;
   }

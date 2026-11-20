@@ -229,6 +229,9 @@ export function createExpressApp(): Express {
       .update({ referred_by: referrer.id })
       .eq('id', req.appUser.id);
 
+    const { getPricingConfig } = await import('./services/platformSettings');
+    const pricing = await getPricingConfig();
+
     await supabaseAdmin
       .from('referrals')
       .upsert(
@@ -236,7 +239,7 @@ export function createExpressApp(): Express {
           referrer_id: referrer.id,
           referee_id: req.appUser.id,
           status: 'pending',
-          reward_credits: 5000,
+          reward_credits: pricing.referral_reward_credits,
         },
         { onConflict: 'referee_id' }
       );
@@ -288,6 +291,32 @@ export function createExpressApp(): Express {
       return;
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
+    let ticketId: string | null = null;
+    if (supabaseAdmin) {
+      try {
+        const { data: insertedTicket } = await supabaseAdmin
+          .from('support_tickets')
+          .insert({
+            user_id: req.appUser.id,
+            from_name: fromName,
+            from_email: fromEmail,
+            category: cleanCategory,
+            subject: cleanSubject,
+            message: cleanMessage,
+            status: 'open',
+            priority: 'normal',
+          })
+          .select('id')
+          .maybeSingle();
+        if (insertedTicket?.id) {
+          ticketId = insertedTicket.id;
+        }
+      } catch {
+        // Non-fatal if migration 004 has not been executed yet
+      }
+    }
+
     const { sendSupportInquiryEmail } = await import('./services/email');
     const delivery = await sendSupportInquiryEmail({
       fromName,
@@ -300,6 +329,7 @@ export function createExpressApp(): Express {
 
     res.json({
       ok: true,
+      ticketId,
       deliveredViaEmail: delivery.sent,
       message: delivery.sent
         ? 'Your support inquiry has been sent. Our team will respond via email shortly.'

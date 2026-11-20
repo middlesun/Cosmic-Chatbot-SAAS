@@ -4,10 +4,13 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 interface FloatingScrollControlsProps {
   /** Extra right/bottom Tailwind positioning override if needed */
   className?: string;
+  /** Optional internal scroll container (falls back to window when container isn't overflowing) */
+  scrollContainerRef?: React.RefObject<HTMLElement | null>;
 }
 
 const FloatingScrollControls: React.FC<FloatingScrollControlsProps> = ({
   className = 'bottom-5 right-5 md:bottom-7 md:right-7',
+  scrollContainerRef,
 }) => {
   const [isScrollable, setIsScrollable] = useState(false);
   const [canScrollUp, setCanScrollUp] = useState(false);
@@ -17,7 +20,27 @@ const FloatingScrollControls: React.FC<FloatingScrollControlsProps> = ({
   const holdRafRef = useRef<number | null>(null);
   const didHoldRef = useRef(false);
 
+  const getActiveContainer = useCallback((): HTMLElement | null => {
+    const el = scrollContainerRef?.current ?? null;
+    if (el && el.scrollHeight > el.clientHeight + 40) {
+      return el;
+    }
+    return null;
+  }, [scrollContainerRef]);
+
   const updateScrollState = useCallback(() => {
+    const container = getActiveContainer();
+    if (container) {
+      const scrollHeight = container.scrollHeight;
+      const viewportHeight = container.clientHeight;
+      const scrollY = container.scrollTop;
+      const overflow = scrollHeight > viewportHeight + 120;
+      setIsScrollable(overflow);
+      setCanScrollUp(scrollY > 40);
+      setCanScrollDown(scrollY + viewportHeight < scrollHeight - 40);
+      return;
+    }
+
     const docEl = document.documentElement;
     const scrollHeight = Math.max(docEl.scrollHeight, document.body.scrollHeight);
     const viewportHeight = window.innerHeight;
@@ -27,12 +50,14 @@ const FloatingScrollControls: React.FC<FloatingScrollControlsProps> = ({
     setIsScrollable(overflow);
     setCanScrollUp(scrollY > 40);
     setCanScrollDown(scrollY + viewportHeight < scrollHeight - 40);
-  }, []);
+  }, [getActiveContainer]);
 
   useEffect(() => {
     updateScrollState();
+    const container = scrollContainerRef?.current ?? null;
     window.addEventListener('scroll', updateScrollState, { passive: true });
     window.addEventListener('resize', updateScrollState, { passive: true });
+    container?.addEventListener('scroll', updateScrollState, { passive: true });
 
     const observer =
       typeof ResizeObserver !== 'undefined'
@@ -40,14 +65,21 @@ const FloatingScrollControls: React.FC<FloatingScrollControlsProps> = ({
         : null;
     if (observer) {
       observer.observe(document.body);
+      if (container) {
+        observer.observe(container);
+        if (container.firstElementChild) {
+          observer.observe(container.firstElementChild);
+        }
+      }
     }
 
     return () => {
       window.removeEventListener('scroll', updateScrollState);
       window.removeEventListener('resize', updateScrollState);
+      container?.removeEventListener('scroll', updateScrollState);
       observer?.disconnect();
     };
-  }, [updateScrollState]);
+  }, [scrollContainerRef, updateScrollState]);
 
   const stopHoldScroll = useCallback(() => {
     if (holdTimerRef.current !== null) {
@@ -69,7 +101,13 @@ const FloatingScrollControls: React.FC<FloatingScrollControlsProps> = ({
     holdTimerRef.current = window.setTimeout(() => {
       didHoldRef.current = true;
       const step = () => {
-        window.scrollBy({ top: direction === 'up' ? -14 : 14 });
+        const container = getActiveContainer();
+        const delta = direction === 'up' ? -14 : 14;
+        if (container) {
+          container.scrollBy({ top: delta });
+        } else {
+          window.scrollBy({ top: delta });
+        }
         updateScrollState();
         holdRafRef.current = window.requestAnimationFrame(step);
       };
@@ -82,6 +120,15 @@ const FloatingScrollControls: React.FC<FloatingScrollControlsProps> = ({
     stopHoldScroll();
     didHoldRef.current = false;
     if (wasHold) return;
+
+    const container = getActiveContainer();
+    if (container) {
+      container.scrollTo({
+        top: direction === 'up' ? 0 : container.scrollHeight,
+        behavior: 'smooth',
+      });
+      return;
+    }
 
     const targetTop =
       direction === 'up'

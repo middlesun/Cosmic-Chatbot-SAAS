@@ -82,6 +82,10 @@ interface ChatComposerProps {
   onSendMessage: (overrideText?: string) => void;
   onStopGeneration: () => void;
   focusTrigger?: number;
+  composerPlaceholder?: string;
+  enableVoiceInput?: boolean;
+  enableAttachments?: boolean;
+  enableQuickTools?: boolean;
 }
 
 interface SpeechRecognitionAlternativeLike {
@@ -240,6 +244,10 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   onSendMessage,
   onStopGeneration,
   focusTrigger = 0,
+  composerPlaceholder = '',
+  enableVoiceInput = true,
+  enableAttachments = true,
+  enableQuickTools = true,
 }) => {
   const [isListening, setIsListening] = useState(false);
   const [composerNotice, setComposerNotice] = useState<string | null>(null);
@@ -462,6 +470,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!enableAttachments) return;
     const items = e.clipboardData?.items;
     if (!items) return;
     const files: File[] = [];
@@ -483,6 +492,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDraggingOver(false);
+    if (!enableAttachments) return;
     if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
       void processSelectedFiles(e.dataTransfer.files);
     }
@@ -1021,6 +1031,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                   {/* ROW 2: Left = [ Question | Expander | Optimizer ], Right = [ Technical | Detailed | Memory ] */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     {/* Left: All 3 Prompt Tools (activate at >= 5 words) */}
+                    {enableQuickTools && (
                     <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                       <Tooltip
                         content={
@@ -1103,6 +1114,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                         </button>
                       </Tooltip>
                     </div>
+                    )}
 
                     {/* Right: [ Technical | Detailed | Memory ] iPhone-style Toggles */}
                     <div className="flex flex-wrap items-center gap-1.5 ml-auto">
@@ -1276,6 +1288,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
               rows={1}
               value={draftText}
               disabled={inlineToolRunning !== null}
+              placeholder={composerPlaceholder || undefined}
               onChange={(e) => {
                 onDraftChange(e.target.value);
                 if (undoSnapshot) setUndoSnapshot(null);
@@ -1283,7 +1296,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               aria-label="Message input"
-              className="w-full resize-none bg-transparent px-1 py-0 text-sm text-[#3D3830] leading-[22px] focus:outline-none disabled:opacity-60"
+              className="w-full resize-none bg-transparent px-1 py-0 text-sm text-[#3D3830] placeholder:text-[#8B8275]/80 leading-[22px] focus:outline-none disabled:opacity-60"
             />
 
             {/* Bottom Row: Bottom-Left '+' Menu | Bottom-Right Voice + Send */}
@@ -1458,33 +1471,37 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                       } w-56 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] p-1.5 shadow-xl`}
                     >
                       <div className="space-y-0.5">
-                        <button
-                          type="button"
-                          onMouseEnter={() => setPlusSubMenu(null)}
-                          onClick={() => {
-                            setIsPlusOpen(false);
-                            setPlusSubMenu(null);
-                            imageInputRef.current?.click();
-                          }}
-                          className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors text-left cursor-pointer"
-                        >
-                          <ImageIcon className="h-3.5 w-3.5 text-[#8B7355]" />
-                          <span>Image</span>
-                        </button>
+                        {enableAttachments && (
+                          <>
+                            <button
+                              type="button"
+                              onMouseEnter={() => setPlusSubMenu(null)}
+                              onClick={() => {
+                                setIsPlusOpen(false);
+                                setPlusSubMenu(null);
+                                imageInputRef.current?.click();
+                              }}
+                              className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors text-left cursor-pointer"
+                            >
+                              <ImageIcon className="h-3.5 w-3.5 text-[#8B7355]" />
+                              <span>Image</span>
+                            </button>
 
-                        <button
-                          type="button"
-                          onMouseEnter={() => setPlusSubMenu(null)}
-                          onClick={() => {
-                            setIsPlusOpen(false);
-                            setPlusSubMenu(null);
-                            pdfInputRef.current?.click();
-                          }}
-                          className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors text-left cursor-pointer"
-                        >
-                          <FileText className="h-3.5 w-3.5 text-[#8B7355]" />
-                          <span>PDF</span>
-                        </button>
+                            <button
+                              type="button"
+                              onMouseEnter={() => setPlusSubMenu(null)}
+                              onClick={() => {
+                                setIsPlusOpen(false);
+                                setPlusSubMenu(null);
+                                pdfInputRef.current?.click();
+                              }}
+                              className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors text-left cursor-pointer"
+                            >
+                              <FileText className="h-3.5 w-3.5 text-[#8B7355]" />
+                              <span>PDF</span>
+                            </button>
+                          </>
+                        )}
 
                         <button
                           type="button"
@@ -1677,27 +1694,29 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
 
               {/* Bottom-Right: Icon-Only Voice + Send/Stop */}
               <div className="flex items-center gap-1.5 shrink-0">
-                <Tooltip
-                  content={isListening ? 'Stop voice dictation' : 'Voice dictation'}
-                  placement="top"
-                >
-                  <button
-                    type="button"
-                    onClick={toggleVoiceInput}
-                    aria-label={isListening ? 'Stop voice dictation' : 'Voice dictation'}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full active:scale-95 transition-all cursor-pointer ${
-                      isListening
-                        ? 'bg-[#7A3E36] text-[#FAF7F2] animate-pulse'
-                        : 'bg-[#F1ECE3] text-[#5C5449] hover:bg-[#EAE3D7] hover:text-[#3D3830]'
-                    }`}
+                {enableVoiceInput && (
+                  <Tooltip
+                    content={isListening ? 'Stop voice dictation' : 'Voice dictation'}
+                    placement="top"
                   >
-                    {isListening ? (
-                      <MicOff className="h-3.5 w-3.5" />
-                    ) : (
-                      <Mic className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                </Tooltip>
+                    <button
+                      type="button"
+                      onClick={toggleVoiceInput}
+                      aria-label={isListening ? 'Stop voice dictation' : 'Voice dictation'}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full active:scale-95 transition-all cursor-pointer ${
+                        isListening
+                          ? 'bg-[#7A3E36] text-[#FAF7F2] animate-pulse'
+                          : 'bg-[#F1ECE3] text-[#5C5449] hover:bg-[#EAE3D7] hover:text-[#3D3830]'
+                      }`}
+                    >
+                      {isListening ? (
+                        <MicOff className="h-3.5 w-3.5" />
+                      ) : (
+                        <Mic className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </Tooltip>
+                )}
 
                 {isStreaming ? (
                   <button

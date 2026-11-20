@@ -1,6 +1,17 @@
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
+import { getChatbotConfig } from './platformSettings';
 
-export type PromptCategory = 'expert' | 'mode' | 'output' | 'language' | 'tool' | 'learn' | 'report_step';
+export type PromptCategory =
+  | 'system'
+  | 'expert'
+  | 'analysis'
+  | 'modifier'
+  | 'mode'
+  | 'output'
+  | 'language'
+  | 'tool'
+  | 'learn'
+  | 'report_step';
 
 export interface PromptCatalogOption {
   slug: string;
@@ -139,11 +150,7 @@ export const OUTPUT_OPTIONS: DefaultPromptSeed[] = [
     display_name: 'Detailed Explanation',
     subtitle: 'Comprehensive observatory analysis with multi-factor reasoning & timing.',
     prompt_body: `OUTPUT FORMAT: DETAILED EXPLANATION.
-Deliver a deeply reasoned, well-paced observatory briefing using clear editorial markdown sections:
-1. Executive Synthesis (direct answer upfront)
-2. Chart Mechanics & Planetary Evidence (cite exact signs, houses, degrees, Nakshatra/Sub-Lord, Vargas, and Ashtakavarga)
-3. Dasha & Gochar Timing Window (exact active dates & upcoming shifts)
-4. Strategic Counsel & Grounded Reflection (practical next steps without superstition or fatalism).`,
+Deliver a deeply reasoned, warm, conversational reading using clean markdown headings only when they improve clarity. Start directly with the answer to the user's question (never with a letter greeting or "Executive Synthesis" header), unpack the relevant chart mechanics and planetary evidence (signs, houses, degrees, Nakshatra/Sub-Lord, Vargas, Ashtakavarga where relevant), cover active Dasha & Gochar timing windows, and finish with practical, grounded perspective without superstition or fatalism.`,
   },
   {
     slug: 'concise',
@@ -301,26 +308,36 @@ export async function getPublicChatCatalogCached() {
       category: string;
       display_name: string;
       subtitle?: string | null;
+      sort_order?: number | null;
       is_active: boolean;
     }> | null = null;
 
     const resWithSub = await supabaseAdmin
       .from('system_prompts')
-      .select('slug, category, display_name, subtitle, is_active')
+      .select('slug, category, display_name, subtitle, sort_order, is_active')
       .eq('is_active', true);
 
     if (!resWithSub.error && resWithSub.data) {
       rows = resWithSub.data;
     } else {
-      // Safe fallback if `subtitle` column migration hasn't been executed yet
-      const resBase = await supabaseAdmin
+      const resMid = await supabaseAdmin
         .from('system_prompts')
-        .select('slug, category, display_name, is_active')
+        .select('slug, category, display_name, subtitle, is_active')
         .eq('is_active', true);
-      if (!resBase.error && resBase.data) {
-        rows = resBase.data;
+      if (!resMid.error && resMid.data) {
+        rows = resMid.data;
+      } else {
+        const resBase = await supabaseAdmin
+          .from('system_prompts')
+          .select('slug, category, display_name, is_active')
+          .eq('is_active', true);
+        if (!resBase.error && resBase.data) {
+          rows = resBase.data;
+        }
       }
     }
+
+    const chatbotCfg = await getChatbotConfig();
 
     if (!rows || rows.length === 0) {
       publicCatalogCache = { data: base, expiresAt: now + PROMPT_CACHE_TTL_MS };
@@ -328,6 +345,7 @@ export async function getPublicChatCatalogCached() {
     }
 
     const defaultMetaBySlug = new Map(ALL_DEFAULT_PROMPTS.map((d) => [d.slug, d]));
+    const sortOrderBySlug = new Map<string, number>();
     const activeByCategory = {
       experts: [] as PromptCatalogOption[],
       modes: [] as PromptCatalogOption[],
@@ -338,6 +356,9 @@ export async function getPublicChatCatalogCached() {
 
     for (const row of rows) {
       const def = defaultMetaBySlug.get(row.slug);
+      if (typeof row.sort_order === 'number') {
+        sortOrderBySlug.set(row.slug, row.sort_order);
+      }
       const item: PromptCatalogOption = {
         slug: row.slug,
         category: row.category as PromptCategory,
@@ -359,17 +380,34 @@ export async function getPublicChatCatalogCached() {
         if (ia !== -1 && ib !== -1) return ia - ib;
         if (ia !== -1) return -1;
         if (ib !== -1) return 1;
+        const sa = sortOrderBySlug.get(a.slug) ?? 100;
+        const sb = sortOrderBySlug.get(b.slug) ?? 100;
+        if (sa !== sb) return sa - sb;
         return a.displayName.localeCompare(b.displayName);
       });
+
+    const expertOrder = [
+      ...(chatbotCfg.expert_order || []),
+      ...EXPERT_OPTIONS.map((x) => x.slug),
+    ];
+    const modeOrder = [
+      ...(chatbotCfg.mode_order || []),
+      'general',
+      ...MODE_OPTIONS.map((x) => x.slug),
+    ];
+    const languageOrder = [
+      ...(chatbotCfg.language_order || []),
+      ...LANGUAGE_OPTIONS.map((x) => x.slug),
+    ];
 
     const merged = {
       experts:
         activeByCategory.experts.length > 0
-          ? sortWithPriority(activeByCategory.experts, EXPERT_OPTIONS.map((x) => x.slug))
+          ? sortWithPriority(activeByCategory.experts, expertOrder)
           : base.experts,
       modes:
         activeByCategory.modes.length > 0
-          ? sortWithPriority(activeByCategory.modes, ['general', ...MODE_OPTIONS.map((x) => x.slug)])
+          ? sortWithPriority(activeByCategory.modes, modeOrder)
           : base.modes,
       outputs:
         activeByCategory.outputs.length > 0
@@ -377,7 +415,7 @@ export async function getPublicChatCatalogCached() {
           : base.outputs,
       languages:
         activeByCategory.languages.length > 0
-          ? sortWithPriority(activeByCategory.languages, LANGUAGE_OPTIONS.map((x) => x.slug))
+          ? sortWithPriority(activeByCategory.languages, languageOrder)
           : base.languages,
       tools:
         activeByCategory.tools.length > 0

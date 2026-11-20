@@ -4,6 +4,9 @@ export interface ReportPromptStep {
   stepNumber: number;
   title: string;
   instruction: string;
+  promptSlugs?: string[];
+  recipeSlug?: string | null;
+  modelId?: string | null;
 }
 
 export interface DefaultReportSeed {

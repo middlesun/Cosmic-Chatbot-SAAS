@@ -108,4 +108,30 @@ export interface PendingBirthProfileDraft {
   original_question?: string | null;
 }
 
+export interface ChatbotFeaturesUiConfig {
+  voice_input: boolean;
+  listen_tts: boolean;
+  whatsapp_share: boolean;
+  attachments: boolean;
+  quick_tools: boolean;
+  followups: boolean;
+  auto_intake: boolean;
+  memory_summary: boolean;
+}
+
+export interface PublicChatbotUiConfig {
+  welcome_title: string;
+  welcome_subtitle: string;
+  general_ready_message: string;
+  composer_placeholder: string;
+  default_expert: string;
+  default_mode: string;
+  default_output: string;
+  default_language: string;
+  default_tone: ChatToneMode;
+  default_response_length: ChatResponseLength;
+  features: ChatbotFeaturesUiConfig;
+}
+
+
 

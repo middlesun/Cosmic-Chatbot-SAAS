@@ -111,6 +111,9 @@ export const requireAuth = async (
 
     // Fallback bootstrap if user existed in auth.users before trigger migration ran
     if (!appUser) {
+      const { getPricingConfig } = await import('../services/platformSettings');
+      const pricing = await getPricingConfig();
+      const welcomeCredits = pricing.signup_welcome_credits;
       const randomCode = `CC-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
       const baseInsert = {
         id: authData.user.id,
@@ -119,7 +122,7 @@ export const requireAuth = async (
           (authData.user.user_metadata?.full_name as string) ||
           authData.user.email?.split('@')[0] ||
           'Member',
-        credits_balance: 5000,
+        credits_balance: welcomeCredits,
         referral_code: randomCode,
         is_admin: isPrimaryAdmin,
         must_change_password: Boolean(authData.user.user_metadata?.must_change_password),
@@ -162,14 +165,16 @@ export const requireAuth = async (
         return;
       }
 
-      await supabaseAdmin.from('credit_transactions').insert({
-        user_id: inserted.id,
-        amount: 5000,
-        balance_after: 5000,
-        tx_type: 'welcome_bonus',
-        reference_id: inserted.id,
-        description: 'Welcome bonus — 5,000 free signup credits',
-      });
+      if (welcomeCredits > 0) {
+        await supabaseAdmin.from('credit_transactions').insert({
+          user_id: inserted.id,
+          amount: welcomeCredits,
+          balance_after: welcomeCredits,
+          tx_type: 'welcome_bonus',
+          reference_id: inserted.id,
+          description: `Welcome bonus — ${welcomeCredits.toLocaleString()} free signup credits`,
+        });
+      }
 
       appUser = inserted;
     } else {
@@ -182,18 +187,23 @@ export const requireAuth = async (
           .select('id', { count: 'exact', head: true })
           .eq('user_id', appUser.id);
         if (txCount === 0) {
-          const { data: nextBal, error: grantErr } = await supabaseAdmin.rpc(
-            'grant_user_credits',
-            {
-              p_user_id: appUser.id,
-              p_amount: 5000,
-              p_tx_type: 'welcome_bonus',
-              p_reference_id: appUser.id,
-              p_description: 'Welcome bonus — 5,000 free signup credits',
+          const { getPricingConfig } = await import('../services/platformSettings');
+          const pricing = await getPricingConfig();
+          const welcomeCredits = pricing.signup_welcome_credits;
+          if (welcomeCredits > 0) {
+            const { data: nextBal, error: grantErr } = await supabaseAdmin.rpc(
+              'grant_user_credits',
+              {
+                p_user_id: appUser.id,
+                p_amount: welcomeCredits,
+                p_tx_type: 'welcome_bonus',
+                p_reference_id: appUser.id,
+                p_description: `Welcome bonus — ${welcomeCredits.toLocaleString()} free signup credits`,
+              }
+            );
+            if (!grantErr && typeof nextBal === 'number') {
+              appUser.credits_balance = nextBal;
             }
-          );
-          if (!grantErr && typeof nextBal === 'number') {
-            appUser.credits_balance = nextBal;
           }
         }
       }

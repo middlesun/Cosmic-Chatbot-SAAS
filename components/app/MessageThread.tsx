@@ -69,6 +69,12 @@ interface MessageThreadProps {
   onSelectGeneralChart: () => void;
   onConfirmPendingProfile: (draft: PendingBirthProfileDraft) => void;
   onEditPendingProfile: (draft: PendingBirthProfileDraft) => void;
+  welcomeTitle?: string;
+  welcomeSubtitle?: string;
+  generalReadyMessage?: string;
+  enableListen?: boolean;
+  enableWhatsappShare?: boolean;
+  enableFollowups?: boolean;
 }
 
 const escapeRegExp = (str: string) =>
@@ -217,6 +223,12 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   onSelectGeneralChart,
   onConfirmPendingProfile,
   onEditPendingProfile,
+  welcomeTitle = "I'm ready",
+  welcomeSubtitle = '',
+  generalReadyMessage = "Great, I'm ready to answer any question you may have regarding Vedic Astrology.",
+  enableListen = true,
+  enableWhatsappShare = true,
+  enableFollowups = true,
 }) => {
   const [confirmDeleteMsgId, setConfirmDeleteMsgId] = useState<string | null>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -532,7 +544,8 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             <div className="w-full max-w-lg space-y-5">
               <div className="rounded-3xl border border-[#3D3830]/10 bg-[#FDFBF7] px-6 py-6 text-left shadow-xs">
                 <p className={`${sizeTokens.body} text-[#3D3830]`}>
-                  Great, I&apos;m ready to answer any question you may have regarding Vedic Astrology.
+                  {generalReadyMessage ||
+                    "Great, I'm ready to answer any question you may have regarding Vedic Astrology."}
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2.5">
@@ -565,8 +578,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 {profileLabel} · {formatReadableDate(profile.birth_date)} · {profile.birth_city}
               </p>
               <h2 className="font-['Cormorant_Garamond',serif] text-4xl sm:text-[42px] font-medium text-[#3D3830] tracking-tight">
-                I&apos;m ready
+                {welcomeTitle || "I'm ready"}
               </h2>
+              {welcomeSubtitle && (
+                <p className="text-sm text-[#5C5449] max-w-md mx-auto leading-relaxed">
+                  {welcomeSubtitle}
+                </p>
+              )}
               <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
                 <button
                   type="button"
@@ -589,9 +607,16 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             </div>
           ) : (
             <div className="space-y-6 w-full">
-              <h2 className="font-['Cormorant_Garamond',serif] text-4xl sm:text-[44px] font-medium text-[#3D3830] tracking-tight">
-                I&apos;m ready
-              </h2>
+              <div className="space-y-2">
+                <h2 className="font-['Cormorant_Garamond',serif] text-4xl sm:text-[44px] font-medium text-[#3D3830] tracking-tight">
+                  {welcomeTitle || "I'm ready"}
+                </h2>
+                {welcomeSubtitle && (
+                  <p className="text-sm text-[#5C5449] max-w-md mx-auto leading-relaxed">
+                    {welcomeSubtitle}
+                  </p>
+                )}
+              </div>
 
               <div className="flex flex-wrap items-center justify-center gap-3">
                 {defaultOwnProfile && (
@@ -989,7 +1014,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                       </button>
                     </Tooltip>
 
-                    {speechSupported && (
+                    {enableListen && speechSupported && (
                       <Tooltip
                         content={isSpeaking ? 'Stop reading' : 'Listen'}
                         placement="top"
@@ -1013,17 +1038,19 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                       </Tooltip>
                     )}
 
-                    <Tooltip content="Share on WhatsApp" placement="top">
-                      <a
-                        href={getWhatsAppShareUrl(msg.content)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        aria-label="Share on WhatsApp"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
-                      >
-                        <WhatsAppOutlineIcon className="h-3.5 w-3.5" />
-                      </a>
-                    </Tooltip>
+                    {enableWhatsappShare && (
+                      <Tooltip content="Share on WhatsApp" placement="top">
+                        <a
+                          href={getWhatsAppShareUrl(msg.content)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label="Share on WhatsApp"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                        >
+                          <WhatsAppOutlineIcon className="h-3.5 w-3.5" />
+                        </a>
+                      </Tooltip>
+                    )}
 
                     <Tooltip
                       content={msg.is_starred ? 'Unstar' : 'Star'}
@@ -1112,7 +1139,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 </div>
 
                 {/* Structured Numbered Follow-Up Questions */}
-                {isLatestFollowupHolder && idx === messages.length - 1 && (
+                {enableFollowups && isLatestFollowupHolder && idx === messages.length - 1 && (
                   <div className="pt-4 space-y-2">
                     <div className="flex items-center justify-between text-[11px] text-[#8B8275]">
                       <span>Continue exploring</span>

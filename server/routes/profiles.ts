@@ -13,6 +13,7 @@ import {
   checkRateLimit,
   computeChartFingerprint,
 } from '../services/abuseGuard';
+import { getPricingConfig } from '../services/platformSettings';
 
 const router = Router();
 
@@ -76,8 +77,10 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     return (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0);
   });
 
-  const tierLimit = TIER_PROFILE_LIMITS[req.appUser.tier] ?? 10;
-  const activationCost = TIER_ACTIVATION_CREDITS[req.appUser.tier] ?? 0;
+  const pricing = await getPricingConfig();
+  const tierConfig = pricing.membership_tiers.find((t) => t.slug === req.appUser?.tier);
+  const tierLimit = tierConfig?.profileLimit ?? TIER_PROFILE_LIMITS[req.appUser.tier] ?? 10;
+  const activationCost = tierConfig?.activationCostCredits ?? TIER_ACTIVATION_CREDITS[req.appUser.tier] ?? 0;
 
   res.json({
     profiles: sorted,
@@ -267,7 +270,9 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
   }
 
-  const tierLimit = TIER_PROFILE_LIMITS[req.appUser.tier] ?? 10;
+  const pricing = await getPricingConfig();
+  const tierConfig = pricing.membership_tiers.find((t) => t.slug === req.appUser?.tier);
+  const tierLimit = tierConfig?.profileLimit ?? TIER_PROFILE_LIMITS[req.appUser.tier] ?? 10;
   const { count } = await supabaseAdmin
     .from('profiles')
     .select('id', { count: 'exact', head: true })

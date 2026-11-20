@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Coins,
@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   ScrollText,
   Settings,
+  ShieldCheck,
   Unlock,
   Users,
   X,
@@ -66,6 +67,7 @@ const AppLayout: React.FC = () => {
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showAccountSettingsModal, setShowAccountSettingsModal] = useState(false);
+  const mainScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-collapse left app rail on Chat (Home) unless user locked their sidebar preference
   useEffect(() => {
@@ -74,6 +76,13 @@ const AppLayout: React.FC = () => {
     }
     setShowMobileNavDrawer(false);
   }, [isChatRoute, isSidebarLocked]);
+
+  // Reset right-pane scroll cleanly when switching non-chat pages
+  useEffect(() => {
+    if (!isChatRoute && mainScrollRef.current) {
+      mainScrollRef.current.scrollTop = 0;
+    }
+  }, [location.pathname, isChatRoute]);
 
   const handleToggleDesktopSidebar = () => {
     setIsDesktopSidebarOpen((prev) => {
@@ -131,15 +140,15 @@ const AppLayout: React.FC = () => {
     >
       <div
         className={`bg-[#FAF7F2] text-[#3D3830] font-['Plus_Jakarta_Sans',sans-serif] flex overflow-x-hidden ${
-          isChatRoute ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
+          isChatRoute ? 'h-[100dvh] overflow-hidden' : 'min-h-screen md:h-[100dvh] md:overflow-hidden'
         }`}
       >
-        {/* DESKTOP LEFT HAMBURGER SIDEBAR NAVIGATION (No Top Header Bar) */}
+        {/* DESKTOP LEFT HAMBURGER SIDEBAR NAVIGATION (Always fixed full-height on desktop) */}
         <aside
           aria-label="Workspace navigation"
-          className={`hidden md:flex flex-col shrink-0 bg-[#EAE3D7]/65 border-r border-[#3D3830]/12 transition-all duration-200 ${
+          className={`hidden md:flex flex-col shrink-0 h-full bg-[#EAE3D7]/65 border-r border-[#3D3830]/12 transition-all duration-200 ${
             isDesktopSidebarOpen ? 'w-60' : 'w-[60px]'
-          } ${isChatRoute ? 'h-full' : 'sticky top-0 h-screen'}`}
+          }`}
         >
           {/* Sidebar Top Row: Brand + Lock Pin + Hamburger Toggle */}
           <div
@@ -239,6 +248,21 @@ const AppLayout: React.FC = () => {
               <LifeBuoy className="h-4 w-4 shrink-0 text-[#8B7355]" />
               {isDesktopSidebarOpen && <span>Support</span>}
             </button>
+
+            {appUser?.is_admin && (
+              <div className="pt-2 mt-2 border-t border-[#3D3830]/10">
+                <Tooltip
+                  content={!isDesktopSidebarOpen ? 'Admin panel' : undefined}
+                  placement="right"
+                  className="w-full"
+                >
+                  <NavLink to="/app/admin" aria-label="Admin" className={desktopNavLinkClass}>
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-[#8B7355]" />
+                    {isDesktopSidebarOpen && <span>Admin</span>}
+                  </NavLink>
+                </Tooltip>
+              </div>
+            )}
           </nav>
 
           {/* Bottom Anchored Utility Controls: Settings, Backup, Sign Out */}
@@ -325,7 +349,11 @@ const AppLayout: React.FC = () => {
         </aside>
 
         {/* MAIN VIEWPORT AREA */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div
+          className={`flex-1 min-w-0 flex flex-col ${
+            isChatRoute ? 'h-full overflow-hidden' : 'md:h-full md:overflow-hidden'
+          }`}
+        >
           {/* Mobile Compact Top Header (hidden on /app/chat where ChatSidebar hosts navigation) */}
           {!isChatRoute && (
             <header className="md:hidden sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-[#3D3830]/10 bg-[#EAE3D7]/80 backdrop-blur-md px-4 py-3">
@@ -441,6 +469,18 @@ const AppLayout: React.FC = () => {
                     <LifeBuoy className="h-4 w-4 text-[#8B7355]" />
                     <span>Support</span>
                   </button>
+                  {appUser?.is_admin && (
+                    <div className="pt-2 mt-2 border-t border-[#3D3830]/10">
+                      <NavLink
+                        to="/app/admin"
+                        onClick={() => setShowMobileNavDrawer(false)}
+                        className={mobileNavLinkClass}
+                      >
+                        <ShieldCheck className="h-4 w-4 text-[#8B7355]" />
+                        <span>Admin</span>
+                      </NavLink>
+                    </div>
+                  )}
                 </nav>
 
                 <div className="mt-auto border-t border-[#3D3830]/10 p-3 space-y-1">
@@ -482,33 +522,34 @@ const AppLayout: React.FC = () => {
             </div>
           )}
 
-          {isPreviewMode && !isChatRoute && (
-            <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 md:px-10 pt-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#EAE3D7]/80 border border-[#3D3830]/15 px-4 py-2.5 text-xs text-[#5C5449]">
-                <span>
-                  <strong className="font-medium text-[#3D3830]">Design Preview Mode:</strong> Interactive sample workspace. Connect Supabase and sign in to run live AI consultations and save charts.
-                </span>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="font-medium text-[#3D3830] underline underline-offset-4 whitespace-nowrap"
-                >
-                  Go to Sign In
-                </button>
-              </div>
+          {isChatRoute ? (
+            <main className="flex-1 min-h-0 w-full flex flex-col">
+              <Outlet />
+            </main>
+          ) : (
+            <div ref={mainScrollRef} className="flex-1 min-h-0 md:overflow-y-auto">
+              {isPreviewMode && (
+                <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 md:px-10 pt-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#EAE3D7]/80 border border-[#3D3830]/15 px-4 py-2.5 text-xs text-[#5C5449]">
+                    <span>
+                      <strong className="font-medium text-[#3D3830]">Design Preview Mode:</strong> Interactive sample workspace. Connect Supabase and sign in to run live AI consultations and save charts.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="font-medium text-[#3D3830] underline underline-offset-4 whitespace-nowrap"
+                    >
+                      Go to Sign In
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <main className="mx-auto w-full max-w-6xl px-4 sm:px-6 md:px-10 py-6 md:py-8">
+                <Outlet />
+              </main>
             </div>
           )}
-
-          {/* Main Outlet (Full-Width & Full-Height on /app/chat) */}
-          <main
-            className={
-              isChatRoute
-                ? 'flex-1 min-h-0 w-full flex flex-col'
-                : 'flex-1 mx-auto w-full max-w-6xl px-4 sm:px-6 md:px-10 py-6 md:py-8'
-            }
-          >
-            <Outlet />
-          </main>
         </div>
 
         {/* Workspace Sidebar Modules */}
@@ -530,7 +571,7 @@ const AppLayout: React.FC = () => {
           <SetPasswordModal mode={isPasswordRecovery ? 'recovery' : 'onboarding'} />
         )}
 
-        {!isChatRoute && <FloatingScrollControls />}
+        {!isChatRoute && <FloatingScrollControls scrollContainerRef={mainScrollRef} />}
       </div>
     </AppShellContext.Provider>
   );

@@ -1,8 +1,9 @@
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { sendReferralBonusEmail } from './email';
+import { getPricingConfig } from './platformSettings';
 
 /**
- * Payment-gated referral reward (+5,000 Credits to both referrer and referee).
+ * Payment-gated referral reward (default +5,000 Credits to both referrer and referee).
  * Strictly triggers only once after the referred user completes their first real payment
  * or paid profile activation, protected by an atomic pending -> rewarded guard.
  */
@@ -25,7 +26,8 @@ export async function rewardReferralIfEligible(refereeUserId: string): Promise<{
       return { rewarded: false };
     }
 
-    const rewardAmount = Number(pendingReferral.reward_credits) || 5000;
+    const pricing = await getPricingConfig();
+    const rewardAmount = Number(pendingReferral.reward_credits) || pricing.referral_reward_credits;
 
     // Atomically flip status pending -> rewarded so concurrent webhooks cannot double-reward
     const { data: claimed, error: claimErr } = await supabaseAdmin

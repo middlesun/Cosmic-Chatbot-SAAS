@@ -33,6 +33,7 @@ import type {
   CustomPromptRecord,
   FavoriteMessageRecord,
   PendingBirthProfileDraft,
+  PublicChatbotUiConfig,
 } from './chatTypes';
 import {
   PREVIEW_CHAT_CATALOG,
@@ -66,7 +67,11 @@ const formatLastChatted = (dateStr?: string | null): string => {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 };
 
-const ChatWorkspace: React.FC = () => {
+interface ChatWorkspaceProps {
+  embeddedPreview?: boolean;
+}
+
+const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }) => {
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -74,6 +79,7 @@ const ChatWorkspace: React.FC = () => {
   const { openAccountSettings } = useAppShell();
 
   const [catalog, setCatalog] = useState<ChatCatalog | null>(null);
+  const [chatbotConfig, setChatbotConfig] = useState<PublicChatbotUiConfig | null>(null);
   const [profiles, setProfiles] = useState<ChatProfile[]>([]);
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
   const [activeConversation, setActiveConversation] = useState<ConversationRecord | null>(null);
@@ -85,9 +91,10 @@ const ChatWorkspace: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'longest'>('newest');
   const [isSidebarLocked, setIsSidebarLocked] = useState<boolean>(() => {
+    if (embeddedPreview) return false;
     return localStorage.getItem(SIDEBAR_LOCK_STORAGE_KEY) !== 'false';
   });
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(embeddedPreview);
   const [showMobileDrawer, setShowMobileDrawer] = useState(false);
 
   // Active consultation parameters
@@ -188,12 +195,35 @@ const ChatWorkspace: React.FC = () => {
     if (cfgRes.ok) {
       const cfg = await cfgRes.json();
       setCatalog(cfg.catalog || null);
+      if (cfg.chatbotConfig) {
+        const uiCfg = cfg.chatbotConfig as PublicChatbotUiConfig;
+        setChatbotConfig(uiCfg);
+        setToneMode(uiCfg.default_tone || 'technical');
+        setResponseLength(uiCfg.default_response_length || 'detailed');
+        if (embeddedPreview) {
+          if (uiCfg.default_expert) setExpertSlug(uiCfg.default_expert);
+          if (uiCfg.default_mode) setModeSlug(uiCfg.default_mode);
+          if (uiCfg.default_output) setOutputSlug(uiCfg.default_output);
+          if (uiCfg.default_language) setLanguageSlug(uiCfg.default_language);
+        } else {
+          if (uiCfg.default_mode) setModeSlug((prev) => prev || uiCfg.default_mode);
+          if (!appUser?.default_expert && uiCfg.default_expert) {
+            setExpertSlug(uiCfg.default_expert);
+          }
+          if (!appUser?.default_output && uiCfg.default_output) {
+            setOutputSlug(uiCfg.default_output);
+          }
+          if (!appUser?.default_language && uiCfg.default_language) {
+            setLanguageSlug(uiCfg.default_language);
+          }
+        }
+      }
     }
     if (promptRes.ok) {
       const pr = await promptRes.json();
       setCustomPrompts(pr.prompts || []);
     }
-  }, [getAccessToken, isPreviewMode]);
+  }, [getAccessToken, isPreviewMode, embeddedPreview, appUser?.default_expert, appUser?.default_output, appUser?.default_language]);
 
   const loadConversations = useCallback(async () => {
     if (isPreviewMode) {
@@ -334,6 +364,9 @@ const ChatWorkspace: React.FC = () => {
   }, [loadConversations]);
 
   useEffect(() => {
+    if (embeddedPreview) {
+      return;
+    }
     if (routeConversationId) {
       setPendingProfileId(null);
       void loadConversationMessages(routeConversationId);
@@ -356,10 +389,10 @@ const ChatWorkspace: React.FC = () => {
     setGeneralReadyMode(false);
     setPendingProfileConfirm(null);
     setInlineChartCreation(null);
-  }, [routeConversationId, loadConversationMessages, isPreviewMode]);
+  }, [embeddedPreview, routeConversationId, loadConversationMessages, isPreviewMode]);
 
   useEffect(() => {
-    if (routeConversationId) return;
+    if (embeddedPreview || routeConversationId) return;
     const seedProfileId = searchParams.get('profileId');
     const seedPrompt = searchParams.get('prompt');
     if (!seedProfileId && !seedPrompt) return;
@@ -375,7 +408,7 @@ const ChatWorkspace: React.FC = () => {
     nextParams.delete('profileId');
     nextParams.delete('prompt');
     setSearchParams(nextParams, { replace: true });
-  }, [routeConversationId, searchParams, setSearchParams]);
+  }, [embeddedPreview, routeConversationId, searchParams, setSearchParams]);
 
   const effectiveProfileId = activeConversation
     ? activeConversation.profile_id
@@ -477,9 +510,11 @@ const ChatWorkspace: React.FC = () => {
     if (modeType === 'learn_astrology') {
       setModeSlug('learn_astrology');
     } else if (modeSlug === 'learn_astrology') {
-      setModeSlug('general');
+      setModeSlug(chatbotConfig?.default_mode || 'general');
     }
-    navigate(`/app/chat/${created.id}`);
+    if (!embeddedPreview) {
+      navigate(`/app/chat/${created.id}`);
+    }
     return created;
   };
 
@@ -516,7 +551,9 @@ const ChatWorkspace: React.FC = () => {
       if (activeConversation?.id === convId) {
         setActiveConversation(null);
         setMessages([]);
-        navigate('/app/chat');
+        if (!embeddedPreview) {
+          navigate('/app/chat');
+        }
       }
     }
   };
@@ -598,9 +635,11 @@ const ChatWorkspace: React.FC = () => {
     setExtraProfileIds([]);
     setAttachments([]);
     if (modeSlug === 'learn_astrology') {
-      setModeSlug('general');
+      setModeSlug(chatbotConfig?.default_mode || 'general');
     }
-    navigate('/app/chat');
+    if (!embeddedPreview) {
+      navigate('/app/chat');
+    }
   };
 
   const handleOpenAddChartModal = (
@@ -1057,7 +1096,15 @@ const ChatWorkspace: React.FC = () => {
         onToggleLock={handleToggleLock}
         onSearchChange={setSearchQuery}
         onSortChange={setSortBy}
-        onSelectConversation={(id) => navigate(`/app/chat/${id}`)}
+        onSelectConversation={(id) => {
+          if (embeddedPreview) {
+            setPendingProfileId(null);
+            setGeneralReadyMode(false);
+            void loadConversationMessages(id);
+          } else {
+            navigate(`/app/chat/${id}`);
+          }
+        }}
         onCreateConversation={handleCreateConversation}
         onOpenAddChartModal={() => handleOpenAddChartModal()}
         onToggleBookmark={handleToggleBookmark}
@@ -1137,7 +1184,13 @@ const ChatWorkspace: React.FC = () => {
                             type="button"
                             onClick={() => {
                               setShowHeaderThreadMenu(false);
-                              navigate(`/app/chat/${conv.id}`);
+                              if (embeddedPreview) {
+                                setPendingProfileId(null);
+                                setGeneralReadyMode(false);
+                                void loadConversationMessages(conv.id);
+                              } else {
+                                navigate(`/app/chat/${conv.id}`);
+                              }
                             }}
                             className={`w-full flex items-center justify-between gap-2.5 rounded-xl px-3 py-2 text-left transition-colors cursor-pointer ${
                               isActive
@@ -1351,6 +1404,12 @@ const ChatWorkspace: React.FC = () => {
           onSelectGeneralChart={handleSelectGeneralChartFromEmpty}
           onConfirmPendingProfile={(draft) => void handleConfirmPendingProfile(draft)}
           onEditPendingProfile={(draft) => handleOpenAddChartModal(draft, true)}
+          welcomeTitle={chatbotConfig?.welcome_title}
+          welcomeSubtitle={chatbotConfig?.welcome_subtitle}
+          generalReadyMessage={chatbotConfig?.general_ready_message}
+          enableListen={chatbotConfig?.features?.listen_tts ?? true}
+          enableWhatsappShare={chatbotConfig?.features?.whatsapp_share ?? true}
+          enableFollowups={chatbotConfig?.features?.followups ?? true}
         />
 
         {/* Composer */}
@@ -1423,6 +1482,10 @@ const ChatWorkspace: React.FC = () => {
           onSendMessage={handleSendMessage}
           onStopGeneration={handleStopGeneration}
           focusTrigger={composerFocusTrigger}
+          composerPlaceholder={chatbotConfig?.composer_placeholder}
+          enableVoiceInput={chatbotConfig?.features?.voice_input ?? true}
+          enableAttachments={chatbotConfig?.features?.attachments ?? true}
+          enableQuickTools={chatbotConfig?.features?.quick_tools ?? true}
         />
       </div>
 

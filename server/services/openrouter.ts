@@ -1,3 +1,5 @@
+import { getResolvedOpenRouterRuntime } from './platformSettings';
+
 export type OpenRouterContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
@@ -12,6 +14,11 @@ const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 export function isOpenRouterConfigured(): boolean {
   return Boolean(process.env.OPENROUTER_API_KEY);
+}
+
+export async function isOpenRouterConfiguredAsync(): Promise<boolean> {
+  const runtime = await getResolvedOpenRouterRuntime();
+  return Boolean(runtime.apiKey);
 }
 
 export function getOpenRouterApiKey(): string {
@@ -30,13 +37,108 @@ export function getUtilityModel(): string {
   return process.env.OPENROUTER_UTILITY_MODEL || 'google/gemini-2.5-flash';
 }
 
-function getOpenRouterHeaders(): Record<string, string> {
+export async function getConsultationModelAsync(): Promise<string> {
+  const runtime = await getResolvedOpenRouterRuntime();
+  return runtime.consultationModel;
+}
+
+export async function getUtilityModelAsync(): Promise<string> {
+  const runtime = await getResolvedOpenRouterRuntime();
+  return runtime.utilityModel;
+}
+
+function buildOpenRouterHeaders(apiKey: string): Record<string, string> {
   return {
-    Authorization: `Bearer ${getOpenRouterApiKey()}`,
+    Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
     'HTTP-Referer': process.env.APP_URL || 'https://cosmiccouncil.pro',
     'X-Title': 'Cosmic Council PRO',
   };
+}
+
+export async function testOpenRouterConnection(params?: {
+  overrideApiKey?: string | null;
+  model?: string | null;
+}): Promise<{
+  ok: boolean;
+  modelUsed: string;
+  keySource: 'override' | 'database' | 'env' | 'none';
+  latencyMs: number;
+  replyPreview?: string;
+  error?: string;
+}> {
+  const runtime = await getResolvedOpenRouterRuntime();
+  const key = (params?.overrideApiKey || '').trim() || runtime.apiKey;
+  const keySource = (params?.overrideApiKey || '').trim() ? 'override' : runtime.keySource;
+  const model = (params?.model || '').trim() || runtime.utilityModel || getUtilityModel();
+
+  if (!key) {
+    return {
+      ok: false,
+      modelUsed: model,
+      keySource: 'none',
+      latencyMs: 0,
+      error: 'No OpenRouter API key configured (neither database override nor environment variable).',
+    };
+  }
+
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: 'POST',
+      headers: buildOpenRouterHeaders(key),
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'Respond with exactly one word: OK' }],
+        max_tokens: 16,
+        temperature: 0,
+        stream: false,
+      }),
+    });
+
+    const latencyMs = Date.now() - startedAt;
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      return {
+        ok: false,
+        modelUsed: model,
+        keySource,
+        latencyMs,
+        error: `OpenRouter returned HTTP ${response.status}: ${errText.slice(0, 220)}`,
+      };
+    }
+
+    const json = (await response.json()) as {
+      choices?: Array<{ message?: { content?: unknown } }>;
+      error?: { message?: string };
+    };
+    if (json.error?.message) {
+      return {
+        ok: false,
+        modelUsed: model,
+        keySource,
+        latencyMs,
+        error: json.error.message,
+      };
+    }
+
+    const replyPreview = extractMessageText(json.choices?.[0]?.message?.content).trim().slice(0, 80);
+    return {
+      ok: true,
+      modelUsed: model,
+      keySource,
+      latencyMs,
+      replyPreview: replyPreview || 'OK',
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      modelUsed: model,
+      keySource,
+      latencyMs: Date.now() - startedAt,
+      error: err instanceof Error ? err.message : 'OpenRouter connectivity check failed',
+    };
+  }
 }
 
 function extractMessageText(content: unknown): string {
@@ -77,6 +179,11 @@ export async function createOpenRouterCompletion(params: {
   jsonMode?: boolean;
   abortSignal?: AbortSignal;
 }): Promise<{ text: string; tokensIn: number; tokensOut: number }> {
+  const runtime = await getResolvedOpenRouterRuntime();
+  if (!runtime.apiKey) {
+    throw new Error('OPENROUTER_API_KEY is not configured on the server.');
+  }
+
   const fullMessages: OpenRouterMessage[] = [];
   if (params.system?.trim()) {
     fullMessages.push({ role: 'system', content: params.system.trim() });
@@ -84,7 +191,7 @@ export async function createOpenRouterCompletion(params: {
   fullMessages.push(...params.messages);
 
   const bodyPayload: Record<string, unknown> = {
-    model: params.model || getUtilityModel(),
+    model: params.model || runtime.utilityModel || getUtilityModel(),
     messages: fullMessages,
     temperature: params.temperature ?? 0.4,
     stream: false,
@@ -99,7 +206,7 @@ export async function createOpenRouterCompletion(params: {
 
   const response = await fetch(OPENROUTER_API_URL, {
     method: 'POST',
-    headers: getOpenRouterHeaders(),
+    headers: buildOpenRouterHeaders(runtime.apiKey),
     body: JSON.stringify(bodyPayload),
     signal: params.abortSignal,
   });
@@ -141,6 +248,11 @@ export async function streamOpenRouterCompletion(params: {
   tokensOut: number;
   aborted: boolean;
 }> {
+  const runtime = await getResolvedOpenRouterRuntime();
+  if (!runtime.apiKey) {
+    throw new Error('OPENROUTER_API_KEY is not configured on the server.');
+  }
+
   const fullMessages: OpenRouterMessage[] = [];
   if (params.system?.trim()) {
     fullMessages.push({ role: 'system', content: params.system.trim() });
@@ -148,7 +260,7 @@ export async function streamOpenRouterCompletion(params: {
   fullMessages.push(...params.messages);
 
   const bodyPayload: Record<string, unknown> = {
-    model: params.model || getConsultationModel(),
+    model: params.model || runtime.consultationModel || getConsultationModel(),
     messages: fullMessages,
     temperature: params.temperature ?? 0.45,
     stream: true,
@@ -160,7 +272,7 @@ export async function streamOpenRouterCompletion(params: {
 
   const response = await fetch(OPENROUTER_API_URL, {
     method: 'POST',
-    headers: getOpenRouterHeaders(),
+    headers: buildOpenRouterHeaders(runtime.apiKey),
     body: JSON.stringify(bodyPayload),
     signal: params.abortSignal,
   });

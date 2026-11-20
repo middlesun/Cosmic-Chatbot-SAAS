@@ -1,7 +1,8 @@
 import {
   createOpenRouterCompletion,
-  getConsultationModel,
-  isOpenRouterConfigured,
+  getConsultationModelAsync,
+  isOpenRouterConfiguredAsync,
+  testOpenRouterConnection,
 } from '../services/openrouter';
 import crypto from 'crypto';
 import { Router } from 'express';
@@ -13,12 +14,26 @@ import {
   type AuthenticatedRequest,
 } from '../middleware/auth';
 import { isAstrologyApiConfigured } from '../services/astrologyApi';
-import { sendClientInviteEmail } from '../services/email';
+import { sendClientInviteEmail, sendSupportReplyEmail } from '../services/email';
 import {
   ALL_DEFAULT_PROMPTS,
   CORE_COUNCIL_CONSTITUTION,
   invalidatePromptCache,
 } from '../services/promptDefaults';
+import {
+  BUILTIN_MODEL_SUGGESTIONS,
+  DEFAULT_CONVERSATIONAL_RULES,
+  encryptSecret,
+  getAiSettings,
+  getChatbotConfig,
+  getPricingConfig,
+  getPromptRecipes,
+  getResolvedOpenRouterRuntime,
+  invalidateAllPlatformCaches,
+  invalidateRecipesCache,
+  savePlatformSetting,
+  type PromptRecipeStep,
+} from '../services/platformSettings';
 import { ensureReportCatalogSeeded } from '../services/reportDefaults';
 import { isSanityConfigured } from '../../lib/sanity';
 
@@ -150,6 +165,15 @@ router.get('/overview', async (_req: AuthenticatedRequest, res) => {
   const hasPublicUrl = Boolean(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL);
   const hasPublicAnon = Boolean(process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY);
 
+  const [runtime, openTicketsRes] = await Promise.all([
+    getResolvedOpenRouterRuntime(),
+    supabaseAdmin
+      .from('support_tickets')
+      .select('id', { count: 'exact', head: true })
+      .neq('status', 'resolved')
+      .then((r) => (r.error ? { count: 0 } : r)),
+  ]);
+
   res.json({
     metrics: {
       totalUsers: totalUsers || 0,
@@ -159,13 +183,20 @@ router.get('/overview', async (_req: AuthenticatedRequest, res) => {
       totalQuestionsAsked: totalMessages || 0,
       totalReportOrders: totalOrders || 0,
       totalCreditsCirculating,
+      openSupportTickets: openTicketsRes.count || 0,
       tierBreakdown,
       revenueByCurrency,
+    },
+    aiRuntime: {
+      consultationModel: runtime.consultationModel,
+      utilityModel: runtime.utilityModel,
+      keySource: runtime.keySource,
+      maskedKey: runtime.maskedKey,
     },
     integrations: {
       supabaseServer: isSupabaseServerConfigured(),
       supabaseClient: hasPublicUrl && hasPublicAnon,
-      openrouter: isOpenRouterConfigured(),
+      openrouter: Boolean(runtime.apiKey),
       freeAstrologyApi: isAstrologyApiConfigured(),
       dodoPayments: Boolean(process.env.DODO_API_KEY),
       resend: Boolean(process.env.RESEND_API_KEY),
@@ -448,8 +479,20 @@ router.post('/prompts', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const { slug, category, display_name, subtitle, prompt_body, model_id } = req.body || {};
-  const validCategories = ['expert', 'mode', 'output', 'language', 'tool', 'report_step', 'learn'];
+  const { slug, category, display_name, subtitle, description, prompt_body, model_id, tags, sort_order } =
+    req.body || {};
+  const validCategories = [
+    'system',
+    'expert',
+    'analysis',
+    'modifier',
+    'mode',
+    'output',
+    'language',
+    'tool',
+    'report_step',
+    'learn',
+  ];
 
   if (!slug?.trim() || !validCategories.includes(category) || !display_name?.trim() || !prompt_body?.trim()) {
     res.status(400).json({ error: 'Valid slug, category, display_name, and prompt_body are required.' });
@@ -463,8 +506,15 @@ router.post('/prompts', async (req: AuthenticatedRequest, res) => {
 
   const normalizedSubtitle =
     typeof subtitle === 'string' && subtitle.trim() ? subtitle.trim() : null;
+  const normalizedDescription =
+    typeof description === 'string' && description.trim() ? description.trim() : null;
   const normalizedModelId =
     typeof model_id === 'string' && model_id.trim() ? model_id.trim() : null;
+  const normalizedTags = Array.isArray(tags)
+    ? tags.map((t) => String(t).trim().toLowerCase()).filter(Boolean).slice(0, 15)
+    : [];
+  const normalizedSortOrder =
+    typeof sort_order === 'number' && Number.isFinite(sort_order) ? Math.round(sort_order) : 100;
 
   let insertRes = await supabaseAdmin
     .from('system_prompts')
@@ -473,14 +523,35 @@ router.post('/prompts', async (req: AuthenticatedRequest, res) => {
       category,
       display_name: display_name.trim(),
       subtitle: normalizedSubtitle,
+      description: normalizedDescription,
       prompt_body: prompt_body.trim(),
       model_id: normalizedModelId,
+      tags: normalizedTags,
+      sort_order: normalizedSortOrder,
       version: 1,
       previous_versions: [],
       is_active: true,
     })
     .select('*')
     .single();
+
+  if (insertRes.error && isMissingColumnError(insertRes.error)) {
+    insertRes = await supabaseAdmin
+      .from('system_prompts')
+      .insert({
+        slug: normalizedSlug,
+        category,
+        display_name: display_name.trim(),
+        subtitle: normalizedSubtitle,
+        prompt_body: prompt_body.trim(),
+        model_id: normalizedModelId,
+        version: 1,
+        previous_versions: [],
+        is_active: true,
+      })
+      .select('*')
+      .single();
+  }
 
   if (insertRes.error && isMissingColumnError(insertRes.error)) {
     insertRes = await supabaseAdmin
@@ -499,7 +570,15 @@ router.post('/prompts', async (req: AuthenticatedRequest, res) => {
   }
 
   if (insertRes.error || !insertRes.data) {
-    res.status(400).json({ error: insertRes.error?.message || 'Could not create prompt' });
+    const errMsg = insertRes.error?.message || 'Could not create prompt';
+    if (errMsg.includes('system_prompts_category_check') || errMsg.includes('check constraint')) {
+      res.status(400).json({
+        error:
+          'New prompt categories require running supabase/migrations/004_admin_console_and_recipes.sql in Supabase SQL Editor first.',
+      });
+      return;
+    }
+    res.status(400).json({ error: errMsg });
     return;
   }
 
@@ -525,7 +604,20 @@ router.patch('/prompts/:id', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const { display_name, subtitle, prompt_body, model_id, is_active } = req.body || {};
+  const { display_name, subtitle, description, prompt_body, model_id, is_active, tags, sort_order, category } =
+    req.body || {};
+  const validCategories = [
+    'system',
+    'expert',
+    'analysis',
+    'modifier',
+    'mode',
+    'output',
+    'language',
+    'tool',
+    'report_step',
+    'learn',
+  ];
   const prevHistory = Array.isArray(existing.previous_versions)
     ? existing.previous_versions
     : [];
@@ -548,6 +640,7 @@ router.patch('/prompts/:id', async (req: AuthenticatedRequest, res) => {
     ...(typeof display_name === 'string' && display_name.trim()
       ? { display_name: display_name.trim() }
       : {}),
+    ...(typeof category === 'string' && validCategories.includes(category) ? { category } : {}),
     ...(typeof prompt_body === 'string' ? { prompt_body: prompt_body.trim() } : {}),
     ...(typeof is_active === 'boolean' ? { is_active } : {}),
     version: bodyChanged ? existing.version + 1 : existing.version,
@@ -555,13 +648,26 @@ router.patch('/prompts/:id', async (req: AuthenticatedRequest, res) => {
     updated_at: new Date().toISOString(),
   };
 
-  const extendedPayload: Record<string, unknown> = {
+  const midPayload: Record<string, unknown> = {
     ...basePayload,
     ...(subtitle !== undefined
       ? { subtitle: typeof subtitle === 'string' && subtitle.trim() ? subtitle.trim() : null }
       : {}),
     ...(model_id !== undefined
       ? { model_id: typeof model_id === 'string' && model_id.trim() ? model_id.trim() : null }
+      : {}),
+  };
+
+  const extendedPayload: Record<string, unknown> = {
+    ...midPayload,
+    ...(description !== undefined
+      ? { description: typeof description === 'string' && description.trim() ? description.trim() : null }
+      : {}),
+    ...(Array.isArray(tags)
+      ? { tags: tags.map((t) => String(t).trim().toLowerCase()).filter(Boolean).slice(0, 15) }
+      : {}),
+    ...(typeof sort_order === 'number' && Number.isFinite(sort_order)
+      ? { sort_order: Math.round(sort_order) }
       : {}),
   };
 
@@ -575,6 +681,15 @@ router.patch('/prompts/:id', async (req: AuthenticatedRequest, res) => {
   if (updateRes.error && isMissingColumnError(updateRes.error)) {
     updateRes = await supabaseAdmin
       .from('system_prompts')
+      .update(midPayload)
+      .eq('id', existing.id)
+      .select('*')
+      .single();
+  }
+
+  if (updateRes.error && isMissingColumnError(updateRes.error)) {
+    updateRes = await supabaseAdmin
+      .from('system_prompts')
       .update(basePayload)
       .eq('id', existing.id)
       .select('*')
@@ -582,12 +697,33 @@ router.patch('/prompts/:id', async (req: AuthenticatedRequest, res) => {
   }
 
   if (updateRes.error || !updateRes.data) {
-    res.status(500).json({ error: 'Failed to update system prompt' });
+    res.status(500).json({ error: updateRes.error?.message || 'Failed to update system prompt' });
     return;
   }
 
   invalidatePromptCache();
   res.json({ prompt: updateRes.data });
+});
+
+router.delete('/prompts/:id', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from('system_prompts')
+    .delete()
+    .eq('id', req.params.id);
+
+  if (error) {
+    res.status(500).json({ error: error.message || 'Failed to delete prompt' });
+    return;
+  }
+
+  invalidatePromptCache();
+  res.json({ deleted: true });
 });
 
 router.post('/prompts/:id/rollback', async (req: AuthenticatedRequest, res) => {
@@ -655,7 +791,7 @@ router.post('/prompts/:id/rollback', async (req: AuthenticatedRequest, res) => {
 
 // Live Prompt Test Sandbox (Server-side OpenRouter evaluation)
 router.post('/prompts/test', async (req: AuthenticatedRequest, res) => {
-  if (!isOpenRouterConfigured()) {
+  if (!(await isOpenRouterConfiguredAsync())) {
     res.status(503).json({ error: 'OPENROUTER_API_KEY not configured on server' });
     return;
   }
@@ -667,7 +803,9 @@ router.post('/prompts/test', async (req: AuthenticatedRequest, res) => {
   }
 
   const targetModel =
-    typeof modelId === 'string' && modelId.trim() ? modelId.trim() : getConsultationModel();
+    typeof modelId === 'string' && modelId.trim()
+      ? modelId.trim()
+      : await getConsultationModelAsync();
 
   try {
     const completion = await createOpenRouterCompletion({
@@ -751,11 +889,31 @@ router.post('/reports', async (req: AuthenticatedRequest, res) => {
 
   const chain =
     Array.isArray(prompt_chain_json) && prompt_chain_json.length > 0
-      ? prompt_chain_json.map((step: { title?: string; instruction?: string }, idx: number) => ({
-          stepNumber: idx + 1,
-          title: String(step?.title || `Pass ${idx + 1}`).trim(),
-          instruction: String(step?.instruction || '').trim(),
-        }))
+      ? prompt_chain_json.map(
+          (
+            step: {
+              title?: string;
+              instruction?: string;
+              promptSlugs?: string[];
+              recipeSlug?: string | null;
+              modelId?: string | null;
+            },
+            idx: number
+          ) => ({
+            stepNumber: idx + 1,
+            title: String(step?.title || `Pass ${idx + 1}`).trim(),
+            instruction: String(step?.instruction || '').trim(),
+            ...(Array.isArray(step?.promptSlugs) && step.promptSlugs.length > 0
+              ? { promptSlugs: step.promptSlugs.map(String).filter(Boolean) }
+              : {}),
+            ...(typeof step?.recipeSlug === 'string' && step.recipeSlug.trim()
+              ? { recipeSlug: step.recipeSlug.trim() }
+              : {}),
+            ...(typeof step?.modelId === 'string' && step.modelId.trim()
+              ? { modelId: step.modelId.trim() }
+              : {}),
+          })
+        )
       : [
           {
             stepNumber: 1,
@@ -852,10 +1010,28 @@ router.patch('/reports/:id', async (req: AuthenticatedRequest, res) => {
   }
   if (Array.isArray(prompt_chain_json)) {
     baseUpdates.prompt_chain_json = prompt_chain_json.map(
-      (step: { title?: string; instruction?: string }, idx: number) => ({
+      (
+        step: {
+          title?: string;
+          instruction?: string;
+          promptSlugs?: string[];
+          recipeSlug?: string | null;
+          modelId?: string | null;
+        },
+        idx: number
+      ) => ({
         stepNumber: idx + 1,
         title: String(step?.title || `Pass ${idx + 1}`).trim(),
         instruction: String(step?.instruction || '').trim(),
+        ...(Array.isArray(step?.promptSlugs) && step.promptSlugs.length > 0
+          ? { promptSlugs: step.promptSlugs.map(String).filter(Boolean) }
+          : {}),
+        ...(typeof step?.recipeSlug === 'string' && step.recipeSlug.trim()
+          ? { recipeSlug: step.recipeSlug.trim() }
+          : {}),
+        ...(typeof step?.modelId === 'string' && step.modelId.trim()
+          ? { modelId: step.modelId.trim() }
+          : {}),
       })
     );
   }
@@ -890,6 +1066,21 @@ router.patch('/reports/:id', async (req: AuthenticatedRequest, res) => {
   }
 
   res.json({ report: updateRes.data });
+});
+
+router.delete('/reports/:id', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const { error } = await supabaseAdmin.from('report_catalog').delete().eq('id', req.params.id);
+  if (error) {
+    res.status(500).json({ error: error.message || 'Failed to delete report' });
+    return;
+  }
+  res.json({ deleted: true });
 });
 
 // 6. Bulk Old-Client CSV Onboarding (forces must_change_password = true + optional credits + profile + Resend invite)
@@ -1045,6 +1236,775 @@ router.post('/import-clients', async (req: AuthenticatedRequest, res) => {
   }
 
   res.json({ results });
+});
+
+// 7. AI Settings (OpenRouter API Key Override, Models Registry, Token Limits)
+router.get('/settings/ai', async (_req: AuthenticatedRequest, res) => {
+  const runtime = await getResolvedOpenRouterRuntime();
+  res.json({
+    keySource: runtime.keySource,
+    maskedKey: runtime.maskedKey,
+    hasDatabaseOverride: runtime.hasDatabaseOverride,
+    hasEnvKey: runtime.hasEnvKey,
+    consultation_model: runtime.consultationModel,
+    utility_model: runtime.utilityModel,
+    custom_models: runtime.customModels,
+    builtin_models: BUILTIN_MODEL_SUGGESTIONS,
+    token_limits: runtime.tokenLimits,
+  });
+});
+
+router.put('/settings/ai', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const current = await getAiSettings();
+  const {
+    openrouter_api_key,
+    consultation_model,
+    utility_model,
+    custom_models,
+    token_limits,
+  } = req.body || {};
+
+  let nextEncrypted = current.openrouter_api_key_encrypted ?? null;
+  let nextLast4 = current.openrouter_api_key_last4 ?? null;
+
+  if (typeof openrouter_api_key === 'string' && openrouter_api_key.trim()) {
+    const cleanKey = openrouter_api_key.trim();
+    if (cleanKey.length < 12) {
+      res.status(400).json({ error: 'OpenRouter API key looks too short.' });
+      return;
+    }
+    nextEncrypted = encryptSecret(cleanKey);
+    nextLast4 = cleanKey.slice(-4);
+  }
+
+  const sanitizedCustomModels = Array.isArray(custom_models)
+    ? custom_models
+        .filter((m) => m && typeof m.id === 'string' && m.id.trim())
+        .map((m) => ({
+          id: String(m.id).trim().slice(0, 120),
+          label: String(m.label || m.id).trim().slice(0, 80),
+          provider: typeof m.provider === 'string' ? m.provider.trim().slice(0, 50) : undefined,
+          notes: typeof m.notes === 'string' ? m.notes.trim().slice(0, 160) : undefined,
+        }))
+        .slice(0, 50)
+    : current.custom_models;
+
+  const nextLimits = {
+    chat_short:
+      typeof token_limits?.chat_short === 'number' && token_limits.chat_short >= 100
+        ? Math.min(8000, Math.round(token_limits.chat_short))
+        : current.token_limits.chat_short,
+    chat_detailed:
+      typeof token_limits?.chat_detailed === 'number' && token_limits.chat_detailed >= 200
+        ? Math.min(16000, Math.round(token_limits.chat_detailed))
+        : current.token_limits.chat_detailed,
+    report_pass:
+      typeof token_limits?.report_pass === 'number' && token_limits.report_pass >= 400
+        ? Math.min(24000, Math.round(token_limits.report_pass))
+        : current.token_limits.report_pass,
+    utility:
+      typeof token_limits?.utility === 'number' && token_limits.utility >= 100
+        ? Math.min(4000, Math.round(token_limits.utility))
+        : current.token_limits.utility,
+    max_history_turns:
+      typeof token_limits?.max_history_turns === 'number' && token_limits.max_history_turns >= 2
+        ? Math.min(60, Math.round(token_limits.max_history_turns))
+        : current.token_limits.max_history_turns,
+  };
+
+  const nextConfig = {
+    openrouter_api_key_encrypted: nextEncrypted,
+    openrouter_api_key_last4: nextLast4,
+    consultation_model:
+      typeof consultation_model === 'string' && consultation_model.trim()
+        ? consultation_model.trim()
+        : current.consultation_model,
+    utility_model:
+      typeof utility_model === 'string' && utility_model.trim()
+        ? utility_model.trim()
+        : current.utility_model,
+    custom_models: sanitizedCustomModels,
+    token_limits: nextLimits,
+  };
+
+  const saved = await savePlatformSetting('ai_config', nextConfig, req.appUser.id);
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to save AI settings.' });
+    return;
+  }
+
+  const runtime = await getResolvedOpenRouterRuntime();
+  res.json({
+    saved: true,
+    keySource: runtime.keySource,
+    maskedKey: runtime.maskedKey,
+    hasDatabaseOverride: runtime.hasDatabaseOverride,
+    hasEnvKey: runtime.hasEnvKey,
+    consultation_model: runtime.consultationModel,
+    utility_model: runtime.utilityModel,
+    custom_models: runtime.customModels,
+    builtin_models: BUILTIN_MODEL_SUGGESTIONS,
+    token_limits: runtime.tokenLimits,
+  });
+});
+
+router.delete('/settings/ai/key', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+  const current = await getAiSettings();
+  const saved = await savePlatformSetting(
+    'ai_config',
+    {
+      ...current,
+      openrouter_api_key_encrypted: null,
+      openrouter_api_key_last4: null,
+    },
+    req.appUser.id
+  );
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to clear API key override.' });
+    return;
+  }
+  const runtime = await getResolvedOpenRouterRuntime();
+  res.json({
+    cleared: true,
+    keySource: runtime.keySource,
+    maskedKey: runtime.maskedKey,
+    hasDatabaseOverride: runtime.hasDatabaseOverride,
+    hasEnvKey: runtime.hasEnvKey,
+  });
+});
+
+router.post('/settings/ai/test', async (req: AuthenticatedRequest, res) => {
+  const { openrouter_api_key, model } = req.body || {};
+  const result = await testOpenRouterConnection({
+    overrideApiKey: typeof openrouter_api_key === 'string' ? openrouter_api_key : null,
+    model: typeof model === 'string' ? model : null,
+  });
+  res.json(result);
+});
+
+// 8. Chatbot Control Deck Settings
+router.get('/settings/chatbot', async (_req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  await ensureDefaultPromptsSeeded();
+
+  const [config, recipes, promptsRes] = await Promise.all([
+    getChatbotConfig(),
+    getPromptRecipes(),
+    supabaseAdmin
+      .from('system_prompts')
+      .select('id, slug, category, display_name, subtitle, is_active, model_id, sort_order')
+      .in('category', ['expert', 'mode', 'learn', 'language', 'output'])
+      .order('display_name', { ascending: true }),
+  ]);
+
+  let promptRows = promptsRes.data;
+  if (promptsRes.error) {
+    const fallback = await supabaseAdmin
+      .from('system_prompts')
+      .select('id, slug, category, display_name, is_active')
+      .in('category', ['expert', 'mode', 'learn', 'language', 'output']);
+    promptRows = (fallback.data || []).map((r) => ({
+      ...r,
+      subtitle: null,
+      model_id: null,
+      sort_order: 100,
+    }));
+  }
+
+  res.json({
+    config,
+    defaultConversationalRules: DEFAULT_CONVERSATIONAL_RULES,
+    prompts: promptRows || [],
+    recipes,
+  });
+});
+
+router.put('/settings/chatbot', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const current = await getChatbotConfig();
+  const body = req.body || {};
+
+  const nextConfig = {
+    welcome_title:
+      typeof body.welcome_title === 'string' && body.welcome_title.trim()
+        ? body.welcome_title.trim().slice(0, 120)
+        : current.welcome_title,
+    welcome_subtitle:
+      typeof body.welcome_subtitle === 'string'
+        ? body.welcome_subtitle.trim().slice(0, 280)
+        : current.welcome_subtitle,
+    general_ready_message:
+      typeof body.general_ready_message === 'string' && body.general_ready_message.trim()
+        ? body.general_ready_message.trim().slice(0, 400)
+        : current.general_ready_message,
+    composer_placeholder:
+      typeof body.composer_placeholder === 'string' && body.composer_placeholder.trim()
+        ? body.composer_placeholder.trim().slice(0, 180)
+        : current.composer_placeholder,
+    default_expert:
+      typeof body.default_expert === 'string' && body.default_expert.trim()
+        ? body.default_expert.trim()
+        : current.default_expert,
+    default_mode:
+      typeof body.default_mode === 'string' && body.default_mode.trim()
+        ? body.default_mode.trim()
+        : current.default_mode,
+    default_output:
+      typeof body.default_output === 'string' && body.default_output.trim()
+        ? body.default_output.trim()
+        : current.default_output,
+    default_language:
+      typeof body.default_language === 'string' && body.default_language.trim()
+        ? body.default_language.trim()
+        : current.default_language,
+    default_tone:
+      body.default_tone === 'friendly' || body.default_tone === 'technical'
+        ? body.default_tone
+        : current.default_tone,
+    default_response_length:
+      body.default_response_length === 'short' || body.default_response_length === 'detailed'
+        ? body.default_response_length
+        : current.default_response_length,
+    expert_order: Array.isArray(body.expert_order)
+      ? body.expert_order.map(String).filter(Boolean)
+      : current.expert_order,
+    mode_order: Array.isArray(body.mode_order)
+      ? body.mode_order.map(String).filter(Boolean)
+      : current.mode_order,
+    language_order: Array.isArray(body.language_order)
+      ? body.language_order.map(String).filter(Boolean)
+      : current.language_order,
+    features: {
+      ...current.features,
+      ...(body.features && typeof body.features === 'object' ? body.features : {}),
+    },
+    conversational_rules:
+      typeof body.conversational_rules === 'string' && body.conversational_rules.trim()
+        ? body.conversational_rules.trim().slice(0, 4000)
+        : current.conversational_rules,
+  };
+
+  const saved = await savePlatformSetting('chatbot_config', nextConfig, req.appUser.id);
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to save chatbot settings.' });
+    return;
+  }
+
+  invalidatePromptCache();
+  res.json({ saved: true, config: nextConfig });
+});
+
+// 9. Pricing & Plans Management
+router.get('/settings/pricing', async (_req: AuthenticatedRequest, res) => {
+  const pricing = await getPricingConfig();
+  res.json({ pricing });
+});
+
+router.put('/settings/pricing', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const current = await getPricingConfig();
+  const body = req.body || {};
+
+  const nextPricing = {
+    signup_welcome_credits:
+      typeof body.signup_welcome_credits === 'number' && body.signup_welcome_credits >= 0
+        ? Math.round(body.signup_welcome_credits)
+        : current.signup_welcome_credits,
+    referral_reward_credits:
+      typeof body.referral_reward_credits === 'number' && body.referral_reward_credits >= 0
+        ? Math.round(body.referral_reward_credits)
+        : current.referral_reward_credits,
+    min_credits_to_chat:
+      typeof body.min_credits_to_chat === 'number' && body.min_credits_to_chat >= 0
+        ? Math.round(body.min_credits_to_chat)
+        : current.min_credits_to_chat,
+    chat_billing: {
+      output_token_weight:
+        typeof body.chat_billing?.output_token_weight === 'number' &&
+        body.chat_billing.output_token_weight >= 0
+          ? Number(body.chat_billing.output_token_weight)
+          : current.chat_billing.output_token_weight,
+      input_token_weight:
+        typeof body.chat_billing?.input_token_weight === 'number' &&
+        body.chat_billing.input_token_weight >= 0
+          ? Number(body.chat_billing.input_token_weight)
+          : current.chat_billing.input_token_weight,
+      min_credits_per_reply:
+        typeof body.chat_billing?.min_credits_per_reply === 'number' &&
+        body.chat_billing.min_credits_per_reply >= 0
+          ? Math.round(body.chat_billing.min_credits_per_reply)
+          : current.chat_billing.min_credits_per_reply,
+      max_credits_per_reply:
+        typeof body.chat_billing?.max_credits_per_reply === 'number' &&
+        body.chat_billing.max_credits_per_reply >= 10
+          ? Math.round(body.chat_billing.max_credits_per_reply)
+          : current.chat_billing.max_credits_per_reply,
+    },
+    credit_packs: Array.isArray(body.credit_packs) && body.credit_packs.length > 0
+      ? body.credit_packs.map((p: Record<string, unknown>, idx: number) => {
+          const prices = (p.prices || {}) as Record<string, unknown>;
+          return {
+            slug: String(p.slug || `pack_${idx + 1}`).trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_'),
+            name: String(p.name || 'Credit Pack').trim(),
+            subtitle: String(p.subtitle || '').trim(),
+            credits: Math.max(0, Math.round(Number(p.credits) || 0)),
+            highlight: typeof p.highlight === 'string' && p.highlight.trim() ? p.highlight.trim() : undefined,
+            dodo_product_id:
+              typeof p.dodo_product_id === 'string' && p.dodo_product_id.trim()
+                ? p.dodo_product_id.trim()
+                : undefined,
+            is_active: p.is_active !== false,
+            prices: {
+              INR: Math.max(0, Number(prices.INR) || 0),
+              USD: Math.max(0, Number(prices.USD) || 0),
+              AED: Math.max(0, Number(prices.AED) || 0),
+              EUR: Math.max(0, Number(prices.EUR) || 0),
+            },
+          };
+        })
+      : current.credit_packs,
+    membership_tiers: Array.isArray(body.membership_tiers) && body.membership_tiers.length > 0
+      ? body.membership_tiers.map((t: Record<string, unknown>) => {
+          const prices = (t.prices || {}) as Record<string, unknown>;
+          const slug =
+            t.slug === 'pro' || t.slug === 'guru' ? t.slug : ('personal' as const);
+          return {
+            slug,
+            name: String(t.name || slug).trim(),
+            profileLimit: Math.max(1, Math.round(Number(t.profileLimit) || 10)),
+            activationCostCredits: Math.max(0, Math.round(Number(t.activationCostCredits) || 0)),
+            includedMonthlyCredits: Math.max(0, Math.round(Number(t.includedMonthlyCredits) || 0)),
+            dodo_product_id:
+              typeof t.dodo_product_id === 'string' && t.dodo_product_id.trim()
+                ? t.dodo_product_id.trim()
+                : undefined,
+            prices: {
+              INR: Math.max(0, Number(prices.INR) || 0),
+              USD: Math.max(0, Number(prices.USD) || 0),
+              AED: Math.max(0, Number(prices.AED) || 0),
+              EUR: Math.max(0, Number(prices.EUR) || 0),
+            },
+            features: Array.isArray(t.features)
+              ? t.features.map((f) => String(f).trim()).filter(Boolean)
+              : [],
+          };
+        })
+      : current.membership_tiers,
+  };
+
+  const saved = await savePlatformSetting('pricing_config', nextPricing, req.appUser.id);
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to save pricing configuration.' });
+    return;
+  }
+
+  res.json({ saved: true, pricing: nextPricing });
+});
+
+// 10. Composable Prompt Recipes CRUD
+router.get('/recipes', async (_req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('prompt_recipes')
+    .select('*')
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    if (error.code === '42P01' || String(error.message || '').toLowerCase().includes('prompt_recipes')) {
+      res.json({ recipes: [], tableMissing: true });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to load prompt recipes' });
+    return;
+  }
+
+  res.json({ recipes: data || [], tableMissing: false });
+});
+
+router.post('/recipes', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const { slug, name, description, target_type, target_slug, steps_json, model_id, is_active } =
+    req.body || {};
+
+  if (!String(name || '').trim()) {
+    res.status(400).json({ error: 'Recipe name is required.' });
+    return;
+  }
+
+  const normalizedSlug = String(slug || name)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  const normalizedTargetType =
+    target_type === 'report_pass' || target_type === 'custom' ? target_type : 'mode';
+
+  const normalizedSteps: PromptRecipeStep[] = Array.isArray(steps_json)
+    ? steps_json
+        .filter((s) => s && typeof s.prompt_slug === 'string' && s.prompt_slug.trim())
+        .map((s) => ({
+          prompt_slug: String(s.prompt_slug).trim(),
+          label: typeof s.label === 'string' && s.label.trim() ? s.label.trim() : undefined,
+          inline_override:
+            typeof s.inline_override === 'string' && s.inline_override.trim()
+              ? s.inline_override.trim()
+              : undefined,
+          enabled: s.enabled !== false,
+        }))
+    : [];
+
+  const { data, error } = await supabaseAdmin
+    .from('prompt_recipes')
+    .insert({
+      slug: normalizedSlug,
+      name: String(name).trim(),
+      description: typeof description === 'string' && description.trim() ? description.trim() : null,
+      target_type: normalizedTargetType,
+      target_slug: typeof target_slug === 'string' && target_slug.trim() ? target_slug.trim() : null,
+      steps_json: normalizedSteps,
+      model_id: typeof model_id === 'string' && model_id.trim() ? model_id.trim() : null,
+      is_active: is_active !== false,
+    })
+    .select('*')
+    .single();
+
+  if (error || !data) {
+    const msg = error?.message || 'Could not create recipe';
+    if (error?.code === '42P01' || msg.toLowerCase().includes('prompt_recipes')) {
+      res.status(400).json({
+        error:
+          'Table public.prompt_recipes does not exist yet. Run supabase/migrations/004_admin_console_and_recipes.sql in Supabase SQL Editor first.',
+      });
+      return;
+    }
+    res.status(400).json({ error: msg });
+    return;
+  }
+
+  invalidateRecipesCache();
+  res.status(201).json({ recipe: data });
+});
+
+router.patch('/recipes/:id', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const { name, description, target_type, target_slug, steps_json, model_id, is_active } =
+    req.body || {};
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (typeof name === 'string' && name.trim()) updates.name = name.trim();
+  if (description !== undefined) {
+    updates.description =
+      typeof description === 'string' && description.trim() ? description.trim() : null;
+  }
+  if (target_type === 'mode' || target_type === 'report_pass' || target_type === 'custom') {
+    updates.target_type = target_type;
+  }
+  if (target_slug !== undefined) {
+    updates.target_slug =
+      typeof target_slug === 'string' && target_slug.trim() ? target_slug.trim() : null;
+  }
+  if (model_id !== undefined) {
+    updates.model_id = typeof model_id === 'string' && model_id.trim() ? model_id.trim() : null;
+  }
+  if (typeof is_active === 'boolean') updates.is_active = is_active;
+  if (Array.isArray(steps_json)) {
+    updates.steps_json = steps_json
+      .filter((s) => s && typeof s.prompt_slug === 'string' && s.prompt_slug.trim())
+      .map((s) => ({
+        prompt_slug: String(s.prompt_slug).trim(),
+        label: typeof s.label === 'string' && s.label.trim() ? s.label.trim() : undefined,
+        inline_override:
+          typeof s.inline_override === 'string' && s.inline_override.trim()
+            ? s.inline_override.trim()
+            : undefined,
+        enabled: s.enabled !== false,
+      }));
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('prompt_recipes')
+    .update(updates)
+    .eq('id', req.params.id)
+    .select('*')
+    .single();
+
+  if (error || !data) {
+    res.status(400).json({ error: error?.message || 'Failed to update prompt recipe' });
+    return;
+  }
+
+  invalidateRecipesCache();
+  res.json({ recipe: data });
+});
+
+router.delete('/recipes/:id', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const { error } = await supabaseAdmin.from('prompt_recipes').delete().eq('id', req.params.id);
+  if (error) {
+    res.status(500).json({ error: error.message || 'Failed to delete recipe' });
+    return;
+  }
+
+  invalidateRecipesCache();
+  res.json({ deleted: true });
+});
+
+// 11. Support Tickets Desk
+router.get('/support', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const statusFilter = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+  const search = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+
+  let query = supabaseAdmin
+    .from('support_tickets')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (['open', 'in_progress', 'resolved'].includes(statusFilter)) {
+    query = query.eq('status', statusFilter);
+  }
+  if (search) {
+    query = query.or(
+      `subject.ilike.%${search}%,from_email.ilike.%${search}%,from_name.ilike.%${search}%,message.ilike.%${search}%`
+    );
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    if (error.code === '42P01' || String(error.message || '').toLowerCase().includes('support_tickets')) {
+      res.json({ tickets: [], tableMissing: true });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to load support tickets' });
+    return;
+  }
+
+  const tickets = data || [];
+  const userIds = Array.from(new Set(tickets.map((t) => t.user_id).filter(Boolean)));
+  const userMetaMap = new Map<string, { tier: string; credits_balance: number }>();
+
+  if (userIds.length > 0) {
+    const { data: userRows } = await supabaseAdmin
+      .from('users')
+      .select('id, tier, credits_balance')
+      .in('id', userIds);
+    for (const u of userRows || []) {
+      userMetaMap.set(u.id, { tier: u.tier, credits_balance: u.credits_balance });
+    }
+  }
+
+  const enriched = tickets.map((t) => ({
+    ...t,
+    user_tier: t.user_id ? userMetaMap.get(t.user_id)?.tier || null : null,
+    user_credits_balance: t.user_id ? userMetaMap.get(t.user_id)?.credits_balance ?? null : null,
+  }));
+
+  res.json({ tickets: enriched, tableMissing: false });
+});
+
+router.patch('/support/:id', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const { status, priority, admin_notes } = req.body || {};
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (status === 'open' || status === 'in_progress' || status === 'resolved') {
+    updates.status = status;
+  }
+  if (priority === 'low' || priority === 'normal' || priority === 'high') {
+    updates.priority = priority;
+  }
+  if (admin_notes !== undefined) {
+    updates.admin_notes =
+      typeof admin_notes === 'string' && admin_notes.trim() ? admin_notes.trim() : null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('support_tickets')
+    .update(updates)
+    .eq('id', req.params.id)
+    .select('*')
+    .single();
+
+  if (error || !data) {
+    res.status(400).json({ error: error?.message || 'Failed to update support ticket' });
+    return;
+  }
+
+  res.json({ ticket: data });
+});
+
+router.post('/support/:id/reply', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const { replyText, markResolved } = req.body || {};
+  const cleanReply = typeof replyText === 'string' ? replyText.trim() : '';
+  if (!cleanReply) {
+    res.status(400).json({ error: 'Reply message is required.' });
+    return;
+  }
+
+  const { data: ticket } = await supabaseAdmin
+    .from('support_tickets')
+    .select('*')
+    .eq('id', req.params.id)
+    .maybeSingle();
+
+  if (!ticket) {
+    res.status(404).json({ error: 'Support ticket not found' });
+    return;
+  }
+
+  const emailRes = await sendSupportReplyEmail({
+    to: ticket.from_email,
+    name: ticket.from_name,
+    subject: ticket.subject,
+    originalMessage: ticket.message,
+    replyText: cleanReply,
+  });
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('support_tickets')
+    .update({
+      admin_reply_text: cleanReply,
+      replied_at: new Date().toISOString(),
+      replied_by: req.appUser.id,
+      status: markResolved ? 'resolved' : 'in_progress',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', ticket.id)
+    .select('*')
+    .single();
+
+  if (error || !updated) {
+    res.status(500).json({ error: 'Reply sent, but failed to update ticket status.' });
+    return;
+  }
+
+  res.json({
+    ticket: updated,
+    emailSent: emailRes.sent,
+    emailReason: emailRes.reason,
+  });
+});
+
+// 12. Platform Health & Cache Controls
+router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  const runtime = await getResolvedOpenRouterRuntime();
+
+  const hasPublicUrl = Boolean(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL);
+  const hasPublicAnon = Boolean(process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY);
+
+  const checkTable = async (tableName: string): Promise<boolean> => {
+    if (!supabaseAdmin) return false;
+    const { error } = await supabaseAdmin.from(tableName).select('*').limit(1);
+    return !error;
+  };
+
+  const [
+    hasUsers,
+    hasProfiles,
+    hasPrompts,
+    hasPlatformSettings,
+    hasPromptRecipes,
+    hasSupportTickets,
+  ] = await Promise.all([
+    checkTable('users'),
+    checkTable('profiles'),
+    checkTable('system_prompts'),
+    checkTable('platform_settings'),
+    checkTable('prompt_recipes'),
+    checkTable('support_tickets'),
+  ]);
+
+  res.json({
+    integrations: {
+      supabaseServer: isSupabaseServerConfigured(),
+      supabaseClient: hasPublicUrl && hasPublicAnon,
+      openrouter: Boolean(runtime.apiKey),
+      openrouterSource: runtime.keySource,
+      openrouterMaskedKey: runtime.maskedKey,
+      consultationModel: runtime.consultationModel,
+      utilityModel: runtime.utilityModel,
+      freeAstrologyApi: isAstrologyApiConfigured(),
+      dodoPayments: Boolean(process.env.DODO_API_KEY),
+      resend: Boolean(process.env.RESEND_API_KEY),
+      sanityBlog: isSanityConfigured(),
+    },
+    tables: {
+      users: hasUsers,
+      profiles: hasProfiles,
+      system_prompts: hasPrompts,
+      platform_settings: hasPlatformSettings,
+      prompt_recipes: hasPromptRecipes,
+      support_tickets: hasSupportTickets,
+    },
+    migration004Ready: hasPlatformSettings && hasPromptRecipes && hasSupportTickets,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+router.post('/platform/cache-flush', async (_req: AuthenticatedRequest, res) => {
+  invalidatePromptCache();
+  invalidateAllPlatformCaches();
+  res.json({ flushed: true, timestamp: new Date().toISOString() });
 });
 
 export default router;

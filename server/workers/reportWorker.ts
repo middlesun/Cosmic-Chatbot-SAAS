@@ -8,10 +8,14 @@ import {
 import {
   createOpenRouterCompletion,
   getConsultationModel,
-  isOpenRouterConfigured,
+  isOpenRouterConfiguredAsync,
 } from '../services/openrouter';
 import { generateReportPdfBuffer } from '../services/pdfGenerator';
-import { CORE_COUNCIL_CONSTITUTION } from '../services/promptDefaults';
+import { CORE_COUNCIL_CONSTITUTION, resolvePromptModules } from '../services/promptDefaults';
+import {
+  getActiveRecipeBySlug,
+  getResolvedOpenRouterRuntime,
+} from '../services/platformSettings';
 import type { ReportPromptStep } from '../services/reportDefaults';
 import { scheduleBackgroundTask } from '../lib/backgroundTask';
 
@@ -72,7 +76,7 @@ async function processReportOrder(orderId: string, appOrigin?: string): Promise<
     }
   };
 
-  if (!isOpenRouterConfigured()) {
+  if (!(await isOpenRouterConfiguredAsync())) {
     await refundOrderOnFailure('OPENROUTER_API_KEY is not configured on the server.');
     return;
   }
@@ -125,11 +129,12 @@ async function processReportOrder(orderId: string, appOrigin?: string): Promise<
       }
     }
 
+    const runtime = await getResolvedOpenRouterRuntime();
     const customModelId = (catalogItem as { model_id?: string | null }).model_id;
-    const model =
+    const baseModel =
       typeof customModelId === 'string' && customModelId.trim()
         ? customModelId.trim()
-        : getConsultationModel();
+        : runtime.consultationModel || getConsultationModel();
     const languagePref = userRow?.default_language || 'English';
     const userQuestionsText = order.user_questions?.trim()
       ? `USER'S SPECIFIC QUESTIONS FOR THIS REPORT:\n${order.user_questions.trim()}`
@@ -158,6 +163,44 @@ async function processReportOrder(orderId: string, appOrigin?: string): Promise<
         })
         .eq('id', orderId);
 
+      // Assemble any attached Prompt Library slugs or Composable Recipe for this pass
+      const assembledDirectiveParts: string[] = [];
+      let stepModel = step.modelId?.trim() || baseModel;
+
+      if (step.recipeSlug) {
+        const recipe = await getActiveRecipeBySlug(step.recipeSlug);
+        if (recipe) {
+          if (!step.modelId && recipe.model_id) {
+            stepModel = recipe.model_id;
+          }
+          const activeRecipeSteps = (recipe.steps_json || []).filter(
+            (rs) => rs && rs.enabled !== false && rs.prompt_slug
+          );
+          if (activeRecipeSteps.length > 0) {
+            const { bodies } = await resolvePromptModules(
+              activeRecipeSteps.map((rs) => rs.prompt_slug)
+            );
+            for (const rs of activeRecipeSteps) {
+              const body = rs.inline_override?.trim() || bodies[rs.prompt_slug];
+              if (body) assembledDirectiveParts.push(body);
+            }
+          }
+        }
+      }
+
+      if (Array.isArray(step.promptSlugs) && step.promptSlugs.length > 0) {
+        const { bodies } = await resolvePromptModules(step.promptSlugs);
+        for (const slug of step.promptSlugs) {
+          if (bodies[slug]) assembledDirectiveParts.push(bodies[slug]);
+        }
+      }
+
+      if (step.instruction?.trim()) {
+        assembledDirectiveParts.push(step.instruction.trim());
+      }
+
+      const fullStepDirective = assembledDirectiveParts.join('\n\n---\n\n');
+
       const prompt = `REPORT: ${catalogItem.name} (${catalogItem.category})
 CLIENT PROFILE: ${profile.name} (${profile.birth_date} ${profile.birth_time}, ${profile.birth_city}, ${profile.birth_country})
 LANGUAGE: ${languagePref}
@@ -166,7 +209,7 @@ ${userQuestionsText}
 
 ${accumulatedContext ? `PREVIOUS SEQUENTIAL PASSES ALREADY COMPLETED:\n${accumulatedContext}\n\n---\n\n` : ''}
 CURRENT ASSIGNMENT — ${step.title} (Pass ${i + 1} of ${steps.length}):
-${step.instruction}
+${fullStepDirective}
 
 ${
   isFinalPass
@@ -175,7 +218,8 @@ ${
 }`;
 
       const completion = await createOpenRouterCompletion({
-        model,
+        model: stepModel,
+        maxTokens: runtime.tokenLimits.report_pass,
         system: `${CORE_COUNCIL_CONSTITUTION}
 
 ACTIVE NATAL CHART CONTEXT:

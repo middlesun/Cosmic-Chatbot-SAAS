@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { isOpenRouterConfigured } from '../services/openrouter';
+import { isOpenRouterConfiguredAsync } from '../services/openrouter';
 import { isAstrologyApiConfigured } from '../services/astrologyApi';
 import { compileBirthChart } from '../services/chartCompiler';
 import { generateReportPdfBuffer } from '../services/pdfGenerator';
@@ -66,7 +66,7 @@ router.get('/catalog', requireAuth, async (req: AuthenticatedRequest, res) => {
     catalog: safeCatalog,
     profiles: profiles || [],
     orders: orders || [],
-    openrouterConfigured: isOpenRouterConfigured(),
+    openrouterConfigured: await isOpenRouterConfiguredAsync(),
   });
 });
 
@@ -78,7 +78,7 @@ router.post('/orders', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  if (!isOpenRouterConfigured()) {
+  if (!(await isOpenRouterConfiguredAsync())) {
     res.status(503).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' });
     return;
   }

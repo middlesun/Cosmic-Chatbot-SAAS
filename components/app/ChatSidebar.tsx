@@ -16,6 +16,7 @@ import {
   ScrollText,
   Search,
   Settings,
+  ShieldCheck,
   Sparkles,
   Star,
   Trash2,
@@ -25,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAppShell } from './AppLayout';
+import { useAuth } from './AuthContext';
 import type {
   ChatProfile,
   ConversationRecord,
@@ -92,6 +94,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onOpenAddChartModal,
 }) => {
   const { openSupport, openBackup, openAccountSettings } = useAppShell();
+  const { appUser } = useAuth();
   const [sidebarTab, setSidebarTab] = useState<'folders' | 'favorites'>('folders');
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
     general: true,
@@ -697,6 +700,16 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             <Database className="h-3.5 w-3.5 text-[#8B8275]" />
             <span>Backup</span>
           </button>
+          {appUser?.is_admin && (
+            <NavLink
+              to="/app/admin"
+              onClick={onCloseMobileDrawer}
+              className={mobileNavLinkClass}
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-[#8B7355]" />
+              <span>Admin</span>
+            </NavLink>
+          )}
           {onSignOut && (
             <button
               type="button"

@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { sendPaymentReceiptEmail } from '../services/email';
 import { rewardReferralIfEligible } from '../services/referralReward';
+import { getPricingConfig } from '../services/platformSettings';
 
 const router = Router();
 
@@ -122,7 +123,8 @@ router.get('/catalog', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const [{ data: transactions }, { data: orders }, { data: referrals }] = await Promise.all([
+  const [pricingConfig, { data: transactions }, { data: orders }, { data: referrals }] = await Promise.all([
+    getPricingConfig(),
     supabaseAdmin
       .from('credit_transactions')
       .select('*')
@@ -143,8 +145,10 @@ router.get('/catalog', requireAuth, async (req: AuthenticatedRequest, res) => {
   ]);
 
   res.json({
-    creditPacks: CREDIT_PACKS,
-    tiers: MEMBERSHIP_TIERS,
+    creditPacks: pricingConfig.credit_packs.filter((p) => p.is_active !== false),
+    tiers: pricingConfig.membership_tiers,
+    signupWelcomeCredits: pricingConfig.signup_welcome_credits,
+    referralRewardCredits: pricingConfig.referral_reward_credits,
     dodoConfigured: isDodoConfigured(),
     transactions: transactions || [],
     orders: orders || [],
@@ -174,14 +178,16 @@ router.post('/checkout', requireAuth, async (req: AuthenticatedRequest, res) => 
     ? currency
     : req.appUser.currency_pref || 'INR';
 
+  const pricingConfig = await getPricingConfig();
   let itemName = '';
   let priceMajor = 0;
   let creditsToGrant = 0;
   let targetTier: 'personal' | 'pro' | 'guru' | null = null;
   let normalizedType: 'credit_pack' | 'subscription' = 'credit_pack';
+  let customDodoProductId: string | undefined;
 
   if (orderType === 'subscription') {
-    const tier = MEMBERSHIP_TIERS.find((t) => t.slug === slug && t.slug !== 'personal');
+    const tier = pricingConfig.membership_tiers.find((t) => t.slug === slug && t.slug !== 'personal');
     if (!tier) {
       res.status(400).json({ error: 'Invalid membership tier selected.' });
       return;
@@ -191,8 +197,9 @@ router.post('/checkout', requireAuth, async (req: AuthenticatedRequest, res) => 
     priceMajor = tier.prices[selectedCurrency];
     creditsToGrant = tier.includedMonthlyCredits;
     targetTier = tier.slug;
+    customDodoProductId = tier.dodo_product_id?.trim() || undefined;
   } else {
-    const pack = CREDIT_PACKS.find((p) => p.slug === slug);
+    const pack = pricingConfig.credit_packs.find((p) => p.slug === slug && p.is_active !== false);
     if (!pack) {
       res.status(400).json({ error: 'Invalid credit pack selected.' });
       return;
@@ -201,14 +208,15 @@ router.post('/checkout', requireAuth, async (req: AuthenticatedRequest, res) => 
     itemName = `${pack.name} (${pack.credits.toLocaleString()} Credits)`;
     priceMajor = pack.prices[selectedCurrency];
     creditsToGrant = pack.credits;
+    customDodoProductId = pack.dodo_product_id?.trim() || undefined;
   }
 
   const origin = `${req.protocol}://${req.get('host')}`;
   const returnUrl = `${origin}/app/billing?payment=returned`;
 
-  // Optional mapping to pre-created Dodo Product IDs in env, or dynamic checkout product_cart
+  // Optional mapping to pre-created Dodo Product IDs in Admin Pricing or env, or dynamic checkout product_cart
   const dodoProductEnvKey = `DODO_PRODUCT_${String(slug).toUpperCase()}`;
-  const configuredProductId = process.env[dodoProductEnvKey];
+  const configuredProductId = customDodoProductId || process.env[dodoProductEnvKey];
 
   try {
     const payload: Record<string, unknown> = {

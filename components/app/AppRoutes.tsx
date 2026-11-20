@@ -60,15 +60,17 @@ const AppRoutes: React.FC = () => {
           <Route path="reports/:orderId" element={<ReportOrderDetail />} />
           <Route path="billing" element={<BillingCredits />} />
           <Route path="settings" element={<SettingsPage />} />
-          <Route
-            path="admin"
-            element={
+        </Route>
+        <Route
+          path="admin/*"
+          element={
+            <ProtectedRoute>
               <AdminRoute>
                 <AdminPanel />
               </AdminRoute>
-            }
-          />
-        </Route>
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/app/chat" replace />} />
       </Routes>
     </AuthProvider>
