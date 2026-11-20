@@ -37,6 +37,7 @@ import type {
   FavoriteMessageRecord,
 } from './chatTypes';
 import CustomSelect from './CustomSelect';
+import Tooltip from './Tooltip';
 
 interface ChatSidebarProps {
   profiles: ChatProfile[];
@@ -228,23 +229,23 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             </div>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={() => onToggleActiveTab(conv)}
-                title={
-                  isPinnedTab
-                    ? 'Active tab in chat — click to remove'
-                    : `Pin as active tab (max ${maxActiveTabs})`
-                }
-                aria-label={isPinnedTab ? 'Remove from active tabs' : 'Pin as active tab'}
-                className={`p-1 rounded hover:bg-[#3D3830]/10 transition-all cursor-pointer ${
-                  isPinnedTab
-                    ? 'opacity-100 text-[#B8965A] bg-[#B8965A]/12'
-                    : 'opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275] hover:text-[#3D3830]'
-                }`}
+              <Tooltip
+                content={isPinnedTab ? 'Remove from chat' : 'Add to chat'}
+                placement="top"
               >
-                <Layers className="h-3 w-3" />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => onToggleActiveTab(conv)}
+                  aria-label={isPinnedTab ? 'Remove from chat' : 'Add to chat'}
+                  className={`p-1 rounded hover:bg-[#3D3830]/10 transition-all cursor-pointer ${
+                    isPinnedTab
+                      ? 'opacity-100 text-[#B8965A] bg-[#B8965A]/12'
+                      : 'opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275] hover:text-[#3D3830]'
+                  }`}
+                >
+                  <Layers className="h-3 w-3" />
+                </button>
+              </Tooltip>
               <button
                 type="button"
                 onClick={() => onToggleBookmark(conv)}
@@ -787,14 +788,39 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
           <span className="font-serif text-base font-medium text-[#3D3830]">
             Cosmic Council
           </span>
-          <Link
-            to="/app/billing"
-            onClick={onCloseMobileDrawer}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF7F2] border border-[#3D3830]/10 px-2.5 py-1 text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#3D3830]"
-          >
-            <Coins className="h-3 w-3 text-[#8B7355]" />
-            <span>{creditsBalance.toLocaleString()}</span>
-          </Link>
+          {(() => {
+            const tierBaseline =
+              appUser?.tier === 'guru' ? 8000 : appUser?.tier === 'pro' ? 2500 : 500;
+            const isLowCredits =
+              !isPreviewMode &&
+              (creditsBalance <= 0 || creditsBalance / tierBaseline < 0.1);
+            return (
+              <Tooltip
+                content={
+                  isLowCredits
+                    ? 'Under 10% credits remaining — tap to top up'
+                    : `${creditsBalance.toLocaleString()} credits remaining`
+                }
+                placement="top"
+              >
+                <Link
+                  to="/app/billing"
+                  onClick={onCloseMobileDrawer}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-['DM_Sans',sans-serif] tabular-nums transition-colors ${
+                    isLowCredits
+                      ? 'bg-[#FAF0EE] border-[#7A3E36]/30 text-[#7A3E36] font-medium'
+                      : 'bg-[#FAF7F2] border-[#3D3830]/10 text-[#3D3830]'
+                  }`}
+                >
+                  <Coins
+                    className={`h-3 w-3 ${isLowCredits ? 'text-[#7A3E36]' : 'text-[#8B7355]'}`}
+                  />
+                  {isLowCredits && <span className="text-[10px] font-semibold">Low ·</span>}
+                  <span>{creditsBalance.toLocaleString()}</span>
+                </Link>
+              </Tooltip>
+            );
+          })()}
         </div>
 
         <nav className="grid grid-cols-2 gap-1">

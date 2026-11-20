@@ -106,6 +106,15 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
           const isClosable = !tab.isCore && tabs.length > 1;
           const isTabStreaming = isStreamingTabId === tab.tabId;
 
+          const tabTooltip =
+            tab.pillar === 'companion'
+              ? 'Feel better talking to companions'
+              : tab.pillar === 'clarity'
+              ? 'A temporary sidechat to clear doubts'
+              : tab.subtitle
+              ? `${tab.label} — ${tab.subtitle}`
+              : tab.label;
+
           return (
             <div
               key={tab.tabId}
@@ -115,21 +124,22 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                   : 'bg-[#F1ECE3]/90 border-[#3D3830]/12 text-[#5C5449] font-medium hover:bg-[#EAE3D7] hover:text-[#3D3830] pb-[4px] pt-[4px] z-10'
               } ${isClosable ? 'pl-2.5 pr-1.5' : 'px-2.5'}`}
             >
-              <button
-                type="button"
-                onClick={() => onSelectTab(tab.tabId)}
-                className="inline-flex items-center gap-1.5 min-w-0 max-w-full cursor-pointer whitespace-nowrap"
-                title={tab.subtitle ? `${tab.label} — ${tab.subtitle}` : tab.label}
-              >
-                {renderPillarIcon(tab.pillar, isActive)}
-                <span className="truncate">{tab.label}</span>
-                {isTabStreaming && (
-                  <span
-                    aria-label="Responding"
-                    className="h-1.5 w-1.5 rounded-full bg-[#B8965A] animate-pulse shrink-0"
-                  />
-                )}
-              </button>
+              <Tooltip content={tabTooltip} placement="top" className="min-w-0 max-w-full">
+                <button
+                  type="button"
+                  onClick={() => onSelectTab(tab.tabId)}
+                  className="inline-flex items-center gap-1.5 min-w-0 max-w-full cursor-pointer whitespace-nowrap"
+                >
+                  {renderPillarIcon(tab.pillar, isActive)}
+                  <span className="truncate">{tab.label}</span>
+                  {isTabStreaming && (
+                    <span
+                      aria-label="Responding"
+                      className="h-1.5 w-1.5 rounded-full bg-[#B8965A] animate-pulse shrink-0"
+                    />
+                  )}
+                </button>
+              </Tooltip>
 
               {isClosable && (
                 <button

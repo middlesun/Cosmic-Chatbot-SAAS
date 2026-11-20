@@ -118,7 +118,7 @@ const AppLayout: React.FC = () => {
     appUser.credits_balance < lowCreditsThreshold;
 
   const desktopNavLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `group flex items-center ${
+    `group w-full flex items-center ${
       isDesktopSidebarOpen ? 'gap-3 px-3' : 'justify-center px-0'
     } rounded-xl py-2.5 text-[13px] font-medium transition-colors whitespace-nowrap ${
       isActive

@@ -342,6 +342,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const inChatSearchInputRef = useRef<HTMLInputElement | null>(null);
   const headerThreadMenuRef = useRef<HTMLDivElement | null>(null);
   const seededQueryRef = useRef<string>('');
+  const seededCouncilFreshRef = useRef<boolean>(false);
+  const didLoadInitialTabConvRef = useRef<boolean>(false);
   const tabCacheRef = useRef<Record<string, TabStateSnapshot>>({});
   const previewConvStoreRef = useRef<Record<string, ConversationRecord>>({});
   const previewMsgStoreRef = useRef<Record<string, ChatMessageRecord[]>>({});
@@ -483,66 +485,69 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       setConversations(enrichedConvs);
       setProfiles(loadedProfiles);
 
-      // Reconcile tab labels & hydrate DB-pinned tabs once on initial load
-      setTabs((prevTabs) => {
-        const convById = new Map(enrichedConvs.map((c) => [c.id, c]));
-        let nextTabs = prevTabs.map((t) => {
-          if (!t.conversationId) return t;
-          const match = convById.get(t.conversationId);
-          if (!match) {
-            if (t.isCore) {
-              return {
-                ...t,
-                conversationId: null,
-                label:
-                  t.pillar === 'companion'
-                    ? 'Companion'
-                    : t.pillar === 'clarity'
-                    ? 'Clarity'
-                    : 'Council',
-              };
+      // Reconcile tab labels & hydrate DB-pinned tabs only on unfiltered loads (never detach tabs during sidebar search)
+      if (!searchQuery.trim()) {
+        setTabs((prevTabs) => {
+          const convById = new Map(enrichedConvs.map((c) => [c.id, c]));
+          let nextTabs = prevTabs.map((t) => {
+            if (!t.conversationId) return t;
+            const match = convById.get(t.conversationId);
+            if (!match) {
+              if (t.isCore) {
+                return {
+                  ...t,
+                  conversationId: null,
+                  label:
+                    t.pillar === 'companion'
+                      ? 'Companion'
+                      : t.pillar === 'clarity'
+                      ? 'Clarity'
+                      : 'Council',
+                };
+              }
+              return null;
             }
-            return null;
-          }
-          return {
-            ...t,
-            label: deriveTabLabelForConversation(match, loadedProfiles),
-          };
-        }).filter((t): t is ActiveChatTab => Boolean(t));
+            return {
+              ...t,
+              label: deriveTabLabelForConversation(match, loadedProfiles),
+            };
+          }).filter((t): t is ActiveChatTab => Boolean(t));
 
-        if (!didHydrateDbTabsRef.current) {
-          didHydrateDbTabsRef.current = true;
-          const dbPinned = enrichedConvs.filter((c) => c.is_active_tab);
-          for (const pinned of dbPinned) {
-            if (nextTabs.some((t) => t.conversationId === pinned.id)) continue;
-            const p: ChatPillar =
-              pinned.pillar || (pinned.companion_persona_json ? 'companion' : 'council');
-            const emptyCoreIdx = nextTabs.findIndex(
-              (t) => t.isCore && t.pillar === p && !t.conversationId
-            );
-            if (emptyCoreIdx >= 0) {
-              nextTabs[emptyCoreIdx] = {
-                ...nextTabs[emptyCoreIdx],
-                conversationId: pinned.id,
-                label: deriveTabLabelForConversation(pinned, loadedProfiles),
-              };
-            } else if (nextTabs.length < MAX_ACTIVE_TABS) {
-              nextTabs = [
-                ...nextTabs,
-                {
-                  tabId: `tab-${pinned.id}`,
-                  pillar: p,
+          if (!didHydrateDbTabsRef.current) {
+            didHydrateDbTabsRef.current = true;
+            const dbPinned = enrichedConvs.filter((c) => c.is_active_tab);
+            for (const pinned of dbPinned) {
+              if (nextTabs.some((t) => t.conversationId === pinned.id)) continue;
+              const p: ChatPillar =
+                pinned.pillar || (pinned.companion_persona_json ? 'companion' : 'council');
+              const canUseEmptyCore = !(p === 'council' && seededCouncilFreshRef.current);
+              const emptyCoreIdx = canUseEmptyCore
+                ? nextTabs.findIndex((t) => t.isCore && t.pillar === p && !t.conversationId)
+                : -1;
+              if (emptyCoreIdx >= 0) {
+                nextTabs[emptyCoreIdx] = {
+                  ...nextTabs[emptyCoreIdx],
                   conversationId: pinned.id,
                   label: deriveTabLabelForConversation(pinned, loadedProfiles),
-                  isCore: false,
-                },
-              ];
+                };
+              } else if (nextTabs.length < MAX_ACTIVE_TABS) {
+                nextTabs = [
+                  ...nextTabs,
+                  {
+                    tabId: `tab-${pinned.id}`,
+                    pillar: p,
+                    conversationId: pinned.id,
+                    label: deriveTabLabelForConversation(pinned, loadedProfiles),
+                    isCore: false,
+                  },
+                ];
+              }
             }
           }
-        }
 
-        return nextTabs;
-      });
+          return nextTabs;
+        });
+      }
     }
   }, [getAccessToken, sortBy, searchQuery, isPreviewMode]);
 
@@ -856,24 +861,22 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     if (seedPillar === 'companion') {
       const compTab = tabs.find((t) => t.tabId === 'core-companion') || tabs.find((t) => t.pillar === 'companion');
       if (compTab) {
-        setActiveTabId(compTab.tabId);
-        if (!compTab.conversationId) {
-          setActiveConversation(null);
-          setMessages([]);
-        }
+        activateTab(compTab, { skipSnapshot: true });
       }
     } else if (seedPillar === 'clarity') {
       const clarityTab = tabs.find((t) => t.tabId === 'core-clarity') || tabs.find((t) => t.pillar === 'clarity');
       if (clarityTab) {
-        setActiveTabId(clarityTab.tabId);
+        activateTab(clarityTab, { skipSnapshot: true });
       }
     } else if (seedPillar === 'council' || seedExpert || seedProfileId || seedPrompt) {
       const councilTab = tabs.find((t) => t.tabId === 'core-council') || tabs.find((t) => t.pillar === 'council');
       if (councilTab) {
         setActiveTabId(councilTab.tabId);
         if (seedExpert || seedPrompt) {
+          seededCouncilFreshRef.current = true;
           setActiveConversation(null);
           setMessages([]);
+          setAskLaterItems([]);
           setTabs((prev) =>
             prev.map((t) =>
               t.tabId === councilTab.tabId
@@ -895,7 +898,34 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     nextParams.delete('pillar');
     nextParams.delete('expert');
     setSearchParams(nextParams, { replace: true });
-  }, [embeddedPreview, routeConversationId, searchParams, setSearchParams, tabs]);
+  }, [embeddedPreview, routeConversationId, searchParams, setSearchParams, tabs, activateTab]);
+
+  // On fresh /app/chat reload (no URL conversationId and no deep-link seed), load messages for the hydrated active tab
+  useEffect(() => {
+    if (
+      embeddedPreview ||
+      isPreviewMode ||
+      routeConversationId ||
+      didLoadInitialTabConvRef.current ||
+      seededQueryRef.current ||
+      activeConversation ||
+      conversations.length === 0
+    ) {
+      return;
+    }
+    if (activeTab.conversationId && conversations.some((c) => c.id === activeTab.conversationId)) {
+      didLoadInitialTabConvRef.current = true;
+      void loadConversationMessages(activeTab.conversationId);
+    }
+  }, [
+    embeddedPreview,
+    isPreviewMode,
+    routeConversationId,
+    activeConversation,
+    conversations,
+    activeTab.conversationId,
+    loadConversationMessages,
+  ]);
 
   const effectiveProfileId = activeConversation
     ? activeConversation.profile_id

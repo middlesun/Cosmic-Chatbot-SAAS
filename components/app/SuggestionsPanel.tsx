@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowUpRight,
   Check,
   ChevronDown,
   ChevronUp,
@@ -136,77 +137,89 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
     return (
       <div
         key={`${tier}-${item.id}`}
-        className="group flex items-start justify-between gap-2 rounded-2xl border border-[#3D3830]/10 bg-[#FDFBF7] px-3.5 py-2.5 transition-colors duration-150 hover:border-[#3D3830]/20 hover:bg-[#F1ECE3]/80"
+        className="group flex flex-col rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] overflow-hidden transition-all duration-150 hover:border-[#3D3830]/22 hover:shadow-[0_4px_14px_-8px_rgba(61,56,48,0.18)]"
       >
         <button
           type="button"
           disabled={disabled}
           onClick={() => onSubmitSuggestion(item)}
-          className="flex-1 min-w-0 text-left text-xs leading-relaxed text-[#3D3830] py-0.5 focus-visible:outline-none focus-visible:underline disabled:opacity-50 cursor-pointer"
+          className="w-full px-3.5 pt-2.5 pb-2 text-left text-[12.5px] leading-snug text-[#3D3830] hover:bg-[#FAF7F2]/60 transition-colors focus-visible:outline-none focus-visible:underline disabled:opacity-50 cursor-pointer"
         >
           {item.text}
         </button>
 
-        <div className="flex items-center gap-0.5 shrink-0 pt-0.5">
-          <Tooltip content="Insert into input to edit" placement="top">
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={(e) => {
-                e.stopPropagation();
-                onInsertSuggestion(item);
-              }}
-              aria-label={`Insert "${item.text}" into input`}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[#8B8275] hover:bg-[#EAE3D7] hover:text-[#3D3830] active:scale-95 transition-all disabled:opacity-40 cursor-pointer"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </Tooltip>
-
-          <Tooltip content={isCopied ? 'Copied' : 'Copy question'} placement="top">
-            <button
-              type="button"
-              onClick={(e) => void handleCopy(e, item)}
-              aria-label={isCopied ? 'Copied' : `Copy "${item.text}"`}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#EAE3D7] active:scale-95 transition-all cursor-pointer ${
-                isCopied ? 'text-[#2D6A4F]' : 'text-[#8B8275] hover:text-[#3D3830]'
-              }`}
-            >
-              {isCopied ? (
-                <Check className="h-3.5 w-3.5" />
-              ) : (
-                <Copy className="h-3.5 w-3.5" />
-              )}
-            </button>
-          </Tooltip>
-
-          <Tooltip
-            content={isSaved ? "Saved in 'Ask later'" : "Save to 'Ask later'"}
-            placement="top"
+        <div className="flex items-center justify-between gap-2 border-t border-[#3D3830]/[0.06] bg-[#FAF7F2]/70 px-3 py-1">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onSubmitSuggestion(item)}
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-[#8B8275] group-hover:text-[#3D3830] transition-colors disabled:opacity-40 cursor-pointer"
           >
-            <button
-              type="button"
-              onClick={(e) => handleToggleStar(e, item, tier)}
-              aria-label={
-                isSaved
-                  ? `Remove "${item.text}" from Ask later`
-                  : `Save "${item.text}" to Ask later`
-              }
-              aria-pressed={isSaved}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#EAE3D7] active:scale-95 transition-all cursor-pointer ${
-                isSaved ? 'text-[#D4A017]' : 'text-[#8B8275] hover:text-[#3D3830]'
-              }`}
+            <span>Ask</span>
+            <ArrowUpRight className="h-3 w-3 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </button>
+
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Tooltip content="Insert into input to edit" placement="top">
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onInsertSuggestion(item);
+                }}
+                aria-label={`Insert "${item.text}" into input`}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-lg text-[#8B8275] hover:bg-[#EAE3D7] hover:text-[#3D3830] active:scale-95 transition-all disabled:opacity-40 cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+
+            <Tooltip content={isCopied ? 'Copied' : 'Copy question'} placement="top">
+              <button
+                type="button"
+                onClick={(e) => void handleCopy(e, item)}
+                aria-label={isCopied ? 'Copied' : `Copy "${item.text}"`}
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-lg hover:bg-[#EAE3D7] active:scale-95 transition-all cursor-pointer ${
+                  isCopied ? 'text-[#2D6A4F]' : 'text-[#8B8275] hover:text-[#3D3830]'
+                }`}
+              >
+                {isCopied ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </Tooltip>
+
+            <Tooltip
+              content={isSaved ? "Saved in 'Ask later'" : "Save to 'Ask later'"}
+              placement="top"
             >
-              <Star className={`h-3.5 w-3.5 ${isSaved ? 'fill-[#D4A017]' : ''}`} />
-            </button>
-          </Tooltip>
+              <button
+                type="button"
+                onClick={(e) => handleToggleStar(e, item, tier)}
+                aria-label={
+                  isSaved
+                    ? `Remove "${item.text}" from Ask later`
+                    : `Save "${item.text}" to Ask later`
+                }
+                aria-pressed={isSaved}
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-lg hover:bg-[#EAE3D7] active:scale-95 transition-all cursor-pointer ${
+                  isSaved ? 'text-[#D4A017]' : 'text-[#8B8275] hover:text-[#3D3830]'
+                }`}
+              >
+                <Star className={`h-3.5 w-3.5 ${isSaved ? 'fill-[#D4A017]' : ''}`} />
+              </button>
+            </Tooltip>
+          </div>
         </div>
       </div>
     );
   };
 
   return (
-    <section className="pt-4 space-y-2.5" aria-label="Suggested questions and deeper analysis">
+    <section className="pt-4 space-y-2.5" aria-label="Suggestions">
       {/* Collapsible Editorial Header */}
       <div className="flex items-center justify-between gap-3">
         <button
@@ -215,13 +228,7 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
           aria-expanded={isExpanded}
           className="inline-flex items-center gap-2 rounded-xl py-1 pr-2 text-left text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors cursor-pointer"
         >
-          <span>
-            {hasFollowups && hasDeeper
-              ? 'Followup & Deeper analysis'
-              : hasDeeper
-              ? 'Deeper analysis'
-              : 'Followup'}
-          </span>
+          <span>Suggestions</span>
           <span className="text-[11px] font-normal text-[#8B8275] tabular-nums">
             · {totalCount}
           </span>
