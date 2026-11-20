@@ -159,17 +159,17 @@ const TimingRadarDashboard: React.FC = () => {
               <span>Personal Timing Radar</span>
             </div>
             <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#F4EFE6]">
-              Activate a Birth Chart to Unlock Live Planetary Timing
+              Add Birth Details to Unlock Live Planetary Timing
             </h2>
             <p className="text-sm text-[#F4EFE6]/70 leading-relaxed">
-              Once a profile chart is activated, this observatory radar tracks your active Mahadasha, Antardasha, and Pratyantardasha progress bars alongside live Gochar transits and daily briefs.
+              Once you save a birth chart, this observatory radar tracks your active Mahadasha, Antardasha, and Pratyantardasha progress bars alongside live Gochar transits and daily briefs.
             </p>
           </div>
           <Link
             to="/app/profiles"
-            className="inline-flex items-center gap-2 rounded-full bg-[#F4EFE6] px-6 py-3 text-xs font-medium text-[#1F2229] hover:bg-[#EAE3D7] transition-colors whitespace-nowrap shrink-0"
+            className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#F4EFE6] px-6 py-3 text-xs font-medium text-[#1F2229] hover:bg-[#EAE3D7] transition-colors whitespace-nowrap shrink-0"
           >
-            <span>Open Birth Profiles</span>
+            <span>Add Birth Details</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>

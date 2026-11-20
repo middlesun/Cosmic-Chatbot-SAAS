@@ -2,6 +2,7 @@ import {
   buildApiPayload,
   fetchChartFromApi,
   geocodeBirthLocation,
+  resolveHistoricalTimezoneOffset,
   type BirthLocationResolved,
 } from './astrologyApi';
 import {
@@ -80,13 +81,19 @@ export async function compileBirthChart(input: CompileProfileInput): Promise<{
 
   if (
     typeof input.latitude === 'number' &&
-    typeof input.longitude === 'number' &&
-    typeof input.timezoneOffset === 'number'
+    typeof input.longitude === 'number'
   ) {
+    const resolvedTz = await resolveHistoricalTimezoneOffset(
+      input.latitude,
+      input.longitude,
+      input.birthDate,
+      input.birthTime,
+      typeof input.timezoneOffset === 'number' ? input.timezoneOffset : 0
+    );
     location = {
       latitude: input.latitude,
       longitude: input.longitude,
-      timezoneOffset: input.timezoneOffset,
+      timezoneOffset: resolvedTz,
       locationLabel: [input.birthCity, input.birthState, input.birthCountry].filter(Boolean).join(', '),
     };
   } else {

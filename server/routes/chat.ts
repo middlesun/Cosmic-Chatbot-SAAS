@@ -12,6 +12,8 @@ import {
   sanitizeAssistantOutput,
   streamConsultationResponse,
 } from '../services/geminiOrchestrator';
+import { isAstrologyApiConfigured } from '../services/astrologyApi';
+import { compileBirthChart } from '../services/chartCompiler';
 import {
   rebuildProfileMemory,
   updateProfileMemoryAfterTurn,
@@ -465,11 +467,47 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     const { data: prof } = await supabaseAdmin
       .from('profiles')
       .select(
-        'id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_country'
+        'id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_state, birth_country, gender, relationship, latitude, longitude, timezone_offset'
       )
       .eq('id', conversation.profile_id)
       .eq('user_id', req.appUser.id)
       .maybeSingle();
+
+    if (prof && !prof.chart_text_context && isAstrologyApiConfigured()) {
+      try {
+        const compiled = await compileBirthChart({
+          name: prof.name,
+          birthDate: prof.birth_date,
+          birthTime: prof.birth_time,
+          birthCity: prof.birth_city,
+          birthState: prof.birth_state || null,
+          birthCountry: prof.birth_country,
+          latitude: prof.latitude ?? null,
+          longitude: prof.longitude ?? null,
+          timezoneOffset: prof.timezone_offset ?? null,
+        });
+        await supabaseAdmin
+          .from('profiles')
+          .update({
+            latitude: compiled.location.latitude,
+            longitude: compiled.location.longitude,
+            timezone_offset: compiled.location.timezoneOffset,
+            chart_json: compiled.chartJson,
+            chart_text_context: compiled.chartTextContext,
+            is_activated: true,
+            activated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', prof.id)
+          .eq('user_id', req.appUser.id);
+
+        prof.is_activated = true;
+        prof.chart_text_context = compiled.chartTextContext;
+      } catch {
+        // Proceed gracefully even if live ephemeris fetch fails transiently
+      }
+    }
+
     profileData = prof || null;
   } else if (conversation.use_full_profile_memory) {
     const targetModeType =
@@ -726,16 +764,18 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     }
 
     // Generate 5–6 JSON follow-ups + auto-title (if first exchange) in parallel when not aborted/leaked
+    const pendingProfile =
+      !streamResult.aborted && !wasLeakIntercepted ? streamResult.pendingProfile || null : null;
     const isFirstTurn = (historyRows || []).length === 0 && conversation.title === 'New Consultation';
     const [followups, generatedTitle] = await Promise.all([
-      streamResult.aborted || wasLeakIntercepted
+      streamResult.aborted || wasLeakIntercepted || Boolean(pendingProfile)
         ? Promise.resolve([])
         : generateFollowUpQuestions({
             userQuestion: promptText,
             assistantAnswer: finalAssistantText,
             modeSlug,
             languageSlug,
-            hasProfile: Boolean(profileData?.is_activated),
+            hasProfile: Boolean(profileData?.chart_text_context || profileData?.is_activated),
           }),
       isFirstTurn && !wasLeakIntercepted
         ? generateConversationTitle(promptText, profileData?.name)
@@ -784,6 +824,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       type: 'done',
       assistantMessage,
       followups,
+      pendingProfile,
       conversation: updatedConversation || conversation,
       creditsBalance: updatedBalance,
       creditsCharged: chargeTarget,

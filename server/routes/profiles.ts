@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { isAstrologyApiConfigured, getOrFetchDailyTransits } from '../services/astrologyApi';
+import {
+  isAstrologyApiConfigured,
+  getOrFetchDailyTransits,
+  searchBirthPlaces,
+} from '../services/astrologyApi';
 import { compileBirthChart } from '../services/chartCompiler';
 import { rewardReferralIfEligible } from '../services/referralReward';
 import {
@@ -83,6 +87,81 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   });
 });
 
+function parseNaturalPlace(
+  placeQuery?: string | null,
+  fallbackCity?: string | null,
+  fallbackState?: string | null,
+  fallbackCountry?: string | null
+): { birthCity: string; birthState: string | null; birthCountry: string } {
+  const rawCity = (fallbackCity || '').trim();
+  const rawState = (fallbackState || '').trim() || null;
+  const rawCountry = (fallbackCountry || '').trim();
+
+  if (rawCity && rawCountry) {
+    return { birthCity: rawCity, birthState: rawState, birthCountry: rawCountry };
+  }
+
+  const parts = String(placeQuery || rawCity || '')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 3) {
+    return {
+      birthCity: rawCity || parts[0],
+      birthState: rawState || parts.slice(1, -1).join(', '),
+      birthCountry: rawCountry || parts[parts.length - 1],
+    };
+  }
+  if (parts.length === 2) {
+    return {
+      birthCity: rawCity || parts[0],
+      birthState: rawState,
+      birthCountry: rawCountry || parts[1],
+    };
+  }
+  return {
+    birthCity: rawCity || parts[0] || '',
+    birthState: rawState,
+    birthCountry: rawCountry || '',
+  };
+}
+
+// Natural Place of Birth search proxy (must be registered before /:id)
+router.get('/places', requireAuth, async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (q.length < 2) {
+    res.json({ places: [], configured: isAstrologyApiConfigured() });
+    return;
+  }
+
+  if (!isAstrologyApiConfigured()) {
+    res.json({ places: [], configured: false });
+    return;
+  }
+
+  if (!req.appUser.is_admin) {
+    const rate = checkRateLimit(`place_search:${req.appUser.id}`, 45, 5 * 60 * 1000);
+    if (!rate.allowed) {
+      res.status(429).json({ error: 'Please pause a moment before searching more places.' });
+      return;
+    }
+  }
+
+  try {
+    const places = await searchBirthPlaces(q);
+    res.json({ places, configured: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unable to look up place';
+    res.status(502).json({ error: message, places: [] });
+  }
+});
+
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin || !req.appUser) {
@@ -119,7 +198,47 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  res.json({ profile: data });
+  // Silently compile any legacy unactivated profile when inspected so no user ever sees an "Activate" button
+  let profilePayload: Record<string, unknown> = data as unknown as Record<string, unknown>;
+  if (includeChart && (!profilePayload.is_activated || !profilePayload.chart_json) && isAstrologyApiConfigured()) {
+    try {
+      const compiled = await compileBirthChart({
+        name: String(profilePayload.name || 'Profile'),
+        birthDate: String(profilePayload.birth_date),
+        birthTime: String(profilePayload.birth_time),
+        birthCity: String(profilePayload.birth_city || ''),
+        birthState: (profilePayload.birth_state as string | null) ?? null,
+        birthCountry: String(profilePayload.birth_country || ''),
+        latitude: typeof profilePayload.latitude === 'number' ? profilePayload.latitude : null,
+        longitude: typeof profilePayload.longitude === 'number' ? profilePayload.longitude : null,
+        timezoneOffset: typeof profilePayload.timezone_offset === 'number' ? profilePayload.timezone_offset : null,
+      });
+
+      const { data: updated } = await supabaseAdmin
+        .from('profiles')
+        .update({
+          latitude: compiled.location.latitude,
+          longitude: compiled.location.longitude,
+          timezone_offset: compiled.location.timezoneOffset,
+          chart_json: compiled.chartJson,
+          chart_text_context: compiled.chartTextContext,
+          is_activated: true,
+          activated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', String(profilePayload.id))
+        .select(PROFILE_DETAIL_COLUMNS)
+        .single();
+
+      if (updated) {
+        profilePayload = updated as unknown as Record<string, unknown>;
+      }
+    } catch {
+      // Return existing record gracefully if ephemeris call temporarily fails
+    }
+  }
+
+  res.json({ profile: profilePayload });
 });
 
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -167,40 +286,120 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     is_default,
     birth_date,
     birth_time,
+    place_query,
     birth_city,
     birth_state,
     birth_country,
+    latitude,
+    longitude,
+    timezone_offset,
     gender,
     relationship,
     birth_chart_pdf_url,
   } = req.body || {};
 
-  if (!name?.trim() || !birth_date || !birth_time || !birth_city?.trim() || !birth_country?.trim()) {
-    res.status(400).json({ error: 'Name, birth date, birth time, city, and country are required.' });
+  const parsedPlace = parseNaturalPlace(place_query, birth_city, birth_state, birth_country);
+
+  if (!name?.trim() || !birth_date || !birth_time || !parsedPlace.birthCity) {
+    res.status(400).json({
+      error: 'Name, date of birth, time of birth, and place of birth are required.',
+    });
+    return;
+  }
+
+  if (!isAstrologyApiConfigured()) {
+    res.status(503).json({
+      error: 'Birth chart engine is not configured yet (FREE_ASTROLOGY_API_KEY missing).',
+      code: 'ASTROLOGY_API_NOT_CONFIGURED',
+    });
     return;
   }
 
   const normalizedBirthTime = birth_time.length === 5 ? `${birth_time}:00` : birth_time;
+  const parsedLat = typeof latitude === 'number' && !Number.isNaN(latitude) ? latitude : null;
+  const parsedLon = typeof longitude === 'number' && !Number.isNaN(longitude) ? longitude : null;
+  const parsedTz =
+    typeof timezone_offset === 'number' && !Number.isNaN(timezone_offset)
+      ? timezone_offset
+      : null;
 
-  const abuseCheck = await checkDuplicateChartAbuse({
+  const preAbuseCheck = await checkDuplicateChartAbuse({
     supabaseAdmin,
     user: req.appUser,
     ipHash: req.clientIpHash ?? null,
     birthDate: birth_date,
     birthTime: normalizedBirthTime,
-    birthCity: birth_city.trim(),
-    birthCountry: birth_country.trim(),
+    birthCity: parsedPlace.birthCity,
+    birthCountry: parsedPlace.birthCountry || parsedPlace.birthCity,
+    latitude: parsedLat,
+    longitude: parsedLon,
   });
 
-  if (abuseCheck.blocked) {
+  if (preAbuseCheck.blocked) {
     res.status(403).json({
-      error: abuseCheck.reason,
+      error: preAbuseCheck.reason,
       code: 'DUPLICATE_CHART_NETWORK_LIMIT',
     });
     return;
   }
 
-  const wantsDefault = Boolean(is_default);
+  // Compile full ephemeris + Parashari/KP/Jaimini/Ashtakavarga/Dasha chart ONCE right at creation
+  let compiled;
+  try {
+    compiled = await compileBirthChart({
+      name: name.trim(),
+      birthDate: birth_date,
+      birthTime: normalizedBirthTime,
+      birthCity: parsedPlace.birthCity,
+      birthState: parsedPlace.birthState,
+      birthCountry: parsedPlace.birthCountry,
+      latitude: parsedLat,
+      longitude: parsedLon,
+      timezoneOffset: parsedTz,
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : 'Could not build birth chart for those birth details.';
+    res.status(400).json({ error: message });
+    return;
+  }
+
+  // Fill canonical city / state / country from geocoder if user entered a short natural query (e.g. "Pune")
+  const resolvedLabelParts = compiled.location.locationLabel
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const finalCity = parsedPlace.birthCity || resolvedLabelParts[0] || 'Unknown';
+  const finalState =
+    parsedPlace.birthState ||
+    (resolvedLabelParts.length >= 3 ? resolvedLabelParts.slice(1, -1).join(', ') : null);
+  const finalCountry =
+    parsedPlace.birthCountry ||
+    (resolvedLabelParts.length >= 2
+      ? resolvedLabelParts[resolvedLabelParts.length - 1]
+      : 'India');
+
+  const postAbuseCheck = await checkDuplicateChartAbuse({
+    supabaseAdmin,
+    user: req.appUser,
+    ipHash: req.clientIpHash ?? null,
+    birthDate: birth_date,
+    birthTime: normalizedBirthTime,
+    birthCity: finalCity,
+    birthCountry: finalCountry,
+    latitude: compiled.location.latitude,
+    longitude: compiled.location.longitude,
+  });
+
+  if (postAbuseCheck.blocked) {
+    res.status(403).json({
+      error: postAbuseCheck.reason,
+      code: 'DUPLICATE_CHART_NETWORK_LIMIT',
+    });
+    return;
+  }
+
+  const wantsDefault = Boolean(is_default) || (count || 0) === 0;
   if (wantsDefault) {
     await supabaseAdmin
       .from('profiles')
@@ -212,29 +411,41 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   const chartFingerprint = computeChartFingerprint({
     birthDate: birth_date,
     birthTime: normalizedBirthTime,
-    birthCity: birth_city.trim(),
-    birthCountry: birth_country.trim(),
+    birthCity: finalCity,
+    birthCountry: finalCountry,
+    latitude: compiled.location.latitude,
+    longitude: compiled.location.longitude,
   });
 
+  const nowIso = new Date().toISOString();
   const basePayload = {
     user_id: req.appUser.id,
     name: name.trim(),
     birth_date,
     birth_time: normalizedBirthTime,
-    birth_city: birth_city.trim(),
-    birth_state: birth_state?.trim() || null,
-    birth_country: birth_country.trim(),
+    birth_city: finalCity,
+    birth_state: finalState,
+    birth_country: finalCountry,
+    latitude: compiled.location.latitude,
+    longitude: compiled.location.longitude,
+    timezone_offset: compiled.location.timezoneOffset,
     gender: ['male', 'female', 'non-binary'].includes(gender) ? gender : null,
     relationship: relationship?.trim() || null,
     birth_chart_pdf_url: birth_chart_pdf_url?.trim() || null,
-    is_activated: false,
+    chart_json: compiled.chartJson,
+    chart_text_context: compiled.chartTextContext,
+    is_activated: true,
+    activated_at: nowIso,
   };
 
   let { data, error } = await supabaseAdmin
     .from('profiles')
     .insert({
       ...basePayload,
-      short_name: typeof short_name === 'string' && short_name.trim() ? short_name.trim().slice(0, 40) : null,
+      short_name:
+        typeof short_name === 'string' && short_name.trim()
+          ? short_name.trim().slice(0, 40)
+          : null,
       is_default: wantsDefault,
       chart_fingerprint: chartFingerprint,
     })
@@ -248,13 +459,16 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       .select(BASE_PROFILE_SUMMARY_COLUMNS)
       .single();
     if (fallback.error || !fallback.data) {
-      res.status(500).json({ error: 'Failed to save birth profile' });
+      res.status(500).json({ error: 'Failed to save birth chart profile.' });
       return;
     }
     data = { ...fallback.data, short_name: null, is_default: false };
   }
 
-  res.status(201).json({ profile: data });
+  // Warm global daily transit cache in background (best effort)
+  getOrFetchDailyTransits().catch(() => null);
+
+  res.status(201).json({ profile: data, chartReady: true });
 });
 
 router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {

@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { isOpenRouterConfigured } from '../services/openrouter';
+import { isAstrologyApiConfigured } from '../services/astrologyApi';
+import { compileBirthChart } from '../services/chartCompiler';
 import { generateReportPdfBuffer } from '../services/pdfGenerator';
 import { ensureReportCatalogSeeded } from '../services/reportDefaults';
 import { enqueueReportOrder } from '../workers/reportWorker';
@@ -83,7 +85,7 @@ router.post('/orders', requireAuth, async (req: AuthenticatedRequest, res) => {
 
   const { reportCatalogId, profileId, userQuestions } = req.body || {};
   if (!reportCatalogId || !profileId) {
-    res.status(400).json({ error: 'Please select both a report and an activated birth profile.' });
+    res.status(400).json({ error: 'Please select both a report and a birth profile.' });
     return;
   }
 
@@ -96,7 +98,7 @@ router.post('/orders', requireAuth, async (req: AuthenticatedRequest, res) => {
       .maybeSingle(),
     supabaseAdmin
       .from('profiles')
-      .select('id, name, is_activated')
+      .select('id, name, is_activated, birth_date, birth_time, birth_city, birth_state, birth_country, latitude, longitude, timezone_offset')
       .eq('id', profileId)
       .eq('user_id', req.appUser.id)
       .maybeSingle(),
@@ -113,11 +115,43 @@ router.post('/orders', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 
   if (!profile.is_activated) {
-    res.status(400).json({
-      error: `Please activate ${profile.name}'s birth chart before ordering a Deep Research Report.`,
-      code: 'PROFILE_NOT_ACTIVATED',
-    });
-    return;
+    if (!isAstrologyApiConfigured()) {
+      res.status(503).json({
+        error: 'Birth chart engine is not configured yet to build this profile chart.',
+      });
+      return;
+    }
+    try {
+      const compiled = await compileBirthChart({
+        name: profile.name,
+        birthDate: profile.birth_date,
+        birthTime: profile.birth_time,
+        birthCity: profile.birth_city,
+        birthState: profile.birth_state,
+        birthCountry: profile.birth_country,
+        latitude: profile.latitude,
+        longitude: profile.longitude,
+        timezoneOffset: profile.timezone_offset,
+      });
+      await supabaseAdmin
+        .from('profiles')
+        .update({
+          latitude: compiled.location.latitude,
+          longitude: compiled.location.longitude,
+          timezone_offset: compiled.location.timezoneOffset,
+          chart_json: compiled.chartJson,
+          chart_text_context: compiled.chartTextContext,
+          is_activated: true,
+          activated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', profile.id);
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : `Could not prepare ${profile.name}'s birth chart.`,
+      });
+      return;
+    }
   }
 
   // Atomically deduct credits first

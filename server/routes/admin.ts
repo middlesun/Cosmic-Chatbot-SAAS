@@ -6,7 +6,12 @@ import {
 import crypto from 'crypto';
 import { Router } from 'express';
 import { getSupabaseAdmin, isSupabaseServerConfigured } from '../lib/supabaseAdmin';
-import { requireAdmin, requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import {
+  isPrimaryAdminEmail,
+  requireAdmin,
+  requireAuth,
+  type AuthenticatedRequest,
+} from '../middleware/auth';
 import { isAstrologyApiConfigured } from '../services/astrologyApi';
 import { sendClientInviteEmail } from '../services/email';
 import {
@@ -334,6 +339,18 @@ router.patch('/users/:id', async (req: AuthenticatedRequest, res) => {
   const targetUserId = req.params.id;
   const { tier, account_status, is_admin, creditAdjustment, adjustmentNote } =
     req.body || {};
+
+  if (is_admin === false || account_status === 'suspended') {
+    const { data: targetRow } = await supabaseAdmin
+      .from('users')
+      .select('email')
+      .eq('id', targetUserId)
+      .maybeSingle();
+    if (isPrimaryAdminEmail(targetRow?.email)) {
+      res.status(400).json({ error: 'Primary admin account cannot be demoted or suspended.' });
+      return;
+    }
+  }
 
   const updates: Record<string, unknown> = {};
   if (tier === 'personal' || tier === 'pro' || tier === 'guru') {

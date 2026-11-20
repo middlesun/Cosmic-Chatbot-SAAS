@@ -77,9 +77,11 @@ interface ChatComposerProps {
   onClearReply: () => void;
   onOpenMyPrompts: () => void;
   onOpenSettings: () => void;
+  onOpenAddChartModal?: () => void;
   onNewChat: () => void;
   onSendMessage: (overrideText?: string) => void;
   onStopGeneration: () => void;
+  focusTrigger?: number;
 }
 
 interface SpeechRecognitionAlternativeLike {
@@ -233,9 +235,11 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   onClearReply,
   onOpenMyPrompts,
   onOpenSettings,
+  onOpenAddChartModal,
   onNewChat,
   onSendMessage,
   onStopGeneration,
+  focusTrigger = 0,
 }) => {
   const [isListening, setIsListening] = useState(false);
   const [composerNotice, setComposerNotice] = useState<string | null>(null);
@@ -279,6 +283,13 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
     const nextHeight = Math.min(Math.max(el.scrollHeight, 24), 150);
     el.style.height = `${nextHeight}px`;
   }, [draftText]);
+
+  // Focus textarea when explicitly requested (e.g., after picking General Chart or a profile)
+  useEffect(() => {
+    if (focusTrigger > 0) {
+      window.setTimeout(() => textareaRef.current?.focus(), 40);
+    }
+  }, [focusTrigger]);
 
   // Cleanup speech recognition on unmount
   useEffect(() => {
@@ -712,6 +723,23 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                 <X className="h-3 w-3" />
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Active Voice Dictation Indicator */}
+        {isListening && (
+          <div className="animate-cc-drawer-in flex items-center justify-between gap-2 rounded-xl bg-[#FDFBF7] border border-[#7A3E36]/25 px-3.5 py-2 text-xs text-[#7A3E36] shadow-sm">
+            <span className="inline-flex items-center gap-2 font-medium">
+              <span className="h-2 w-2 rounded-full bg-[#7A3E36] animate-pulse" />
+              <span>Listening… speak naturally, tap Stop when done</span>
+            </span>
+            <button
+              type="button"
+              onClick={toggleVoiceInput}
+              className="rounded-full bg-[#7A3E36] px-2.5 py-0.5 text-[11px] font-medium text-[#FAF7F2] hover:bg-[#64322B] transition-colors cursor-pointer"
+            >
+              Stop
+            </button>
           </div>
         )}
 
@@ -1306,37 +1334,73 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                         </div>
 
                         {plusSubMenu === 'profiles' ? (
-                          profiles.length === 0 ? (
-                            <p className="px-2.5 py-2 text-xs text-[#8B8275]">
-                              No saved profiles yet.
-                            </p>
-                          ) : (
-                            <div className="max-h-56 overflow-y-auto space-y-0.5">
-                              {profiles.map((prof) => {
-                                const isPrimary = prof.id === activeProfileId;
-                                const isAdded = extraProfileIds.includes(prof.id);
-                                return (
+                          <div>
+                            {profiles.length === 0 ? (
+                              <div className="px-2.5 py-2.5 space-y-2">
+                                <p className="text-xs text-[#8B8275]">
+                                  No birth details saved yet.
+                                </p>
+                                {onOpenAddChartModal && (
                                   <button
-                                    key={prof.id}
                                     type="button"
-                                    onClick={() => handleSelectProfileFromPlus(prof.id)}
-                                    className={`w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-xs transition-colors text-left cursor-pointer ${
-                                      isPrimary || isAdded
-                                        ? 'bg-[#F1ECE3] font-medium text-[#3D3830]'
-                                        : 'text-[#5C5449] hover:bg-[#F1ECE3]/60 hover:text-[#3D3830]'
-                                    }`}
+                                    onClick={() => {
+                                      setIsPlusOpen(false);
+                                      setPlusSubMenu(null);
+                                      onOpenAddChartModal();
+                                    }}
+                                    className="w-full min-h-[40px] flex items-center justify-center gap-1.5 rounded-xl bg-[#4A453D] px-3 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors cursor-pointer"
                                   >
-                                    <span className="truncate">
-                                      {getProfileDisplayLabel(prof)}
-                                    </span>
-                                    {(isPrimary || isAdded) && (
-                                      <Check className="h-3.5 w-3.5 text-[#2D6A4F] shrink-0" />
-                                    )}
+                                    <Plus className="h-3.5 w-3.5" />
+                                    <span>Add Birth Details</span>
                                   </button>
-                                );
-                              })}
-                            </div>
-                          )
+                                )}
+                              </div>
+                            ) : (
+                              <>
+                                <div className="max-h-52 overflow-y-auto space-y-0.5">
+                                  {profiles.map((prof) => {
+                                    const isPrimary = prof.id === activeProfileId;
+                                    const isAdded = extraProfileIds.includes(prof.id);
+                                    return (
+                                      <button
+                                        key={prof.id}
+                                        type="button"
+                                        onClick={() => handleSelectProfileFromPlus(prof.id)}
+                                        className={`w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-xs transition-colors text-left cursor-pointer ${
+                                          isPrimary || isAdded
+                                            ? 'bg-[#F1ECE3] font-medium text-[#3D3830]'
+                                            : 'text-[#5C5449] hover:bg-[#F1ECE3]/60 hover:text-[#3D3830]'
+                                        }`}
+                                      >
+                                        <span className="truncate">
+                                          {getProfileDisplayLabel(prof)}
+                                        </span>
+                                        {(isPrimary || isAdded) && (
+                                          <Check className="h-3.5 w-3.5 text-[#2D6A4F] shrink-0" />
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                {onOpenAddChartModal && (
+                                  <div className="border-t border-[#3D3830]/10 mt-1 pt-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setIsPlusOpen(false);
+                                        setPlusSubMenu(null);
+                                        onOpenAddChartModal();
+                                      }}
+                                      className="w-full flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-medium text-[#3D3830] hover:bg-[#EAE3D7]/75 transition-colors cursor-pointer"
+                                    >
+                                      <Plus className="h-3 w-3 text-[#8B7355]" />
+                                      <span>Add Birth Details</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
                         ) : (
                           <div>
                             <div className="max-h-52 overflow-y-auto space-y-0.5">
@@ -1492,35 +1556,69 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                           </div>
 
                           {plusSubMenu === 'profiles' ? (
-                            <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5">
-                              {profiles.length === 0 ? (
-                                <p className="px-2.5 py-2.5 text-xs text-[#8B8275]">
-                                  No saved profiles yet.
-                                </p>
-                              ) : (
-                                profiles.map((prof) => {
-                                  const isPrimary = prof.id === activeProfileId;
-                                  const isAdded = extraProfileIds.includes(prof.id);
-                                  return (
-                                    <button
-                                      key={prof.id}
-                                      type="button"
-                                      onClick={() => handleSelectProfileFromPlus(prof.id)}
-                                      className={`w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-xs transition-colors text-left cursor-pointer ${
-                                        isPrimary || isAdded
-                                          ? 'bg-[#F1ECE3] font-medium text-[#3D3830]'
-                                          : 'text-[#5C5449] hover:bg-[#F1ECE3]/60 hover:text-[#3D3830]'
-                                      }`}
-                                    >
-                                      <span className="truncate">
-                                        {getProfileDisplayLabel(prof)}
-                                      </span>
-                                      {(isPrimary || isAdded) && (
-                                        <Check className="h-3.5 w-3.5 text-[#2D6A4F] shrink-0" />
-                                      )}
-                                    </button>
-                                  );
-                                })
+                            <div>
+                              <div className="max-h-52 overflow-y-auto p-1.5 space-y-0.5">
+                                {profiles.length === 0 ? (
+                                  <div className="px-2.5 py-2.5 space-y-2.5">
+                                    <p className="text-xs text-[#8B8275]">
+                                      No birth details saved yet.
+                                    </p>
+                                    {onOpenAddChartModal && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setIsPlusOpen(false);
+                                          setPlusSubMenu(null);
+                                          onOpenAddChartModal();
+                                        }}
+                                        className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-[#4A453D] px-3 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors cursor-pointer"
+                                      >
+                                        <Plus className="h-3.5 w-3.5" />
+                                        <span>Add Birth Details</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  profiles.map((prof) => {
+                                    const isPrimary = prof.id === activeProfileId;
+                                    const isAdded = extraProfileIds.includes(prof.id);
+                                    return (
+                                      <button
+                                        key={prof.id}
+                                        type="button"
+                                        onClick={() => handleSelectProfileFromPlus(prof.id)}
+                                        className={`w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-xs transition-colors text-left cursor-pointer ${
+                                          isPrimary || isAdded
+                                            ? 'bg-[#F1ECE3] font-medium text-[#3D3830]'
+                                            : 'text-[#5C5449] hover:bg-[#F1ECE3]/60 hover:text-[#3D3830]'
+                                        }`}
+                                      >
+                                        <span className="truncate">
+                                          {getProfileDisplayLabel(prof)}
+                                        </span>
+                                        {(isPrimary || isAdded) && (
+                                          <Check className="h-3.5 w-3.5 text-[#2D6A4F] shrink-0" />
+                                        )}
+                                      </button>
+                                    );
+                                  })
+                                )}
+                              </div>
+                              {profiles.length > 0 && onOpenAddChartModal && (
+                                <div className="border-t border-[#3D3830]/10 p-1.5 bg-[#FAF7F2]">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setIsPlusOpen(false);
+                                      setPlusSubMenu(null);
+                                      onOpenAddChartModal();
+                                    }}
+                                    className="w-full flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-medium text-[#3D3830] hover:bg-[#EAE3D7]/75 transition-colors cursor-pointer"
+                                  >
+                                    <Plus className="h-3 w-3 text-[#8B7355]" />
+                                    <span>Add Birth Details</span>
+                                  </button>
+                                </div>
                               )}
                             </div>
                           ) : (

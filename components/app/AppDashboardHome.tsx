@@ -1,8 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, MessageSquare, UserPlus, FileText, CreditCard } from 'lucide-react';
+import { ArrowRight, MessageSquare, UserPlus, FileText, CreditCard, Plus } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import TimingRadarDashboard from './TimingRadarDashboard';
+import { getUserProfileDisplayLabel } from './chatUtilities';
 
 const AppDashboardHome: React.FC = () => {
   const { appUser, stats } = useAuth();
@@ -23,7 +24,7 @@ const AppDashboardHome: React.FC = () => {
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-[#3D3830]/10 pb-8">
         <div>
           <p className="text-xs text-[#8B8275] mb-2">
-            {tierLabel} · {appUser?.currency_pref || 'INR'} · {appUser?.email}
+            {tierLabel} · {appUser?.currency_pref || 'INR'} · {getUserProfileDisplayLabel(appUser)}
           </p>
           <h1 className="font-serif text-4xl md:text-5xl font-medium text-[#3D3830] tracking-tight">
             Welcome back
@@ -33,13 +34,24 @@ const AppDashboardHome: React.FC = () => {
           </p>
         </div>
 
-        <Link
-          to="/app/chat"
-          className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-6 py-3 text-sm font-medium text-[#FAF7F2] transition-colors hover:bg-[#38342E] whitespace-nowrap shrink-0"
-        >
-          <span>Open Chat</span>
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          {stats.savedProfiles === 0 && (
+            <Link
+              to="/app/profiles"
+              className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-5 py-3 text-sm font-medium text-[#3D3830] transition-colors hover:bg-[#F1ECE3] whitespace-nowrap shrink-0"
+            >
+              <Plus className="h-4 w-4 text-[#8B7355]" />
+              <span>Add Birth Details</span>
+            </Link>
+          )}
+          <Link
+            to="/app/chat"
+            className="min-h-[44px] inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-6 py-3 text-sm font-medium text-[#FAF7F2] transition-colors hover:bg-[#38342E] whitespace-nowrap shrink-0"
+          >
+            <span>Open Chat</span>
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </section>
 
       {/* Personal Timing Radar (Observatory Night Surface) */}
@@ -91,7 +103,7 @@ const AppDashboardHome: React.FC = () => {
           <UserPlus className="h-5 w-5 text-[#5C5449] mb-4" />
           <h3 className="font-serif text-xl font-medium text-[#3D3830]">Birth Profiles</h3>
           <p className="mt-1.5 text-xs text-[#5C5449] leading-relaxed">
-            Save birth details and activate AstroSage-calibrated Parashari, KP, and Jaimini charts.
+            Save birth details once to calculate AstroSage-calibrated Parashari, KP, and Jaimini charts.
           </p>
         </Link>
 

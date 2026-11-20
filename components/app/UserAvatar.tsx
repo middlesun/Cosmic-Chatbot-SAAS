@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
+import { getUserProfileDisplayLabel } from './chatUtilities';
 
 export interface UserAvatarProps {
   size?: 'xs' | 'sm' | 'md' | 'lg';
@@ -32,12 +33,10 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   }, [avatarUrl]);
 
   const displayName =
-    appUser?.preferred_call_name?.trim() ||
     appUser?.full_name?.trim() ||
     (typeof meta.full_name === 'string' && meta.full_name.trim()) ||
     (typeof meta.name === 'string' && meta.name.trim()) ||
-    appUser?.email ||
-    'Cosmic Council';
+    getUserProfileDisplayLabel(appUser, 'Cosmic Council');
 
   const initials = (() => {
     if (isPreviewMode) return 'P';

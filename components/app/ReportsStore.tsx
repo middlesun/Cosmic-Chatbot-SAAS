@@ -80,13 +80,11 @@ const ReportsStore: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         setCatalog(data.catalog || []);
-        setProfiles(data.profiles || []);
+        const loadedProfiles: ProfileSummary[] = data.profiles || [];
+        setProfiles(loadedProfiles);
         setOrders(data.orders || []);
-        const firstActivated = (data.profiles || []).find(
-          (p: ProfileSummary) => p.is_activated
-        );
-        if (firstActivated) {
-          setSelectedProfileId(firstActivated.id);
+        if (loadedProfiles.length > 0) {
+          setSelectedProfileId(loadedProfiles[0].id);
         }
       }
     } catch {
@@ -110,11 +108,6 @@ const ReportsStore: React.FC = () => {
     return catalog.filter((c) => c.category === selectedCategory);
   }, [catalog, selectedCategory]);
 
-  const activatedProfiles = useMemo(
-    () => profiles.filter((p) => p.is_activated),
-    [profiles]
-  );
-
   const catalogById = useMemo(() => {
     const map = new Map<string, ReportCatalogItem>();
     for (const c of catalog) map.set(c.id, c);
@@ -131,8 +124,8 @@ const ReportsStore: React.FC = () => {
     setSelectedReport(report);
     setOrderError(null);
     setUserQuestions('');
-    if (!selectedProfileId && activatedProfiles.length > 0) {
-      setSelectedProfileId(activatedProfiles[0].id);
+    if (!selectedProfileId && profiles.length > 0) {
+      setSelectedProfileId(profiles[0].id);
     }
   };
 
@@ -142,7 +135,7 @@ const ReportsStore: React.FC = () => {
 
     setOrderError(null);
     if (!selectedProfileId) {
-      setOrderError('Please select an activated birth profile first.');
+      setOrderError('Please select a birth profile first.');
       return;
     }
 
@@ -196,7 +189,11 @@ const ReportsStore: React.FC = () => {
           to="/app/profiles"
           className="inline-flex items-center gap-2 rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-5 py-2.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] whitespace-nowrap shrink-0"
         >
-          <span>Manage Activated Profiles ({activatedProfiles.length})</span>
+          <span>
+            {profiles.length === 0
+              ? 'Add Birth Details'
+              : `Manage Birth Profiles (${profiles.length})`}
+          </span>
         </Link>
       </section>
 
@@ -380,29 +377,30 @@ const ReportsStore: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
-                  Select Activated Birth Profile
+                  Select Birth Profile
                 </label>
-                {activatedProfiles.length === 0 ? (
-                  <div className="rounded-2xl bg-[#F1ECE3] p-4 text-xs text-[#5C5449] space-y-2">
+                {profiles.length === 0 ? (
+                  <div className="rounded-2xl bg-[#F1ECE3] p-4 text-xs text-[#5C5449] space-y-3">
                     <p>
-                      Deep Research Reports require an activated birth chart profile with verified coordinates and Dashas.
+                      Deep Research Reports use a saved birth chart with verified coordinates and Dashas.
                     </p>
                     <Link
                       to="/app/profiles"
-                      className="inline-flex items-center gap-1 font-medium text-[#3D3830] underline"
+                      className="min-h-[40px] inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors"
                     >
-                      Activate a profile in Birth Profiles
+                      <span>Add Birth Details</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
                   </div>
                 ) : (
                   <CustomSelect
                     value={selectedProfileId}
                     onChange={setSelectedProfileId}
-                    ariaLabel="Select Activated Birth Profile"
+                    ariaLabel="Select Birth Profile"
                     size="md"
                     surface="elevated"
                     className="w-full"
-                    options={activatedProfiles.map((p) => ({
+                    options={profiles.map((p) => ({
                       value: p.id,
                       label: p.name,
                       hint: `${p.birth_date} · ${p.birth_city}`,
@@ -445,7 +443,7 @@ const ReportsStore: React.FC = () => {
                   type="submit"
                   disabled={
                     isSubmittingOrder ||
-                    activatedProfiles.length === 0 ||
+                    profiles.length === 0 ||
                     (appUser?.credits_balance ?? 0) < selectedReport.price_credits
                   }
                   className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-45"

@@ -21,11 +21,25 @@ export const getSupabaseAdmin = (): SupabaseClient | null => {
   }
   const signature = `${supabaseUrl}::${serviceRoleKey}`;
   if (!cachedAdmin || cachedSignature !== signature) {
+    const isOpaqueSecretKey = serviceRoleKey.startsWith('sb_secret_');
     cachedAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
       },
+      ...(isOpaqueSecretKey
+        ? {
+            global: {
+              fetch: (input, init) => {
+                const headers = new Headers(init?.headers);
+                if (headers.get('Authorization') === `Bearer ${serviceRoleKey}`) {
+                  headers.delete('Authorization');
+                }
+                return fetch(input, { ...init, headers });
+              },
+            },
+          }
+        : {}),
     });
     cachedSignature = signature;
   }

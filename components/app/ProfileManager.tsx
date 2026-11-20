@@ -4,7 +4,6 @@ import {
   Search,
   Trash2,
   Eye,
-  Sparkles,
   Loader2,
   ArrowLeft,
   AlertCircle,
@@ -14,8 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import ChartViewer, { type CompiledChartJson } from './ChartViewer';
-import CustomSelect from './CustomSelect';
-import CustomDatePicker from './CustomDatePicker';
+import { BirthChartForm } from './BirthChartModal';
 
 interface ProfileSummary {
   id: string;
@@ -35,37 +33,10 @@ interface ProfileSummary {
   chart_json?: CompiledChartJson | null;
 }
 
-const HOUR_12_OPTIONS = Array.from({ length: 12 }, (_, idx) => {
-  const val = String(idx + 1).padStart(2, '0');
-  return { value: val, label: val };
-});
-
-const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, idx) => {
-  const val = String(idx).padStart(2, '0');
-  return { value: val, label: val };
-});
-
-const MERIDIEM_OPTIONS = [
-  { value: 'AM', label: 'AM' },
-  { value: 'PM', label: 'PM' },
-];
-
-function to24HourTimeString(hour12: string, minute: string, meridiem: string): string {
-  if (!hour12 || !minute || (meridiem !== 'AM' && meridiem !== 'PM')) return '';
-  let h = Number(hour12);
-  if (meridiem === 'AM') {
-    if (h === 12) h = 0;
-  } else if (h !== 12) {
-    h += 12;
-  }
-  return `${String(h).padStart(2, '0')}:${minute}:00`;
-}
-
 const ProfileManager: React.FC = () => {
-  const { getAccessToken, refreshUser } = useAuth();
+  const { getAccessToken, refreshUser, isPreviewMode } = useAuth();
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
   const [tierLimit, setTierLimit] = useState(10);
-  const [activationCost, setActivationCost] = useState(0);
   const [astrologyApiConfigured, setAstrologyApiConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -73,27 +44,9 @@ const ProfileManager: React.FC = () => {
 
   // Create form state
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [birthHour12, setBirthHour12] = useState('');
-  const [birthMinute, setBirthMinute] = useState('');
-  const [birthMeridiem, setBirthMeridiem] = useState<'AM' | 'PM'>('AM');
-  const [formState, setFormState] = useState({
-    name: '',
-    short_name: '',
-    is_default: false,
-    birth_date: '',
-    birth_time: '',
-    birth_city: '',
-    birth_state: '',
-    birth_country: 'India',
-    gender: 'male',
-    relationship: 'Self',
-    birth_chart_pdf_url: '',
-  });
 
-  // Activation & Detail Inspection state
-  const [activatingId, setActivatingId] = useState<string | null>(null);
-  const [activationStepText, setActivationStepText] = useState('');
+  // Chart inspection & deletion state
+  const [inspectingId, setInspectingId] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<ProfileSummary | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -104,7 +57,10 @@ const ProfileManager: React.FC = () => {
 
   const loadProfiles = useCallback(async () => {
     const token = await getAccessToken();
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -117,7 +73,6 @@ const ProfileManager: React.FC = () => {
       } else {
         setProfiles(data.profiles || []);
         setTierLimit(data.tierLimit ?? 10);
-        setActivationCost(data.activationCost ?? 0);
         setAstrologyApiConfigured(Boolean(data.astrologyApiConfigured));
         setError(null);
       }
@@ -129,73 +84,8 @@ const ProfileManager: React.FC = () => {
   }, [getAccessToken]);
 
   useEffect(() => {
-    loadProfiles();
+    void loadProfiles();
   }, [loadProfiles]);
-
-  const updateBirthTimeParts = (nextHour: string, nextMinute: string, nextMeridiem: 'AM' | 'PM') => {
-    setBirthHour12(nextHour);
-    setBirthMinute(nextMinute);
-    setBirthMeridiem(nextMeridiem);
-    const converted = to24HourTimeString(nextHour, nextMinute, nextMeridiem);
-    setFormState((prev) => ({ ...prev, birth_time: converted }));
-  };
-
-  const handleCreateProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!formState.birth_date) {
-      setError('Please select a birth date.');
-      return;
-    }
-    const normalizedTime =
-      formState.birth_time || to24HourTimeString(birthHour12, birthMinute, birthMeridiem);
-    if (!normalizedTime) {
-      setError('Please select birth hour, minute, and AM/PM.');
-      return;
-    }
-    const token = await getAccessToken();
-    if (!token) return;
-
-    setCreating(true);
-    try {
-      const res = await fetch('/api/profiles', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ ...formState, birth_time: normalizedTime }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Could not save profile.');
-      } else {
-        setShowCreateForm(false);
-        setBirthHour12('');
-        setBirthMinute('');
-        setBirthMeridiem('AM');
-        setFormState({
-          name: '',
-          short_name: '',
-          is_default: false,
-          birth_date: '',
-          birth_time: '',
-          birth_city: '',
-          birth_state: '',
-          birth_country: 'India',
-          gender: 'male',
-          relationship: 'Self',
-          birth_chart_pdf_url: '',
-        });
-        await loadProfiles();
-        await refreshUser();
-      }
-    } catch {
-      setError('Failed to save profile.');
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const handleSetAsDefault = async (profileId: string) => {
     const token = await getAccessToken();
@@ -252,59 +142,29 @@ const ProfileManager: React.FC = () => {
     }
   };
 
-  const handleActivate = async (profile: ProfileSummary) => {
-    setError(null);
-    const token = await getAccessToken();
-    if (!token) return;
-
-    setActivatingId(profile.id);
-    setActivationStepText('Resolving coordinates & historical timezone...');
-    const stepTimer1 = setTimeout(() => {
-      setActivationStepText('Computing Sidereal Lahiri positions & D1–D60 Vargas...');
-    }, 3000);
-    const stepTimer2 = setTimeout(() => {
-      setActivationStepText('Calculating KP Placidus Sub-Lords, Jaimini & Ashtakavarga...');
-    }, 6500);
-
-    try {
-      const res = await fetch(`/api/profiles/${profile.id}/activate`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Activation failed.');
-      } else {
-        await loadProfiles();
-        await refreshUser();
-        setSelectedProfile(data.profile);
-      }
-    } catch {
-      setError('Network error during chart activation.');
-    } finally {
-      clearTimeout(stepTimer1);
-      clearTimeout(stepTimer2);
-      setActivatingId(null);
-      setActivationStepText('');
-    }
-  };
-
   const handleInspectChart = async (profileId: string) => {
     const token = await getAccessToken();
     if (!token) return;
     setError(null);
+    setInspectingId(profileId);
     try {
       const res = await fetch(`/api/profiles/${profileId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (res.ok && data.profile) {
-        setSelectedProfile(data.profile);
+        if (data.profile.chart_json) {
+          setSelectedProfile(data.profile);
+        } else {
+          setError('Chart data could not be loaded for this profile. Please try again.');
+        }
       } else {
         setError(data.error || 'Could not load chart details.');
       }
     } catch {
       setError('Failed to load chart.');
+    } finally {
+      setInspectingId(null);
     }
   };
 
@@ -365,24 +225,18 @@ const ProfileManager: React.FC = () => {
             Birth Profiles & Charts
           </h1>
           <p className="mt-1.5 text-sm text-[#5C5449]">
-            Save birth details and activate complete AstroSage-calibrated Parashari, KP, Jaimini, and Ashtakavarga charts.
+            Save birth details once to calculate complete AstroSage-calibrated Parashari, KP, Jaimini, and Ashtakavarga charts.
           </p>
         </div>
 
         <button
           type="button"
-          onClick={() => {
-            const nextOpen = !showCreateForm;
-            setShowCreateForm(nextOpen);
-            if (nextOpen && profiles.length === 0) {
-              setFormState((prev) => ({ ...prev, is_default: true }));
-            }
-          }}
+          onClick={() => setShowCreateForm((v) => !v)}
           disabled={profiles.length >= tierLimit}
-          className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 whitespace-nowrap shrink-0"
+          className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 whitespace-nowrap shrink-0 transition-colors"
         >
           <Plus className="h-4 w-4" />
-          <span>{showCreateForm ? 'Close Form' : 'New Birth Profile'}</span>
+          <span>{showCreateForm ? 'Close Form' : 'Add Birth Details'}</span>
         </button>
       </div>
 
@@ -391,7 +245,7 @@ const ProfileManager: React.FC = () => {
           <AlertCircle className="h-4 w-4 shrink-0 text-[#3D3830] mt-0.5" />
           <div>
             <span className="font-semibold text-[#3D3830]">FREE_ASTROLOGY_API_KEY not configured yet.</span>{' '}
-            You can save birth profiles now; add your FreeAstrologyAPI key to <code className="font-['DM_Sans',sans-serif]">.env</code> to enable automated chart activation.
+            Add your FreeAstrologyAPI key to your server environment variables to enable automated birth chart calculation.
           </div>
         </div>
       )}
@@ -402,194 +256,28 @@ const ProfileManager: React.FC = () => {
         </div>
       )}
 
-      {activatingId && (
-        <div className="rounded-3xl bg-[#1F2229] text-[#F4EFE6] p-6 flex items-center gap-4">
-          <Loader2 className="h-5 w-5 animate-spin text-[#B8965A] shrink-0" />
-          <div>
-            <p className="font-serif text-lg">Activating Astrological Chart</p>
-            <p className="text-xs text-[#F4EFE6]/70 mt-0.5">{activationStepText}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Add Profile Form */}
+      {/* One-Step Add Birth Details Form */}
       {showCreateForm && (
-        <form
-          onSubmit={handleCreateProfile}
-          className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 md:p-8 space-y-5"
-        >
-          <h2 className="font-serif text-2xl font-medium text-[#3D3830]">Save Birth Details</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Full Name</label>
-              <input
-                type="text"
-                required
-                value={formState.name}
-                onChange={(e) => setFormState({ ...formState, name: e.target.value })}
-                placeholder="e.g. Aarav Mehta"
-                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
-                Short Name (Optional)
-              </label>
-              <input
-                type="text"
-                maxLength={40}
-                value={formState.short_name}
-                onChange={(e) => setFormState({ ...formState, short_name: e.target.value })}
-                placeholder="e.g. Aarav, Mom..."
-                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Birth Date</label>
-              <CustomDatePicker
-                value={formState.birth_date}
-                onChange={(nextDate) => setFormState({ ...formState, birth_date: nextDate })}
-                ariaLabel="Birth Date"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Birth Time</label>
-              <div className="grid grid-cols-3 gap-2">
-                <CustomSelect
-                  value={birthHour12}
-                  onChange={(val) => updateBirthTimeParts(val, birthMinute, birthMeridiem)}
-                  options={HOUR_12_OPTIONS}
-                  placeholder="HH"
-                  ariaLabel="Birth Hour"
-                  size="md"
-                  surface="canvas"
-                />
-                <CustomSelect
-                  value={birthMinute}
-                  onChange={(val) => updateBirthTimeParts(birthHour12, val, birthMeridiem)}
-                  options={MINUTE_OPTIONS}
-                  placeholder="MM"
-                  ariaLabel="Birth Minute"
-                  size="md"
-                  surface="canvas"
-                />
-                <CustomSelect
-                  value={birthMeridiem}
-                  onChange={(val) =>
-                    updateBirthTimeParts(
-                      birthHour12,
-                      birthMinute,
-                      val === 'PM' ? 'PM' : 'AM'
-                    )
-                  }
-                  options={MERIDIEM_OPTIONS}
-                  ariaLabel="AM or PM"
-                  size="md"
-                  surface="canvas"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Birth City</label>
-              <input
-                type="text"
-                required
-                value={formState.birth_city}
-                onChange={(e) => setFormState({ ...formState, birth_city: e.target.value })}
-                placeholder="e.g. Mumbai"
-                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">State / Province</label>
-              <input
-                type="text"
-                value={formState.birth_state}
-                onChange={(e) => setFormState({ ...formState, birth_state: e.target.value })}
-                placeholder="e.g. Maharashtra"
-                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Country</label>
-              <input
-                type="text"
-                required
-                value={formState.birth_country}
-                onChange={(e) => setFormState({ ...formState, birth_country: e.target.value })}
-                placeholder="e.g. India"
-                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Gender</label>
-              <CustomSelect
-                value={formState.gender}
-                onChange={(val) => setFormState({ ...formState, gender: val })}
-                ariaLabel="Gender"
-                size="md"
-                surface="canvas"
-                className="w-full"
-                options={[
-                  { value: 'male', label: 'Male' },
-                  { value: 'female', label: 'Female' },
-                  { value: 'non-binary', label: 'Non-Binary' },
-                ]}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Relationship</label>
-              <input
-                type="text"
-                value={formState.relationship}
-                onChange={(e) => setFormState({ ...formState, relationship: e.target.value })}
-                placeholder="Self, Partner, Client..."
-                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
-              />
-            </div>
+        <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 md:p-8 space-y-5">
+          <div>
+            <h2 className="font-serif text-2xl font-medium text-[#3D3830]">Add Birth Details</h2>
+            <p className="text-xs text-[#8B8275] mt-1">
+              Calculated once and saved permanently for all consultations, reports, and planetary timing.
+            </p>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">Chart PDF URL (Optional)</label>
-              <input
-                type="url"
-                value={formState.birth_chart_pdf_url}
-                onChange={(e) => setFormState({ ...formState, birth_chart_pdf_url: e.target.value })}
-                placeholder="https://..."
-                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
-              />
-            </div>
-
-            <label className="flex items-center gap-2.5 rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-4 py-2.5 text-xs text-[#3D3830] cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={formState.is_default}
-                onChange={(e) => setFormState({ ...formState, is_default: e.target.checked })}
-                className="h-4 w-4 accent-[#4A453D] rounded"
-              />
-              <span>Set as my primary chart (shown as “You” across Overview & Chat)</span>
-            </label>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => setShowCreateForm(false)}
-              className="rounded-full px-5 py-2.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830]"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={creating}
-              className="rounded-full bg-[#4A453D] px-6 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50"
-            >
-              {creating ? 'Saving...' : 'Save Profile'}
-            </button>
-          </div>
-        </form>
+          <BirthChartForm
+            getAccessToken={getAccessToken}
+            isPreviewMode={isPreviewMode}
+            isFirstChart={profiles.length === 0}
+            submitLabel="Create Birth Chart"
+            onCancel={() => setShowCreateForm(false)}
+            onCreated={async () => {
+              setShowCreateForm(false);
+              await loadProfiles();
+              await refreshUser();
+            }}
+          />
+        </div>
       )}
 
       {/* Search Filter */}
@@ -617,18 +305,15 @@ const ProfileManager: React.FC = () => {
         <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-10 text-center">
           <h2 className="font-serif text-2xl font-medium text-[#3D3830]">No Birth Profiles Yet</h2>
           <p className="mt-2 text-sm text-[#5C5449] max-w-md mx-auto">
-            Add your birth details or a client’s chart to calculate complete D1–D60 Vargas, KP Sub-Lords, Jaimini Karakas, and Vimshottari Dashas.
+            Add your birth details or a family member&apos;s chart to calculate complete D1–D60 Vargas, KP Sub-Lords, Jaimini Karakas, and Vimshottari Dashas.
           </p>
           <button
             type="button"
-            onClick={() => {
-              setFormState((prev) => ({ ...prev, is_default: true }));
-              setShowCreateForm(true);
-            }}
-            className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-6 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E]"
+            onClick={() => setShowCreateForm(true)}
+            className="mt-5 min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-6 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors"
           >
             <Plus className="h-4 w-4" />
-            <span>Create First Profile</span>
+            <span>Add Birth Details</span>
           </button>
         </div>
       ) : (
@@ -649,9 +334,7 @@ const ProfileManager: React.FC = () => {
                       {profile.is_default && (
                         <span className="font-medium text-[#3D3830]">You (Primary) ·</span>
                       )}
-                      <span>
-                        {profile.relationship || 'Profile'} · {profile.is_activated ? 'Chart Activated' : 'Pending Activation'}
-                      </span>
+                      <span>{profile.relationship || 'Profile'}</span>
                     </p>
                     <h3 className="font-serif text-2xl font-medium text-[#3D3830] truncate">
                       {profile.name}
@@ -745,37 +428,28 @@ const ProfileManager: React.FC = () => {
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#3D3830]/10">
-                {profile.is_activated ? (
-                  <button
-                    type="button"
-                    onClick={() => handleInspectChart(profile.id)}
-                    className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E]"
-                  >
+                <button
+                  type="button"
+                  disabled={inspectingId === profile.id}
+                  onClick={() => void handleInspectChart(profile.id)}
+                  className="min-h-[40px] inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-60 transition-colors"
+                >
+                  {inspectingId === profile.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
                     <Eye className="h-3.5 w-3.5" />
-                    <span>Inspect Chart & Dashas</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={activatingId !== null}
-                    onClick={() => handleActivate(profile)}
-                    className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>
-                      {activationCost === 0
-                        ? 'Activate Chart (Included)'
-                        : `Activate · ${activationCost.toLocaleString()} Credits`}
-                    </span>
-                  </button>
-                )}
+                  )}
+                  <span>
+                    {inspectingId === profile.id ? 'Opening Chart...' : 'Inspect Chart & Dashas'}
+                  </span>
+                </button>
 
                 {!profile.is_default && (
                   <button
                     type="button"
                     disabled={updatingMetaId === profile.id}
                     onClick={() => void handleSetAsDefault(profile.id)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/20 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7] transition-colors disabled:opacity-50"
+                    className="min-h-[40px] inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/20 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7] transition-colors disabled:opacity-50"
                   >
                     <UserCheck className="h-3.5 w-3.5 text-[#8B7355]" />
                     <span>{updatingMetaId === profile.id ? 'Updating...' : 'Set as Your Chart'}</span>
@@ -791,3 +465,4 @@ const ProfileManager: React.FC = () => {
 };
 
 export default ProfileManager;
+

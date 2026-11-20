@@ -2,27 +2,50 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  ArrowUpRight,
+  Check,
   ChevronDown,
   ChevronUp,
+  Copy,
   Eye,
   EyeOff,
+  Plus,
   Reply,
+  Sparkles,
   Star,
   Trash2,
+  UserCheck,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import type {
   ChatCatalog,
   ChatMessageRecord,
   ChatProfile,
   ConversationRecord,
+  PendingBirthProfileDraft,
 } from './chatTypes';
 import type { ChatFontSize } from './ChatSettingsModal';
 import Tooltip from './Tooltip';
+import { ChartCreationProgress } from './BirthChartModal';
+import {
+  getWhatsAppShareUrl,
+  isSpeechSynthesisSupported,
+  speakMessageText,
+  stopSpeaking,
+} from './chatUtilities';
+
+export interface InlineChartCreationState {
+  status: 'creating' | 'success' | 'error';
+  name: string;
+  draft: PendingBirthProfileDraft;
+  errorMessage?: string;
+}
 
 interface MessageThreadProps {
   conversation: ConversationRecord | null;
   profile: ChatProfile | null;
+  profiles: ChatProfile[];
+  generalReadyMode: boolean;
   messages: ChatMessageRecord[];
   hasMoreMessages?: boolean;
   loadingEarlierMessages?: boolean;
@@ -30,15 +53,22 @@ interface MessageThreadProps {
   isStreaming: boolean;
   catalog: ChatCatalog | null;
   fontSize?: ChatFontSize;
+  languageSlug?: string;
   searchQuery?: string;
   activeMatchMessageId?: string | null;
+  pendingProfileConfirm?: { messageId: string; draft: PendingBirthProfileDraft } | null;
+  inlineChartCreation?: InlineChartCreationState | null;
   onLoadEarlierMessages?: () => void;
   onReplyToMessage: (message: ChatMessageRecord) => void;
   onToggleStar: (message: ChatMessageRecord) => void;
   onToggleExclude: (message: ChatMessageRecord) => void;
   onDeleteMessage: (messageId: string) => void;
   onSelectFollowUp: (question: string) => void;
-  onQuickStarterPrompt: (question: string) => void;
+  onSelectProfile: (profileId: string) => void;
+  onOpenAddChartModal: () => void;
+  onSelectGeneralChart: () => void;
+  onConfirmPendingProfile: (draft: PendingBirthProfileDraft) => void;
+  onEditPendingProfile: (draft: PendingBirthProfileDraft) => void;
 }
 
 const escapeRegExp = (str: string) =>
@@ -89,6 +119,48 @@ const getProfileDisplayLabel = (p: ChatProfile): string => {
   return short || p.name;
 };
 
+const getOwnChartButtonLabel = (p: ChatProfile): string => {
+  const short = p.short_name?.trim() || p.name.trim().split(/\s+/)[0] || p.name;
+  return `Your Chart (${short})`;
+};
+
+const formatReadableDate = (isoDate: string): string => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim());
+  if (!match) return isoDate;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthIdx = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  if (monthIdx < 0 || monthIdx > 11) return isoDate;
+  return `${day} ${months[monthIdx]} ${match[1]}`;
+};
+
+const format12HourTime = (hhmm: string): string => {
+  const [hStr, mStr] = hhmm.split(':');
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+};
+
+/** Brand-matched monochrome WhatsApp outline icon (warm umber/brass, zero neon green) */
+const WhatsAppOutlineIcon: React.FC<{ className?: string }> = ({ className = 'h-3.5 w-3.5' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    <path d="M9.5 9.2c.2-.4.4-.4.6-.4h.5c.2 0 .4.1.5.4l.7 1.6c.1.2.1.4-.1.6l-.5.6c-.1.1-.1.3 0 .5.4.8 1.2 1.5 2 1.9.2.1.4.1.5 0l.6-.5c.2-.2.4-.2.6-.1l1.6.7c.3.1.4.3.4.5v.5c0 .3-.2.6-.6.8-.5.2-1.2.3-2.1 0-1.1-.3-2.4-1.1-3.4-2.1-1-1-1.8-2.3-2.1-3.4-.2-.9-.1-1.6.1-2.1z" />
+  </svg>
+);
+
 const FONT_SIZE_STYLES: Record<
   ChatFontSize,
   {
@@ -121,24 +193,37 @@ const FONT_SIZE_STYLES: Record<
 const MessageThread: React.FC<MessageThreadProps> = ({
   conversation,
   profile,
+  profiles,
+  generalReadyMode,
   messages,
   hasMoreMessages = false,
   loadingEarlierMessages = false,
   streamingText,
   isStreaming,
-  catalog,
   fontSize = 'base',
+  languageSlug = 'English',
   searchQuery = '',
   activeMatchMessageId = null,
+  pendingProfileConfirm = null,
+  inlineChartCreation = null,
   onLoadEarlierMessages,
   onReplyToMessage,
   onToggleStar,
   onToggleExclude,
   onDeleteMessage,
   onSelectFollowUp,
-  onQuickStarterPrompt,
+  onSelectProfile,
+  onOpenAddChartModal,
+  onSelectGeneralChart,
+  onConfirmPendingProfile,
+  onEditPendingProfile,
 }) => {
   const [confirmDeleteMsgId, setConfirmDeleteMsgId] = useState<string | null>(null);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [activeUserMsgId, setActiveUserMsgId] = useState<string | null>(null);
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const [showInlineChartPicker, setShowInlineChartPicker] = useState(false);
+
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [isScrollable, setIsScrollable] = useState(false);
@@ -148,10 +233,79 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const holdRafRef = useRef<number | null>(null);
   const holdTimerRef = useRef<number | null>(null);
   const scrollIdleTimerRef = useRef<number | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
   const isScrollHoveredRef = useRef(false);
   const didHoldScrollRef = useRef(false);
 
+  const speechSupported = useMemo(() => isSpeechSynthesisSupported(), []);
   const sizeTokens = FONT_SIZE_STYLES[fontSize] || FONT_SIZE_STYLES.base;
+
+  const defaultOwnProfile = useMemo(
+    () => profiles.find((p) => p.is_default) || null,
+    [profiles]
+  );
+
+  // Stop active voice playback when switching threads or unmounting
+  useEffect(() => {
+    stopSpeaking();
+    setSpeakingMsgId(null);
+    setShowInlineChartPicker(false);
+    setActiveUserMsgId(null);
+  }, [conversation?.id]);
+
+  useEffect(() => {
+    return () => {
+      stopSpeaking();
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Dismiss tapped user bubble actions on outside click
+  useEffect(() => {
+    if (!activeUserMsgId) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (target?.closest(`[data-user-bubble="${activeUserMsgId}"]`)) return;
+      setActiveUserMsgId(null);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [activeUserMsgId]);
+
+  const handleCopyMessage = useCallback(async (msgId: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMsgId(msgId);
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => {
+        setCopiedMsgId((prev) => (prev === msgId ? null : prev));
+      }, 1800);
+    } catch {
+      // Clipboard denied silently
+    }
+  }, []);
+
+  const handleToggleListen = useCallback(
+    (msg: ChatMessageRecord) => {
+      if (speakingMsgId === msg.id) {
+        stopSpeaking();
+        setSpeakingMsgId(null);
+        return;
+      }
+      const started = speakMessageText(msg.content, msg.language_used || languageSlug, {
+        onEnd: () => setSpeakingMsgId((prev) => (prev === msg.id ? null : prev)),
+        onError: () => setSpeakingMsgId((prev) => (prev === msg.id ? null : prev)),
+      });
+      if (started) {
+        setSpeakingMsgId(msg.id);
+      }
+    },
+    [languageSlug, speakingMsgId]
+  );
 
   const updateScrollState = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -186,7 +340,26 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
   useEffect(() => {
     updateScrollState();
-  }, [messages.length, streamingText, conversation?.id, updateScrollState]);
+  }, [
+    messages.length,
+    streamingText,
+    conversation?.id,
+    pendingProfileConfirm?.messageId,
+    inlineChartCreation?.status,
+    updateScrollState,
+  ]);
+
+  // Smoothly scroll to bottom when inline chart creation or confirmation card appears
+  useEffect(() => {
+    if (pendingProfileConfirm || inlineChartCreation) {
+      const el = scrollContainerRef.current;
+      if (el) {
+        window.setTimeout(() => {
+          el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        }, 80);
+      }
+    }
+  }, [pendingProfileConfirm, inlineChartCreation]);
 
   const stopHoldScroll = useCallback(() => {
     if (holdTimerRef.current !== null) {
@@ -250,11 +423,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     return map;
   }, [messages]);
 
-  const labelFor = (list: { slug: string; displayName: string }[] | undefined, slug: string | null) => {
-    if (!slug) return '';
-    return list?.find((item) => item.slug === slug)?.displayName || slug;
-  };
-
   const latestAssistantWithFollowups = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (
@@ -270,23 +438,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
   const profileLabel = profile ? getProfileDisplayLabel(profile) : null;
 
-  const starterPrompts = profile
-    ? [
-        `Give me a Vedic synthesis of ${profileLabel}'s current Mahadasha, Antardasha, and today's Gochar transits.`,
-        `Analyze ${profileLabel}'s 10th house, D10 Dasamsa, and KP career significators for growth in the next 12 months.`,
-        `What are the key relationship and emotional patterns shown by ${profileLabel}'s 7th house, D9 Navamsa, and Darakaraka?`,
-      ]
-    : conversation?.mode_type === 'learn_astrology'
-    ? [
-        'Explain how KP Cuspal Sub-Lords confirm or deny a house promise compared to Parashari Rashi reading.',
-        'How should I combine Vimshottari Mahadasha with Ashtakavarga scores when timing a major life shift?',
-        'Walk me through what Atmakaraka and Karakamsha reveal in Jaimini astrology.',
-      ]
-    : [
-        'How does Saturn’s slow transit interact with Moon sign (Sade Sati) across mind and career?',
-        'What is the best framework to evaluate career change timing using Vedic Dasha and D10?',
-        'Help me understand how Parashari, KP, Jaimini, and Nadi complement each other.',
-      ];
+  const handleAddChartButtonClick = () => {
+    if (profiles.length === 0) {
+      onOpenAddChartModal();
+      return;
+    }
+    setShowInlineChartPicker((prev) => !prev);
+  };
 
   const markdownComponents = useMemo(
     () => ({
@@ -362,52 +520,185 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     [searchQuery, sizeTokens]
   );
 
-  if (messages.length === 0 && !isStreaming) {
+  // Minimal Calm Empty State for New Chat
+  if (messages.length === 0 && !isStreaming && !inlineChartCreation) {
     return (
       <div
         key={conversation?.id || 'empty'}
         className="animate-cc-tab-panel flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-8 pb-32 sm:pb-36 flex flex-col items-center"
       >
-        <div className="w-full max-w-2xl space-y-7 my-auto">
-          <div className="space-y-3 text-center">
-            <p className="text-xs text-[#8B8275]">
-              {profile
-                ? `${profileLabel} · ${profile.birth_date} · ${profile.birth_city}, ${profile.birth_country}`
-                : conversation?.mode_type === 'learn_astrology'
-                ? 'Learn Astrology · Interactive Jyotish Study'
-                : 'General Consultation'}
-            </p>
-            <h2 className="font-serif text-3xl md:text-4xl font-medium text-[#3D3830] tracking-tight">
-              {profile
-                ? `Observatory Session for ${profileLabel}`
-                : conversation?.mode_type === 'learn_astrology'
-                ? 'Study the Living Architecture of Jyotish'
-                : 'Open a Vedic Council Consultation'}
-            </h2>
-            <p className="text-sm text-[#5C5449] max-w-xl mx-auto leading-relaxed">
-              {profile
-                ? profile.is_activated
-                  ? 'Verified ephemeris data, divisional charts D1–D60, KP Sub-Lords, Jaimini Karakas, and today’s Gochar transits are loaded in context.'
-                  : 'This profile is saved as a draft. You can ask conceptual questions now or activate its full ephemeris chart inside Profiles.'
-                : 'Open Options below to pick your birth chart, astrology system, and area of life before sending your first question.'}
-            </p>
-          </div>
+        <div className="w-full max-w-xl my-auto flex flex-col items-center text-center space-y-6">
+          {generalReadyMode && !profile ? (
+            <div className="w-full max-w-lg space-y-5">
+              <div className="rounded-3xl border border-[#3D3830]/10 bg-[#FDFBF7] px-6 py-6 text-left shadow-xs">
+                <p className={`${sizeTokens.body} text-[#3D3830]`}>
+                  Great, I&apos;m ready to answer any question you may have regarding Vedic Astrology.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2.5">
+                {defaultOwnProfile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowInlineChartPicker(false);
+                      onSelectProfile(defaultOwnProfile.id);
+                    }}
+                    className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-4 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                  >
+                    <UserCheck className="h-3.5 w-3.5 text-[#8B7355]" />
+                    <span>{getOwnChartButtonLabel(defaultOwnProfile)}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleAddChartButtonClick}
+                  className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-4 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5 text-[#8B7355]" />
+                  <span>{profiles.length === 0 ? 'Add Birth Details' : 'Add Chart'}</span>
+                </button>
+              </div>
+            </div>
+          ) : profile ? (
+            <div className="space-y-4">
+              <p className="text-xs text-[#8B8275]">
+                {profileLabel} · {formatReadableDate(profile.birth_date)} · {profile.birth_city}
+              </p>
+              <h2 className="font-['Cormorant_Garamond',serif] text-4xl sm:text-[42px] font-medium text-[#3D3830] tracking-tight">
+                I&apos;m ready
+              </h2>
+              <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={handleAddChartButtonClick}
+                  className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-4 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                >
+                  <span>Switch Chart</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowInlineChartPicker(false);
+                    onSelectGeneralChart();
+                  }}
+                  className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-4 py-2 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                >
+                  <span>General Chart</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6 w-full">
+              <h2 className="font-['Cormorant_Garamond',serif] text-4xl sm:text-[44px] font-medium text-[#3D3830] tracking-tight">
+                I&apos;m ready
+              </h2>
 
-          <div className="grid grid-cols-1 gap-3">
-            {starterPrompts.map((prompt, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => onQuickStarterPrompt(prompt)}
-                className="group flex items-center justify-between gap-4 rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 px-5 py-4 text-left transition-all hover:bg-[#F1ECE3] active:scale-[0.99]"
-              >
-                <span className="text-xs md:text-sm text-[#3D3830] leading-relaxed">
-                  {prompt}
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                {defaultOwnProfile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowInlineChartPicker(false);
+                      onSelectProfile(defaultOwnProfile.id);
+                    }}
+                    className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-6 py-2.5 text-sm font-medium text-[#FAF7F2] hover:bg-[#38342E] active:scale-[0.98] transition-all cursor-pointer"
+                  >
+                    <UserCheck className="h-4 w-4 shrink-0" />
+                    <span>{getOwnChartButtonLabel(defaultOwnProfile)}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleAddChartButtonClick}
+                  className={`min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-medium active:scale-[0.98] transition-all cursor-pointer ${
+                    !defaultOwnProfile
+                      ? 'bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E]'
+                      : 'border border-[#3D3830]/18 bg-[#FDFBF7] text-[#3D3830] hover:bg-[#F1ECE3]'
+                  }`}
+                >
+                  <Plus className="h-4 w-4 shrink-0" />
+                  <span>Add Chart</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowInlineChartPicker(false);
+                    onSelectGeneralChart();
+                  }}
+                  className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full border border-[#3D3830]/18 bg-[#FDFBF7] px-6 py-2.5 text-sm font-medium text-[#3D3830] hover:bg-[#F1ECE3] active:scale-[0.98] transition-all cursor-pointer"
+                >
+                  <Sparkles className="h-4 w-4 text-[#8B7355] shrink-0" />
+                  <span>General Chart</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Inline Saved Charts Picker (expands cleanly when clicking Add Chart and saved profiles exist) */}
+          {showInlineChartPicker && profiles.length > 0 && (
+            <div className="animate-cc-dropdown-down w-full max-w-md rounded-2xl border border-[#3D3830]/14 bg-[#FDFBF7] shadow-sm p-2.5 text-left space-y-1.5">
+              <div className="flex items-center justify-between px-2 py-1">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-[#8B8275]">
+                  Choose a Saved Chart
                 </span>
-                <ArrowUpRight className="h-4 w-4 shrink-0 text-[#8B8275] group-hover:text-[#3D3830]" />
-              </button>
-            ))}
-          </div>
+                <button
+                  type="button"
+                  onClick={() => setShowInlineChartPicker(false)}
+                  className="text-[11px] text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="max-h-56 overflow-y-auto space-y-1">
+                {profiles.map((p) => {
+                  const isSelected = profile?.id === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setShowInlineChartPicker(false);
+                        onSelectProfile(p.id);
+                      }}
+                      className={`w-full min-h-[44px] flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#F1ECE3] text-[#3D3830]'
+                          : 'hover:bg-[#F1ECE3]/75 text-[#3D3830]'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-[#3D3830] truncate">
+                          {getProfileDisplayLabel(p)}
+                        </p>
+                        <p className="text-[11px] text-[#8B8275] truncate">
+                          {formatReadableDate(p.birth_date)} · {p.birth_city}
+                          {p.birth_country ? `, ${p.birth_country}` : ''}
+                        </p>
+                      </div>
+                      {isSelected && <Check className="h-4 w-4 text-[#2D6A4F] shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="border-t border-[#3D3830]/10 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowInlineChartPicker(false);
+                    onOpenAddChartModal();
+                  }}
+                  className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Add Birth Details</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -441,15 +732,25 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               : null;
             const isUser = msg.role === 'user';
             const isLatestFollowupHolder =
-              latestAssistantWithFollowups?.id === msg.id && !isStreaming;
+              latestAssistantWithFollowups?.id === msg.id &&
+              !isStreaming &&
+              !pendingProfileConfirm &&
+              !inlineChartCreation;
             const isActiveMatch = activeMatchMessageId === msg.id;
+            const isCopied = copiedMsgId === msg.id;
 
             if (isUser) {
+              const showUserActions =
+                activeUserMsgId === msg.id ||
+                confirmDeleteMsgId === msg.id ||
+                isCopied;
+
               return (
                 <div
                   key={msg.id}
                   data-msg-id={msg.id}
-                  className={`animate-cc-message-in flex flex-col items-end space-y-1.5 transition-all ${
+                  data-user-bubble={msg.id}
+                  className={`group animate-cc-message-in flex flex-col items-end space-y-1 transition-all ${
                     msg.excluded_from_context ? 'opacity-50' : ''
                   } ${
                     isActiveMatch
@@ -465,69 +766,112 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   )}
 
                   <div
-                    className={`max-w-[85%] rounded-3xl rounded-tr-md bg-[#F1ECE3] border border-[#3D3830]/10 px-5 py-3.5 ${sizeTokens.body} text-[#3D3830] whitespace-pre-wrap`}
+                    onClick={() =>
+                      setActiveUserMsgId((prev) => (prev === msg.id ? null : msg.id))
+                    }
+                    className={`max-w-[85%] rounded-3xl rounded-tr-md bg-[#F1ECE3] border border-[#3D3830]/10 px-5 py-3.5 ${sizeTokens.body} text-[#3D3830] whitespace-pre-wrap cursor-pointer`}
                   >
                     {highlightString(msg.content, searchQuery)}
                   </div>
 
-                  <div className="flex items-center gap-3 px-1 text-[11px] text-[#8B8275]">
+                  {/* Hover / Single-Tap Revealed Icon-Only Controls */}
+                  <div className="flex items-center gap-2 px-1 min-h-[28px]">
                     {msg.excluded_from_context && (
-                      <span className="text-[#7A3E36]">Excluded from context</span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onToggleExclude(msg)}
-                      className="inline-flex items-center gap-1 hover:text-[#3D3830]"
-                    >
-                      {msg.excluded_from_context ? (
-                        <>
-                          <Eye className="h-3 w-3" />
-                          <span>Include</span>
-                        </>
-                      ) : (
-                        <>
-                          <EyeOff className="h-3 w-3" />
-                          <span>Exclude</span>
-                        </>
-                      )}
-                    </button>
-
-                    {confirmDeleteMsgId === msg.id ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onDeleteMessage(msg.id);
-                            setConfirmDeleteMsgId(null);
-                          }}
-                          className="text-[#7A3E36] font-medium"
-                        >
-                          Confirm delete
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteMsgId(null)}
-                          className="hover:text-[#3D3830]"
-                        >
-                          Cancel
-                        </button>
+                      <span className="text-[11px] text-[#7A3E36]">
+                        Excluded from context
                       </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDeleteMsgId(msg.id)}
-                        className="inline-flex items-center gap-1 hover:text-[#7A3E36]"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        <span>Delete</span>
-                      </button>
                     )}
+
+                    <div
+                      className={`flex items-center gap-1 text-[#8B8275] transition-opacity duration-150 ${
+                        showUserActions
+                          ? 'opacity-100 pointer-events-auto'
+                          : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto'
+                      }`}
+                    >
+                      <Tooltip content={isCopied ? 'Copied' : 'Copy'} placement="top">
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyMessage(msg.id, msg.content)}
+                          aria-label={isCopied ? 'Copied' : 'Copy message'}
+                          className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
+                            isCopied ? 'text-[#2D6A4F]' : 'hover:text-[#3D3830]'
+                          }`}
+                        >
+                          {isCopied ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </Tooltip>
+
+                      <Tooltip
+                        content={msg.excluded_from_context ? 'Include' : 'Exclude'}
+                        placement="top"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onToggleExclude(msg)}
+                          aria-label={
+                            msg.excluded_from_context
+                              ? 'Include message in context'
+                              : 'Exclude message from context'
+                          }
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                        >
+                          {msg.excluded_from_context ? (
+                            <Eye className="h-3.5 w-3.5" />
+                          ) : (
+                            <EyeOff className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </Tooltip>
+
+                      {confirmDeleteMsgId === msg.id ? (
+                        <span className="inline-flex items-center gap-1.5 pl-1 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onDeleteMessage(msg.id);
+                              setConfirmDeleteMsgId(null);
+                              setActiveUserMsgId(null);
+                            }}
+                            className="text-[#7A3E36] font-medium hover:underline cursor-pointer"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteMsgId(null)}
+                            className="text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <Tooltip content="Delete" placement="top">
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteMsgId(msg.id)}
+                            aria-label="Delete message"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#7A3E36] transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </Tooltip>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             }
 
             // Assistant Editorial Prose Card
+            const isSpeaking = speakingMsgId === msg.id;
+            const showConfirmCard =
+              pendingProfileConfirm?.messageId === msg.id && !inlineChartCreation;
+
             return (
               <article
                 key={msg.id}
@@ -549,100 +893,220 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   </ReactMarkdown>
                 </div>
 
-                {/* Whisper-Quiet Metadata & Inline Actions */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-[11px] text-[#8B8275]">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span>{labelFor(catalog?.experts, msg.expert_used) || 'Vedic astrologer'}</span>
-                    <span>·</span>
-                    <span>{labelFor(catalog?.modes, msg.mode_used) || 'General'}</span>
-                    <span>·</span>
-                    <span>{labelFor(catalog?.outputs, msg.output_format_used) || 'Detailed'}</span>
-                    {msg.language_used && (
-                      <>
-                        <span>·</span>
-                        <span>{msg.language_used}</span>
-                      </>
-                    )}
+                {/* Phase 3: One-Tap Birth Details Confirmation Card */}
+                {showConfirmCard && pendingProfileConfirm && (
+                  <div className="mt-4 rounded-2xl border border-[#B8965A]/35 bg-[#FDFBF7] p-4 sm:p-5 space-y-4 shadow-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8B7355]">
+                        Confirm Birth Details
+                      </span>
+                      <span className="text-[11px] text-[#8B8275]">
+                        Saved once permanently
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-2">
+                        <span className="block text-[10px] uppercase tracking-wider text-[#8B8275]">
+                          Name
+                        </span>
+                        <span className="font-medium text-[#3D3830] mt-0.5 block">
+                          {pendingProfileConfirm.draft.name}
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-2">
+                        <span className="block text-[10px] uppercase tracking-wider text-[#8B8275]">
+                          Date of Birth
+                        </span>
+                        <span className="font-medium text-[#3D3830] mt-0.5 block">
+                          {formatReadableDate(pendingProfileConfirm.draft.birth_date)}
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-2">
+                        <span className="block text-[10px] uppercase tracking-wider text-[#8B8275]">
+                          Time of Birth
+                        </span>
+                        <span className="font-medium text-[#3D3830] mt-0.5 block">
+                          {pendingProfileConfirm.draft.birth_time_display ||
+                            format12HourTime(pendingProfileConfirm.draft.birth_time)}
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-2">
+                        <span className="block text-[10px] uppercase tracking-wider text-[#8B8275]">
+                          Place of Birth
+                        </span>
+                        <span className="font-medium text-[#3D3830] mt-0.5 block">
+                          {pendingProfileConfirm.draft.place_query}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => onConfirmPendingProfile(pendingProfileConfirm.draft)}
+                        className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs sm:text-sm font-medium text-[#FAF7F2] hover:bg-[#38342E] active:scale-[0.98] transition-all cursor-pointer"
+                      >
+                        <Check className="h-4 w-4" />
+                        <span>Yes, Create Chart</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onEditPendingProfile(pendingProfileConfirm.draft)}
+                        className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] px-5 py-2 text-xs sm:text-sm font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                      >
+                        <span>Edit Details</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Clean Icon-Only Assistant Action Bar (No metadata string clutter) */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[#8B8275]">
+                  <div className="flex items-center gap-2">
                     {msg.excluded_from_context && (
-                      <>
-                        <span>·</span>
-                        <span className="text-[#7A3E36]">Excluded from context</span>
-                      </>
+                      <span className="text-[11px] text-[#7A3E36]">
+                        Excluded from context
+                      </span>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-3.5">
-                    <button
-                      type="button"
-                      onClick={() => onToggleStar(msg)}
-                      className={`inline-flex items-center gap-1 transition-colors ${
-                        msg.is_starred
-                          ? 'text-[#8B7355] font-medium'
-                          : 'hover:text-[#3D3830]'
-                      }`}
-                    >
-                      <Star
-                        className={`h-3.5 w-3.5 ${msg.is_starred ? 'fill-current' : ''}`}
-                      />
-                      <span>{msg.is_starred ? 'Starred' : 'Star'}</span>
-                    </button>
+                  <div className="flex items-center gap-1">
+                    <Tooltip content={isCopied ? 'Copied' : 'Copy'} placement="top">
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyMessage(msg.id, msg.content)}
+                        aria-label={isCopied ? 'Copied' : 'Copy response'}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
+                          isCopied ? 'text-[#2D6A4F]' : 'hover:text-[#3D3830]'
+                        }`}
+                      >
+                        {isCopied ? (
+                          <Check className="h-3.5 w-3.5" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </Tooltip>
 
-                    <button
-                      type="button"
-                      onClick={() => onReplyToMessage(msg)}
-                      className="inline-flex items-center gap-1 hover:text-[#3D3830]"
-                    >
-                      <Reply className="h-3.5 w-3.5" />
-                      <span>Reply</span>
-                    </button>
+                    {speechSupported && (
+                      <Tooltip
+                        content={isSpeaking ? 'Stop reading' : 'Listen'}
+                        placement="top"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleToggleListen(msg)}
+                          aria-label={isSpeaking ? 'Stop reading aloud' : 'Listen to response'}
+                          className={`inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
+                            isSpeaking
+                              ? 'bg-[#F1ECE3] text-[#8B7355]'
+                              : 'hover:text-[#3D3830]'
+                          }`}
+                        >
+                          {isSpeaking ? (
+                            <VolumeX className="h-3.5 w-3.5 animate-pulse" />
+                          ) : (
+                            <Volume2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </Tooltip>
+                    )}
 
-                    <button
-                      type="button"
-                      onClick={() => onToggleExclude(msg)}
-                      className="inline-flex items-center gap-1 hover:text-[#3D3830]"
+                    <Tooltip content="Share on WhatsApp" placement="top">
+                      <a
+                        href={getWhatsAppShareUrl(msg.content)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Share on WhatsApp"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                      >
+                        <WhatsAppOutlineIcon className="h-3.5 w-3.5" />
+                      </a>
+                    </Tooltip>
+
+                    <Tooltip
+                      content={msg.is_starred ? 'Unstar' : 'Star'}
+                      placement="top"
                     >
-                      {msg.excluded_from_context ? (
-                        <>
+                      <button
+                        type="button"
+                        onClick={() => onToggleStar(msg)}
+                        aria-label={msg.is_starred ? 'Unstar response' : 'Star response'}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
+                          msg.is_starred ? 'text-[#8B7355]' : 'hover:text-[#3D3830]'
+                        }`}
+                      >
+                        <Star
+                          className={`h-3.5 w-3.5 ${msg.is_starred ? 'fill-current' : ''}`}
+                        />
+                      </button>
+                    </Tooltip>
+
+                    <Tooltip content="Reply" placement="top">
+                      <button
+                        type="button"
+                        onClick={() => onReplyToMessage(msg)}
+                        aria-label="Reply to response"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                      >
+                        <Reply className="h-3.5 w-3.5" />
+                      </button>
+                    </Tooltip>
+
+                    <Tooltip
+                      content={msg.excluded_from_context ? 'Include' : 'Exclude'}
+                      placement="top"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onToggleExclude(msg)}
+                        aria-label={
+                          msg.excluded_from_context
+                            ? 'Include response in context'
+                            : 'Exclude response from context'
+                        }
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                      >
+                        {msg.excluded_from_context ? (
                           <Eye className="h-3.5 w-3.5" />
-                          <span>Include</span>
-                        </>
-                      ) : (
-                        <>
+                        ) : (
                           <EyeOff className="h-3.5 w-3.5" />
-                          <span>Exclude</span>
-                        </>
-                      )}
-                    </button>
+                        )}
+                      </button>
+                    </Tooltip>
 
                     {confirmDeleteMsgId === msg.id ? (
-                      <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1.5 pl-1 text-[11px]">
                         <button
                           type="button"
                           onClick={() => {
                             onDeleteMessage(msg.id);
                             setConfirmDeleteMsgId(null);
                           }}
-                          className="text-[#7A3E36] font-medium"
+                          className="text-[#7A3E36] font-medium hover:underline cursor-pointer"
                         >
                           Confirm
                         </button>
                         <button
                           type="button"
                           onClick={() => setConfirmDeleteMsgId(null)}
-                          className="hover:text-[#3D3830]"
+                          className="text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
                         >
                           Cancel
                         </button>
                       </span>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDeleteMsgId(msg.id)}
-                        className="inline-flex items-center gap-1 hover:text-[#7A3E36]"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span>Delete</span>
-                      </button>
+                      <Tooltip content="Delete" placement="top">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteMsgId(msg.id)}
+                          aria-label="Delete response"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#7A3E36] transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
                 </div>
@@ -662,7 +1126,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                           key={qIdx}
                           type="button"
                           onClick={() => onSelectFollowUp(q)}
-                          className="group flex items-start gap-2.5 rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 px-3.5 py-2.5 text-left text-xs text-[#3D3830] hover:bg-[#F1ECE3] active:scale-[0.99] transition-all"
+                          className="group flex items-start gap-2.5 rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 px-3.5 py-2.5 text-left text-xs text-[#3D3830] hover:bg-[#F1ECE3] active:scale-[0.99] transition-all cursor-pointer"
                         >
                           <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#8B8275] pt-0.5 shrink-0">
                             {qIdx + 1}.
@@ -676,6 +1140,24 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               </article>
             );
           })}
+
+          {/* Phase 3: Inline Chart Creation Status & Progress */}
+          {inlineChartCreation && (
+            <article className="animate-cc-message-in space-y-3 pb-4">
+              {inlineChartCreation.status === 'creating' && (
+                <p className={`${sizeTokens.body} text-[#3D3830]`}>
+                  Ok, give me a minute...
+                </p>
+              )}
+              <ChartCreationProgress
+                compact
+                status={inlineChartCreation.status}
+                subjectName={inlineChartCreation.name}
+                errorMessage={inlineChartCreation.errorMessage}
+                onRetryEdit={() => onEditPendingProfile(inlineChartCreation.draft)}
+              />
+            </article>
+          )}
 
           {/* Live Streaming Response */}
           {isStreaming && (

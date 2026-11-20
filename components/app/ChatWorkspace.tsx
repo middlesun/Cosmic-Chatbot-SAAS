@@ -9,18 +9,19 @@ import {
   PanelLeftOpen,
   Search,
   Settings2,
-  Sparkles,
   X,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useAppShell } from './AppLayout';
 import ChatSidebar from './ChatSidebar';
-import MessageThread from './MessageThread';
+import MessageThread, { type InlineChartCreationState } from './MessageThread';
 import ChatComposer from './ChatComposer';
 import Tooltip from './Tooltip';
 import UserAvatar from './UserAvatar';
 import MyPromptsModal from './MyPromptsModal';
 import ChatSettingsModal, { type ChatFontSize } from './ChatSettingsModal';
+import BirthChartModal from './BirthChartModal';
+import { getUserProfileDisplayLabel, isAffirmativeReply } from './chatUtilities';
 import type {
   ChatAttachmentInput,
   ChatCatalog,
@@ -31,6 +32,7 @@ import type {
   ConversationRecord,
   CustomPromptRecord,
   FavoriteMessageRecord,
+  PendingBirthProfileDraft,
 } from './chatTypes';
 import {
   PREVIEW_CHAT_CATALOG,
@@ -111,6 +113,21 @@ const ChatWorkspace: React.FC = () => {
   const [showMyPrompts, setShowMyPrompts] = useState(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
   const [showHeaderThreadMenu, setShowHeaderThreadMenu] = useState(false);
+
+  // Phase 2 & Phase 3 states
+  const [generalReadyMode, setGeneralReadyMode] = useState(false);
+  const [showAddChartModal, setShowAddChartModal] = useState(false);
+  const [addChartInitialValues, setAddChartInitialValues] = useState<
+    Partial<PendingBirthProfileDraft> | undefined
+  >(undefined);
+  const [editingPendingChatDraft, setEditingPendingChatDraft] = useState(false);
+  const [composerFocusTrigger, setComposerFocusTrigger] = useState(0);
+  const [pendingProfileConfirm, setPendingProfileConfirm] = useState<{
+    messageId: string;
+    draft: PendingBirthProfileDraft;
+  } | null>(null);
+  const [inlineChartCreation, setInlineChartCreation] =
+    useState<InlineChartCreationState | null>(null);
 
   // In-chat keyword search
   const [showInChatSearch, setShowInChatSearch] = useState(false);
@@ -336,6 +353,9 @@ const ChatWorkspace: React.FC = () => {
     setActiveMatchIdx(0);
     setExtraProfileIds([]);
     setAttachments([]);
+    setGeneralReadyMode(false);
+    setPendingProfileConfirm(null);
+    setInlineChartCreation(null);
   }, [routeConversationId, loadConversationMessages, isPreviewMode]);
 
   useEffect(() => {
@@ -569,6 +589,9 @@ const ChatWorkspace: React.FC = () => {
     setActiveConversation(null);
     setPendingProfileId(null);
     setPendingMemory(true);
+    setGeneralReadyMode(false);
+    setPendingProfileConfirm(null);
+    setInlineChartCreation(null);
     setMessages([]);
     setReplyTarget(null);
     setDraftText('');
@@ -580,7 +603,43 @@ const ChatWorkspace: React.FC = () => {
     navigate('/app/chat');
   };
 
-  const handleSendMessage = async (overrideText?: string) => {
+  const handleOpenAddChartModal = (
+    initialDraft?: Partial<PendingBirthProfileDraft>,
+    fromPendingChat = false
+  ) => {
+    if (isPreviewMode) {
+      setErrorBanner('This is a preview, login to save birth charts');
+      return;
+    }
+    setAddChartInitialValues(initialDraft);
+    setEditingPendingChatDraft(fromPendingChat);
+    setShowAddChartModal(true);
+  };
+
+  const handleSelectProfileFromEmpty = (profileId: string) => {
+    setGeneralReadyMode(false);
+    if (activeConversation && messages.length === 0) {
+      void handleSwitchProfileBeforeStart(profileId);
+    } else {
+      setPendingProfileId(profileId);
+    }
+    setComposerFocusTrigger((n) => n + 1);
+  };
+
+  const handleSelectGeneralChartFromEmpty = () => {
+    if (activeConversation && messages.length === 0 && activeConversation.profile_id) {
+      void handleSwitchProfileBeforeStart(null);
+    } else {
+      setPendingProfileId(null);
+    }
+    setGeneralReadyMode(true);
+    setComposerFocusTrigger((n) => n + 1);
+  };
+
+  const handleSendMessage = async (
+    overrideText?: string,
+    overrideConversation?: ConversationRecord
+  ) => {
     const promptToSend = (overrideText ?? draftText).trim();
     const pendingAttachments = overrideText ? [] : attachments;
     if ((!promptToSend && pendingAttachments.length === 0) || isStreaming) return;
@@ -590,11 +649,25 @@ const ChatWorkspace: React.FC = () => {
       return;
     }
 
+    // Phase 3: If the user types "Yes" / "Correct" / "Confirm" to the AI's birth-detail confirmation prompt,
+    // immediately trigger one-step chart creation and attach to this chat!
+    if (
+      !overrideConversation &&
+      pendingProfileConfirm &&
+      pendingAttachments.length === 0 &&
+      isAffirmativeReply(promptToSend)
+    ) {
+      if (!overrideText) setDraftText('');
+      void handleConfirmPendingProfile(pendingProfileConfirm.draft);
+      return;
+    }
+
     setErrorBanner(null);
+    setGeneralReadyMode(false);
     const token = await getAccessToken();
     if (!token) return;
 
-    let targetConversation = activeConversation;
+    let targetConversation = overrideConversation || activeConversation;
     if (!targetConversation) {
       const inferredMode = modeSlug === 'learn_astrology' ? 'learn_astrology' : 'reading';
       targetConversation = await handleCreateConversation(pendingProfileId, inferredMode);
@@ -608,6 +681,7 @@ const ChatWorkspace: React.FC = () => {
       setAttachments([]);
     }
     setReplyTarget(null);
+    setPendingProfileConfirm(null);
     setIsStreaming(true);
     setStreamingText('');
 
@@ -674,6 +748,7 @@ const ChatWorkspace: React.FC = () => {
             message?: ChatMessageRecord;
             assistantMessage?: ChatMessageRecord;
             conversation?: ConversationRecord;
+            pendingProfile?: PendingBirthProfileDraft | null;
             text?: string;
             error?: string;
           };
@@ -686,6 +761,14 @@ const ChatWorkspace: React.FC = () => {
           } else if (evt.type === 'done') {
             if (evt.assistantMessage) {
               setMessages((prev) => [...prev, evt.assistantMessage!]);
+              if (evt.pendingProfile) {
+                setPendingProfileConfirm({
+                  messageId: evt.assistantMessage.id,
+                  draft: evt.pendingProfile,
+                });
+              } else {
+                setPendingProfileConfirm(null);
+              }
             }
             if (evt.conversation) {
               setActiveConversation(evt.conversation);
@@ -707,6 +790,153 @@ const ChatWorkspace: React.FC = () => {
       setStreamingText('');
       abortControllerRef.current = null;
     }
+  };
+
+  const attachCreatedProfileAndResumeReading = async (
+    createdProfile: ChatProfile,
+    originalQuestion?: string
+  ) => {
+    const token = await getAccessToken();
+    if (!token) return;
+
+    let updatedConv = activeConversation;
+    if (activeConversation) {
+      const patchRes = await fetch(`/api/chat/conversations/${activeConversation.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ profile_id: createdProfile.id }),
+      });
+      if (patchRes.ok) {
+        const patchData = await patchRes.json();
+        if (patchData.conversation) {
+          updatedConv = patchData.conversation as ConversationRecord;
+          setActiveConversation(updatedConv);
+        }
+      }
+    }
+
+    await loadConversations();
+
+    const readingPrompt = originalQuestion
+      ? `The birth chart for ${createdProfile.name} is now saved and attached to this consultation. Please provide the full Vedic astrology reading for: ${originalQuestion}`
+      : `The birth chart for ${createdProfile.name} is now saved and attached to this consultation. Please proceed with a detailed Vedic astrology reading.`;
+
+    void handleSendMessage(readingPrompt, updatedConv || undefined);
+  };
+
+  const handleConfirmPendingProfile = async (draft: PendingBirthProfileDraft) => {
+    setErrorBanner(null);
+    setPendingProfileConfirm(null);
+    setInlineChartCreation({
+      status: 'creating',
+      name: draft.name,
+      draft,
+    });
+
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setInlineChartCreation({
+          status: 'error',
+          name: draft.name,
+          draft,
+          errorMessage: 'Please sign in to create and save this birth chart.',
+        });
+        return;
+      }
+
+      const res = await fetch('/api/profiles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: draft.name,
+          birth_date: draft.birth_date,
+          birth_time: draft.birth_time,
+          place_query: draft.place_query,
+          birth_city: draft.birth_city,
+          birth_state: draft.birth_state,
+          birth_country: draft.birth_country,
+          gender: draft.gender,
+          relationship: draft.relationship || (profiles.length === 0 ? 'Self' : 'Other'),
+          is_default: profiles.length === 0,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.profile) {
+        setInlineChartCreation({
+          status: 'error',
+          name: draft.name,
+          draft,
+          errorMessage:
+            data.error ||
+            'Could not calculate this birth chart. Please check the place of birth and try again.',
+        });
+        return;
+      }
+
+      const createdProfile = data.profile as ChatProfile;
+      setProfiles((prev) => [
+        createdProfile,
+        ...prev.filter((p) => p.id !== createdProfile.id),
+      ]);
+      setInlineChartCreation({
+        status: 'success',
+        name: createdProfile.name,
+        draft,
+      });
+
+      window.setTimeout(() => {
+        setInlineChartCreation(null);
+        void attachCreatedProfileAndResumeReading(
+          createdProfile,
+          draft.original_question
+        );
+      }, 950);
+    } catch (err) {
+      setInlineChartCreation({
+        status: 'error',
+        name: draft.name,
+        draft,
+        errorMessage:
+          err instanceof Error ? err.message : 'Network error while creating your birth chart.',
+      });
+    }
+  };
+
+  const handleChartCreatedFromModal = (createdProfile: ChatProfile) => {
+    setProfiles((prev) => {
+      const cleaned = createdProfile.is_default
+        ? prev.map((p) => ({ ...p, is_default: false }))
+        : prev;
+      return [createdProfile, ...cleaned.filter((p) => p.id !== createdProfile.id)];
+    });
+
+    const originalQuestion = addChartInitialValues?.original_question;
+    const wasEditingChatDraft = editingPendingChatDraft;
+    setEditingPendingChatDraft(false);
+    setAddChartInitialValues(undefined);
+
+    if (wasEditingChatDraft && activeConversation) {
+      setPendingProfileConfirm(null);
+      setInlineChartCreation(null);
+      void attachCreatedProfileAndResumeReading(createdProfile, originalQuestion);
+      return;
+    }
+
+    setGeneralReadyMode(false);
+    if (activeConversation && messages.length === 0) {
+      void handleSwitchProfileBeforeStart(createdProfile.id);
+    } else if (!activeConversation) {
+      setPendingProfileId(createdProfile.id);
+    }
+    void loadConversations();
+    setComposerFocusTrigger((n) => n + 1);
   };
 
   const handleStopGeneration = () => {
@@ -829,6 +1059,7 @@ const ChatWorkspace: React.FC = () => {
         onSortChange={setSortBy}
         onSelectConversation={(id) => navigate(`/app/chat/${id}`)}
         onCreateConversation={handleCreateConversation}
+        onOpenAddChartModal={() => handleOpenAddChartModal()}
         onToggleBookmark={handleToggleBookmark}
         onDeleteConversation={handleDeleteConversation}
         onLoadFavorites={loadFavorites}
@@ -959,16 +1190,6 @@ const ChatWorkspace: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {activeProfile && !activeProfile.is_activated && (
-              <Link
-                to="/app/profiles"
-                className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-3 py-1.5 text-[11px] font-medium text-[#FAF7F2] hover:bg-[#38342E]"
-              >
-                <Sparkles className="h-3 w-3" />
-                <span className="hidden sm:inline">Activate Chart</span>
-              </Link>
-            )}
-
             <Tooltip content="Search within conversation" placement="bottom">
               <button
                 type="button"
@@ -1017,7 +1238,9 @@ const ChatWorkspace: React.FC = () => {
               >
                 <UserAvatar size="xs" />
                 <span className="hidden md:inline max-w-[160px] lg:max-w-[200px] truncate text-[11px] font-medium text-[#5C5449]">
-                  {isPreviewMode ? 'Preview' : appUser?.email || 'Signed in'}
+                  {isPreviewMode
+                    ? 'Preview'
+                    : getUserProfileDisplayLabel(appUser, 'Signed in')}
                 </span>
               </button>
             </Tooltip>
@@ -1103,6 +1326,8 @@ const ChatWorkspace: React.FC = () => {
         <MessageThread
           conversation={activeConversation}
           profile={activeProfile}
+          profiles={profiles}
+          generalReadyMode={generalReadyMode}
           messages={messages}
           hasMoreMessages={hasMoreMessages}
           loadingEarlierMessages={loadingEarlierMessages}
@@ -1110,15 +1335,22 @@ const ChatWorkspace: React.FC = () => {
           isStreaming={isStreaming}
           catalog={catalog}
           fontSize={chatFontSize}
+          languageSlug={languageSlug}
           searchQuery={inChatQuery}
           activeMatchMessageId={activeMatchMessageId}
+          pendingProfileConfirm={pendingProfileConfirm}
+          inlineChartCreation={inlineChartCreation}
           onLoadEarlierMessages={() => void handleLoadEarlierMessages()}
           onReplyToMessage={(msg) => setReplyTarget(msg)}
           onToggleStar={handleToggleStar}
           onToggleExclude={handleToggleExclude}
           onDeleteMessage={handleDeleteMessage}
           onSelectFollowUp={(q) => void handleSendMessage(q)}
-          onQuickStarterPrompt={(q) => void handleSendMessage(q)}
+          onSelectProfile={handleSelectProfileFromEmpty}
+          onOpenAddChartModal={() => handleOpenAddChartModal()}
+          onSelectGeneralChart={handleSelectGeneralChartFromEmpty}
+          onConfirmPendingProfile={(draft) => void handleConfirmPendingProfile(draft)}
+          onEditPendingProfile={(draft) => handleOpenAddChartModal(draft, true)}
         />
 
         {/* Composer */}
@@ -1186,11 +1418,29 @@ const ChatWorkspace: React.FC = () => {
           onClearReply={() => setReplyTarget(null)}
           onOpenMyPrompts={() => setShowMyPrompts(true)}
           onOpenSettings={() => setShowChatSettings(true)}
+          onOpenAddChartModal={() => handleOpenAddChartModal()}
           onNewChat={handleNewChat}
           onSendMessage={handleSendMessage}
           onStopGeneration={handleStopGeneration}
+          focusTrigger={composerFocusTrigger}
         />
       </div>
+
+      {/* One-Step Add Birth Details Modal */}
+      <BirthChartModal
+        isOpen={showAddChartModal}
+        onClose={() => {
+          setShowAddChartModal(false);
+          setEditingPendingChatDraft(false);
+          setAddChartInitialValues(undefined);
+        }}
+        onCreated={handleChartCreatedFromModal}
+        getAccessToken={getAccessToken}
+        isPreviewMode={isPreviewMode}
+        isFirstChart={profiles.length === 0}
+        initialValues={addChartInitialValues}
+        title={editingPendingChatDraft ? 'Edit Birth Details' : 'Add Birth Details'}
+      />
 
       {/* User Custom Prompts Modal ("My Prompts", max 10) */}
       <MyPromptsModal

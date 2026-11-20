@@ -101,6 +101,20 @@ export interface StreamConsultationParams {
   onChunk: (chunkText: string) => void;
 }
 
+export interface PendingBirthProfileDraft {
+  name: string;
+  birth_date: string; // YYYY-MM-DD
+  birth_time: string; // HH:MM (24-hour)
+  birth_time_display?: string;
+  place_query: string;
+  birth_city?: string;
+  birth_state?: string;
+  birth_country?: string;
+  gender?: string;
+  relationship?: string;
+  original_question?: string;
+}
+
 export interface StreamConsultationResult {
   fullText: string;
   tokensIn: number;
@@ -108,6 +122,103 @@ export interface StreamConsultationResult {
   creditsCharged: number;
   aborted: boolean;
   leakIntercepted?: boolean;
+  pendingProfile?: PendingBirthProfileDraft | null;
+}
+
+function normalizeDraftBirthTime(raw: string): string | null {
+  const cleaned = raw.trim();
+  const match24 = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(cleaned);
+  if (match24) {
+    const h = Number(match24[1]);
+    const m = Number(match24[2]);
+    if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+  }
+  const match12 = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i.exec(cleaned);
+  if (match12) {
+    let h = Number(match12[1]);
+    const m = Number(match12[2] || '0');
+    const period = match12[3].toLowerCase();
+    if (h >= 1 && h <= 12 && m >= 0 && m <= 59) {
+      if (period === 'pm' && h !== 12) h += 12;
+      if (period === 'am' && h === 12) h = 0;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+  }
+  return null;
+}
+
+function formatTime12Hour(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(':');
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+const PROFILE_CONFIRM_REGEX = /<CC_PROFILE_CONFIRM>([\s\S]*?)<\/CC_PROFILE_CONFIRM>/i;
+const PARTIAL_PROFILE_CONFIRM_REGEX = /<CC_PROFILE_CONFIRM[\s\S]*$/i;
+
+export function extractPendingProfileConfirmation(rawText: string): {
+  cleanText: string;
+  pendingProfile: PendingBirthProfileDraft | null;
+} {
+  let pendingProfile: PendingBirthProfileDraft | null = null;
+  const match = PROFILE_CONFIRM_REGEX.exec(rawText);
+
+  if (match && match[1]) {
+    try {
+      const parsed = JSON.parse(match[1].trim()) as Record<string, unknown>;
+      const name = typeof parsed.name === 'string' ? parsed.name.trim().slice(0, 80) : '';
+      const birthDate = typeof parsed.birth_date === 'string' ? parsed.birth_date.trim() : '';
+      const rawTime = typeof parsed.birth_time === 'string' ? parsed.birth_time.trim() : '';
+      const normalizedTime = normalizeDraftBirthTime(rawTime);
+      const birthCity = typeof parsed.birth_city === 'string' ? parsed.birth_city.trim().slice(0, 80) : '';
+      const birthState = typeof parsed.birth_state === 'string' ? parsed.birth_state.trim().slice(0, 80) : '';
+      const birthCountry = typeof parsed.birth_country === 'string' ? parsed.birth_country.trim().slice(0, 80) : '';
+      const rawPlaceQuery = typeof parsed.place_query === 'string' ? parsed.place_query.trim().slice(0, 180) : '';
+      const placeQuery =
+        rawPlaceQuery || [birthCity, birthState, birthCountry].filter(Boolean).join(', ');
+
+      if (name && /^\d{4}-\d{2}-\d{2}$/.test(birthDate) && normalizedTime && placeQuery) {
+        pendingProfile = {
+          name,
+          birth_date: birthDate,
+          birth_time: normalizedTime,
+          birth_time_display:
+            typeof parsed.birth_time_display === 'string' && parsed.birth_time_display.trim()
+              ? parsed.birth_time_display.trim()
+              : formatTime12Hour(normalizedTime),
+          place_query: placeQuery,
+          birth_city: birthCity || undefined,
+          birth_state: birthState || undefined,
+          birth_country: birthCountry || undefined,
+          gender: typeof parsed.gender === 'string' && parsed.gender.trim() ? parsed.gender.trim() : undefined,
+          relationship:
+            typeof parsed.relationship === 'string' && parsed.relationship.trim()
+              ? parsed.relationship.trim()
+              : undefined,
+          original_question:
+            typeof parsed.original_question === 'string' && parsed.original_question.trim()
+              ? parsed.original_question.trim().slice(0, 400)
+              : undefined,
+        };
+      }
+    } catch {
+      pendingProfile = null;
+    }
+  }
+
+  const cleanText = rawText
+    .replace(PROFILE_CONFIRM_REGEX, '')
+    .replace(PARTIAL_PROFILE_CONFIRM_REGEX, '')
+    .replace(/\n{3,}$/g, '\n\n')
+    .trim();
+
+  return { cleanText, pendingProfile };
 }
 
 async function buildStaticSystemInstruction(params: {
@@ -115,6 +226,7 @@ async function buildStaticSystemInstruction(params: {
   modeSlug: string;
   outputSlug: string;
   languageSlug: string;
+  modeType?: string;
   toneMode: 'friendly' | 'technical';
   responseLength: 'short' | 'detailed';
   preferredCallName?: string | null;
@@ -168,24 +280,40 @@ async function buildStaticSystemInstruction(params: {
   }
 
   if (params.profile) {
-    if (params.profile.is_activated && params.profile.chart_text_context) {
+    if (params.profile.chart_text_context) {
       sections.push(`ACTIVE NATAL CHART CONTEXT (VERIFIED EPHEMERIS):
 ${params.profile.chart_text_context}`);
     } else {
-      sections.push(`SELECTED PROFILE (NOT YET ACTIVATED):
+      sections.push(`SELECTED PROFILE:
 Name: ${params.profile.name} | Born: ${params.profile.birth_date} ${params.profile.birth_time} in ${params.profile.birth_city}, ${params.profile.birth_country}.
-Note: Full planetary ephemeris calculations have not been activated yet for this profile. Be transparent about needing chart activation for exact degree/Dasha timing while still answering conceptual or general astrological questions helpfully.`);
+Note: Full planetary ephemeris data is being prepared for this profile. Do not guess exact planetary degrees or Dashas if ephemeris context is absent.`);
     }
   } else {
-    sections.push(`SESSION SCOPE: GENERAL / LEARN ASTROLOGY (No primary natal chart attached).`);
+    sections.push(`SESSION SCOPE: GENERAL / LEARN ASTROLOGY (No primary natal chart attached yet).`);
+
+    if (params.modeType !== 'learn_astrology') {
+      sections.push(`CONVERSATIONAL BIRTH CHART INTAKE (WHEN NO CHART IS ATTACHED):
+- If the user asks a general Vedic astrology question (concepts, transits, remedies, meanings), answer it directly and helpfully without demanding birth details.
+- If the user asks for a personal reading or shares someone's birth details in natural language (for example: "Hey I need a reading about Sam, born on 11th July 2001"), NEVER invent or guess Lagna, Moon sign, planetary degrees, or Dashas from memory.
+- Instead, warmly collect ONLY the missing required details among these 4 fields:
+  1. Name (whose chart is this — if the user says "my chart" and you know their name, use it or ask warmly)
+  2. Date of Birth
+  3. Time of Birth (in AM/PM — if they say they don't know the exact time, offer to use 12:00 PM approximate)
+  4. Place of Birth (City, State/Country)
+- Keep your intake follow-up short, warm, and effortless to answer.
+- The moment ALL 4 details (Name, Date, Time, and Place) are gathered across the conversation, present them clearly in a short summary (using a readable date like "11 July 2001" and 12-hour AM/PM time) and end by asking: "Kindly confirm if these details are accurate?"
+- On the very last line of ONLY that confirmation message (never before all 4 fields are known, never inside code fences, and never mention this hidden tag to the user), append exactly:
+<CC_PROFILE_CONFIRM>{"name":"Full Name","birth_date":"YYYY-MM-DD","birth_time":"HH:MM","birth_time_display":"h:mm AM/PM","place_query":"City, State, Country","birth_city":"City","birth_state":"State","birth_country":"Country","relationship":"Self or Other","original_question":"short summary of what the user asked"}</CC_PROFILE_CONFIRM>
+- Wait for the user's confirmation before giving any chart reading.`);
+    }
   }
 
   if (params.extraProfiles && params.extraProfiles.length > 0) {
     const extraBlocks = params.extraProfiles.map((ep, idx) => {
-      if (ep.is_activated && ep.chart_text_context) {
+      if (ep.chart_text_context) {
         return `ADDITIONAL ATTACHED CHART #${idx + 1} (${ep.name}):\n${ep.chart_text_context}`;
       }
-      return `ADDITIONAL ATTACHED PROFILE #${idx + 1} (NOT YET ACTIVATED): Name: ${ep.name} | Born: ${ep.birth_date} ${ep.birth_time} in ${ep.birth_city}, ${ep.birth_country}.`;
+      return `ADDITIONAL ATTACHED PROFILE #${idx + 1}: Name: ${ep.name} | Born: ${ep.birth_date} ${ep.birth_time} in ${ep.birth_city}, ${ep.birth_country}.`;
     });
     sections.push(extraBlocks.join('\n\n'));
   }
@@ -208,6 +336,7 @@ export async function streamConsultationResponse(
       modeSlug: params.modeSlug,
       outputSlug: params.outputSlug,
       languageSlug: params.languageSlug,
+      modeType: params.conversation.mode_type,
       toneMode,
       responseLength,
       preferredCallName: params.preferredCallName,
@@ -313,6 +442,7 @@ User's specific question: ${finalUserText}`;
   let rawAccumulated = '';
   let flushedLength = 0;
   let leakIntercepted = false;
+  let confirmTagHoldStarted = false;
   const HOLD_BACK_CHARS = 64;
 
   try {
@@ -329,6 +459,21 @@ User's specific question: ${finalUserText}`;
           internalAbortController.abort();
           return;
         }
+        if (confirmTagHoldStarted) return;
+
+        const tagIndex = rawAccumulated.search(/<CC_PROFILE_CONFIRM/i);
+        if (tagIndex !== -1) {
+          if (tagIndex > flushedLength) {
+            const beforeTag = rawAccumulated.slice(flushedLength, tagIndex).replace(/\s+$/, '');
+            if (beforeTag) {
+              params.onChunk(beforeTag);
+            }
+            flushedLength = tagIndex;
+          }
+          confirmTagHoldStarted = true;
+          return;
+        }
+
         const safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
         if (safeEnd > flushedLength) {
           const toEmit = rawAccumulated.slice(flushedLength, safeEnd);
@@ -346,15 +491,18 @@ User's specific question: ${finalUserText}`;
         creditsCharged: 0,
         aborted: false,
         leakIntercepted: true,
+        pendingProfile: null,
       };
     }
 
-    if (rawAccumulated.length > flushedLength) {
-      params.onChunk(rawAccumulated.slice(flushedLength));
-      flushedLength = rawAccumulated.length;
+    const extractedFromAccumulated = extractPendingProfileConfirmation(rawAccumulated);
+    if (!confirmTagHoldStarted && extractedFromAccumulated.cleanText.length > flushedLength) {
+      params.onChunk(extractedFromAccumulated.cleanText.slice(flushedLength));
+      flushedLength = extractedFromAccumulated.cleanText.length;
     }
 
-    const sanitized = sanitizeAssistantOutput(streamResult.fullText);
+    const extractedFinal = extractPendingProfileConfirmation(streamResult.fullText);
+    const sanitized = sanitizeAssistantOutput(extractedFinal.cleanText);
     if (sanitized.leaked) {
       return {
         fullText: sanitized.text,
@@ -363,22 +511,24 @@ User's specific question: ${finalUserText}`;
         creditsCharged: 0,
         aborted: false,
         leakIntercepted: true,
+        pendingProfile: null,
       };
     }
 
     const creditsCharged = calculateCreditsFromUsage(
       streamResult.tokensIn,
       streamResult.tokensOut,
-      streamResult.fullText
+      sanitized.text
     );
 
     return {
-      fullText: streamResult.fullText,
+      fullText: sanitized.text,
       tokensIn: streamResult.tokensIn,
       tokensOut: streamResult.tokensOut,
       creditsCharged,
       aborted: streamResult.aborted && !leakIntercepted,
       leakIntercepted: false,
+      pendingProfile: streamResult.aborted ? null : extractedFinal.pendingProfile,
     };
   } finally {
     params.abortSignal.removeEventListener('abort', forwardAbort);
@@ -481,9 +631,9 @@ export async function runQuickTool(params: {
       .maybeSingle();
 
     if (profile) {
-      profileContext = profile.is_activated && profile.chart_text_context
+      profileContext = profile.chart_text_context
         ? `PROFILE CONTEXT (${profile.name}):\n${profile.chart_text_context.slice(0, 2800)}`
-        : `PROFILE NAME: ${profile.name} (chart not activated yet)`;
+        : `PROFILE NAME: ${profile.name}`;
     }
   }
 

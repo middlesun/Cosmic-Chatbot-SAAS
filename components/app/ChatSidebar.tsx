@@ -20,6 +20,7 @@ import {
   Star,
   Trash2,
   Unlock,
+  UserPlus,
   Users,
   X,
 } from 'lucide-react';
@@ -54,6 +55,7 @@ interface ChatSidebarProps {
   onToggleBookmark: (conversation: ConversationRecord) => void;
   onDeleteConversation: (conversationId: string) => void;
   onLoadFavorites: (profileId?: string) => void;
+  onOpenAddChartModal?: () => void;
 }
 
 const getProfileDisplayLabel = (p: ChatProfile): string => {
@@ -87,6 +89,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onToggleBookmark,
   onDeleteConversation,
   onLoadFavorites,
+  onOpenAddChartModal,
 }) => {
   const { openSupport, openBackup, openAccountSettings } = useAppShell();
   const [sidebarTab, setSidebarTab] = useState<'folders' | 'favorites'>('folders');
@@ -281,13 +284,38 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       <span className="truncate font-medium">
                         {getProfileDisplayLabel(p)}
                       </span>
-                      <span className="text-[10px] text-[#8B8275] shrink-0">
-                        {p.is_activated ? 'Chart Ready' : 'Draft'}
-                      </span>
                     </button>
                   ))}
                 </div>
               )}
+              <div className="border-t border-[#3D3830]/10 my-1 pt-1">
+                {onOpenAddChartModal ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewMenu(false);
+                      onOpenAddChartModal();
+                      onCloseMobileDrawer();
+                    }}
+                    className="w-full min-h-[40px] flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-xs font-medium text-[#3D3830] bg-[#F1ECE3]/75 hover:bg-[#EAE3D7] transition-colors"
+                  >
+                    <UserPlus className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
+                    <span>Add Birth Details</span>
+                  </button>
+                ) : (
+                  <Link
+                    to="/app/profiles"
+                    onClick={() => {
+                      setShowNewMenu(false);
+                      onCloseMobileDrawer();
+                    }}
+                    className="w-full min-h-[40px] flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-xs font-medium text-[#3D3830] bg-[#F1ECE3]/75 hover:bg-[#EAE3D7] transition-colors"
+                  >
+                    <UserPlus className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
+                    <span>Add Birth Details</span>
+                  </Link>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -396,6 +424,40 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
           {/* Profile-Grouped Folders */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+            {/* Prominent First-Time Add Birth Details CTA */}
+            {profiles.length === 0 && (
+              <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/12 p-3.5 space-y-2.5">
+                <p className="text-xs font-medium text-[#3D3830]">
+                  No birth chart saved yet
+                </p>
+                <p className="text-[11px] text-[#5C5449] leading-relaxed">
+                  Add birth details once to unlock personalized chart readings.
+                </p>
+                {onOpenAddChartModal ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenAddChartModal();
+                      onCloseMobileDrawer();
+                    }}
+                    className="w-full min-h-[42px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors"
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    <span>Add Birth Details</span>
+                  </button>
+                ) : (
+                  <Link
+                    to="/app/profiles"
+                    onClick={onCloseMobileDrawer}
+                    className="w-full min-h-[42px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors"
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    <span>Add Birth Details</span>
+                  </Link>
+                )}
+              </div>
+            )}
+
             {/* Profile Folders */}
             {profiles.map((profile) => {
               const items = groupedConversations.byProfile[profile.id] || [];

@@ -2,6 +2,15 @@ import type { Request, Response, NextFunction } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { getClientIpHash } from '../services/abuseGuard';
 
+export const PRIMARY_ADMIN_EMAIL = 'fintasticapps@gmail.com';
+
+export function isPrimaryAdminEmail(email?: string | null): boolean {
+  const normalized = (email || '').trim().toLowerCase();
+  if (!normalized) return false;
+  const envAdmin = (process.env.PRIMARY_ADMIN_EMAIL || '').trim().toLowerCase();
+  return normalized === PRIMARY_ADMIN_EMAIL || (Boolean(envAdmin) && normalized === envAdmin);
+}
+
 export interface AppUserRecord {
   id: string;
   email: string;
@@ -82,9 +91,23 @@ export const requireAuth = async (
       .maybeSingle();
 
     if (userError) {
-      res.status(500).json({ error: 'Failed to load user account' });
+      console.error('[auth] Failed to load user account from public.users:', {
+        code: userError.code,
+        message: userError.message,
+        details: userError.details,
+        hint: userError.hint,
+      });
+      res.status(500).json({
+        error: userError.code
+          ? `Failed to load user account (${userError.code}: ${userError.message})`
+          : `Failed to load user account (${userError.message || 'database error'})`,
+        code: userError.code,
+        details: userError.message,
+      });
       return;
     }
+
+    const isPrimaryAdmin = isPrimaryAdminEmail(authData.user.email);
 
     // Fallback bootstrap if user existed in auth.users before trigger migration ran
     if (!appUser) {
@@ -98,6 +121,7 @@ export const requireAuth = async (
           'Member',
         credits_balance: 5000,
         referral_code: randomCode,
+        is_admin: isPrimaryAdmin,
         must_change_password: Boolean(authData.user.user_metadata?.must_change_password),
       };
 
@@ -122,7 +146,19 @@ export const requireAuth = async (
       }
 
       if (insertError || !inserted) {
-        res.status(500).json({ error: 'Failed to initialize user record' });
+        console.error('[auth] Failed to initialize user record in public.users:', {
+          code: insertError?.code,
+          message: insertError?.message,
+          details: insertError?.details,
+          hint: insertError?.hint,
+        });
+        res.status(500).json({
+          error: insertError?.code
+            ? `Failed to initialize user record (${insertError.code}: ${insertError.message})`
+            : 'Failed to initialize user record',
+          code: insertError?.code,
+          details: insertError?.message,
+        });
         return;
       }
 
@@ -180,6 +216,20 @@ export const requireAuth = async (
               supabaseAdmin.from('users').update(ipUpdates).eq('id', appUser.id)
             ).catch(() => null);
           }
+        }
+      }
+      if (isPrimaryAdmin && (!appUser.is_admin || appUser.account_status !== 'active')) {
+        const { error: promoteErr } = await supabaseAdmin
+          .from('users')
+          .update({
+            is_admin: true,
+            account_status: 'active',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', appUser.id);
+        if (!promoteErr) {
+          appUser.is_admin = true;
+          appUser.account_status = 'active';
         }
       }
     }

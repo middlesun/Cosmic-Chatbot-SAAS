@@ -19,6 +19,7 @@ export interface ChatProfile {
   short_name?: string | null;
   is_default?: boolean;
   birth_date: string;
+  birth_time?: string;
   birth_city: string;
   birth_country: string;
   relationship: string | null;
@@ -82,4 +83,29 @@ export interface ChatAttachmentInput {
   sizeBytes: number;
   dataUrl: string;
 }
+
+export interface PlaceSuggestion {
+  label: string;
+  city: string;
+  state: string | null;
+  country: string;
+  latitude: number;
+  longitude: number;
+  timezoneOffset: number;
+}
+
+export interface PendingBirthProfileDraft {
+  name: string;
+  birth_date: string; // YYYY-MM-DD
+  birth_time: string; // HH:MM (24h)
+  birth_time_display?: string;
+  place_query: string;
+  birth_city?: string;
+  birth_state?: string | null;
+  birth_country?: string;
+  gender?: string | null;
+  relationship?: string | null;
+  original_question?: string | null;
+}
+
 

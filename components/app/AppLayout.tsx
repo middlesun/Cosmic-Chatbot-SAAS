@@ -24,6 +24,7 @@ import AccountSettingsModal from './AccountSettingsModal';
 import FloatingScrollControls from '../FloatingScrollControls';
 import Tooltip from './Tooltip';
 import UserAvatar from './UserAvatar';
+import { getUserProfileDisplayLabel } from './chatUtilities';
 
 const APP_SIDEBAR_LOCK_KEY = 'cc_app_sidebar_locked';
 const APP_SIDEBAR_OPEN_KEY = 'cc_app_sidebar_open';
@@ -279,12 +280,7 @@ const AppLayout: React.FC = () => {
                   {isDesktopSidebarOpen && (
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-medium text-[#3D3830]">
-                        {appUser?.preferred_call_name?.trim() ||
-                          appUser?.full_name?.trim() ||
-                          'Signed In'}
-                      </p>
-                      <p className="truncate text-[10px] text-[#8B8275]">
-                        {appUser?.email || ''}
+                        {getUserProfileDisplayLabel(appUser, 'Signed In')}
                       </p>
                     </div>
                   )}
