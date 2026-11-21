@@ -10,8 +10,8 @@ import {
   formatTropicalWesternContext,
 } from './divinationEngines';
 import {
-  buildClaritySystemPrompt,
-  buildCompanionSystemPrompt,
+  buildClaritySystemPromptAsync,
+  buildCompanionSystemPromptAsync,
   type ChatPillar,
   type CompanionPersona,
 } from './companionEngine';
@@ -29,16 +29,17 @@ import {
   type OpenRouterMessage,
 } from './openrouter';
 import {
-  CORE_COUNCIL_CONSTITUTION,
+  getCoreCouncilConstitutionAsync,
   resolvePromptModules,
 } from './promptDefaults';
 import {
   getActiveRecipeForTarget,
-  getChatbotConfig,
+  getEnginePromptOverrides,
   getPricingConfig,
+  getResolvedGuideConfig,
   getResolvedOpenRouterRuntime,
-  getSuggestionsConfig,
   type ChatBillingWeights,
+  type GuideSuggestionsConfig,
   type SuggestionsConfig,
 } from './platformSettings';
 import {
@@ -49,7 +50,11 @@ import {
   sanitizeSutraProse,
 } from './abuseGuard';
 import type { LifeContextData } from '../../lib/lifeContextSchema';
-import type { SutraSynthesisMeta, UserFluencyTier } from '../../lib/sutraTypes';
+import type {
+  SutraSynthesisMeta,
+  TimingProgressWidget,
+  UserFluencyTier,
+} from '../../lib/sutraTypes';
 import {
   compileStage2ContextPackage,
   type DailyTransitSliceInput,
@@ -182,6 +187,7 @@ export interface StreamConsultationParams {
   dailyTransitsOverride?: DailyTransitSliceInput | null;
   abortSignal: AbortSignal;
   onStatus?: (statusText: string) => void;
+  onTimingWidgets?: (widgets: TimingProgressWidget[]) => void;
   onChunk: (chunkText: string) => void;
 }
 
@@ -211,6 +217,7 @@ export interface StreamConsultationResult {
   suggestions?: MessageSuggestions | null;
   sutraMeta?: SutraSynthesisMeta | null;
   stage2Pkg?: Stage2ContextPackage | null;
+  timingWidgets?: TimingProgressWidget[];
 }
 
 function normalizeDraftBirthTime(raw: string): string | null {
@@ -426,10 +433,15 @@ async function buildStaticSystemInstruction(params: {
   userPrompt: string;
   historyMessages: StreamConsultationParams['historyMessages'];
   technicalDirective?: string | null;
-  suggestionsConfig: SuggestionsConfig;
-}): Promise<{ systemInstruction: string; modelOverride: string | null; wantsSuggestions: boolean }> {
-  const [chatbotConfig, activeModeRecipe] = await Promise.all([
-    getChatbotConfig(),
+}): Promise<{
+  systemInstruction: string;
+  modelOverride: string | null;
+  wantsSuggestions: boolean;
+  resolvedSuggestions: GuideSuggestionsConfig;
+}> {
+  const [guideCfg, coreConstitution, activeModeRecipe] = await Promise.all([
+    getResolvedGuideConfig(params.expertSlug),
+    getCoreCouncilConstitutionAsync(),
     getActiveRecipeForTarget('mode', params.modeSlug),
   ]);
 
@@ -453,6 +465,7 @@ async function buildStaticSystemInstruction(params: {
   const modelOverride =
     activeModeRecipe?.model_id ||
     promptModels[params.expertSlug] ||
+    guideCfg.model_id ||
     (isLearnAstrology ? promptModels['learn_astrology'] : null) ||
     promptModels[params.languageSlug] ||
     null;
@@ -474,8 +487,8 @@ async function buildStaticSystemInstruction(params: {
     '';
 
   const sections: string[] = [
-    CORE_COUNCIL_CONSTITUTION,
-    chatbotConfig.conversational_rules || '',
+    coreConstitution,
+    guideCfg.combined_rules_text || '',
     primaryExpertPrompt,
     ...recipeBlocks,
     promptBodies[params.languageSlug] || '',
@@ -633,7 +646,7 @@ Note: Full planetary ephemeris data is being prepared for this profile. Do not g
     !isTarot &&
     !isNumerology &&
     !isLearnAstrology &&
-    chatbotConfig.features.auto_intake !== false
+    guideCfg.features.auto_intake !== false
   ) {
     sections.push(`CONVERSATIONAL BIRTH CHART INTAKE (WHEN NO CHART IS ATTACHED):
 - If the user asks a general astrology question (concepts, transits, meanings), answer it directly and helpfully without demanding birth details.
@@ -677,29 +690,30 @@ Perform this exact technical verification transparently using the verified chart
     );
   }
 
-  // Single-turn Two-Tier Suggestions Output Contract (Admin-governed rules)
+  // Single-turn Two-Tier Suggestions Output Contract (Admin-governed per-guide rules)
+  const guideSug = guideCfg.suggestions;
   const wantsSuggestions =
-    chatbotConfig.features.followups !== false &&
-    (params.suggestionsConfig.followups_enabled ||
-      params.suggestionsConfig.deeper_analysis_enabled);
+    guideSug.enabled &&
+    guideCfg.features.followups !== false &&
+    (guideSug.followups_enabled || guideSug.deeper_analysis_enabled);
 
   if (wantsSuggestions) {
-    const fCount = params.suggestionsConfig.followups_enabled
-      ? Math.max(1, Math.min(6, params.suggestionsConfig.max_followups || 4))
+    const fCount = guideSug.followups_enabled
+      ? Math.max(1, Math.min(6, guideSug.max_followups || 4))
       : 0;
-    const dCount = params.suggestionsConfig.deeper_analysis_enabled
-      ? Math.max(1, Math.min(6, params.suggestionsConfig.max_deeper_analysis || 4))
+    const dCount = guideSug.deeper_analysis_enabled
+      ? Math.max(1, Math.min(6, guideSug.max_deeper_analysis || 4))
       : 0;
 
     const tierRuleBlocks: string[] = [];
     if (fCount > 0) {
       tierRuleBlocks.push(
-        `Generate ${Math.min(3, fCount)} to ${fCount} items in "followups":\n${params.suggestionsConfig.followups_rules}`
+        `Generate ${Math.min(3, fCount)} to ${fCount} items in "followups":\n${guideSug.followups_rules}`
       );
     }
     if (dCount > 0) {
       tierRuleBlocks.push(
-        `Generate ${Math.min(3, dCount)} to ${dCount} items in "deeper_analysis":\n${params.suggestionsConfig.deeper_analysis_rules}`
+        `Generate ${Math.min(3, dCount)} to ${dCount} items in "deeper_analysis":\n${guideSug.deeper_analysis_rules}`
       );
     }
 
@@ -716,16 +730,16 @@ Keep the JSON strictly valid UTF-8 single-line JSON with double quotes and no tr
     systemInstruction: sections.join('\n\n---\n\n'),
     modelOverride,
     wantsSuggestions,
+    resolvedSuggestions: guideSug,
   };
 }
 
 export async function streamConsultationResponse(
   params: StreamConsultationParams
 ): Promise<StreamConsultationResult> {
-  const [runtime, pricingConfig, suggestionsConfig] = await Promise.all([
+  const [runtime, pricingConfig] = await Promise.all([
     getResolvedOpenRouterRuntime(),
     getPricingConfig(),
-    getSuggestionsConfig(),
   ]);
 
   const activePillar: ChatPillar =
@@ -777,8 +791,10 @@ User's specific question: ${finalUserText}`;
     Boolean(params.profile?.chart_json);
 
   if (isVedicCouncilSutradharaTurn && params.profile?.chart_json) {
-    const [chatbotConfig, activeModeRecipe] = await Promise.all([
-      getChatbotConfig(),
+    const [guideCfg, coreConstitution, engineOverrides, activeModeRecipe] = await Promise.all([
+      getResolvedGuideConfig(params.expertSlug),
+      getCoreCouncilConstitutionAsync(),
+      getEnginePromptOverrides(),
       getActiveRecipeForTarget('mode', params.modeSlug),
     ]);
 
@@ -795,9 +811,6 @@ User's specific question: ${finalUserText}`;
         (async (): Promise<{ slice: DailyTransitSliceInput | null; feedText: string | null }> => {
           if (params.dailyTransitsOverride) {
             return { slice: params.dailyTransitsOverride, feedText: null };
-          }
-          if (!isAstrologyApiConfigured()) {
-            return { slice: null, feedText: null };
           }
           try {
             const daily = await getOrFetchDailyTransits();
@@ -829,7 +842,10 @@ User's specific question: ${finalUserText}`;
       ]);
 
     const sutraModelOverride =
-      activeModeRecipe?.model_id || promptModels[params.expertSlug] || null;
+      activeModeRecipe?.model_id ||
+      promptModels[params.expertSlug] ||
+      guideCfg.model_id ||
+      null;
     const sutraModel = sutraModelOverride || runtime.consultationModel || getConsultationModel();
 
     const modeRecipeBlocks: string[] = [];
@@ -860,7 +876,12 @@ User's specific question: ${finalUserText}`;
       dailyTransits: dailyTransitData.slice,
       extraProfiles: extraSlices,
       contextTrapPromptNote: resolvedDecision.contextTrapPromptNote || null,
+      userPrompt: params.userPrompt,
     });
+
+    if (stage2Pkg.timingWidgets && stage2Pkg.timingWidgets.length > 0) {
+      params.onTimingWidgets?.(stage2Pkg.timingWidgets);
+    }
 
     const sutraBaseTokens =
       responseLength === 'short'
@@ -892,10 +913,11 @@ User's specific question: ${finalUserText}`;
     if (params.deepAudit) {
       const deepRes = await runDeepCouncilAudit({
         model: sutraModel,
-        constitutionPrompt: CORE_COUNCIL_CONSTITUTION,
-        conversationalRules: chatbotConfig.conversational_rules,
+        constitutionPrompt: coreConstitution,
+        conversationalRules: guideCfg.combined_rules_text,
         expertDirective: promptBodies[params.expertSlug] || '',
         modeRecipeBlocks,
+        engineOverrides,
         pkg: stage2Pkg,
         chart: params.profile.chart_json,
         routerFluency: resolvedDecision.routerResult.detected_user_fluency,
@@ -932,6 +954,7 @@ User's specific question: ${finalUserText}`;
       return {
         fullText: deepRes.fullText,
         techBreakdown: deepRes.techBreakdown || null,
+        timingWidgets: deepRes.timingWidgets || stage2Pkg.timingWidgets,
         tokensIn: deepRes.tokensIn,
         tokensOut: deepRes.tokensOut,
         creditsCharged: deepCreditsCharged,
@@ -946,10 +969,11 @@ User's specific question: ${finalUserText}`;
 
     // Path A: Fast Focused Stage 3 Synthesis
     const pathAPrompt = buildSutraPathAPrompt({
-      constitutionPrompt: CORE_COUNCIL_CONSTITUTION,
-      conversationalRules: chatbotConfig.conversational_rules,
+      constitutionPrompt: coreConstitution,
+      conversationalRules: guideCfg.combined_rules_text,
       expertDirective: promptBodies[params.expertSlug] || '',
       modeRecipeBlocks,
+      engineOverrides,
       pkg: stage2Pkg,
       chart: params.profile.chart_json,
       routerFluency: resolvedDecision.routerResult.detected_user_fluency,
@@ -979,6 +1003,9 @@ User's specific question: ${finalUserText}`;
     let leakIntercepted = false;
     let hiddenBreakdownHoldStarted = false;
     const HOLD_BACK_CHARS = 72;
+    const allowedTimingWidgetIds = new Set(
+      (stage2Pkg.timingWidgets || []).map((w) => w.id)
+    );
 
     try {
       const streamResult = await streamOpenRouterCompletion({
@@ -1004,7 +1031,8 @@ User's specific question: ${finalUserText}`;
           if (breakdownIdx !== -1) {
             if (breakdownIdx > flushedLength) {
               const beforeTag = sanitizeSutraProse(
-                rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, '')
+                rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, ''),
+                allowedTimingWidgetIds
               );
               if (beforeTag) params.onChunk(beforeTag);
               flushedLength = breakdownIdx;
@@ -1020,7 +1048,7 @@ User's specific question: ${finalUserText}`;
             if (trailingNative) {
               safeEnd -= trailingNative[0].length;
             } else {
-              const trailingMarker = /(?:\r?\n[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*))$/i.exec(
+              const trailingMarker = /(?:\r?\n[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*)|\[\[?TIMING_BAR[^\]]*)$/i.exec(
                 tentative
               );
               if (trailingMarker) {
@@ -1028,7 +1056,10 @@ User's specific question: ${finalUserText}`;
               }
             }
             if (safeEnd > flushedLength) {
-              const toEmit = sanitizeSutraProse(rawAccumulated.slice(flushedLength, safeEnd));
+              const toEmit = sanitizeSutraProse(
+                rawAccumulated.slice(flushedLength, safeEnd),
+                allowedTimingWidgetIds
+              );
               flushedLength = safeEnd;
               if (toEmit) params.onChunk(toEmit);
             }
@@ -1053,13 +1084,19 @@ User's specific question: ${finalUserText}`;
 
       const extractedAccumulated = extractTechBreakdown(rawAccumulated);
       if (!hiddenBreakdownHoldStarted && extractedAccumulated.mainText.length > flushedLength) {
-        const remaining = sanitizeSutraProse(extractedAccumulated.mainText.slice(flushedLength));
+        const remaining = sanitizeSutraProse(
+          extractedAccumulated.mainText.slice(flushedLength),
+          allowedTimingWidgetIds
+        );
         flushedLength = extractedAccumulated.mainText.length;
         if (remaining) params.onChunk(remaining);
       }
 
       const extractedFinal = extractTechBreakdown(streamResult.fullText.trim());
-      const sanitized = sanitizeAssistantOutput(extractedFinal.mainText);
+      const sanitized = sanitizeAssistantOutput(
+        extractedFinal.mainText,
+        allowedTimingWidgetIds
+      );
       if (sanitized.leaked) {
         return {
           fullText: sanitized.text,
@@ -1093,6 +1130,7 @@ User's specific question: ${finalUserText}`;
       return {
         fullText: sanitized.text,
         techBreakdown: safeBreakdown,
+        timingWidgets: stage2Pkg.timingWidgets,
         tokensIn: streamResult.tokensIn,
         tokensOut: streamResult.tokensOut,
         creditsCharged,
@@ -1111,9 +1149,10 @@ User's specific question: ${finalUserText}`;
   let systemInstructionWithDynamic = '';
   let modelOverride: string | null = null;
   let wantsSuggestions = false;
+  let activeSuggestionsSpec: SuggestionsConfig | undefined;
 
   if (activePillar === 'companion') {
-    systemInstructionWithDynamic = buildCompanionSystemPrompt({
+    const builtComp = await buildCompanionSystemPromptAsync({
       persona: activeCompanionPersona,
       languageSlug: params.languageSlug,
       preferredCallName: params.preferredCallName,
@@ -1122,9 +1161,11 @@ User's specific question: ${finalUserText}`;
         ? params.scopeMemoryContext
         : null,
     });
+    systemInstructionWithDynamic = builtComp.systemInstruction;
+    modelOverride = builtComp.modelOverride;
     wantsSuggestions = false;
   } else if (activePillar === 'clarity') {
-    systemInstructionWithDynamic = buildClaritySystemPrompt({
+    const builtClarity = await buildClaritySystemPromptAsync({
       languageSlug: params.languageSlug,
       preferredCallName: params.preferredCallName,
       turnCount: activeHistory.length,
@@ -1132,6 +1173,8 @@ User's specific question: ${finalUserText}`;
         ? params.scopeMemoryContext
         : null,
     });
+    systemInstructionWithDynamic = builtClarity.systemInstruction;
+    modelOverride = builtClarity.modelOverride;
     wantsSuggestions = false;
   } else {
     const built = await buildStaticSystemInstruction({
@@ -1149,16 +1192,16 @@ User's specific question: ${finalUserText}`;
       userPrompt: params.userPrompt,
       historyMessages: activeHistory,
       technicalDirective: params.technicalDirective,
-      suggestionsConfig,
     });
     modelOverride = built.modelOverride;
     wantsSuggestions = built.wantsSuggestions;
+    activeSuggestionsSpec = built.resolvedSuggestions;
 
-    // Fetch today's cached Gochar transits (max 1 API call/day across platform) for Astrology guides
+    // Fetch today's cached Gochar transits (max 1 API call/day across platform, with deterministic fallback)
     let gocharContext = '';
     const needsTransits =
       params.expertSlug !== 'tarot_reader' && params.expertSlug !== 'numerologist';
-    if (needsTransits && isAstrologyApiConfigured()) {
+    if (needsTransits) {
       try {
         const daily = await getOrFetchDailyTransits();
         gocharContext =
@@ -1333,13 +1376,13 @@ User's specific question: ${finalUserText}`;
       };
     }
 
-    const extractedFromAccumulated = extractHiddenDirectives(rawAccumulated, suggestionsConfig);
+    const extractedFromAccumulated = extractHiddenDirectives(rawAccumulated, activeSuggestionsSpec);
     if (!hiddenBlockHoldStarted && extractedFromAccumulated.cleanText.length > flushedLength) {
       params.onChunk(sanitizeSutraProse(extractedFromAccumulated.cleanText.slice(flushedLength)));
       flushedLength = extractedFromAccumulated.cleanText.length;
     }
 
-    const extractedFinal = extractHiddenDirectives(streamResult.fullText, suggestionsConfig);
+    const extractedFinal = extractHiddenDirectives(streamResult.fullText, activeSuggestionsSpec);
     const sanitized = sanitizeAssistantOutput(extractedFinal.cleanText);
     if (sanitized.leaked) {
       return {
@@ -1394,14 +1437,15 @@ export async function generateStructuredSuggestions(params: {
   hasProfile: boolean;
 }): Promise<MessageSuggestions> {
   try {
-    const [chatbotConfig, suggestionsConfig, runtime] = await Promise.all([
-      getChatbotConfig(),
-      getSuggestionsConfig(),
+    const [guideCfg, runtime] = await Promise.all([
+      getResolvedGuideConfig(params.expertSlug || 'council_synthesis'),
       getResolvedOpenRouterRuntime(),
     ]);
+    const suggestionsConfig = guideCfg.suggestions;
 
     if (
-      chatbotConfig.features.followups === false ||
+      !suggestionsConfig.enabled ||
+      guideCfg.features.followups === false ||
       (!suggestionsConfig.followups_enabled && !suggestionsConfig.deeper_analysis_enabled)
     ) {
       return { followups: [], deeper_analysis: [] };
@@ -1474,14 +1518,15 @@ export async function generateMoreStructuredSuggestions(params: {
   count?: number;
 }): Promise<MessageSuggestions> {
   try {
-    const [chatbotConfig, suggestionsConfig, runtime] = await Promise.all([
-      getChatbotConfig(),
-      getSuggestionsConfig(),
+    const [guideCfg, runtime] = await Promise.all([
+      getResolvedGuideConfig(params.expertSlug || 'council_synthesis'),
       getResolvedOpenRouterRuntime(),
     ]);
+    const suggestionsConfig = guideCfg.suggestions;
 
     if (
-      chatbotConfig.features.followups === false ||
+      !suggestionsConfig.enabled ||
+      guideCfg.features.followups === false ||
       (!suggestionsConfig.followups_enabled && !suggestionsConfig.deeper_analysis_enabled)
     ) {
       return { followups: [], deeper_analysis: [] };

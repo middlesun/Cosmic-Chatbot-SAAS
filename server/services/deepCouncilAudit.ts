@@ -7,6 +7,11 @@ import {
 import type { CompiledChartData } from './chartCompiler';
 import type { Stage2ContextPackage } from './contextSlicer';
 import {
+  DEFAULT_DEEP_AUDIT_ADJUDICATOR_MANDATE,
+  DEFAULT_DEEP_AUDIT_LENSES,
+} from './enginePromptDefaults';
+import type { EnginePromptOverrides } from './platformSettings';
+import {
   createOpenRouterCompletion,
   streamOpenRouterCompletion,
   type OpenRouterMessage,
@@ -14,6 +19,7 @@ import {
 import {
   buildIntentOutputContract,
   buildShortReplyBreakdownInstruction,
+  buildTimingWidgetPlacementInstruction,
   buildVoiceAndFormatInstructions,
   computeDeterministicPillarConvergence,
   extractTechBreakdown,
@@ -23,7 +29,11 @@ import {
   type DeterministicConvergenceResult,
   type SutraVoicePreset,
 } from './sutraSynthesizer';
-import type { SutraSynthesisMeta, UserFluencyTier } from '../../lib/sutraTypes';
+import type {
+  SutraSynthesisMeta,
+  TimingProgressWidget,
+  UserFluencyTier,
+} from '../../lib/sutraTypes';
 
 export interface DeepAuditLensSpec {
   id: 'parashari_divisional' | 'kp_nadi' | 'multi_clock_timing' | 'contrarian_auditor';
@@ -51,8 +61,9 @@ export function buildDeepAuditLensPrompts(params: {
   userPrompt: string;
   gocharFeedText?: string | null;
   technicalDirective?: string | null;
+  engineOverrides?: EnginePromptOverrides | null;
 }): DeepAuditLensSpec[] {
-  const { pkg, userPrompt, gocharFeedText, technicalDirective } = params;
+  const { pkg, userPrompt, gocharFeedText, technicalDirective, engineOverrides } = params;
   const slice = pkg.chartSlice as Record<string, unknown>;
   const directiveNote = technicalDirective?.trim()
     ? `\nSpecific Audit Angle: ${technicalDirective.trim()}`
@@ -105,37 +116,31 @@ export function buildDeepAuditLensPrompts(params: {
 - Never invent divisional degrees for D9/D10/etc.; cite sign/house/dignity only.
 - Return crisp, structured technical bullet notes (max ~320 words). Do not write conversational fluff.`;
 
+  const lensOverrides = engineOverrides?.deep_audit_lenses;
+
   return [
     {
       id: 'parashari_divisional',
       name: 'Parashari & Divisional Architect',
-      systemPrompt: `You are Lens 1: Parashari & Divisional Architect.
-Assess structural promise, planetary dignity, Shadbala stamina, Ashtakavarga SAV volume, and D1-to-Varga (D9/D10/D7/D2/D4) confirmation strictly from your Parashari slice.
-${sharedRules}`,
+      systemPrompt: `${lensOverrides?.parashari_divisional?.trim() || DEFAULT_DEEP_AUDIT_LENSES.parashari_divisional}\n${sharedRules}`,
       userPrompt: `Question: ${userPrompt}${directiveNote}\n\nPARASHARI SLICE:\n${JSON.stringify(parashariSlice)}`,
     },
     {
       id: 'kp_nadi',
       name: 'KP & Nadi Verifier',
-      systemPrompt: `You are Lens 2: Krishnamurti Paddhati (KP) & Nadi Precision Verifier.
-Evaluate KP Cusp Sub-Lord (CSL) binary promise, supporting vs obstructing house significations (e.g. 2/7/11 vs 1/6/10 or 2/6/10/11 vs 5/8/12), Nakshatra-lord overrides, and Jaimini Karaka/Arudha links strictly from your KP/Nadi slice.
-${sharedRules}`,
+      systemPrompt: `${lensOverrides?.kp_nadi?.trim() || DEFAULT_DEEP_AUDIT_LENSES.kp_nadi}\n${sharedRules}`,
       userPrompt: `Question: ${userPrompt}${directiveNote}\n\nKP & NADI SLICE:\n${JSON.stringify(kpNadiSlice)}`,
     },
     {
       id: 'multi_clock_timing',
       name: 'Multi-Clock Timing Engine',
-      systemPrompt: `You are Lens 3: Multi-Clock Timing Engine.
-Evaluate timing activation strictly across Vimshottari MD/AD/PD, Dasha Sandhi transitions, Jaimini Chara Dasha, Saturn/Jupiter Double Transit + SAV bindu readiness, and upcoming slow-planet ingresses.
-${sharedRules}`,
+      systemPrompt: `${lensOverrides?.multi_clock_timing?.trim() || DEFAULT_DEEP_AUDIT_LENSES.multi_clock_timing}\n${sharedRules}`,
       userPrompt: `Question: ${userPrompt}${directiveNote}\n\nTIMING SLICE:\n${JSON.stringify(timingSlicePayload)}`,
     },
     {
       id: 'contrarian_auditor',
       name: 'Contrarian / Falsification Auditor',
-      systemPrompt: `You are Lens 4: Contrarian & Falsification Auditor.
-Your ONLY job is to stress-test and break any naive optimistic OR overly pessimistic reading. Hunt for Neecha Bhanga, D1-vs-D9 inversions, Bhava-Chalit house shifts, Kendradhipati/Badhaka friction, birth-time Sandhi instability, and Desh-Kaal-Patra real-world mismatches. State what could falsify an easy answer.
-${sharedRules}`,
+      systemPrompt: `${lensOverrides?.contrarian_auditor?.trim() || DEFAULT_DEEP_AUDIT_LENSES.contrarian_auditor}\n${sharedRules}`,
       userPrompt: `Question: ${userPrompt}${directiveNote}\n\nCONTRARIAN & REALITY SLICE:\n${JSON.stringify(contrarianSlice)}`,
     },
   ];
@@ -164,6 +169,7 @@ export interface RunDeepCouncilAuditParams {
   technicalDirective?: string | null;
   priorInferredFluency?: UserFluencyTier | null;
   maxOutputTokens: number;
+  engineOverrides?: EnginePromptOverrides | null;
   abortSignal: AbortSignal;
   onStatus?: (statusText: string) => void;
   onChunk: (chunkText: string) => void;
@@ -172,6 +178,7 @@ export interface RunDeepCouncilAuditParams {
 export interface RunDeepCouncilAuditResult {
   fullText: string;
   techBreakdown?: string | null;
+  timingWidgets?: TimingProgressWidget[];
   tokensIn: number;
   tokensOut: number;
   aborted: boolean;
@@ -202,27 +209,42 @@ function buildAdjudicatorSystemPrompt(params: {
 End cleanly with a concise, clearly labeled **System Convergence & Technical Trace** section showing how KP promise, D9 Navamsa endurance, Shadbala/SAV stamina, and active Dasha timing resolve any friction (keep bullet points crisp and mobile-readable).`
       : '';
 
+  const adjudicatorTemplate =
+    base.engineOverrides?.deep_audit_adjudicator_mandate?.trim() ||
+    DEFAULT_DEEP_AUDIT_ADJUDICATOR_MANDATE;
+  const adjudicatorBlock = adjudicatorTemplate
+    .replace(/\{\{TRUTH_GATE_HIERARCHY\}\}/g, base.pkg.truthGateHierarchy.join(' | '))
+    .replace(/\{\{CONVERGENCE_BADGE\}\}/g, `**${convergence.bandLabel}** — ${convergence.tierLabel}`);
+
+  const tier1Laws =
+    base.engineOverrides?.sutra_tier1_reasoning_laws?.trim() ||
+    SUTRA_TIER1_REASONING_LAWS;
+  const antiCliche =
+    base.engineOverrides?.sutra_anti_cliche_rules?.trim() ||
+    SUTRA_ANTI_CLICHE_RULES;
+
   const sections = [
     base.constitutionPrompt,
     base.conversationalRules || '',
     base.expertDirective || '',
     ...(base.modeRecipeBlocks || []),
-    `ADJUDICATOR MANDATE — DEEP MULTI-SYSTEM SYNTHESIS (TIER 1 RULE 10):
-You are delivering the unified Master Synthesis after weighing independent Parashari, KP/Nadi, Multi-Clock Timing, and Contrarian Falsification checks.
-- CONSENSUS IS NOT VALIDATION: If any check overclaims something contradicted by KP Sub-Lord, D9 Navamsa, Shadbala/PHI, SAV bindus, or Desh-Kaal-Patra reality, OVERRIDE IT strictly using the 5-Tier Truth Gate Conflict Hierarchy:
-  ${base.pkg.truthGateHierarchy.join(' | ')}
-- SEAMLESS VOICE RULE (CRITICAL): NEVER mention "4 lenses", "4 AI reports", "supplied analyses", "Lens 1/2/3/4", or "contrarian auditor". Speak with one calm, authoritative, deeply integrated human voice sitting across the table from the user.
-- Highlight clearly where the independent systems **agree** vs. where **internal friction or conditions** modify how the result unfolds.
-- Include the grounded Convergence Rating (**${convergence.bandLabel}** — ${convergence.tierLabel}) naturally and honestly.`,
-    SUTRA_TIER1_REASONING_LAWS,
-    SUTRA_ANTI_CLICHE_RULES,
-    buildIntentOutputContract(base.pkg.intent, convergence, base.responseLength),
+    adjudicatorBlock,
+    tier1Laws,
+    antiCliche,
+    buildIntentOutputContract(
+      base.pkg.intent,
+      convergence,
+      base.responseLength,
+      Boolean(base.pkg.requiresTimingStack),
+      base.engineOverrides
+    ),
     buildVoiceAndFormatInstructions({
       voicePreset: base.voicePreset,
       outputSlug: base.outputSlug,
       languageSlug: base.languageSlug,
       responseLength: base.responseLength,
       effectiveFluency,
+      engineOverrides: base.engineOverrides,
     }),
     dualViewRule,
     base.preferredCallName?.trim()
@@ -235,6 +257,9 @@ You are delivering the unified Master Synthesis after weighing independent Paras
     `PRIORITY ORDERING:\n${base.pkg.priorityRule.body}`,
     `SCOPED CHART & TIMING DATA:\n${JSON.stringify(base.pkg.chartSlice)}`,
     `SYNTHESIS INPUTS TO ADJUDICATE:\n${lensNotesBlock}`,
+    base.pkg.requiresTimingStack && base.pkg.timingWidgets?.length
+      ? buildTimingWidgetPlacementInstruction(base.pkg.timingWidgets)
+      : '',
     base.profileMemorySummary?.trim()
       ? `PRIOR THREAD THEMES (Continuity Background):\n${base.profileMemorySummary.trim()}`
       : '',
@@ -259,6 +284,7 @@ export async function runDeepCouncilAudit(
     userPrompt: params.finalUserText,
     gocharFeedText: params.gocharFeedText,
     technicalDirective: params.technicalDirective,
+    engineOverrides: params.engineOverrides,
   });
 
   const lensShortLabels: Record<DeepAuditLensSpec['id'], string> = {
@@ -363,6 +389,10 @@ export async function runDeepCouncilAudit(
   let hiddenBreakdownHoldStarted = false;
   const HOLD_BACK_CHARS = 72;
 
+  const allowedTimingWidgetIds = new Set(
+    (params.pkg.timingWidgets || []).map((w) => w.id)
+  );
+
   try {
     const streamResult = await streamOpenRouterCompletion({
       model: params.model,
@@ -388,7 +418,8 @@ export async function runDeepCouncilAudit(
         if (breakdownIdx !== -1) {
           if (breakdownIdx > flushedLength) {
             const beforeTag = sanitizeSutraProse(
-              rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, '')
+              rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, ''),
+              allowedTimingWidgetIds
             );
             if (beforeTag) params.onChunk(beforeTag);
             flushedLength = breakdownIdx;
@@ -400,13 +431,17 @@ export async function runDeepCouncilAudit(
         let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
         if (safeEnd > flushedLength) {
           const tentative = rawAccumulated.slice(flushedLength, safeEnd);
-          // Avoid splitting trailing "the native" mid-phrase across stream chunks
-          const trailingMatch = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
+          // Avoid splitting trailing "the native" or partial TIMING_BAR token mid-phrase across stream chunks
+          const trailingMatch =
+            /(?:\b(?:the|a)(?:\s+native['’]?s?)?|\[\[?TIMING_BAR[^\]]*)$/i.exec(tentative);
           if (trailingMatch) {
             safeEnd -= trailingMatch[0].length;
           }
           if (safeEnd > flushedLength) {
-            const toEmit = sanitizeSutraProse(rawAccumulated.slice(flushedLength, safeEnd));
+            const toEmit = sanitizeSutraProse(
+              rawAccumulated.slice(flushedLength, safeEnd),
+              allowedTimingWidgetIds
+            );
             flushedLength = safeEnd;
             if (toEmit) params.onChunk(toEmit);
           }
@@ -448,13 +483,19 @@ export async function runDeepCouncilAudit(
 
     const extractedAccumulated = extractTechBreakdown(rawAccumulated);
     if (!hiddenBreakdownHoldStarted && extractedAccumulated.mainText.length > flushedLength) {
-      const remaining = sanitizeSutraProse(extractedAccumulated.mainText.slice(flushedLength));
+      const remaining = sanitizeSutraProse(
+        extractedAccumulated.mainText.slice(flushedLength),
+        allowedTimingWidgetIds
+      );
       flushedLength = extractedAccumulated.mainText.length;
       if (remaining) params.onChunk(remaining);
     }
 
     const extractedFinal = extractTechBreakdown(streamResult.fullText.trim());
-    const sanitized = sanitizeAssistantOutput(extractedFinal.mainText);
+    const sanitized = sanitizeAssistantOutput(
+      extractedFinal.mainText,
+      allowedTimingWidgetIds
+    );
     if (sanitized.leaked) {
       return {
         fullText: sanitized.text,
@@ -480,6 +521,7 @@ export async function runDeepCouncilAudit(
     return {
       fullText: sanitized.text,
       techBreakdown: safeBreakdown,
+      timingWidgets: params.pkg.timingWidgets,
       tokensIn: totalTokensIn,
       tokensOut: totalTokensOut,
       aborted: streamResult.aborted && !leakIntercepted,

@@ -846,6 +846,7 @@ const AdminPanel: React.FC = () => {
           {activeSection === 'chatbot' && (
             <AdminChatbotControl
               getAccessToken={getAccessToken}
+              modelOptions={modelOptions}
               onPromptsChanged={() => void loadCoreAdminData(true)}
             />
           )}

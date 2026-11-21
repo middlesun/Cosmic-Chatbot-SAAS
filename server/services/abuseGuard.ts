@@ -363,7 +363,10 @@ export function containsInternalPromptLeak(text: string): boolean {
  * - Strips accidental internal cartridge/priority debug tags ([F_...], [PRIO_...])
  * - Preserves markdown structure, tables, code fences, and inline Sanskrit/Jyotish terms
  */
-export function sanitizeSutraProse(text: string): string {
+export function sanitizeSutraProse(
+  text: string,
+  allowedTimingWidgetIds?: Set<string> | null
+): string {
   if (!text) return text;
 
   // Preserve fenced code blocks untouched
@@ -430,6 +433,14 @@ export function sanitizeSutraProse(text: string): string {
     .replace(/\[CONFIDENCE\s*:[^\]]*\][ \t]*/gi, '')
     .replace(/^[ \t]*\[FOLLOWUP\][^\n]*(?:\r?\n|$)/gim, '')
     .replace(/\[FOLLOWUP\][ \t]*/gi, '')
+    // Validate or strip timing progress bar placement tokens so raw/unverified tags never leak
+    .replace(/\[\[?TIMING_BAR\s*:\s*([a-z0-9_]+)\s*\]?\]/gi, (_match, rawId: string) => {
+      const id = String(rawId || '').trim().toLowerCase();
+      if (allowedTimingWidgetIds && allowedTimingWidgetIds.has(id)) {
+        return `[[TIMING_BAR:${id}]]`;
+      }
+      return '';
+    })
     .replace(/\n{3,}/g, '\n\n');
 
   if (codeBlocks.length > 0) {
@@ -439,12 +450,18 @@ export function sanitizeSutraProse(text: string): string {
   return working.trimEnd();
 }
 
-export function sanitizeAssistantOutput(text: string): {
+export function sanitizeAssistantOutput(
+  text: string,
+  allowedTimingWidgetIds?: Set<string> | null
+): {
   text: string;
   leaked: boolean;
 } {
   if (containsInternalPromptLeak(text)) {
     return { text: PROMPT_EXTRACTION_REFUSAL, leaked: true };
   }
-  return { text: sanitizeSutraProse(text), leaked: false };
+  return {
+    text: sanitizeSutraProse(text, allowedTimingWidgetIds),
+    leaked: false,
+  };
 }

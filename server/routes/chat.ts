@@ -25,6 +25,7 @@ import {
   getPricingConfig,
   getPublicChatbotUiConfig,
   getPublicSuggestionsConfig,
+  getResolvedGuideConfig,
 } from '../services/platformSettings';
 import { checkRateLimit } from '../services/abuseGuard';
 import {
@@ -1303,13 +1304,18 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       : isLearnAstrologyTurn
       ? 'learn_astrology'
       : 'general';
-  const outputSlug = activePillar === 'council' ? 'detailed' : 'conversational';
+  const normalizedToneMode = toneMode === 'friendly' ? 'friendly' : 'technical';
+  const normalizedResponseLength = responseLength === 'short' ? 'short' : 'detailed';
+  const outputSlug =
+    activePillar === 'council'
+      ? normalizedResponseLength === 'short'
+        ? 'short'
+        : 'detailed'
+      : 'conversational';
   const languageSlug =
     typeof language === 'string' && language
       ? language
       : req.appUser.default_language || 'English';
-  const normalizedToneMode = toneMode === 'friendly' ? 'friendly' : 'technical';
-  const normalizedResponseLength = responseLength === 'short' ? 'short' : 'detailed';
 
   const isVedicCouncilTurn =
     activePillar === 'council' &&
@@ -1967,6 +1973,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       onStatus: (statusText) => {
         sendEvent({ type: 'status', text: statusText });
       },
+      onTimingWidgets: (timingWidgets) => {
+        sendEvent({ type: 'timing_widgets', timingWidgets });
+      },
       onChunk: (chunkText) => {
         sendEvent({ type: 'chunk', text: chunkText });
       },
@@ -2006,7 +2015,11 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       return;
     }
 
-    const sanitizedFinal = sanitizeAssistantOutput(rawFinalText);
+    const allowedTimingWidgetIds =
+      streamResult.timingWidgets && streamResult.timingWidgets.length > 0
+        ? new Set(streamResult.timingWidgets.map((w) => w.id))
+        : null;
+    const sanitizedFinal = sanitizeAssistantOutput(rawFinalText, allowedTimingWidgetIds);
     const finalAssistantText = sanitizedFinal.text;
     const wasLeakIntercepted = Boolean(streamResult.leakIntercepted || sanitizedFinal.leaked);
     const assistantWordCount = countWords(finalAssistantText);
@@ -2037,7 +2050,23 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       }
     }
 
-    // Two-tier structured suggestions apply strictly to Council consultations (not Companion/Clarity)
+    // Two-tier structured suggestions governed cleanly per guide/pillar
+    const resolvedGuideSlugForSug =
+      activePillar === 'companion'
+        ? 'companion'
+        : activePillar === 'clarity'
+        ? 'clarity'
+        : expertSlug;
+    const resolvedGuideCfgForSug = await getResolvedGuideConfig(resolvedGuideSlugForSug).catch(
+      () => null
+    );
+    const guideAllowsSuggestions = resolvedGuideCfgForSug
+      ? resolvedGuideCfgForSug.suggestions.enabled &&
+        resolvedGuideCfgForSug.features.followups !== false &&
+        (resolvedGuideCfgForSug.suggestions.followups_enabled ||
+          resolvedGuideCfgForSug.suggestions.deeper_analysis_enabled)
+      : activePillar === 'council';
+
     const pendingProfile =
       activePillar === 'council' && !streamResult.aborted && !wasLeakIntercepted
         ? streamResult.pendingProfile || null
@@ -2045,7 +2074,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     const isFirstUserTurn =
       (historyRows || []).filter((m) => m.role === 'user').length === 0;
     const hasInlineSuggestions = Boolean(
-      activePillar === 'council' &&
+      guideAllowsSuggestions &&
         streamResult.suggestions &&
         (streamResult.suggestions.followups.length > 0 ||
           streamResult.suggestions.deeper_analysis.length > 0)
@@ -2058,7 +2087,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       Boolean(streamResult.sutraMeta);
 
     const needsAsyncSuggestions =
-      activePillar === 'council' &&
+      guideAllowsSuggestions &&
       !streamResult.aborted &&
       !wasLeakIntercepted &&
       !pendingProfile &&
@@ -2096,13 +2125,17 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       initialStructuredSuggestions.deeper_analysis.length > 0;
     const hasSutraMetadata = Boolean(stage1Decision?.routerResult || streamResult.sutraMeta);
     const hasTechBreakdown = Boolean(streamResult.techBreakdown);
+    const hasTimingWidgets = Boolean(
+      streamResult.timingWidgets && streamResult.timingWidgets.length > 0
+    );
     const initialSuggestionsPayload =
-      hasInitialStructured || hasSutraMetadata || hasTechBreakdown
+      hasInitialStructured || hasSutraMetadata || hasTechBreakdown || hasTimingWidgets
         ? {
             ...initialStructuredSuggestions,
             ...(stage1Decision?.routerResult ? { sutra_stage1: stage1Decision.routerResult } : {}),
             ...(streamResult.sutraMeta ? { sutra_meta: streamResult.sutraMeta } : {}),
             ...(streamResult.techBreakdown ? { tech_breakdown: streamResult.techBreakdown } : {}),
+            ...(hasTimingWidgets ? { timing_widgets: streamResult.timingWidgets } : {}),
           }
         : null;
 
@@ -2198,6 +2231,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       followups: initialFollowups,
       suggestions: initialSuggestionsPayload,
       techBreakdown: streamResult.techBreakdown || null,
+      timingWidgets: streamResult.timingWidgets || null,
       sutraMeta: streamResult.sutraMeta || null,
       pendingProfile,
       conversation: enrichedConversation,
@@ -2222,11 +2256,12 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
               assistantAnswer: finalAssistantText,
               languageSlug,
               userFluency: streamResult.sutraMeta.effectiveFluency,
+              expertSlug,
             }).catch(() => ({ followups: [], deeper_analysis: [] }))
           : await generateStructuredSuggestions({
               userQuestion: promptText,
               assistantAnswer: finalAssistantText,
-              expertSlug,
+              expertSlug: resolvedGuideSlugForSug,
               modeSlug,
               languageSlug,
               hasProfile: Boolean(profileData?.chart_text_context || profileData?.is_activated),
@@ -2239,12 +2274,13 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         finalStructuredSuggestions.followups.length > 0 ||
         finalStructuredSuggestions.deeper_analysis.length > 0;
       const finalSuggestionsPayload =
-        hasAnyFinalStructured || hasSutraMetadata || hasTechBreakdown
+        hasAnyFinalStructured || hasSutraMetadata || hasTechBreakdown || hasTimingWidgets
           ? {
               ...finalStructuredSuggestions,
               ...(stage1Decision?.routerResult ? { sutra_stage1: stage1Decision.routerResult } : {}),
               ...(streamResult.sutraMeta ? { sutra_meta: streamResult.sutraMeta } : {}),
               ...(streamResult.techBreakdown ? { tech_breakdown: streamResult.techBreakdown } : {}),
+              ...(hasTimingWidgets ? { timing_widgets: streamResult.timingWidgets } : {}),
             }
           : null;
 
@@ -2515,6 +2551,30 @@ router.post('/messages/:id/suggestions/more', requireAuth, async (req: Authentic
         })
       : null;
 
+  const resolvedMoreGuideSlug =
+    msgExpert === 'clarity_tutor' || msgExpert === 'clarity'
+      ? 'clarity'
+      : msgExpert === 'companion'
+      ? 'companion'
+      : msgExpert;
+  const moreGuideCfg = await getResolvedGuideConfig(resolvedMoreGuideSlug).catch(() => null);
+  if (
+    moreGuideCfg &&
+    (!moreGuideCfg.suggestions.enabled ||
+      moreGuideCfg.features.followups === false ||
+      (!moreGuideCfg.suggestions.followups_enabled &&
+        !moreGuideCfg.suggestions.deeper_analysis_enabled))
+  ) {
+    res.json({
+      suggestions: {
+        followups: [],
+        deeper_analysis: [],
+      },
+      disabledForGuide: true,
+    });
+    return;
+  }
+
   const isEligibleForStage4More =
     USE_DECOUPLED_STAGE4_SUGGESTIONS &&
     msgExpert !== 'clarity_tutor' &&
@@ -2568,6 +2628,7 @@ router.post('/messages/:id/suggestions/more', requireAuth, async (req: Authentic
       userQuestion: userQuestion || 'Follow-up reading insight',
       assistantAnswer: String(msgRow.content || ''),
       languageSlug: msgLang,
+      expertSlug: resolvedMoreGuideSlug,
       existingTexts,
       count: 8,
     });
@@ -2575,7 +2636,7 @@ router.post('/messages/:id/suggestions/more', requireAuth, async (req: Authentic
     generated = await generateMoreStructuredSuggestions({
       userQuestion: userQuestion || 'Follow-up reading insight',
       assistantAnswer: String(msgRow.content || ''),
-      expertSlug: msgExpert,
+      expertSlug: resolvedMoreGuideSlug,
       modeSlug: msgMode,
       languageSlug: msgLang,
       hasProfile,

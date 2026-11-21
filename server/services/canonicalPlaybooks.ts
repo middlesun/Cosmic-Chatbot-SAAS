@@ -35,6 +35,7 @@ export interface CanonicalPlaybookDef {
   priorityDomain: string;
   clarifyIfMissing: string[];
   nextHops: string[];
+  customInstructions?: string;
 }
 
 interface PlaybookSeed {
@@ -2729,6 +2730,61 @@ export function getPlaybookById(id: string | null | undefined): CanonicalPlayboo
   if (!id) return PLAYBOOKS_BY_ID.OPEN_ENDED_SYNTHESIS;
   const normalized = id.trim().toUpperCase();
   return PLAYBOOKS_BY_ID[normalized] || PLAYBOOKS_BY_ID.OPEN_ENDED_SYNTHESIS;
+}
+
+export interface PlaybookOverrideInput {
+  requiresTimingStack?: boolean;
+  formulaSlugs?: string[];
+  customInstructions?: string;
+}
+
+export function applyPlaybookOverride(
+  pb: CanonicalPlaybookDef,
+  override?: PlaybookOverrideInput | null
+): CanonicalPlaybookDef {
+  if (!override) return pb;
+  return {
+    ...pb,
+    requiresTimingStack:
+      typeof override.requiresTimingStack === 'boolean'
+        ? override.requiresTimingStack
+        : pb.requiresTimingStack,
+    formulaSlugs:
+      Array.isArray(override.formulaSlugs) && override.formulaSlugs.length > 0
+        ? override.formulaSlugs
+        : pb.formulaSlugs,
+    ...(typeof override.customInstructions === 'string' && override.customInstructions.trim()
+      ? { customInstructions: override.customInstructions.trim() }
+      : {}),
+  };
+}
+
+export interface PlaybookCatalogSummaryItem {
+  id: string;
+  domain: PlaybookDomain;
+  title: string;
+  shortLabel: string;
+  defaultIntent: SutraIntentArchetype;
+  requiredHouses: number[];
+  requiredVargas: string[];
+  requiresTimingStack: boolean;
+  requiresSynastry: boolean;
+  formulaSlugs: string[];
+}
+
+export function getPlaybooksCatalogSummary(): PlaybookCatalogSummaryItem[] {
+  return CANONICAL_PLAYBOOKS.map((pb) => ({
+    id: pb.id,
+    domain: pb.domain,
+    title: pb.title,
+    shortLabel: pb.shortLabel,
+    defaultIntent: pb.defaultIntent,
+    requiredHouses: pb.requiredHouses,
+    requiredVargas: pb.requiredVargas,
+    requiresTimingStack: pb.requiresTimingStack,
+    requiresSynastry: pb.requiresSynastry,
+    formulaSlugs: pb.formulaSlugs,
+  }));
 }
 
 /**

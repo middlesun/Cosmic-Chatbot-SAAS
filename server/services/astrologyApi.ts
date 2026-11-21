@@ -3,6 +3,7 @@
 
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import {
+  computeDeterministicSiderealPlanets,
   computeSlowPlanetTransitPairs,
   computeWesternDailyTransits,
   formatDMS,
@@ -562,15 +563,38 @@ export async function getOrFetchDailyTransits(): Promise<{
     }
   }
 
-  const payload = buildApiPayload(todayISO, '12:00:00', 28.6139, 77.209, 5.5);
-  const raw = await postAstrologyEndpoint('/planets/extended', payload as unknown as Record<string, unknown>);
-  const planets = normalizeExtendedPlanets(raw).filter((p) => p.name !== 'Ascendant');
+  let planets: PlanetPosition[] | null = null;
+  let fetchedFromApi = false;
+
+  if (isAstrologyApiConfigured()) {
+    try {
+      const payload = buildApiPayload(todayISO, '12:00:00', 28.6139, 77.209, 5.5);
+      const raw = await postAstrologyEndpoint(
+        '/planets/extended',
+        payload as unknown as Record<string, unknown>
+      );
+      const parsed = normalizeExtendedPlanets(raw).filter((p) => p.name !== 'Ascendant');
+      if (parsed.length > 0) {
+        planets = parsed;
+        fetchedFromApi = true;
+      }
+    } catch (err) {
+      console.warn(
+        '[astrologyApi] Daily transits API fetch failed; using deterministic Sidereal Lahiri ephemeris fallback:',
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
+  if (!planets) {
+    planets = computeDeterministicSiderealPlanets(todayISO);
+  }
 
   const slowTransitPairs = computeSlowPlanetTransitPairs(planets, todayISO);
   const upcomingTransitionsText = buildUpcomingTransitionsText(slowTransitPairs);
 
   const transitsText = [
-    `GLOBAL GOCHAR (TRANSITS) FOR ${todayISO} (Sidereal Lahiri):`,
+    `GLOBAL GOCHAR (TRANSITS) FOR ${todayISO} (Sidereal Lahiri${fetchedFromApi ? '' : ' — Ephemeris'}):`,
     ...planets.map(
       (p) =>
         `- ${p.name}: ${p.sign} ${p.dms} | ${p.nakshatra} (Pada ${p.pada})${p.isRetrograde ? ' [Retrograde]' : ''}`
@@ -582,17 +606,21 @@ export async function getOrFetchDailyTransits(): Promise<{
   const westernPlanets = computeWesternDailyTransits(planets, todayISO);
   const westernTransitsText = buildWesternTransitsText(westernPlanets, todayISO);
 
-  if (supabaseAdmin) {
-    await supabaseAdmin
-      .from('daily_transits')
-      .upsert(
-        {
-          transit_date: todayISO,
-          transits_json: planets,
-          transits_text: transitsText,
-        },
-        { onConflict: 'transit_date' }
-      );
+  if (supabaseAdmin && fetchedFromApi) {
+    try {
+      await supabaseAdmin
+        .from('daily_transits')
+        .upsert(
+          {
+            transit_date: todayISO,
+            transits_json: planets,
+            transits_text: transitsText,
+          },
+          { onConflict: 'transit_date' }
+        );
+    } catch {
+      // Non-fatal DB cache write failure
+    }
   }
 
   dailyTransitsMemoryCache = {

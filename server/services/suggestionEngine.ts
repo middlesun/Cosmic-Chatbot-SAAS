@@ -14,9 +14,13 @@ import {
   isOpenRouterConfiguredAsync,
 } from './openrouter';
 import {
-  getChatbotConfig,
+  DEFAULT_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
+  DEFAULT_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
+} from './enginePromptDefaults';
+import {
+  getEnginePromptOverrides,
+  getResolvedGuideConfig,
   getResolvedOpenRouterRuntime,
-  getSuggestionsConfig,
 } from './platformSettings';
 
 export interface Stage4ContradictionSeed {
@@ -53,6 +57,7 @@ export interface GenerateAlignedStage4Params {
   assistantAnswer: string;
   languageSlug: string;
   userFluency?: UserFluencyTier;
+  expertSlug?: string;
   existingTexts?: string[];
   maxFollowupsOverride?: number;
   maxDeeperOverride?: number;
@@ -418,37 +423,43 @@ export async function generateAlignedStage4Suggestions(
   let deeperRules = '';
   let utilityModel = getUtilityModel();
   let utilityMaxTokens = 750;
+  let stage4Template = DEFAULT_STAGE4_ALIGNED_SUGGESTIONS_PROMPT;
 
   try {
-    const [chatbotConfig, suggestionsConfig, runtime] = await Promise.all([
-      getChatbotConfig(),
-      getSuggestionsConfig(),
+    const [guideCfg, engineOverrides, runtime] = await Promise.all([
+      getResolvedGuideConfig(params.expertSlug || 'council_synthesis'),
+      getEnginePromptOverrides(),
       getResolvedOpenRouterRuntime(),
     ]);
+    const sugCfg = guideCfg.suggestions;
     if (
-      chatbotConfig.features.followups === false ||
-      (!suggestionsConfig.followups_enabled && !suggestionsConfig.deeper_analysis_enabled)
+      !sugCfg.enabled ||
+      guideCfg.features.followups === false ||
+      (!sugCfg.followups_enabled && !sugCfg.deeper_analysis_enabled)
     ) {
       return { followups: [], deeper_analysis: [] };
     }
     if (params.maxFollowupsOverride === undefined) {
-      maxF = suggestionsConfig.followups_enabled
-        ? Math.max(1, Math.min(6, suggestionsConfig.max_followups || 4))
+      maxF = sugCfg.followups_enabled
+        ? Math.max(1, Math.min(6, sugCfg.max_followups || 4))
         : 0;
-    } else if (!suggestionsConfig.followups_enabled) {
+    } else if (!sugCfg.followups_enabled) {
       maxF = 0;
     }
     if (params.maxDeeperOverride === undefined) {
-      maxD = suggestionsConfig.deeper_analysis_enabled
-        ? Math.max(1, Math.min(6, suggestionsConfig.max_deeper_analysis || 4))
+      maxD = sugCfg.deeper_analysis_enabled
+        ? Math.max(1, Math.min(6, sugCfg.max_deeper_analysis || 4))
         : 0;
-    } else if (!suggestionsConfig.deeper_analysis_enabled) {
+    } else if (!sugCfg.deeper_analysis_enabled) {
       maxD = 0;
     }
-    followupsRules = suggestionsConfig.followups_rules || '';
-    deeperRules = suggestionsConfig.deeper_analysis_rules || '';
+    followupsRules = sugCfg.followups_rules || '';
+    deeperRules = sugCfg.deeper_analysis_rules || '';
     utilityModel = runtime.utilityModel || utilityModel;
     utilityMaxTokens = Math.max(700, runtime.tokenLimits.utility || 750);
+    if (engineOverrides.stage4_aligned_suggestions_prompt?.trim()) {
+      stage4Template = engineOverrides.stage4_aligned_suggestions_prompt.trim();
+    }
   } catch {
     // Allow clean offline execution in CLI QA harness without Supabase
   }
@@ -488,19 +499,13 @@ export async function generateAlignedStage4Suggestions(
           .join('\n')}\n`
       : '';
 
-  const prompt = `You are Stage 4 of the Sutradhara Vedic Consultation Engine generating Chart-Aligned Follow-Up & Deeper Analysis suggestions.
+  const stage4Core = stage4Template
+    .replace(/\{\{LANGUAGE\}\}/g, params.languageSlug)
+    .replace(/\{\{NEXT_HOPS_TEXT\}\}/g, nextHopsText)
+    .replace(/\{\{CONTRADICTIONS_TEXT\}\}/g, contradictionsText)
+    .replace(/\{\{FLUENCY_BRIDGE_DIRECTIVE\}\}/g, seeds.fluencyBridgeDirective);
 
-STRICT SEEDING CONTRACT (Eliminate generic filler like "Tell me more about my chart"):
-1. PLAYBOOK NEXT-HOP GRAPH (Seed "followups" primarily from these natural next questions in ${params.languageSlug}):
-${nextHopsText}
-
-2. UNUSED CHART CONTRADICTIONS, CHALIT SHIFTS, YOGAS & DOSHAS NOT YET COVERED (Seed "deeper_analysis" directly from these real chart features):
-${contradictionsText}
-
-3. +1 FLUENCY LADDER RULE:
-${seeds.fluencyBridgeDirective}
-- Write all user-facing "text" strings in ${params.languageSlug}.
-- Keep each "technical_directive" to ONE concise English sentence (under 25 words) naming the exact house, Varga, KP CSL, or Dasha check to run if clicked.
+  const prompt = `${stage4Core}
 ${followupsRules ? `\nADMIN FOLLOWUP STYLE:\n${followupsRules}` : ''}
 ${deeperRules ? `\nADMIN DEEPER ANALYSIS STYLE:\n${deeperRules}` : ''}
 ${dedupBlock}
@@ -592,6 +597,7 @@ export async function generateFastMoreStage4Suggestions(params: {
   userQuestion: string;
   assistantAnswer: string;
   languageSlug: string;
+  expertSlug?: string;
   existingTexts: string[];
   count?: number;
 }): Promise<MessageSuggestions> {
@@ -614,34 +620,40 @@ export async function generateFastMoreStage4Suggestions(params: {
   let followupsRules = '';
   let deeperRules = '';
   let utilityModel = getUtilityModel();
+  let fastMoreTemplate = DEFAULT_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT;
 
   try {
-    const [chatbotConfig, suggestionsConfig, runtime] = await Promise.all([
-      getChatbotConfig(),
-      getSuggestionsConfig(),
+    const [guideCfg, engineOverrides, runtime] = await Promise.all([
+      getResolvedGuideConfig(params.expertSlug || 'council_synthesis'),
+      getEnginePromptOverrides(),
       getResolvedOpenRouterRuntime(),
     ]);
+    const sugCfg = guideCfg.suggestions;
     if (
-      chatbotConfig.features.followups === false ||
-      (!suggestionsConfig.followups_enabled && !suggestionsConfig.deeper_analysis_enabled)
+      !sugCfg.enabled ||
+      guideCfg.features.followups === false ||
+      (!sugCfg.followups_enabled && !sugCfg.deeper_analysis_enabled)
     ) {
       return { followups: [], deeper_analysis: [] };
     }
     const bothEnabled =
-      suggestionsConfig.followups_enabled && suggestionsConfig.deeper_analysis_enabled;
+      sugCfg.followups_enabled && sugCfg.deeper_analysis_enabled;
     countF = bothEnabled
       ? Math.ceil(totalTarget / 2)
-      : suggestionsConfig.followups_enabled
+      : sugCfg.followups_enabled
       ? totalTarget
       : 0;
     countD = bothEnabled
       ? Math.floor(totalTarget / 2)
-      : suggestionsConfig.deeper_analysis_enabled
+      : sugCfg.deeper_analysis_enabled
       ? totalTarget
       : 0;
-    followupsRules = suggestionsConfig.followups_rules || '';
-    deeperRules = suggestionsConfig.deeper_analysis_rules || '';
+    followupsRules = sugCfg.followups_rules || '';
+    deeperRules = sugCfg.deeper_analysis_rules || '';
     utilityModel = runtime.utilityModel || utilityModel;
+    if (engineOverrides.stage4_fast_more_suggestions_prompt?.trim()) {
+      fastMoreTemplate = engineOverrides.stage4_fast_more_suggestions_prompt.trim();
+    }
   } catch {
     // Proceed with sensible defaults
   }
@@ -688,14 +700,13 @@ export async function generateFastMoreStage4Suggestions(params: {
           .join('\n')}\n`
       : '';
 
-  const prompt = `Generate ${totalTarget} NEW chart-aligned suggestions in ${params.languageSlug}.
+  const corePrompt = fastMoreTemplate
+    .replace(/\{\{TOTAL_TARGET\}\}/g, String(totalTarget))
+    .replace(/\{\{LANGUAGE\}\}/g, params.languageSlug)
+    .replace(/\{\{NEXT_HOPS_TEXT\}\}/g, nextHopsText)
+    .replace(/\{\{FLUENCY_DIRECTIVE\}\}/g, fluencyDirective);
 
-NEXT-HOP TOPICS:
-${nextHopsText}
-
-FLUENCY:
-${fluencyDirective}
-- Keep every "technical_directive" to ONE crisp English sentence (under 22 words).
+  const prompt = `${corePrompt}
 ${followupsRules ? `\nFOLLOWUP STYLE:\n${followupsRules.slice(0, 500)}` : ''}
 ${deeperRules ? `\nDEEPER STYLE:\n${deeperRules.slice(0, 500)}` : ''}
 ${dedupBlock}

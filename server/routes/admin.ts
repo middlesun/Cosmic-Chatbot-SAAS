@@ -19,8 +19,25 @@ import {
   ALL_DEFAULT_PROMPTS,
   CORE_COUNCIL_CONSTITUTION,
   LEGACY_VEDIC_SUBSYSTEM_SLUGS,
+  getFormulaCartridgesCached,
+  getPriorityRulesCached,
   invalidatePromptCache,
 } from '../services/promptDefaults';
+import {
+  ALL_GUIDE_CATALOG_META,
+  DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
+  DEFAULT_COMPANION_ARCHETYPES,
+  DEFAULT_COMPANION_CONSTITUTION,
+  DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
+  DEFAULT_CORE_COUNCIL_CONSTITUTION,
+  DEFAULT_FORMAT_CONTRACTS,
+  DEFAULT_SUTRA_ANTI_CLICHE_RULES,
+  DEFAULT_SUTRA_TIER1_REASONING_LAWS,
+  GUIDE_SLUGS,
+  getGuideCatalogMeta,
+  isValidGuideSlug,
+  type GuideSlug,
+} from '../services/enginePromptDefaults';
 import {
   BUILTIN_MODEL_SUGGESTIONS,
   DEFAULT_CONVERSATIONAL_RULES,
@@ -31,18 +48,31 @@ import {
   encryptSecret,
   getAiSettings,
   getChatbotConfig,
+  getEnginePromptDefaultsBundle,
+  getEnginePromptOverrides,
   getMiniAppsConfig,
+  getPerGuideChatbotConfig,
+  getPlaybookOverrides,
   getPricingConfig,
   getPromptRecipes,
+  getResolvedGuideConfig,
   getResolvedOpenRouterRuntime,
   getSuggestionsConfig,
   invalidateAllPlatformCaches,
   invalidateRecipesCache,
   savePlatformSetting,
+  type EnginePromptOverrides,
+  type GuideChatbotOverride,
   type MiniAppOverrideConfig,
   type MiniAppsGovernanceConfig,
+  type ModularRuleBlock,
+  type PlaybookOverrideEntry,
   type PromptRecipeStep,
 } from '../services/platformSettings';
+import {
+  CANONICAL_PLAYBOOKS,
+  getPlaybooksCatalogSummary,
+} from '../services/canonicalPlaybooks';
 import { MINI_APPS_CATALOG } from '../services/miniAppsCatalog';
 import { clearMiniAppsMemoryCache } from './apps';
 import { ensureReportCatalogSeeded } from '../services/reportDefaults';
@@ -2032,25 +2062,48 @@ router.get('/settings/chatbot', async (_req: AuthenticatedRequest, res) => {
 
   await ensureDefaultPromptsSeeded();
 
-  const [config, suggestionsConfig, recipes, aiSettings, promptsRes] = await Promise.all([
+  const [
+    config,
+    suggestionsConfig,
+    recipes,
+    aiSettings,
+    perGuideResolvedList,
+    engineOverrides,
+    playbookOverrides,
+    promptsRes,
+  ] = await Promise.all([
     getChatbotConfig(),
     getSuggestionsConfig(),
     getPromptRecipes(),
     getAiSettings(),
+    Promise.all(GUIDE_SLUGS.map((slug) => getResolvedGuideConfig(slug))),
+    getEnginePromptOverrides(),
+    getPlaybookOverrides(),
     supabaseAdmin
       .from('system_prompts')
-      .select('id, slug, category, display_name, subtitle, is_active, model_id, sort_order')
-      .in('category', ['expert', 'mode', 'learn', 'language', 'output'])
+      .select('id, slug, category, display_name, subtitle, prompt_body, is_active, model_id, sort_order, version, updated_at')
       .order('display_name', { ascending: true }),
   ]);
 
-  let promptRows = promptsRes.data;
+  let promptRows: Array<{
+    id: string;
+    slug: string;
+    category: string;
+    display_name: string;
+    subtitle: string | null;
+    prompt_body?: string | null;
+    is_active: boolean;
+    model_id: string | null;
+    sort_order: number | null;
+    version?: number;
+    updated_at?: string | null;
+  }> = (promptsRes.data as any[]) || [];
+
   if (promptsRes.error) {
     const fallback = await supabaseAdmin
       .from('system_prompts')
-      .select('id, slug, category, display_name, is_active')
-      .in('category', ['expert', 'mode', 'learn', 'language', 'output']);
-    promptRows = (fallback.data || []).map((r) => ({
+      .select('id, slug, category, display_name, prompt_body, is_active');
+    promptRows = ((fallback.data as any[]) || []).map((r) => ({
       ...r,
       subtitle: null,
       model_id: null,
@@ -2058,10 +2111,69 @@ router.get('/settings/chatbot', async (_req: AuthenticatedRequest, res) => {
     }));
   }
 
-  // Keep legacy Vedic sub-systems (parashari/kp_precision/jaimini/nadi) out of primary Council ordering
-  const cleanedPrompts = (promptRows || []).filter(
-    (row) => !(row.category === 'expert' && LEGACY_VEDIC_SUBSYSTEM_SLUGS.has(row.slug))
-  );
+  const uiCategories = new Set(['expert', 'mode', 'learn', 'language', 'output']);
+  const cleanedPrompts = promptRows
+    .filter(
+      (row) =>
+        uiCategories.has(row.category) &&
+        !(row.category === 'expert' && LEGACY_VEDIC_SUBSYSTEM_SLUGS.has(row.slug))
+    )
+    .map(({ prompt_body: _body, ...rest }) => rest);
+
+  const guideSystemPrompts: Record<
+    string,
+    {
+      id: string | null;
+      slug: string;
+      display_name: string;
+      subtitle: string | null;
+      prompt_body: string;
+      default_prompt_body: string;
+      model_id: string | null;
+      is_active: boolean;
+      version: number;
+      updated_at: string | null;
+    }
+  > = {};
+
+  for (const meta of ALL_GUIDE_CATALOG_META) {
+    if (!meta.hasSystemPromptRow) continue;
+    const dbRow = promptRows.find((r) => r.slug === meta.slug);
+    const seed = ALL_DEFAULT_PROMPTS.find((p) => p.slug === meta.slug);
+    guideSystemPrompts[meta.slug] = {
+      id: dbRow?.id || null,
+      slug: meta.slug,
+      display_name: dbRow?.display_name || meta.displayName,
+      subtitle: dbRow?.subtitle ?? meta.subtitle ?? null,
+      prompt_body: dbRow?.prompt_body || seed?.prompt_body || '',
+      default_prompt_body: seed?.prompt_body || '',
+      model_id: dbRow?.model_id || null,
+      is_active: dbRow ? dbRow.is_active !== false : true,
+      version: dbRow?.version || 1,
+      updated_at: dbRow?.updated_at || null,
+    };
+  }
+
+  const libraryPrompts = promptRows
+    .filter(
+      (row) =>
+        row.is_active !== false &&
+        !LEGACY_VEDIC_SUBSYSTEM_SLUGS.has(row.slug) &&
+        Boolean(row.prompt_body && row.prompt_body.trim())
+    )
+    .map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      category: row.category,
+      display_name: row.display_name,
+      subtitle: row.subtitle,
+      prompt_body: row.prompt_body || '',
+    }));
+
+  const perGuideConfigs: Record<string, Awaited<ReturnType<typeof getResolvedGuideConfig>>> = {};
+  for (const resolved of perGuideResolvedList) {
+    perGuideConfigs[resolved.slug] = resolved;
+  }
 
   res.json({
     config,
@@ -2071,6 +2183,16 @@ router.get('/settings/chatbot', async (_req: AuthenticatedRequest, res) => {
     defaultSuggestionsConfig: DEFAULT_SUGGESTIONS_CONFIG,
     prompts: cleanedPrompts,
     recipes,
+    guidesMeta: ALL_GUIDE_CATALOG_META,
+    perGuideConfigs,
+    guideSystemPrompts,
+    libraryPrompts,
+    enginePrompts: {
+      overrides: engineOverrides,
+      defaults: getEnginePromptDefaultsBundle(),
+    },
+    playbookOverrides,
+    canonicalPlaybooks: getPlaybooksCatalogSummary(),
   });
 });
 
@@ -2151,6 +2273,1038 @@ router.put('/settings/chatbot', async (req: AuthenticatedRequest, res) => {
 
   invalidatePromptCache();
   res.json({ saved: true, config: nextConfig });
+});
+
+router.put('/settings/chatbot/guide/:guideSlug', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!req.appUser || !supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const rawSlug = String(req.params.guideSlug || '').trim();
+  if (!isValidGuideSlug(rawSlug)) {
+    res.status(400).json({ error: 'Unknown guide slug.' });
+    return;
+  }
+  const guideSlug: GuideSlug = rawSlug;
+  const meta = getGuideCatalogMeta(guideSlug);
+  const body = req.body || {};
+
+  const currentMap = await getPerGuideChatbotConfig();
+  const prevEntry: GuideChatbotOverride = currentMap[guideSlug] || {};
+  const nextEntry: GuideChatbotOverride = { ...prevEntry };
+
+  if (typeof body.welcome_title === 'string') {
+    nextEntry.welcome_title = body.welcome_title.trim().slice(0, 120);
+  }
+  if (typeof body.welcome_subtitle === 'string') {
+    nextEntry.welcome_subtitle = body.welcome_subtitle.trim().slice(0, 400);
+  }
+  if (typeof body.general_ready_message === 'string') {
+    nextEntry.general_ready_message = body.general_ready_message.trim().slice(0, 400);
+  }
+  if (typeof body.composer_placeholder === 'string') {
+    nextEntry.composer_placeholder = body.composer_placeholder.trim().slice(0, 200);
+  }
+  if (body.features && typeof body.features === 'object') {
+    const f = body.features as Record<string, unknown>;
+    nextEntry.features = {
+      ...(prevEntry.features || {}),
+      ...(typeof f.voice_input === 'boolean' ? { voice_input: f.voice_input } : {}),
+      ...(typeof f.listen_tts === 'boolean' ? { listen_tts: f.listen_tts } : {}),
+      ...(typeof f.whatsapp_share === 'boolean' ? { whatsapp_share: f.whatsapp_share } : {}),
+      ...(typeof f.attachments === 'boolean' ? { attachments: f.attachments } : {}),
+      ...(typeof f.quick_tools === 'boolean' ? { quick_tools: f.quick_tools } : {}),
+      ...(typeof f.followups === 'boolean' ? { followups: f.followups } : {}),
+      ...(typeof f.auto_intake === 'boolean' ? { auto_intake: f.auto_intake } : {}),
+      ...(typeof f.memory_summary === 'boolean' ? { memory_summary: f.memory_summary } : {}),
+    };
+  }
+  if (Array.isArray(body.modular_rules)) {
+    const cleanedRules: ModularRuleBlock[] = [];
+    for (let i = 0; i < Math.min(30, body.modular_rules.length); i++) {
+      const item = body.modular_rules[i] as Record<string, unknown> | null;
+      if (!item || typeof item !== 'object') continue;
+      const title =
+        typeof item.title === 'string' && item.title.trim()
+          ? item.title.trim().slice(0, 140)
+          : `Rule ${i + 1}`;
+      const ruleBody = typeof item.body === 'string' ? item.body.trim().slice(0, 8000) : '';
+      const id =
+        typeof item.id === 'string' && item.id.trim()
+          ? item.id.trim().slice(0, 80)
+          : `rule_${i + 1}_${crypto.randomBytes(3).toString('hex')}`;
+      cleanedRules.push({
+        id,
+        title,
+        body: ruleBody,
+        enabled: item.enabled !== false,
+        source_slug:
+          typeof item.source_slug === 'string' && item.source_slug.trim()
+            ? item.source_slug.trim()
+            : null,
+        updated_at: new Date().toISOString(),
+      });
+    }
+    nextEntry.modular_rules = cleanedRules;
+  }
+  if (body.suggestions && typeof body.suggestions === 'object') {
+    const s = body.suggestions as Record<string, unknown>;
+    nextEntry.suggestions = {
+      ...(prevEntry.suggestions || {}),
+      ...(typeof s.enabled === 'boolean' ? { enabled: s.enabled } : {}),
+      ...(typeof s.followups_enabled === 'boolean'
+        ? { followups_enabled: s.followups_enabled }
+        : {}),
+      ...(typeof s.deeper_analysis_enabled === 'boolean'
+        ? { deeper_analysis_enabled: s.deeper_analysis_enabled }
+        : {}),
+      ...(typeof s.default_expanded === 'boolean'
+        ? { default_expanded: s.default_expanded }
+        : {}),
+      ...(typeof s.max_followups === 'number' && s.max_followups >= 1
+        ? { max_followups: Math.min(6, Math.round(s.max_followups)) }
+        : {}),
+      ...(typeof s.max_deeper_analysis === 'number' && s.max_deeper_analysis >= 1
+        ? { max_deeper_analysis: Math.min(6, Math.round(s.max_deeper_analysis)) }
+        : {}),
+      ...(typeof s.followups_rules === 'string'
+        ? { followups_rules: s.followups_rules.trim().slice(0, 4000) }
+        : {}),
+      ...(typeof s.deeper_analysis_rules === 'string'
+        ? { deeper_analysis_rules: s.deeper_analysis_rules.trim().slice(0, 5000) }
+        : {}),
+    };
+  }
+  if (body.model_id !== undefined) {
+    nextEntry.model_id =
+      typeof body.model_id === 'string' && body.model_id.trim()
+        ? body.model_id.trim()
+        : null;
+  }
+
+  const nextMap = { ...currentMap, [guideSlug]: nextEntry };
+  const savedSetting = await savePlatformSetting(
+    'per_guide_chatbot_config',
+    nextMap,
+    req.appUser.id
+  );
+  if (!savedSetting.ok) {
+    res.status(400).json({ error: savedSetting.error || 'Failed to save guide settings.' });
+    return;
+  }
+
+  let updatedSystemPrompt: Record<string, unknown> | null = null;
+  if (meta.hasSystemPromptRow) {
+    const hasRowUpdates =
+      body.prompt_body !== undefined ||
+      body.display_name !== undefined ||
+      body.subtitle !== undefined ||
+      body.model_id !== undefined ||
+      body.is_active !== undefined;
+
+    if (hasRowUpdates) {
+      const { data: existingRow } = await supabaseAdmin
+        .from('system_prompts')
+        .select('*')
+        .eq('slug', guideSlug)
+        .maybeSingle();
+
+      if (existingRow) {
+        const prevHistory = Array.isArray(existingRow.previous_versions)
+          ? existingRow.previous_versions
+          : [];
+        const nextBody =
+          typeof body.prompt_body === 'string' ? body.prompt_body.trim() : existingRow.prompt_body;
+        const bodyChanged =
+          typeof body.prompt_body === 'string' && nextBody !== existingRow.prompt_body;
+
+        const nextHistory = bodyChanged
+          ? [
+              {
+                version: existingRow.version || 1,
+                prompt_body: existingRow.prompt_body,
+                archived_at: new Date().toISOString(),
+              },
+              ...prevHistory,
+            ].slice(0, 20)
+          : prevHistory;
+
+        const updatePayload: Record<string, unknown> = {
+          ...(typeof body.display_name === 'string' && body.display_name.trim()
+            ? { display_name: body.display_name.trim() }
+            : {}),
+          ...(body.subtitle !== undefined
+            ? {
+                subtitle:
+                  typeof body.subtitle === 'string' && body.subtitle.trim()
+                    ? body.subtitle.trim()
+                    : null,
+              }
+            : {}),
+          ...(typeof body.prompt_body === 'string' ? { prompt_body: nextBody } : {}),
+          ...(body.model_id !== undefined
+            ? {
+                model_id:
+                  typeof body.model_id === 'string' && body.model_id.trim()
+                    ? body.model_id.trim()
+                    : null,
+              }
+            : {}),
+          ...(typeof body.is_active === 'boolean' ? { is_active: body.is_active } : {}),
+          version: bodyChanged ? (existingRow.version || 1) + 1 : existingRow.version || 1,
+          previous_versions: nextHistory,
+          updated_at: new Date().toISOString(),
+        };
+
+        const upRes = await supabaseAdmin
+          .from('system_prompts')
+          .update(updatePayload)
+          .eq('id', existingRow.id)
+          .select('id, slug, display_name, subtitle, prompt_body, model_id, is_active, version, updated_at')
+          .single();
+
+        if (!upRes.error && upRes.data) {
+          updatedSystemPrompt = upRes.data as Record<string, unknown>;
+        }
+      }
+    }
+  } else if (
+    body.clarity_helper_system_prompt !== undefined ||
+    body.companion_constitution !== undefined ||
+    body.companion_matcher_instructions !== undefined ||
+    body.companion_archetypes !== undefined
+  ) {
+    const engineOverrides = await getEnginePromptOverrides();
+    const nextEngine: EnginePromptOverrides = { ...engineOverrides };
+    if (typeof body.clarity_helper_system_prompt === 'string') {
+      if (body.clarity_helper_system_prompt.trim()) {
+        nextEngine.clarity_helper_system_prompt = body.clarity_helper_system_prompt.trim();
+      } else {
+        delete nextEngine.clarity_helper_system_prompt;
+      }
+    }
+    if (typeof body.companion_constitution === 'string') {
+      if (body.companion_constitution.trim()) {
+        nextEngine.companion_constitution = body.companion_constitution.trim();
+      } else {
+        delete nextEngine.companion_constitution;
+      }
+    }
+    if (typeof body.companion_matcher_instructions === 'string') {
+      if (body.companion_matcher_instructions.trim()) {
+        nextEngine.companion_matcher_instructions = body.companion_matcher_instructions.trim();
+      } else {
+        delete nextEngine.companion_matcher_instructions;
+      }
+    }
+    if (Array.isArray(body.companion_archetypes)) {
+      nextEngine.companion_archetypes = body.companion_archetypes;
+    }
+    await savePlatformSetting('engine_prompt_overrides', nextEngine, req.appUser.id);
+  }
+
+  invalidateAllPlatformCaches();
+  invalidatePromptCache();
+  const resolvedGuide = await getResolvedGuideConfig(guideSlug);
+
+  res.json({
+    saved: true,
+    guideSlug,
+    resolvedGuide,
+    systemPrompt: updatedSystemPrompt,
+  });
+});
+
+router.post('/settings/chatbot/guide/:guideSlug/reset', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!req.appUser || !supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const rawSlug = String(req.params.guideSlug || '').trim();
+  if (!isValidGuideSlug(rawSlug)) {
+    res.status(400).json({ error: 'Unknown guide slug.' });
+    return;
+  }
+  const guideSlug: GuideSlug = rawSlug;
+  const meta = getGuideCatalogMeta(guideSlug);
+  const scope = typeof req.body?.scope === 'string' ? req.body.scope : 'all';
+
+  const currentMap = await getPerGuideChatbotConfig();
+  const nextMap = { ...currentMap };
+  const entry: GuideChatbotOverride = { ...(nextMap[guideSlug] || {}) };
+
+  if (scope === 'all') {
+    delete nextMap[guideSlug];
+  } else {
+    if (scope === 'welcome') {
+      delete entry.welcome_title;
+      delete entry.welcome_subtitle;
+      delete entry.general_ready_message;
+      delete entry.composer_placeholder;
+    } else if (scope === 'features') {
+      delete entry.features;
+    } else if (scope === 'rules') {
+      delete entry.modular_rules;
+    } else if (scope === 'suggestions') {
+      delete entry.suggestions;
+    } else if (scope === 'system_prompt') {
+      delete entry.model_id;
+    }
+    if (Object.keys(entry).length === 0) {
+      delete nextMap[guideSlug];
+    } else {
+      nextMap[guideSlug] = entry;
+    }
+  }
+
+  const saved = await savePlatformSetting('per_guide_chatbot_config', nextMap, req.appUser.id);
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to reset guide settings.' });
+    return;
+  }
+
+  let resetSystemPrompt: Record<string, unknown> | null = null;
+  if (scope === 'system_prompt' || scope === 'all') {
+    if (meta.hasSystemPromptRow) {
+      const seed = ALL_DEFAULT_PROMPTS.find((p) => p.slug === guideSlug);
+      const { data: existingRow } = await supabaseAdmin
+        .from('system_prompts')
+        .select('*')
+        .eq('slug', guideSlug)
+        .maybeSingle();
+
+      if (existingRow && seed) {
+        const prevHistory = Array.isArray(existingRow.previous_versions)
+          ? existingRow.previous_versions
+          : [];
+        const nextHistory =
+          existingRow.prompt_body !== seed.prompt_body
+            ? [
+                {
+                  version: existingRow.version || 1,
+                  prompt_body: existingRow.prompt_body,
+                  archived_at: new Date().toISOString(),
+                },
+                ...prevHistory,
+              ].slice(0, 20)
+            : prevHistory;
+
+        const upRes = await supabaseAdmin
+          .from('system_prompts')
+          .update({
+            display_name: seed.display_name,
+            subtitle: seed.subtitle,
+            prompt_body: seed.prompt_body,
+            model_id: null,
+            is_active: true,
+            version: (existingRow.version || 1) + 1,
+            previous_versions: nextHistory,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingRow.id)
+          .select('id, slug, display_name, subtitle, prompt_body, model_id, is_active, version, updated_at')
+          .single();
+
+        if (!upRes.error && upRes.data) {
+          resetSystemPrompt = upRes.data as Record<string, unknown>;
+        }
+      }
+    } else {
+      const engineOverrides = await getEnginePromptOverrides();
+      const nextEngine: EnginePromptOverrides = { ...engineOverrides };
+      if (guideSlug === 'clarity') {
+        delete nextEngine.clarity_helper_system_prompt;
+      } else if (guideSlug === 'companion') {
+        delete nextEngine.companion_constitution;
+        delete nextEngine.companion_matcher_instructions;
+        delete nextEngine.companion_archetypes;
+      }
+      await savePlatformSetting('engine_prompt_overrides', nextEngine, req.appUser.id);
+    }
+  }
+
+  invalidateAllPlatformCaches();
+  invalidatePromptCache();
+
+  res.json({
+    reset: true,
+    scope,
+    guideSlug,
+    resolvedGuide: await getResolvedGuideConfig(guideSlug),
+    systemPrompt: resetSystemPrompt,
+    engineOverrides: await getEnginePromptOverrides(),
+  });
+});
+
+router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const current = await getEnginePromptOverrides();
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const next: EnginePromptOverrides = { ...current };
+
+  const scalarKeys: Array<
+    | 'core_council_constitution'
+    | 'companion_constitution'
+    | 'companion_matcher_instructions'
+    | 'clarity_helper_system_prompt'
+    | 'sutra_tier1_reasoning_laws'
+    | 'sutra_anti_cliche_rules'
+    | 'stage1_router_prompt'
+    | 'deep_audit_adjudicator_mandate'
+    | 'stage4_aligned_suggestions_prompt'
+    | 'stage4_fast_more_suggestions_prompt'
+  > = [
+    'core_council_constitution',
+    'companion_constitution',
+    'companion_matcher_instructions',
+    'clarity_helper_system_prompt',
+    'sutra_tier1_reasoning_laws',
+    'sutra_anti_cliche_rules',
+    'stage1_router_prompt',
+    'deep_audit_adjudicator_mandate',
+    'stage4_aligned_suggestions_prompt',
+    'stage4_fast_more_suggestions_prompt',
+  ];
+
+  for (const key of scalarKeys) {
+    if (body[key] !== undefined) {
+      const val = typeof body[key] === 'string' ? body[key].trim() : '';
+      if (val) {
+        next[key] = val.slice(0, 12000);
+      } else {
+        delete next[key];
+      }
+    }
+  }
+
+  const recordKeys: Array<
+    'intent_output_contracts' | 'fluency_instructions' | 'format_contracts' | 'deep_audit_lenses'
+  > = [
+    'intent_output_contracts',
+    'fluency_instructions',
+    'format_contracts',
+    'deep_audit_lenses',
+  ];
+
+  for (const rKey of recordKeys) {
+    const incoming = body[rKey];
+    if (incoming && typeof incoming === 'object' && !Array.isArray(incoming)) {
+      const merged: Record<string, string> = { ...((current[rKey] as Record<string, string>) || {}) };
+      for (const [subKey, rawVal] of Object.entries(incoming as Record<string, unknown>)) {
+        const cleaned = typeof rawVal === 'string' ? rawVal.trim() : '';
+        if (cleaned) {
+          merged[subKey] = cleaned.slice(0, 8000);
+        } else {
+          delete merged[subKey];
+        }
+      }
+      if (Object.keys(merged).length > 0) {
+        (next as Record<string, unknown>)[rKey] = merged;
+      } else {
+        delete next[rKey];
+      }
+    }
+  }
+
+  if (Array.isArray(body.companion_archetypes)) {
+    const cleanedArchetypes = body.companion_archetypes
+      .filter((a) => a && typeof a === 'object')
+      .map((a) => {
+        const obj = a as Record<string, unknown>;
+        return {
+          slug: String(obj.slug || 'friend').trim() as typeof DEFAULT_COMPANION_ARCHETYPES[number]['slug'],
+          label: String(obj.label || '').trim().slice(0, 60),
+          shortDesc: String(obj.shortDesc || '').trim().slice(0, 260),
+          questionOne: String(obj.questionOne || '').trim().slice(0, 180),
+          questionTwo: String(obj.questionTwo || '').trim().slice(0, 180),
+          ...(obj.isSpiritual ? { isSpiritual: true } : {}),
+        };
+      })
+      .filter((a) => a.label);
+    if (cleanedArchetypes.length > 0) {
+      next.companion_archetypes = cleanedArchetypes;
+    } else {
+      delete next.companion_archetypes;
+    }
+  }
+
+  const saved = await savePlatformSetting('engine_prompt_overrides', next, req.appUser.id);
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to save engine prompts.' });
+    return;
+  }
+
+  invalidateAllPlatformCaches();
+  invalidatePromptCache();
+  res.json({ saved: true, overrides: await getEnginePromptOverrides() });
+});
+
+router.post('/settings/chatbot/engine-prompts/reset', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const key = typeof req.body?.key === 'string' ? req.body.key.trim() : 'all';
+  const subKey = typeof req.body?.subKey === 'string' ? req.body.subKey.trim() : '';
+
+  const current = await getEnginePromptOverrides();
+  let next: EnginePromptOverrides = { ...current };
+
+  if (!key || key === 'all') {
+    next = {};
+  } else if (subKey && next[key as keyof EnginePromptOverrides] && typeof next[key as keyof EnginePromptOverrides] === 'object') {
+    const parentCopy = { ...(next[key as keyof EnginePromptOverrides] as Record<string, unknown>) };
+    delete parentCopy[subKey];
+    if (Object.keys(parentCopy).length === 0) {
+      delete next[key as keyof EnginePromptOverrides];
+    } else {
+      (next as Record<string, unknown>)[key] = parentCopy;
+    }
+  } else {
+    delete next[key as keyof EnginePromptOverrides];
+  }
+
+  const saved = await savePlatformSetting('engine_prompt_overrides', next, req.appUser.id);
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to reset engine prompt.' });
+    return;
+  }
+
+  invalidateAllPlatformCaches();
+  invalidatePromptCache();
+  res.json({ reset: true, key, subKey: subKey || null, overrides: await getEnginePromptOverrides() });
+});
+
+router.put('/settings/chatbot/playbooks/:playbookId', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const playbookId = String(req.params.playbookId || '').trim().toUpperCase();
+  const basePb = CANONICAL_PLAYBOOKS.find((p) => p.id === playbookId);
+  if (!basePb) {
+    res.status(404).json({ error: 'Canonical playbook not found.' });
+    return;
+  }
+
+  const body = req.body || {};
+  const current = await getPlaybookOverrides();
+  const nextEntry: PlaybookOverrideEntry = {
+    ...(typeof body.requiresTimingStack === 'boolean'
+      ? { requiresTimingStack: body.requiresTimingStack }
+      : {}),
+    ...(Array.isArray(body.formulaSlugs)
+      ? {
+          formulaSlugs: body.formulaSlugs
+            .map((s: unknown) => String(s || '').trim())
+            .filter(Boolean),
+        }
+      : {}),
+    ...(typeof body.customInstructions === 'string' && body.customInstructions.trim()
+      ? { customInstructions: body.customInstructions.trim().slice(0, 3000) }
+      : {}),
+    updated_at: new Date().toISOString(),
+  };
+
+  const nextMap = { ...current, [playbookId]: nextEntry };
+  const saved = await savePlatformSetting('playbook_overrides', nextMap, req.appUser.id);
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to save playbook override.' });
+    return;
+  }
+
+  invalidateAllPlatformCaches();
+  res.json({ saved: true, playbookId, overrides: await getPlaybookOverrides() });
+});
+
+router.delete('/settings/chatbot/playbooks/:playbookId', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const playbookId = String(req.params.playbookId || '').trim().toUpperCase();
+  const current = await getPlaybookOverrides();
+  const nextMap = { ...current };
+  delete nextMap[playbookId];
+
+  const saved = await savePlatformSetting('playbook_overrides', nextMap, req.appUser.id);
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to reset playbook override.' });
+    return;
+  }
+
+  invalidateAllPlatformCaches();
+  res.json({ deleted: true, playbookId, overrides: await getPlaybookOverrides() });
+});
+
+router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const rawGuide = typeof req.query.guide === 'string' ? req.query.guide.trim() : 'council_synthesis';
+  const guideSlug: GuideSlug = isValidGuideSlug(rawGuide) ? rawGuide : 'council_synthesis';
+  const guideMeta = getGuideCatalogMeta(guideSlug);
+
+  const [
+    guideCfg,
+    runtime,
+    engineOverrides,
+    pbOverrides,
+    recipes,
+    chatbotCfg,
+    cartridgesMap,
+    priorityRulesMap,
+    promptsRes,
+    dailyTransitsCountRes,
+    profilesCountRes,
+    conversationsCountRes,
+    messagesCountRes,
+    pipelineLogsCountRes,
+  ] = await Promise.all([
+    getResolvedGuideConfig(guideSlug),
+    getResolvedOpenRouterRuntime(),
+    getEnginePromptOverrides(),
+    getPlaybookOverrides(),
+    getPromptRecipes(),
+    getChatbotConfig(),
+    getFormulaCartridgesCached(),
+    getPriorityRulesCached(),
+    supabaseAdmin
+      .from('system_prompts')
+      .select('id, slug, category, display_name, prompt_body, model_id, is_active'),
+    supabaseAdmin.from('daily_transits').select('date', { count: 'exact', head: true }),
+    supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }),
+    supabaseAdmin.from('conversations').select('id', { count: 'exact', head: true }),
+    supabaseAdmin.from('messages').select('id', { count: 'exact', head: true }),
+    supabaseAdmin.from('chatbot_pipeline_logs').select('id', { count: 'exact', head: true }),
+  ]);
+
+  const promptRows = (promptsRes.data || []) as Array<{
+    id: string;
+    slug: string;
+    category: string;
+    display_name: string;
+    prompt_body: string;
+    model_id: string | null;
+    is_active: boolean;
+  }>;
+
+  const systemPromptRow = promptRows.find((r) => r.slug === guideSlug) || null;
+  const seedPrompt = ALL_DEFAULT_PROMPTS.find((p) => p.slug === guideSlug) || null;
+  const defaultLanguageRow = promptRows.find(
+    (r) => r.category === 'language' && r.slug === chatbotCfg.default_language
+  );
+  const defaultOutputRow = promptRows.find(
+    (r) => r.category === 'output' && r.slug === chatbotCfg.default_output
+  );
+  const activeModeRecipes = recipes.filter(
+    (r) => r.is_active && r.target_type === 'mode'
+  );
+
+  const guideModelOverride = guideCfg.model_id || systemPromptRow?.model_id || null;
+  const effectiveConsultationModel = guideModelOverride || runtime.consultationModel;
+  const effectiveUtilityModel = runtime.utilityModel;
+  const jevModel = runtime.jevClassifierEnabled ? runtime.jevModel : runtime.utilityModel;
+
+  const runtimeFiles =
+    guideMeta.pillar === 'council'
+      ? [
+          ...(guideSlug === 'council_synthesis'
+            ? [
+                {
+                  step: 'Stage 1 — Intent & Playbook Router',
+                  filePath: 'server/services/intentRouter.ts',
+                  modelResolved: `${jevModel} -> ${effectiveUtilityModel}`,
+                  notes: 'Classifies question into Canonical Playbook, 5-Tier Intent archetype, and user fluency.',
+                },
+                {
+                  step: 'Stage 2 — Vedic Context & Playbook Slicer',
+                  filePath: 'server/services/contextSlicer.ts',
+                  modelResolved: 'Deterministic Node/TS + Database',
+                  notes: 'Selects relevant houses, Vargas, KP Sub-Lords, Formula Cartridges, Priority Rules, and Playbook overrides.',
+                },
+              ]
+            : []),
+          {
+            step: 'Consultation Orchestrator',
+            filePath: 'server/services/geminiOrchestrator.ts',
+            modelResolved: effectiveConsultationModel,
+            notes: 'Builds static + volatile system instructions, resolves guide rules, and streams SSE output.',
+          },
+          ...(guideSlug === 'council_synthesis'
+            ? [
+                {
+                  step: 'Stage 3 — Sutra Reasoner & Voice Synthesizer',
+                  filePath: 'server/services/sutraSynthesizer.ts',
+                  modelResolved: effectiveConsultationModel,
+                  notes: 'Enforces Tier-1 Adjudication Laws, Anti-Cliché Guardrails, Intent Contract, Fluency, and Format Contract.',
+                },
+                {
+                  step: 'Optional — Deep Multi-System Council Audit',
+                  filePath: 'server/services/deepCouncilAudit.ts',
+                  modelResolved: effectiveConsultationModel,
+                  notes: 'Runs 4 parallel analytical lenses (Parashari, KP/Nadi, Multi-Clock Timing, Contrarian) + Adjudicator Mandate when toggled.',
+                },
+              ]
+            : []),
+          {
+            step: guideCfg.suggestions.enabled
+              ? 'Stage 4 — Aligned Suggestions Engine (Active)'
+              : 'Stage 4 — Aligned Suggestions Engine (Disabled for Guide)',
+            filePath: 'server/services/suggestionEngine.ts',
+            modelResolved: guideCfg.suggestions.enabled ? effectiveUtilityModel : 'Skipped (Master Disabled)',
+            notes: guideCfg.suggestions.enabled
+              ? 'Generates Followup & Deeper Analysis chips using guide suggestion limits and rules.'
+              : 'Bypassed completely for this guide — zero Stage 4 OpenRouter calls.',
+          },
+          {
+            step: 'Chat HTTP & Streaming Controller',
+            filePath: 'server/routes/chat.ts',
+            modelResolved: effectiveConsultationModel,
+            notes: 'Handles auth, credit deduction, message persistence, SSE streaming, and gated Stage 4 dispatch.',
+          },
+        ]
+      : [
+          {
+            step: guideMeta.pillar === 'companion' ? 'Companion Persona & Matching Engine' : 'Clarity Sidekick Engine',
+            filePath: 'server/services/companionEngine.ts',
+            modelResolved: effectiveConsultationModel,
+            notes:
+              guideMeta.pillar === 'companion'
+                ? 'Compiles Companion Constitution, Archetype Matcher Rules, and per-guide modular rules.'
+                : 'Compiles Clarity Helper System Prompt and per-guide modular rules off-record.',
+          },
+          {
+            step: 'Consultation Orchestrator & Stream',
+            filePath: 'server/services/geminiOrchestrator.ts',
+            modelResolved: effectiveConsultationModel,
+            notes: 'Streams response over OpenRouter using guide model override if configured.',
+          },
+          {
+            step: guideCfg.suggestions.enabled
+              ? 'Stage 4 — Suggestions Engine (Active)'
+              : 'Stage 4 — Suggestions Engine (Disabled for Guide)',
+            filePath: 'server/services/suggestionEngine.ts',
+            modelResolved: guideCfg.suggestions.enabled ? effectiveUtilityModel : 'Skipped (Master Disabled)',
+            notes: guideCfg.suggestions.enabled
+              ? 'Active per Admin override.'
+              : 'Skipped completely — zero suggestion token cost for this pillar.',
+          },
+          {
+            step: 'Chat HTTP & Streaming Controller',
+            filePath: 'server/routes/chat.ts',
+            modelResolved: effectiveConsultationModel,
+            notes: 'Handles conversation persistence, metering, and SSE streaming.',
+          },
+        ];
+
+  const makeStackItem = (
+    order: number,
+    layer: string,
+    source: 'Database' | 'Code Default',
+    dbLocation: string,
+    status: 'Active' | 'Disabled',
+    text: string
+  ) => {
+    const clean = text.trim();
+    return {
+      order,
+      layer,
+      source,
+      dbLocation,
+      status,
+      chars: clean.length,
+      approxTokens: Math.ceil(clean.length / 4),
+      preview: clean.length > 280 ? `${clean.slice(0, 280)}…` : clean,
+      fullText: clean,
+    };
+  };
+
+  const promptStack: Array<ReturnType<typeof makeStackItem>> = [];
+  if (guideMeta.pillar === 'council') {
+    const hasCustomConst = Boolean(engineOverrides.core_council_constitution?.trim());
+    const constText =
+      engineOverrides.core_council_constitution?.trim() || DEFAULT_CORE_COUNCIL_CONSTITUTION;
+    promptStack.push(
+      makeStackItem(
+        1,
+        'Core Council Constitution (Anti-Extraction & Grounding)',
+        hasCustomConst ? 'Database' : 'Code Default',
+        hasCustomConst ? 'platform_settings.engine_prompt_overrides.core_council_constitution' : 'enginePromptDefaults.ts',
+        'Active',
+        constText
+      )
+    );
+
+    const expertBody = systemPromptRow?.prompt_body || seedPrompt?.prompt_body || '';
+    const isExpertModifiedFromSeed =
+      Boolean(systemPromptRow && seedPrompt && systemPromptRow.prompt_body.trim() !== seedPrompt.prompt_body.trim());
+    promptStack.push(
+      makeStackItem(
+        2,
+        `Guide Expert Prompt (${guideMeta.displayName})`,
+        systemPromptRow ? 'Database' : 'Code Default',
+        systemPromptRow ? `system_prompts[slug="${guideSlug}"]` : 'promptDefaults.ts',
+        systemPromptRow?.is_active === false ? 'Disabled' : 'Active',
+        expertBody + (isExpertModifiedFromSeed ? '' : '')
+      )
+    );
+
+    if (guideSlug === 'council_synthesis') {
+      const hasLawsOverride = Boolean(engineOverrides.sutra_tier1_reasoning_laws?.trim());
+      promptStack.push(
+        makeStackItem(
+          3,
+          'Tier-1 Adjudication Laws & Truth Gate',
+          hasLawsOverride ? 'Database' : 'Code Default',
+          hasLawsOverride ? 'platform_settings.engine_prompt_overrides.sutra_tier1_reasoning_laws' : 'enginePromptDefaults.ts',
+          'Active',
+          engineOverrides.sutra_tier1_reasoning_laws?.trim() || DEFAULT_SUTRA_TIER1_REASONING_LAWS
+        )
+      );
+
+      const hasAntiCliche = Boolean(engineOverrides.sutra_anti_cliche_rules?.trim());
+      promptStack.push(
+        makeStackItem(
+          4,
+          'Voice & Anti-Cliché Guardrails',
+          hasAntiCliche ? 'Database' : 'Code Default',
+          hasAntiCliche ? 'platform_settings.engine_prompt_overrides.sutra_anti_cliche_rules' : 'enginePromptDefaults.ts',
+          'Active',
+          engineOverrides.sutra_anti_cliche_rules?.trim() || DEFAULT_SUTRA_ANTI_CLICHE_RULES
+        )
+      );
+
+      const hasFormatCustom = Boolean(engineOverrides.format_contracts?.detailed?.trim());
+      promptStack.push(
+        makeStackItem(
+          5,
+          `Format Contract (${chatbotCfg.default_output})`,
+          hasFormatCustom ? 'Database' : defaultOutputRow ? 'Database' : 'Code Default',
+          hasFormatCustom
+            ? 'platform_settings.engine_prompt_overrides.format_contracts'
+            : `system_prompts[slug="${chatbotCfg.default_output}"]`,
+          'Active',
+          engineOverrides.format_contracts?.detailed?.trim() ||
+            defaultOutputRow?.prompt_body ||
+            DEFAULT_FORMAT_CONTRACTS.detailed
+        )
+      );
+    } else {
+      promptStack.push(
+        makeStackItem(
+          3,
+          `Default Output Style (${chatbotCfg.default_output})`,
+          defaultOutputRow ? 'Database' : 'Code Default',
+          defaultOutputRow ? `system_prompts[slug="${chatbotCfg.default_output}"]` : 'promptDefaults.ts',
+          defaultOutputRow?.is_active === false ? 'Disabled' : 'Active',
+          defaultOutputRow?.prompt_body || DEFAULT_FORMAT_CONTRACTS.detailed
+        )
+      );
+    }
+
+    promptStack.push(
+      makeStackItem(
+        promptStack.length + 1,
+        `Default Language Directive (${chatbotCfg.default_language})`,
+        defaultLanguageRow ? 'Database' : 'Code Default',
+        defaultLanguageRow ? `system_prompts[slug="${chatbotCfg.default_language}"]` : 'promptDefaults.ts',
+        defaultLanguageRow?.is_active === false ? 'Disabled' : 'Active',
+        defaultLanguageRow?.prompt_body || `LANGUAGE: ${chatbotCfg.default_language}`
+      )
+    );
+  } else if (guideMeta.pillar === 'companion') {
+    const hasConst = Boolean(engineOverrides.companion_constitution?.trim());
+    promptStack.push(
+      makeStackItem(
+        1,
+        'Companion Safety & Tone Constitution',
+        hasConst ? 'Database' : 'Code Default',
+        hasConst ? 'platform_settings.engine_prompt_overrides.companion_constitution' : 'enginePromptDefaults.ts',
+        'Active',
+        engineOverrides.companion_constitution?.trim() || DEFAULT_COMPANION_CONSTITUTION
+      )
+    );
+    const hasMatcher = Boolean(engineOverrides.companion_matcher_instructions?.trim());
+    promptStack.push(
+      makeStackItem(
+        2,
+        'Companion 4-Persona Matcher Rules',
+        hasMatcher ? 'Database' : 'Code Default',
+        hasMatcher ? 'platform_settings.engine_prompt_overrides.companion_matcher_instructions' : 'enginePromptDefaults.ts',
+        'Active',
+        engineOverrides.companion_matcher_instructions?.trim() || DEFAULT_COMPANION_MATCHER_INSTRUCTIONS
+      )
+    );
+  } else {
+    const hasClarity = Boolean(engineOverrides.clarity_helper_system_prompt?.trim());
+    promptStack.push(
+      makeStackItem(
+        1,
+        'Clarity Sidekick Core Prompt',
+        hasClarity ? 'Database' : 'Code Default',
+        hasClarity ? 'platform_settings.engine_prompt_overrides.clarity_helper_system_prompt' : 'enginePromptDefaults.ts',
+        'Active',
+        engineOverrides.clarity_helper_system_prompt?.trim() || DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT
+      )
+    );
+  }
+
+  // Per-guide Modular Conversational Rules Stack (always highest behavioral precedence)
+  promptStack.push(
+    makeStackItem(
+      promptStack.length + 1,
+      `Per-Guide Modular Rules Stack (${guideCfg.modular_rules.filter((r) => r.enabled).length}/${guideCfg.modular_rules.length} active)`,
+      guideCfg.has_custom_modular_rules ? 'Database' : 'Code Default',
+      guideCfg.has_custom_modular_rules
+        ? `platform_settings.per_guide_chatbot_config.${guideSlug}.modular_rules`
+        : 'platform_settings.chatbot_config.conversational_rules / Code Default',
+      guideCfg.combined_rules_text ? 'Active' : 'Disabled',
+      guideCfg.combined_rules_text || '(No active rules enabled for this guide)'
+    )
+  );
+
+  // Override Warnings
+  const overrideWarnings: Array<{ severity: 'warn' | 'info'; message: string }> = [];
+  if (!runtime.apiKey) {
+    overrideWarnings.push({
+      severity: 'warn',
+      message: 'No OpenRouter API key is configured in AI Settings or environment variables. Live chat requests will fail until set.',
+    });
+  }
+  if (systemPromptRow && systemPromptRow.is_active === false) {
+    overrideWarnings.push({
+      severity: 'warn',
+      message: `${guideMeta.displayName} is currently marked Hidden/Inactive in system_prompts and may not appear in public dropdowns.`,
+    });
+  }
+  const rulesLower = guideCfg.combined_rules_text.toLowerCase();
+  if (
+    guideSlug === 'council_synthesis' &&
+    (rulesLower.includes('no table') ||
+      rulesLower.includes('never use table') ||
+      rulesLower.includes('no heading') ||
+      rulesLower.includes('never use markdown heading'))
+  ) {
+    overrideWarnings.push({
+      severity: 'warn',
+      message:
+        'Modular rule conflict detected: active modular rules instruct against headings or tables while Detailed Observatory Format instructs ## cards & evidence tables.',
+    });
+  }
+  if (!guideCfg.suggestions.enabled) {
+    overrideWarnings.push({
+      severity: 'info',
+      message: `Suggestions are disabled for ${guideMeta.displayName} (Stage 4 LLM suggestion calls and UI suggestion cards are skipped).`,
+    });
+  }
+  if (guideModelOverride && guideModelOverride !== runtime.consultationModel) {
+    overrideWarnings.push({
+      severity: 'info',
+      message: `Guide uses custom model override "${guideModelOverride}" instead of global consultation model "${runtime.consultationModel}".`,
+    });
+  }
+
+  const recipeSlugsSet = new Set<string>();
+  for (const r of activeModeRecipes) {
+    for (const st of r.steps_json || []) {
+      if (st.enabled && st.prompt_slug) recipeSlugsSet.add(st.prompt_slug);
+    }
+  }
+  const unboundModifiers = promptRows.filter(
+    (r) => r.is_active && (r.category === 'modifier' || r.category === 'tone') && !recipeSlugsSet.has(r.slug)
+  );
+  if (unboundModifiers.length > 0 && guideMeta.pillar === 'council') {
+    overrideWarnings.push({
+      severity: 'info',
+      message: `${unboundModifiers.length} active modifier/tone prompt(s) in Prompt Library (${unboundModifiers
+        .slice(0, 3)
+        .map((m) => m.slug)
+        .join(', ')}${unboundModifiers.length > 3 ? '…' : ''}) are not bound to any active mode recipe.`,
+    });
+  }
+
+  const cartridgesList = Object.values(cartridgesMap);
+  const priorityRulesList = Object.values(priorityRulesMap);
+
+  const databaseTables = [
+    {
+      table: 'system_prompts',
+      purpose: 'Guides, modes, outputs, languages, formula cartridges, priority rules & library blocks',
+      count: promptRows.length,
+      details: `${cartridgesList.filter((c) => c.is_active).length}/${cartridgesList.length} active cartridges · ${
+        priorityRulesList.filter((p) => p.is_active).length
+      }/${priorityRulesList.length} active priority rules`,
+    },
+    {
+      table: 'prompt_recipes',
+      purpose: 'Composable prompt pipelines bound to focus modes & reports',
+      count: activeModeRecipes.length,
+      details: `${recipes.length} total recipes configured`,
+    },
+    {
+      table: 'platform_settings',
+      purpose: 'Global defaults, per_guide_chatbot_config, engine_prompt_overrides & playbook_overrides',
+      count: Object.keys(pbOverrides).length,
+      details: `${guideCfg.modular_rules.filter((r) => r.enabled).length} enabled modular rules for ${guideSlug} · ${
+        Object.keys(pbOverrides).length
+      } customized canonical playbooks`,
+    },
+    {
+      table: 'daily_transits',
+      purpose: 'Shared platform Gochar planetary ephemeris feed (1 fetch/day)',
+      count: dailyTransitsCountRes.count ?? 0,
+      details: 'Cached transit rows available for live readings',
+    },
+    {
+      table: 'profiles',
+      purpose: 'Activated member birth charts, life context & memory summaries',
+      count: profilesCountRes.count ?? 0,
+      details: 'Chart context sliced dynamically by Stage 2 Slicer',
+    },
+    {
+      table: 'conversations & messages',
+      purpose: 'Encrypted conversation threads, turns & cached Stage 4 suggestion JSON',
+      count: conversationsCountRes.count ?? 0,
+      details: `${messagesCountRes.count ?? 0} total messages stored`,
+    },
+    {
+      table: 'chatbot_pipeline_logs',
+      purpose: 'Opt-in Stage 1–4 diagnostics and latency telemetry',
+      count: pipelineLogsCountRes.count ?? 0,
+      details: runtime.pipelineLoggingEnabled ? 'Diagnostics logging ON' : 'Diagnostics logging OFF',
+    },
+  ];
+
+  res.json({
+    guide: guideSlug,
+    guideMeta,
+    resolvedModels: {
+      consultationModel: runtime.consultationModel,
+      utilityModel: effectiveUtilityModel,
+      jevModel,
+      guideModelOverride,
+      effectiveModel: effectiveConsultationModel,
+    },
+    runtimeFiles,
+    promptStack,
+    overrideWarnings,
+    databaseTables,
+  });
 });
 
 // 8b. Suggestions (Followup & Deeper analysis) Dynamic Rules Control

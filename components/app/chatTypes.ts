@@ -8,6 +8,8 @@ import type {
   ClarificationPayload,
   Stage1RouterResult,
   SutraSynthesisMeta,
+  TimingProgressWidget,
+  TimingWidgetId,
 } from '../../lib/sutraTypes';
 
 export type {
@@ -18,6 +20,8 @@ export type {
   ClarificationPayload,
   Stage1RouterResult,
   SutraSynthesisMeta,
+  TimingProgressWidget,
+  TimingWidgetId,
 };
 
 export interface ChatCatalogOption {
@@ -50,6 +54,7 @@ export interface MessageSuggestions {
   sutra_stage1?: Stage1RouterResult | null;
   sutra_meta?: SutraSynthesisMeta | null;
   tech_breakdown?: string | null;
+  timing_widgets?: TimingProgressWidget[] | null;
 }
 
 export interface AskLaterItem {
@@ -234,6 +239,25 @@ export interface ChatbotFeaturesUiConfig {
   memory_summary: boolean;
 }
 
+export interface CompanionArchetypeConfigItem {
+  slug: CompanionArchetypeSlug;
+  label: string;
+  shortDesc: string;
+  questionOne: string;
+  questionTwo: string;
+  isSpiritual?: boolean;
+}
+
+export interface PublicGuideUiConfig {
+  welcome_title: string;
+  welcome_subtitle: string;
+  general_ready_message: string;
+  composer_placeholder: string;
+  features: ChatbotFeaturesUiConfig;
+  suggestions_enabled: boolean;
+  suggestions: PublicSuggestionsUiConfig & { enabled: boolean };
+}
+
 export interface PublicChatbotUiConfig {
   welcome_title: string;
   welcome_subtitle: string;
@@ -246,7 +270,6 @@ export interface PublicChatbotUiConfig {
   default_tone: ChatToneMode;
   default_response_length: ChatResponseLength;
   features: ChatbotFeaturesUiConfig;
+  guide_overrides?: Record<string, PublicGuideUiConfig>;
+  companion_archetypes?: CompanionArchetypeConfigItem[];
 }
-
-
-

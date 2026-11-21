@@ -1,6 +1,14 @@
 import type { LifeContextData } from '../../lib/lifeContextSchema';
-import type { Stage1RouterResult, SutraIntentArchetype } from '../../lib/sutraTypes';
-import type { CanonicalPlaybookDef } from './canonicalPlaybooks';
+import type {
+  Stage1RouterResult,
+  SutraIntentArchetype,
+  TimingProgressWidget,
+} from '../../lib/sutraTypes';
+import {
+  applyPlaybookOverride,
+  type CanonicalPlaybookDef,
+} from './canonicalPlaybooks';
+import { getPlaybookOverrides } from './platformSettings';
 import {
   enrichCompiledChart,
   formatChartForLLM,
@@ -11,6 +19,7 @@ import {
   resolvePriorityRuleSlug,
 } from './formulaCartridgesSeed';
 import {
+  buildDeterministicTimingWidgets,
   computeDoubleTransitMatrix,
   SIGNS,
   SIGN_LORDS,
@@ -58,6 +67,19 @@ export interface Stage2CompileInput {
   dailyTransits?: DailyTransitSliceInput | null;
   extraProfiles?: ExtraProfileSliceInput[];
   contextTrapPromptNote?: string | null;
+  userPrompt?: string;
+}
+
+const TIMING_SIGNAL_RE =
+  /\b(?:when|timing|year|years|month|months|202[4-9]|203\d|transit|transits|gochar|dasha|mahadasha|antardasha|pratyantardasha|windfall|window|windows|soon|next|future|period|periods|forecast|upcoming)\b/i;
+
+export function hasTimingSignal(
+  userPrompt?: string | null,
+  intent?: SutraIntentArchetype | null
+): boolean {
+  if (intent === 'TIMING') return true;
+  if (!userPrompt) return false;
+  return TIMING_SIGNAL_RE.test(userPrompt);
 }
 
 export interface TriggeredCancellationItem {
@@ -88,6 +110,8 @@ export interface Stage2ContextPackage {
   playbookId: string;
   domain: string;
   intent: SutraIntentArchetype;
+  requiresTimingStack?: boolean;
+  timingWidgets?: TimingProgressWidget[];
   priorityRule: {
     slug: string;
     title: string;
@@ -311,8 +335,18 @@ function summarizeExtraProfileForSynastry(
  * and Admin-governed Formula Cartridge & Priority Rule assembler.
  */
 export async function compileStage2ContextPackage(
-  input: Stage2CompileInput
+  rawInput: Stage2CompileInput
 ): Promise<Stage2ContextPackage> {
+  const pbOverrides = await getPlaybookOverrides().catch(() => ({} as Record<string, never>));
+  const effectivePlaybook = applyPlaybookOverride(
+    rawInput.playbook,
+    pbOverrides[rawInput.playbook.id] || null
+  );
+  const input: Stage2CompileInput = {
+    ...rawInput,
+    playbook: effectivePlaybook,
+  };
+
   const enriched =
     input.chart.planetaryHealth &&
     input.chart.scoredYogas &&
@@ -329,7 +363,13 @@ export async function compileStage2ContextPackage(
 
   const asc = enriched.planets.find((p) => p.name === 'Ascendant');
   const ascSignIdx = asc?.signIndex ?? 0;
+  const moonNatal = enriched.planets.find((p) => p.name === 'Moon');
+  const moonSignIdx = moonNatal?.signIndex ?? -1;
   const lagnesh = layerA.lagnesh_profile.lagnesh;
+  const effectiveRequiresTimingStack = Boolean(
+    input.playbook.requiresTimingStack ||
+      hasTimingSignal(input.userPrompt, input.routerResult.intent)
+  );
 
   // 1. Focus Houses (from Playbook only + Ascendant anchor when appropriate)
   const focusHouses = Array.from(
@@ -398,7 +438,7 @@ export async function compileStage2ContextPackage(
   }
 
   const activeStack = enriched.vimshottari?.currentStack;
-  if (input.playbook.requiresTimingStack && activeStack) {
+  if (effectiveRequiresTimingStack && activeStack) {
     focusPlanetSet.add(activeStack.mahadasha);
     focusPlanetSet.add(activeStack.antardasha);
     focusPlanetSet.add(activeStack.pratyantardasha);
@@ -418,7 +458,7 @@ export async function compileStage2ContextPackage(
         phi ? `PHI:${phi.totalScore}` : '',
         cond?.aspectsHouses?.length ? `Asp:${cond.aspectsHouses.join(',')}` : '',
       ].filter(Boolean);
-      return `${p.name}:${p.sign.slice(0, 3)} ${p.dms}(H${p.house},${p.nakshatra.slice(0, 8)} P${p.pada}/${p.nakshatraLord.slice(0, 2)},SL:${p.subLord.slice(0, 2)}${flags.length ? ',' + flags.join('|') : ''})`;
+      return `${p.name}:${p.sign.slice(0, 3)} ${p.dms}(H${p.house},${p.nakshatra} P${p.pada}/${p.nakshatraLord.slice(0, 2)},SL:${p.subLord.slice(0, 2)}${flags.length ? ',' + flags.join('|') : ''})`;
     });
 
   // 4. Slice Divisional Vargas (ONLY playbook.requiredVargas, NEVER degrees!)
@@ -497,10 +537,11 @@ export async function compileStage2ContextPackage(
     }
   }
 
-  // 8. Scoped Timing Stack (ONLY when playbook.requiresTimingStack)
+  // 8. Scoped Timing Stack (playbook OR explicit timing/forecast signal)
   let doubleTransitFocus: DoubleTransitHouseRow[] = [];
   let slowTransitionsSummary: string[] = [];
-  if (input.playbook.requiresTimingStack && input.dailyTransits?.planets?.length) {
+  let gocharNowSummary: string[] = [];
+  if (effectiveRequiresTimingStack && input.dailyTransits?.planets?.length) {
     const dtMatrix = computeDoubleTransitMatrix({
       natalPlanets: enriched.planets,
       ashtakavarga: enriched.ashtakavarga,
@@ -510,20 +551,33 @@ export async function compileStage2ContextPackage(
     doubleTransitFocus = dtMatrix.houses.filter(
       (row) =>
         focusHouseSet.has(row.house) ||
-        ((input.playbook.domain === 'timing' || input.playbook.domain === 'open') &&
+        ((input.playbook.domain === 'timing' ||
+          input.playbook.domain === 'open' ||
+          input.routerResult.intent === 'TIMING') &&
           row.doubleTransitActive)
     );
+    gocharNowSummary = input.dailyTransits.planets
+      .filter((tp) => ['Jupiter', 'Saturn', 'Rahu', 'Ketu', 'Mars', 'Sun'].includes(tp.name))
+      .map((tp) => {
+        const hLagna = ((tp.signIndex - ascSignIdx + 12) % 12) + 1;
+        const hMoon =
+          moonSignIdx >= 0 ? `,Moon H${((tp.signIndex - moonSignIdx + 12) % 12) + 1}` : '';
+        return `${tp.name}:${tp.sign} ${tp.dms}(Lagna H${hLagna}${hMoon}${tp.isRetrograde ? ',Rx' : ''})`;
+      });
     if (Array.isArray(input.dailyTransits.slowTransitPairs)) {
       slowTransitionsSummary = input.dailyTransits.slowTransitPairs.map((pair) => {
         const curH = ((pair.currentSignIndex - ascSignIdx + 12) % 12) + 1;
         const nextH = ((pair.nextSignIndex - ascSignIdx + 12) % 12) + 1;
-        return `${pair.planet}:${pair.currentSign.slice(0, 3)} ${pair.currentDegreeInSign.toFixed(1)}°(H${curH}${pair.isRetrograde ? ' Rx' : ''})->${pair.nextSign.slice(0, 3)}(H${nextH})~${pair.nextIngressApproxDate}(${pair.daysUntilIngress}d)`;
+        const curHMoon =
+          moonSignIdx >= 0 ? `/M-H${((pair.currentSignIndex - moonSignIdx + 12) % 12) + 1}` : '';
+        return `${pair.planet}:${pair.currentSign.slice(0, 3)} ${pair.currentDegreeInSign.toFixed(1)}°(L-H${curH}${curHMoon}${pair.isRetrograde ? ' Rx' : ''})->${pair.nextSign.slice(0, 3)}(L-H${nextH})~${pair.nextIngressApproxDate}(${pair.daysUntilIngress}d)`;
       });
     }
   }
 
-  const timingSlice = input.playbook.requiresTimingStack
+  const timingSlice = effectiveRequiresTimingStack
     ? {
+        transitDate: input.dailyTransits?.transitDate,
         dasha: activeStack
           ? `MD:${activeStack.mahadasha}(to ${activeStack.mdEnd},${activeStack.mdProgressPct ?? '?'}%${activeStack.mdSandhiWarning ? ',SANDHI' : ''}) | AD:${activeStack.antardasha}(to ${activeStack.adEnd},${activeStack.adProgressPct ?? '?'}%${activeStack.adSandhiWarning ? ',SANDHI' : ''}) | PD:${activeStack.pratyantardasha}(to ${activeStack.pdEnd})`
           : undefined,
@@ -531,6 +585,7 @@ export async function compileStage2ContextPackage(
         chara: enriched.jaimini?.charaDasha?.currentPeriod
           ? `${enriched.jaimini.charaDasha.currentPeriod.sign.slice(0, 3)}(${enriched.jaimini.charaDasha.currentPeriod.startDate}..${enriched.jaimini.charaDasha.currentPeriod.endDate})`
           : undefined,
+        gocharNow: gocharNowSummary.length ? gocharNowSummary : undefined,
         dt: doubleTransitFocus.map(
           (r) =>
             `H${r.house}:${r.doubleTransitActive ? 'DT_YES' : `Ju${r.jupiterActivated ? 'Y' : 'N'}/Sa${r.saturnActivated ? 'Y' : 'N'}`}(SAV:${r.savBindus})`
@@ -539,19 +594,29 @@ export async function compileStage2ContextPackage(
       }
     : undefined;
 
-  // 9. Scoped Yogas & Doshas
-  const scopedYogas = layerA.validated_yogas
-    .filter(
-      (y) =>
-        y.domains.includes(input.playbook.domain) ||
-        y.domains.includes('resilience') ||
-        y.status === 'Foundational'
-    )
-    .slice(0, 3)
+  // 9. Scoped Yogas & Doshas (up to 10 relevant active Yogas/Cancellations)
+  const KEY_YOGA_PRIORITY_RE =
+    /neecha\s*bhanga|raja\s*yoga|dhana\s*yoga|vipareeta|mahapurusha|gajakesari|hamsa|malavya|ruchaka|bhadra|sasa|budhaditya/i;
+  const scopedYogas = [...layerA.validated_yogas]
+    .sort((a, b) => {
+      const aScore =
+        (a.domains.includes(input.playbook.domain) ? 4 : 0) +
+        (a.domains.includes('resilience') ? 1 : 0) +
+        (a.status === 'Foundational' ? 3 : 0) +
+        (KEY_YOGA_PRIORITY_RE.test(a.name) ? 3 : 0);
+      const bScore =
+        (b.domains.includes(input.playbook.domain) ? 4 : 0) +
+        (b.domains.includes('resilience') ? 1 : 0) +
+        (b.status === 'Foundational' ? 3 : 0) +
+        (KEY_YOGA_PRIORITY_RE.test(b.name) ? 3 : 0);
+      if (bScore !== aScore) return bScore - aScore;
+      return (b.ysi_score_0_110 || 0) - (a.ysi_score_0_110 || 0);
+    })
+    .slice(0, 10)
     .map((y) => `${y.name}[${y.status},YSI:${y.ysi_score_0_110}]:${y.formula_proof}`);
 
   const scopedSuppressedYogas = layerA.suppressed_or_cosmetic_yogas
-    .slice(0, 2)
+    .slice(0, 3)
     .map((y) => `${y.name}:${y.reason_downgraded}`);
 
   // =========================================================================
@@ -639,7 +704,7 @@ export async function compileStage2ContextPackage(
   }
 
   // D. Dasha Sandhi < 10%
-  if (input.playbook.requiresTimingStack && activeStack && (activeStack.mdSandhiWarning || activeStack.adSandhiWarning)) {
+  if (effectiveRequiresTimingStack && activeStack && (activeStack.mdSandhiWarning || activeStack.adSandhiWarning)) {
     triggerSignals.add('dasha_sandhi');
     triggeredCancellations.push({
       code: 'DASHA_SANDHI_WINDOW',
@@ -868,7 +933,7 @@ export async function compileStage2ContextPackage(
         });
       }
     } else if (
-      input.playbook.requiresTimingStack &&
+      effectiveRequiresTimingStack &&
       (slug === 'f_dasha_ladder' || slug === 'f_slow_planet_transit')
     ) {
       if (!candidateScores.has(slug)) {
@@ -1034,6 +1099,9 @@ export async function compileStage2ContextPackage(
   const renderedPromptContext = [
     `CONSULTATION TOPIC FOCUS: ${input.playbook.title}`,
     `RESPONSE ARCHETYPE: ${input.routerResult.intent}`,
+    ...(input.playbook.customInstructions?.trim()
+      ? ['', `## PLAYBOOK SPECIFIC GUIDANCE\n${input.playbook.customInstructions.trim()}`]
+      : []),
     '',
     `## REAL-WORLD LIFE CONTEXT ANCHORS (Desh-Kaal-Patra)\n${lifeContextAnchorText}`,
     '',
@@ -1048,10 +1116,16 @@ export async function compileStage2ContextPackage(
     `## SCOPED NATAL & TIMING CHART DATA\n${chartSliceJsonStr}`,
   ].join('\n');
 
+  const timingWidgets = effectiveRequiresTimingStack
+    ? buildDeterministicTimingWidgets(enriched, input.dailyTransits || null)
+    : undefined;
+
   return {
     playbookId: input.playbook.id,
     domain: input.playbook.domain,
     intent: input.routerResult.intent,
+    requiresTimingStack: effectiveRequiresTimingStack,
+    ...(timingWidgets && timingWidgets.length > 0 ? { timingWidgets } : {}),
     priorityRule: {
       slug: prioRecord?.slug || prioSlug,
       title: prioRecord ? stripInternalCodePrefix(prioRecord.display_name) : 'Priority Matrix',

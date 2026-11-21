@@ -52,6 +52,7 @@ import type {
   PublicChatbotUiConfig,
   PublicSuggestionsUiConfig,
   SuggestionItem,
+  TimingProgressWidget,
 } from './chatTypes';
 import {
   PREVIEW_CHAT_CATALOG,
@@ -362,6 +363,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const [streamingTabId, setStreamingTabId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
   const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
+  const [streamingTimingWidgets, setStreamingTimingWidgets] = useState<TimingProgressWidget[]>([]);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   // Phase 2: Multi-Thread Tabs (Closable; at least 1 tab stays open)
@@ -1093,8 +1095,18 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     return [];
   }, [messages]);
 
+  const activeGuideSlug =
+    activePillar === 'companion'
+      ? 'companion'
+      : activePillar === 'clarity'
+      ? 'clarity'
+      : expertSlug;
+  const activeGuideUi = chatbotConfig?.guide_overrides?.[activeGuideSlug] || null;
+
   const suggestionsDefaultExpanded =
-    suggestionsAutoExpand && (suggestionsConfig?.default_expanded ?? true);
+    activeGuideUi?.suggestions?.default_expanded !== undefined
+      ? suggestionsAutoExpand && activeGuideUi.suggestions.default_expanded
+      : suggestionsAutoExpand && (suggestionsConfig?.default_expanded ?? true);
 
   const isThreadLocked = messages.length > 0 || isStreaming;
 
@@ -2323,6 +2335,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     setStreamingTabId(sendTabId);
     setStreamingText('');
     setStreamingStatus('Preparing consultation...');
+    setStreamingTimingWidgets([]);
 
     let createdConvForTurn: ConversationRecord | null = null;
     let serverUserMsgId: string | null = null;
@@ -2509,6 +2522,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             followups?: string[];
             suggestions?: MessageSuggestions | null;
             techBreakdown?: string | null;
+            timingWidgets?: TimingProgressWidget[];
             title?: string;
             conversation?: ConversationRecord;
             pendingProfile?: PendingBirthProfileDraft | null;
@@ -2525,6 +2539,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             if (isCurrentStreamOwner) {
               setStreamingStatus(evt.text);
             }
+          } else if (evt.type === 'timing_widgets' && Array.isArray(evt.timingWidgets)) {
+            if (isCurrentStreamOwner) {
+              setStreamingTimingWidgets(evt.timingWidgets);
+            }
           } else if (evt.type === 'chunk' && evt.text) {
             hasReceivedAssistantChunk = true;
             accumulated += evt.text;
@@ -2540,6 +2558,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             if (evt.assistantMessage) {
               const baseSuggestions =
                 evt.assistantMessage.suggestions_json ?? evt.suggestions ?? null;
+              const eventTimingWidgets =
+                Array.isArray(evt.timingWidgets) && evt.timingWidgets.length > 0
+                  ? evt.timingWidgets
+                  : undefined;
               const mergedSuggestions =
                 sendPillar === 'council' && baseSuggestions
                   ? {
@@ -2547,9 +2569,17 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                       ...(evt.techBreakdown && !baseSuggestions.tech_breakdown
                         ? { tech_breakdown: evt.techBreakdown }
                         : {}),
+                      ...(eventTimingWidgets && !baseSuggestions.timing_widgets?.length
+                        ? { timing_widgets: eventTimingWidgets }
+                        : {}),
                     }
-                  : sendPillar === 'council' && evt.techBreakdown
-                  ? { followups: [], deeper_analysis: [], tech_breakdown: evt.techBreakdown }
+                  : sendPillar === 'council' && (evt.techBreakdown || eventTimingWidgets)
+                  ? {
+                      followups: [],
+                      deeper_analysis: [],
+                      ...(evt.techBreakdown ? { tech_breakdown: evt.techBreakdown } : {}),
+                      ...(eventTimingWidgets ? { timing_widgets: eventTimingWidgets } : {}),
+                    }
                   : null;
               const enrichedAssistant: ChatMessageRecord = {
                 ...evt.assistantMessage,
@@ -2603,6 +2633,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             if (isCurrentStreamOwner) {
               setStreamingText('');
               setStreamingStatus(null);
+              setStreamingTimingWidgets([]);
               setIsStreaming(false);
               setStreamingTabId(null);
               abortControllerRef.current = null;
@@ -2666,6 +2697,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         setStreamingTabId(null);
         setStreamingText('');
         setStreamingStatus(null);
+        setStreamingTimingWidgets([]);
         abortControllerRef.current = null;
       }
     }
@@ -3978,6 +4010,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             key={`${activeTabId}-${companionSetupKey}`}
             initialArchetype={companionSetupArchetype}
             pastCompanionConversations={pastCompanionConversations}
+            archetypeConfigs={chatbotConfig?.companion_archetypes}
             isPreviewMode={isPreviewMode}
             getAccessToken={getAccessToken}
             onSelectPastCompanion={(convId) => handleSelectSidebarConversation(convId)}
@@ -3997,10 +4030,12 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             loadingEarlierMessages={loadingEarlierMessages}
             streamingText={streamingText}
             streamingStatus={streamingStatus}
+            streamingTimingWidgets={streamingTimingWidgets}
             isStreaming={isStreaming}
             catalog={catalog}
             fontSize={chatFontSize}
             languageSlug={languageSlug}
+            responseMode={responseMode}
             searchQuery={inChatQuery}
             activeMatchMessageId={activeMatchMessageId}
             pendingProfileConfirm={pendingProfileConfirm}
@@ -4030,16 +4065,26 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             onSelectGeneralChart={handleSelectGeneralChartFromEmpty}
             onConfirmPendingProfile={(draft) => void handleConfirmPendingProfile(draft)}
             onEditPendingProfile={(draft) => handleOpenAddChartModal(draft, true)}
-            welcomeTitle={chatbotConfig?.welcome_title}
-            welcomeSubtitle={chatbotConfig?.welcome_subtitle}
-            generalReadyMessage={chatbotConfig?.general_ready_message}
-            enableListen={chatbotConfig?.features?.listen_tts ?? true}
-            enableWhatsappShare={chatbotConfig?.features?.whatsapp_share ?? true}
+            welcomeTitle={activeGuideUi?.welcome_title ?? chatbotConfig?.welcome_title}
+            welcomeSubtitle={activeGuideUi?.welcome_subtitle ?? chatbotConfig?.welcome_subtitle}
+            generalReadyMessage={
+              activeGuideUi?.general_ready_message ?? chatbotConfig?.general_ready_message
+            }
+            enableListen={
+              activeGuideUi?.features?.listen_tts ?? chatbotConfig?.features?.listen_tts ?? true
+            }
+            enableWhatsappShare={
+              activeGuideUi?.features?.whatsapp_share ??
+              chatbotConfig?.features?.whatsapp_share ??
+              true
+            }
             enableFollowups={
-              activePillar === 'council' &&
-              (chatbotConfig?.features?.followups ?? true) &&
-              ((suggestionsConfig?.followups_enabled ?? true) ||
-                (suggestionsConfig?.deeper_analysis_enabled ?? true))
+              activeGuideUi
+                ? activeGuideUi.suggestions_enabled && activeGuideUi.features?.followups !== false
+                : activePillar === 'council' &&
+                  (chatbotConfig?.features?.followups ?? true) &&
+                  ((suggestionsConfig?.followups_enabled ?? true) ||
+                    (suggestionsConfig?.deeper_analysis_enabled ?? true))
             }
             astrologyMode={astrologyMode}
             expertSlug={expertSlug}
@@ -4149,10 +4194,18 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           pendingDirectiveLabel={pendingTechnicalDirective?.label || null}
           onClearPendingDirective={() => setPendingTechnicalDirective(null)}
           focusTrigger={composerFocusTrigger}
-          composerPlaceholder={chatbotConfig?.composer_placeholder}
-          enableVoiceInput={chatbotConfig?.features?.voice_input ?? true}
-          enableAttachments={chatbotConfig?.features?.attachments ?? true}
-          enableQuickTools={chatbotConfig?.features?.quick_tools ?? true}
+          composerPlaceholder={
+            activeGuideUi?.composer_placeholder ?? chatbotConfig?.composer_placeholder
+          }
+          enableVoiceInput={
+            activeGuideUi?.features?.voice_input ?? chatbotConfig?.features?.voice_input ?? true
+          }
+          enableAttachments={
+            activeGuideUi?.features?.attachments ?? chatbotConfig?.features?.attachments ?? true
+          }
+          enableQuickTools={
+            activeGuideUi?.features?.quick_tools ?? chatbotConfig?.features?.quick_tools ?? true
+          }
           deepAudit={deepAudit}
           canUseDeepAudit={
             activePillar === 'council' &&

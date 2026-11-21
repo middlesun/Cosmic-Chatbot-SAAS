@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import CustomSelect from './CustomSelect';
 import type {
+  CompanionArchetypeConfigItem,
   CompanionArchetypeSlug,
   CompanionPersona,
   ConversationRecord,
@@ -21,6 +22,7 @@ import type {
 interface CompanionSetupViewProps {
   initialArchetype?: CompanionArchetypeSlug | null;
   pastCompanionConversations: ConversationRecord[];
+  archetypeConfigs?: CompanionArchetypeConfigItem[];
   isPreviewMode?: boolean;
   getAccessToken: () => Promise<string | null>;
   onSelectPastCompanion: (conversationId: string) => void;
@@ -31,6 +33,8 @@ interface ArchetypeOption {
   slug: CompanionArchetypeSlug;
   label: string;
   summary: string;
+  questionOne?: string;
+  questionTwo?: string;
   icon: React.FC<{ className?: string }>;
   isSpiritual?: boolean;
 }
@@ -177,6 +181,7 @@ const getReligiousnessCaption = (score: number): string => {
 const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
   initialArchetype = null,
   pastCompanionConversations,
+  archetypeConfigs,
   isPreviewMode = false,
   getAccessToken,
   onSelectPastCompanion,
@@ -204,9 +209,27 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [startingId, setStartingId] = useState<string | null>(null);
 
+  const resolvedArchetypeOptions = useMemo(() => {
+    if (!archetypeConfigs || archetypeConfigs.length === 0) return ARCHETYPE_OPTIONS;
+    const bySlug = new Map(archetypeConfigs.map((a) => [a.slug, a]));
+    return ARCHETYPE_OPTIONS.map((opt) => {
+      const ov = bySlug.get(opt.slug);
+      if (!ov) return opt;
+      return {
+        ...opt,
+        label: ov.label?.trim() || opt.label,
+        summary: ov.shortDesc?.trim() || opt.summary,
+        questionOne: ov.questionOne?.trim() || undefined,
+        questionTwo: ov.questionTwo?.trim() || undefined,
+      };
+    });
+  }, [archetypeConfigs]);
+
   const activeArchetypeMeta = useMemo(
-    () => ARCHETYPE_OPTIONS.find((a) => a.slug === selectedType) || ARCHETYPE_OPTIONS[0],
-    [selectedType]
+    () =>
+      resolvedArchetypeOptions.find((a) => a.slug === selectedType) ||
+      resolvedArchetypeOptions[0],
+    [resolvedArchetypeOptions, selectedType]
   );
 
   const handleChooseArchetype = (slug: CompanionArchetypeSlug) => {
@@ -315,7 +338,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {ARCHETYPE_OPTIONS.map((opt) => {
+              {resolvedArchetypeOptions.map((opt) => {
                 const Icon = opt.icon;
                 return (
                   <button
@@ -504,7 +527,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                       htmlFor="spiritual-topic"
                       className="block text-xs font-medium text-[#3D3830]"
                     >
-                      What would you like to reflect on?{' '}
+                      {activeArchetypeMeta.questionOne || 'What would you like to reflect on?'}{' '}
                       <span className="font-normal text-[#8B8275]">(Optional)</span>
                     </label>
                     <textarea
@@ -524,7 +547,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                       htmlFor="companion-topic"
                       className="block text-xs font-medium text-[#3D3830]"
                     >
-                      What do you want to talk about?
+                      {activeArchetypeMeta.questionOne || 'What do you want to talk about?'}
                     </label>
                     <textarea
                       id="companion-topic"
@@ -541,7 +564,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                       htmlFor="companion-pref"
                       className="block text-xs font-medium text-[#3D3830]"
                     >
-                      What kind of person are you looking for?{' '}
+                      {activeArchetypeMeta.questionTwo || 'What kind of person are you looking for?'}{' '}
                       <span className="font-normal text-[#8B8275]">(Optional)</span>
                     </label>
                     <input

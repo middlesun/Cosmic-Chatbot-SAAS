@@ -1,10 +1,19 @@
 import type {
   SutraIntentArchetype,
   SutraSynthesisMeta,
+  TimingProgressWidget,
   UserFluencyTier,
 } from '../../lib/sutraTypes';
 import type { CompiledChartData } from './chartCompiler';
 import type { Stage2ContextPackage } from './contextSlicer';
+import {
+  DEFAULT_FLUENCY_INSTRUCTIONS,
+  DEFAULT_FORMAT_CONTRACTS,
+  DEFAULT_INTENT_OUTPUT_CONTRACTS,
+  DEFAULT_SUTRA_ANTI_CLICHE_RULES,
+  DEFAULT_SUTRA_TIER1_REASONING_LAWS,
+} from './enginePromptDefaults';
+import type { EnginePromptOverrides } from './platformSettings';
 
 /**
  * Feature flag controlling decoupled Stage 4 Chart-Aligned Suggestions.
@@ -90,29 +99,9 @@ export interface DeterministicConvergenceResult {
 /**
  * Shared non-negotiable Tier 1 adjudicative laws from VEDIC_FORMULA_AND_PRIORITY_LIBRARY.md.
  */
-export const SUTRA_TIER1_REASONING_LAWS = `TIER 1 ADJUDICATION LAWS (STRICTLY ENFORCED):
-1. 8 FINAL JUDGMENT CLASSIFICATIONS (Avoid shallow Yes/No bias):
-   Explicitly frame major outcomes using clear gradation rather than black-and-white extremes:
-   Strong Manifestation | Moderate Manifestation | Conditional Manifestation | Partial Manifestation | Delayed Manifestation | Temporary Obstruction | Modified Expression | Practical Denial.
-2. INDEPENDENT EVIDENCE RULE:
-   Confidence rises ONLY when independent mechanisms agree (D1 Promise + Divisional Confirmation + KP Cusp Sub-Lord + Shadbala/SAV + Active Dasha/Gochar). Three restatements of the same D1 placement count as ONE signal, not three.
-   1 isolated indicator = Possibility only | 2 independent systems = Solid likelihood | 3+ converging layers = High confidence.
-3. ACTIVATION GATE & OUTCOME VS. EXPERIENCE:
-   - Psychological tendencies & personality wiring are always active, whereas external events (marriage, job shift, relocation, windfall) require active Vimshottari MD/AD or tight Gochar activation; label dormant promises strictly as latent potential.
-   - Always separate external outcome (title, event, public image via AL/A10/UL) from inner lived experience (emotional safety, fulfillment, burnout via D9/Moon/4H/12H).
-4. COUNTERFACTUAL & NEUTRALITY CHECK:
-   Before finalizing any high-stakes conclusion, test what would be expected if the opposite were true. Never soften structural friction to flatter, and never dramatize challenges with fear-mongering, curses, medical/legal claims, or expensive ritual/gemstone upsells.
-5. D1 VS. D9/VARGA BOUNDARY (CRITICAL ACCURACY RULE):
-   Exact degrees, Nakshatras, Pada, planetary war, combustion, and orbs belong strictly to D1 Rashi. For D9 Navamsa and all other Vargas, cite ONLY Sign, House, Dignity (Exalted/Own/Friendly/Neutral/Enemy/Debilitated), and Vargottama status — NEVER invent degrees inside divisional charts.
-6. TRUTH GATE CONFLICT HIERARCHY:
-   When systems disagree, resolve strictly in order: (1) KP Cuspal Sub-Lord promise -> (2) D9 Navamsa endurance -> (3) Shadbala & PHI stamina -> (4) Ashtakavarga SAV/BAV volume -> (5) D1 Yogas. If genuine tension remains after all 5 checks, name it honestly as "internal potential vs. external friction."`;
+export const SUTRA_TIER1_REASONING_LAWS = DEFAULT_SUTRA_TIER1_REASONING_LAWS;
 
-export const SUTRA_ANTI_CLICHE_RULES = `VOICE & ANTI-CLICHÉ GUARDRAILS (NON-NEGOTIABLE):
-- Always address the person directly as "you" and "your" ("your chart", "your 7th house"). NEVER refer to them in the third person as "the native", "the native's chart", or "the individual" (unless reading a separate named third person's chart, where you use their name).
-- Jump straight into your answer in natural, calm "sitting across the table" human cadence. NEVER start with "Hello [Name],", "Hi [Name],", "Dear [Name],", "Namaste,", or corporate headers like "Executive Synthesis".
-- Strictly avoid AI clichés and dramatic filler: NO "high-voltage engine", NO "stellium of planets", NO "cosmic green light", NO "pressure cooker", NO "fog / haze / veil / smoke", NO "late bloomer", NO "smoking gun" scare quotes, NO "In Vedic astrology...", NO "This indicates that...", NO "Destined to...".
-- Rotate probability language naturally: "carries strong structural support", "tends to express as", "delayed rather than denied", "conditional on timing and steady effort".
-- Never repeat the exact same boilerplate interpretation across sections, and keep prose flowing smoothly without decorative em-dashes.`;
+export const SUTRA_ANTI_CLICHE_RULES = DEFAULT_SUTRA_ANTI_CLICHE_RULES;
 
 /**
  * Deterministically checks 5 independent Jyotish pillars from Stage 2 + Chart Telemetry
@@ -266,68 +255,64 @@ export function resolveEffectiveFluency(
   return baseline === 'beginner' ? 'guided_bridge' : baseline;
 }
 
-export function buildFluencyInstruction(effectiveFluency: UserFluencyTier): string {
+export function buildFluencyInstruction(
+  effectiveFluency: UserFluencyTier,
+  responseLength: 'short' | 'detailed' = 'detailed',
+  engineOverrides?: EnginePromptOverrides | null
+): string {
+  const custom = engineOverrides?.fluency_instructions;
+  if (responseLength === 'short') {
+    if (effectiveFluency === 'beginner') {
+      return custom?.short_beginner?.trim() || DEFAULT_FLUENCY_INSTRUCTIONS.short_beginner;
+    }
+    if (effectiveFluency === 'guided_bridge') {
+      return custom?.short_guided_bridge?.trim() || DEFAULT_FLUENCY_INSTRUCTIONS.short_guided_bridge;
+    }
+    return custom?.short_practitioner?.trim() || DEFAULT_FLUENCY_INSTRUCTIONS.short_practitioner;
+  }
+
   if (effectiveFluency === 'beginner') {
-    return `FLUENCY LEVEL — EVERYDAY PLAIN ENGLISH:
-Write completely naturally in everyday human life language. NEVER drop unexplained acronyms like "7L", "D9", "UL", "CSL", or "SAV" on their own. Mention at most 1–2 essential Jyotish concepts only when genuinely clarifying, placing the plain-English meaning first and the term gently in parentheses (for example: "your main life chapter (Mahadasha)" or "your deeper relationship chart (Navamsa)").`;
+    return custom?.detailed_beginner?.trim() || DEFAULT_FLUENCY_INSTRUCTIONS.detailed_beginner;
   }
   if (effectiveFluency === 'guided_bridge') {
-    return `FLUENCY LEVEL — GUIDED BRIDGE:
-Lead with plain-English insight first, and back up key conclusions cleanly with concise astrological proof in parentheses or brackets (for example: "(Jupiter transiting your 7th house, supportive Navamsa Venus)") so both intuition and evidence feel clear without overwhelming jargon.`;
+    return custom?.detailed_guided_bridge?.trim() || DEFAULT_FLUENCY_INSTRUCTIONS.detailed_guided_bridge;
   }
-  return `FLUENCY LEVEL — PRACTITIONER PEER:
-Speak directly practitioner-to-practitioner with full authentic Jyotish shorthand and forensic rigor: cite D1 degrees, Nakshatra/Pada, planetary dignity/PHI, Shadbala ratios, Ashtakavarga (BAV/SAV), divisional house/dignity checks (D9/D10/D7/D2/D4), Jaimini Karakas/Arudhas, KP Cuspal Sub-Lords, and Vimshottari MD/AD/PD + Chara Dasha dates.`;
+  return custom?.detailed_practitioner?.trim() || DEFAULT_FLUENCY_INSTRUCTIONS.detailed_practitioner;
 }
 
 export function buildIntentOutputContract(
   intent: SutraIntentArchetype,
   convergence: DeterministicConvergenceResult,
-  responseLength: 'short' | 'detailed'
+  responseLength: 'short' | 'detailed',
+  requiresTimingStack = false,
+  engineOverrides?: EnginePromptOverrides | null
 ): string {
   const lengthHint =
     responseLength === 'short'
       ? 'Keep total length crisp (around 150–250 words) without losing the required contract structure.'
       : 'Keep depth well-paced, substantive, and easy to scan.';
 
-  switch (intent) {
-    case 'SOFT_HORIZON':
-      return `RESPONSE CONTRACT — MULTI-DECADE / SOFT HORIZON READING:
-- STRICTLY FORBIDDEN from reducing a broad life arc or multi-decade theme to a flat binary "Yes" or "No" verdict.
-- Structure clearly with:
-  1. **Real-World Opening**: Meet the question directly in warm, grounded prose ("looking across the whole arc of your chart...").
-  2. **Supporting Weights vs. Friction & Cancelling Weights**: Weigh what genuinely sustains this theme against what introduces delay, friction, or adaptation.
-  3. **Dasha Phase Arcs**: Trace how this unfolds across Early, Mid, and Mature Dasha/life chapters so timing shifts feel clear.
-  4. **Bottom-Line Synthesis**: One clear, stabilizing takeaway rooted in agency and timing (${lengthHint}).`;
+  const mandatoryGocharClause =
+    intent === 'TIMING' || requiresTimingStack
+      ? `\n- MANDATORY GOCHAR & DOUBLE TRANSIT RULE: Explicitly reference current **Saturn** and **Jupiter** Gochar (transit) signs and house positions **counted from BOTH your Lagna (Ascendant) AND Natal Moon**, plus **Double Transit** activation on the relevant focus houses and SAV/BAV bindus from the timing slice.`
+      : '';
 
-    case 'HARD_DECISION':
-      return `RESPONSE CONTRACT — HIGH-STAKES DECISION / VERDICT ADJUDICATION:
-- Apply the **3-Gate Law** (Structural Promise x Delivery Strength x Active Timing) PLUS a **Contrarian / Cancellation Check**.
-- Structure clearly with:
-  1. **Convergence Assessment**: State clearly how independent systems align — grounded baseline: **${convergence.bandLabel}** (${convergence.tierLabel}: ${convergence.pillars.map((p) => `${p.name}=${p.aligned ? 'Yes' : 'Caution'}`).join(', ')}). Never exaggerate weak alignments.
-  2. **Primary Classification & Contrarian Reality Test**: State the outcome explicitly using the 8-Tier Manifestation scale (Strong / Moderate / Conditional / Partial / Delayed / Temporary Obstruction / Modified Expression / Practical Denial) and note any active cancellations (Neecha Bhanga, D1-D9 shifts, Bhava Chalit shifts, or birth-time cautions).
-  3. **2–4 Ranked Likely Outcomes**: List the most realistic scenarios in descending probability with what triggers or reinforces each.
-  4. **Strategic Next Step**: Practical, grounded framing without ritual/gemstone upsells (${lengthHint}).`;
+  const convergenceLine = `**${convergence.bandLabel}** (${convergence.tierLabel}: ${convergence.pillars
+    .map((p) => `${p.name}=${p.aligned ? 'Yes' : 'Caution'}`)
+    .join(', ')})`;
 
-    case 'TIMING':
-      return `RESPONSE CONTRACT — MULTI-CLOCK TIMING FORECAST:
-- Synthesize timing across all active clocks present in the chart slice: **Vimshottari MD/AD/PD** (+ Dasha Sandhi cautions if <10%), **Jaimini Chara Dasha**, **Double Transit (Jupiter permission + Saturn permanence + SAV bindus)**, **Slow-Planet Ingresses**, and **KP Sub-Lord activation**.
-- Structure clearly with:
-  1. **Direct Timing Answer**: Open immediately with what season the person is standing in right now and whether the current chapter opens, builds, or tests.
-  2. **Top 2–3 Realistic Calendar Windows**: Present specific, realistic month/year windows in clean Markdown bullets or a compact table, explaining *which* specific planetary trigger (AD switch, Double Transit, transit over Lagna/Moon/7H/10H) activates each window and what SAV bindus say about ease vs effort.
-  3. **Preparation & Reality Anchor**: Brief advice calibrated to their life stage (${lengthHint}).`;
+  const customContracts = engineOverrides?.intent_output_contracts;
+  const rawTemplate =
+    (intent === 'SOFT_HORIZON' && (customContracts?.SOFT_HORIZON?.trim() || DEFAULT_INTENT_OUTPUT_CONTRACTS.SOFT_HORIZON)) ||
+    (intent === 'HARD_DECISION' && (customContracts?.HARD_DECISION?.trim() || DEFAULT_INTENT_OUTPUT_CONTRACTS.HARD_DECISION)) ||
+    (intent === 'TIMING' && (customContracts?.TIMING?.trim() || DEFAULT_INTENT_OUTPUT_CONTRACTS.TIMING)) ||
+    (intent === 'PEER_AUDIT' && (customContracts?.PEER_AUDIT?.trim() || DEFAULT_INTENT_OUTPUT_CONTRACTS.PEER_AUDIT)) ||
+    (customContracts?.CONVERSATIONAL?.trim() || DEFAULT_INTENT_OUTPUT_CONTRACTS.CONVERSATIONAL);
 
-    case 'PEER_AUDIT':
-      return `RESPONSE CONTRACT — FORENSIC TECHNICAL / PEER AUDIT:
-- Deliver a dense, surgical technical trace directly addressing the placements, Yogas/YSI, cancellations, KP Cuspal Sub-Lords, Shadbala/PHI, BAV/SAV bindus, and divisional cross-checks in the sliced context.
-- Strictly enforce D1-only degrees/Nakshatra/Pada and sign/house/dignity-only for D9/Vargas.
-- State the 5-Tier Truth Gate resolution explicitly where layers diverge (${lengthHint}).`;
-
-    case 'CONVERSATIONAL':
-    default:
-      return `RESPONSE CONTRACT — CONVERSATIONAL COUNSEL:
-- Speak in warm, natural "sitting across the table" dialogue anchored to the 1–2 most decisive chart factors and the active planetary season.
-- Translate emotional patterns or recurring themes gently into clear self-understanding and forward perspective without dumping every planet in the chart (${lengthHint}).`;
-  }
+  return rawTemplate
+    .replace(/\{\{LENGTH_HINT\}\}/g, lengthHint)
+    .replace(/\{\{MANDATORY_GOCHAR_CLAUSE\}\}/g, mandatoryGocharClause)
+    .replace(/\{\{CONVERGENCE_LINE\}\}/g, convergenceLine);
 }
 
 export function buildVoiceAndFormatInstructions(params: {
@@ -336,6 +321,7 @@ export function buildVoiceAndFormatInstructions(params: {
   languageSlug: string;
   responseLength: 'short' | 'detailed';
   effectiveFluency: UserFluencyTier;
+  engineOverrides?: EnginePromptOverrides | null;
 }): string {
   const voiceMap: Record<SutraVoicePreset, string> = {
     observatory_calm:
@@ -348,16 +334,14 @@ export function buildVoiceAndFormatInstructions(params: {
       'TONE REGISTER — ULTRA-DIRECT: Zero filler or preamble; surgical insight and exact mechanism in minimal words.',
   };
 
+  const formatOverrides = params.engineOverrides?.format_contracts;
   let outputShape = '';
   if (params.outputSlug === 'marriage_master' || params.outputSlug === 'dual_view') {
-    outputShape =
-      'OUTPUT FORMAT — DUAL VIEW (WRITE-UP -> TECH BREAKDOWN): Deliver 2–3 cohesive, bullet-free narrative paragraphs answering the question in lived human terms first, followed cleanly by a compact "Technical Mechanics" bullet section.';
+    outputShape = formatOverrides?.dual_view?.trim() || DEFAULT_FORMAT_CONTRACTS.dual_view;
   } else if (params.responseLength === 'short') {
-    outputShape =
-      'RESPONSE LENGTH — SHORT: Keep the full reply tight (around 150–230 words), high-signal, zero filler.';
+    outputShape = formatOverrides?.short?.trim() || DEFAULT_FORMAT_CONTRACTS.short;
   } else {
-    outputShape =
-      'OUTPUT FORMAT — DETAILED EXPLANATION: Smooth prose mixed with clean headings or tables only where they genuinely sharpen clarity — never break narrative paragraphs up with redundant bullet lists.';
+    outputShape = formatOverrides?.detailed?.trim() || DEFAULT_FORMAT_CONTRACTS.detailed;
   }
 
   let langRule = 'LANGUAGE: Natural, clear modern English.';
@@ -373,8 +357,25 @@ export function buildVoiceAndFormatInstructions(params: {
     voiceMap[params.voicePreset || 'observatory_calm'],
     outputShape,
     langRule,
-    buildFluencyInstruction(params.effectiveFluency),
+    buildFluencyInstruction(params.effectiveFluency, params.responseLength, params.engineOverrides),
   ].join('\n\n');
+}
+
+export function buildTimingWidgetPlacementInstruction(
+  timingWidgets?: TimingProgressWidget[] | null
+): string {
+  if (!timingWidgets || timingWidgets.length === 0) return '';
+  const tokenList = timingWidgets
+    .map((w) => `- \`[[TIMING_BAR:${w.id}]]\` — ${w.title} (${w.current.label})`)
+    .join('\n');
+
+  return `TIMING PROGRESS WIDGET PLACEMENT TOKENS (PLACEMENT ONLY — ZERO SELF-CALCULATED PROGRESS BARS):
+The server will render verified, deterministic 3-step visual progress bars inline wherever you place these exact tokens on their own standalone line immediately AFTER the paragraph discussing that specific period:
+${tokenList}
+Rules:
+1. Place ONLY tokens for periods you actually discuss in your answer (typically 1–3 relevant widgets; never dump all tokens together at the bottom).
+2. Put each token on its own line right below its matching paragraph (never inside a Markdown table cell or code fence).
+3. NEVER invent new token IDs, NEVER modify the \`[[TIMING_BAR:...]]\` syntax, and NEVER mention these tokens in your prose.`;
 }
 
 export interface BuildSutraPathAParams {
@@ -396,6 +397,7 @@ export interface BuildSutraPathAParams {
   turnCount: number;
   technicalDirective?: string | null;
   priorInferredFluency?: UserFluencyTier | null;
+  engineOverrides?: EnginePromptOverrides | null;
 }
 
 export interface BuiltSutraPathAPrompt {
@@ -415,20 +417,34 @@ export function buildSutraPathAPrompt(params: BuildSutraPathAParams): BuiltSutra
     Boolean(params.technicalDirective?.trim())
   );
 
+  const tier1Laws =
+    params.engineOverrides?.sutra_tier1_reasoning_laws?.trim() ||
+    SUTRA_TIER1_REASONING_LAWS;
+  const antiCliche =
+    params.engineOverrides?.sutra_anti_cliche_rules?.trim() ||
+    SUTRA_ANTI_CLICHE_RULES;
+
   const sections: string[] = [
     params.constitutionPrompt,
     params.conversationalRules || '',
     params.expertDirective || '',
     ...(params.modeRecipeBlocks || []),
-    SUTRA_TIER1_REASONING_LAWS,
-    SUTRA_ANTI_CLICHE_RULES,
-    buildIntentOutputContract(params.pkg.intent, convergence, params.responseLength),
+    tier1Laws,
+    antiCliche,
+    buildIntentOutputContract(
+      params.pkg.intent,
+      convergence,
+      params.responseLength,
+      Boolean(params.pkg.requiresTimingStack),
+      params.engineOverrides
+    ),
     buildVoiceAndFormatInstructions({
       voicePreset: params.voicePreset,
       outputSlug: params.outputSlug,
       languageSlug: params.languageSlug,
       responseLength: params.responseLength,
       effectiveFluency,
+      engineOverrides: params.engineOverrides,
     }),
   ];
 
@@ -462,6 +478,11 @@ export function buildSutraPathAPrompt(params: BuildSutraPathAParams): BuiltSutra
     sections.push(
       `SPECIFIC ANALYTICAL FOCUS FOR THIS TURN (Apply thoroughly without quoting internal instructions):\n${params.technicalDirective.trim()}`
     );
+  }
+
+  if (params.pkg.requiresTimingStack && params.pkg.timingWidgets?.length) {
+    const widgetBlock = buildTimingWidgetPlacementInstruction(params.pkg.timingWidgets);
+    if (widgetBlock) sections.push(widgetBlock);
   }
 
   if (params.responseLength === 'short') {

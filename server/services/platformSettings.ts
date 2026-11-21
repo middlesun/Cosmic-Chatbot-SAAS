@@ -1,5 +1,31 @@
 import crypto from 'crypto';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
+import {
+  ALL_GUIDE_CATALOG_META,
+  DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
+  DEFAULT_COMPANION_ARCHETYPES,
+  DEFAULT_COMPANION_CONSTITUTION,
+  DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
+  DEFAULT_CORE_COUNCIL_CONSTITUTION,
+  DEFAULT_DEEP_AUDIT_ADJUDICATOR_MANDATE,
+  DEFAULT_DEEP_AUDIT_LENSES,
+  DEFAULT_FLUENCY_INSTRUCTIONS,
+  DEFAULT_FORMAT_CONTRACTS,
+  DEFAULT_INTENT_OUTPUT_CONTRACTS,
+  DEFAULT_STAGE1_ROUTER_PROMPT,
+  DEFAULT_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
+  DEFAULT_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
+  DEFAULT_SUTRA_ANTI_CLICHE_RULES,
+  DEFAULT_SUTRA_TIER1_REASONING_LAWS,
+  getGuideCatalogMeta,
+  GUIDE_SLUGS,
+  isValidGuideSlug,
+  type DefaultCompanionArchetype,
+  type GuideSlug,
+} from './enginePromptDefaults';
+
+export type { DefaultCompanionArchetype, GuideSlug };
+export { ALL_GUIDE_CATALOG_META, GUIDE_SLUGS, getGuideCatalogMeta, isValidGuideSlug };
 
 export type SupportedCurrency = 'INR' | 'USD' | 'AED' | 'EUR';
 
@@ -67,6 +93,75 @@ export interface SuggestionsConfig {
   max_deeper_analysis: number;
   followups_rules: string;
   deeper_analysis_rules: string;
+}
+
+export interface ModularRuleBlock {
+  id: string;
+  title: string;
+  body: string;
+  enabled: boolean;
+  source_slug?: string | null;
+  updated_at?: string;
+}
+
+export interface GuideSuggestionsConfig extends SuggestionsConfig {
+  enabled: boolean;
+}
+
+export interface GuideChatbotOverride {
+  welcome_title?: string;
+  welcome_subtitle?: string;
+  general_ready_message?: string;
+  composer_placeholder?: string;
+  features?: Partial<ChatbotFeaturesConfig>;
+  modular_rules?: ModularRuleBlock[];
+  suggestions?: Partial<GuideSuggestionsConfig>;
+  model_id?: string | null;
+}
+
+export type PerGuideChatbotConfigMap = Partial<Record<GuideSlug, GuideChatbotOverride>>;
+
+export interface EnginePromptOverrides {
+  core_council_constitution?: string;
+  companion_constitution?: string;
+  companion_archetypes?: DefaultCompanionArchetype[];
+  companion_matcher_instructions?: string;
+  clarity_helper_system_prompt?: string;
+  sutra_tier1_reasoning_laws?: string;
+  sutra_anti_cliche_rules?: string;
+  intent_output_contracts?: Partial<Record<keyof typeof DEFAULT_INTENT_OUTPUT_CONTRACTS, string>>;
+  fluency_instructions?: Partial<Record<keyof typeof DEFAULT_FLUENCY_INSTRUCTIONS, string>>;
+  format_contracts?: Partial<Record<keyof typeof DEFAULT_FORMAT_CONTRACTS, string>>;
+  stage1_router_prompt?: string;
+  deep_audit_lenses?: Partial<Record<keyof typeof DEFAULT_DEEP_AUDIT_LENSES, string>>;
+  deep_audit_adjudicator_mandate?: string;
+  stage4_aligned_suggestions_prompt?: string;
+  stage4_fast_more_suggestions_prompt?: string;
+}
+
+export interface PlaybookOverrideEntry {
+  requiresTimingStack?: boolean;
+  formulaSlugs?: string[];
+  customInstructions?: string;
+  updated_at?: string;
+}
+
+export type PlaybookOverridesMap = Record<string, PlaybookOverrideEntry>;
+
+export interface ResolvedGuideConfig {
+  slug: GuideSlug;
+  meta: ReturnType<typeof getGuideCatalogMeta>;
+  isCustomized: boolean;
+  welcome_title: string;
+  welcome_subtitle: string;
+  general_ready_message: string;
+  composer_placeholder: string;
+  features: ChatbotFeaturesConfig;
+  modular_rules: ModularRuleBlock[];
+  has_custom_modular_rules: boolean;
+  combined_rules_text: string;
+  suggestions: GuideSuggestionsConfig;
+  model_id: string | null;
 }
 
 export interface MiniAppOverrideConfig {
@@ -391,6 +486,9 @@ let suggestionsConfigCache: { value: SuggestionsConfig; expiresAt: number } | nu
 let miniAppsConfigCache: { value: MiniAppsGovernanceConfig; expiresAt: number } | null = null;
 let pricingConfigCache: { value: PricingConfig; expiresAt: number } | null = null;
 let promptRecipesCache: { value: PromptRecipeRecord[]; expiresAt: number } | null = null;
+let perGuideConfigCache: { value: PerGuideChatbotConfigMap; expiresAt: number } | null = null;
+let enginePromptsCache: { value: EnginePromptOverrides; expiresAt: number } | null = null;
+let playbookOverridesCache: { value: PlaybookOverridesMap; expiresAt: number } | null = null;
 
 export function invalidateAllPlatformCaches(): void {
   aiSettingsCache = null;
@@ -400,6 +498,9 @@ export function invalidateAllPlatformCaches(): void {
   miniAppsConfigCache = null;
   pricingConfigCache = null;
   promptRecipesCache = null;
+  perGuideConfigCache = null;
+  enginePromptsCache = null;
+  playbookOverridesCache = null;
 }
 
 export function invalidateRecipesCache(): void {
@@ -425,8 +526,18 @@ async function readSettingRow<T>(key: string): Promise<Partial<T> | null> {
   }
 }
 
+export type PlatformSettingKey =
+  | 'ai_config'
+  | 'chatbot_config'
+  | 'pricing_config'
+  | 'suggestions_config'
+  | 'mini_apps_config'
+  | 'per_guide_chatbot_config'
+  | 'engine_prompt_overrides'
+  | 'playbook_overrides';
+
 export async function savePlatformSetting(
-  key: 'ai_config' | 'chatbot_config' | 'pricing_config' | 'suggestions_config' | 'mini_apps_config',
+  key: PlatformSettingKey,
   value: unknown,
   adminUserId?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
@@ -467,6 +578,9 @@ export async function savePlatformSetting(
   if (key === 'suggestions_config') suggestionsConfigCache = null;
   if (key === 'mini_apps_config') miniAppsConfigCache = null;
   if (key === 'pricing_config') pricingConfigCache = null;
+  if (key === 'per_guide_chatbot_config') perGuideConfigCache = null;
+  if (key === 'engine_prompt_overrides') enginePromptsCache = null;
+  if (key === 'playbook_overrides') playbookOverridesCache = null;
   return { ok: true };
 }
 
@@ -673,8 +787,354 @@ export async function getChatbotConfig(): Promise<ChatbotConfig> {
   return merged;
 }
 
+function sanitizeModularRuleBlock(raw: unknown, idx: number): ModularRuleBlock | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const body = typeof r.body === 'string' ? r.body.trim().slice(0, 8000) : '';
+  const title =
+    typeof r.title === 'string' && r.title.trim()
+      ? r.title.trim().slice(0, 140)
+      : `Rule ${idx + 1}`;
+  if (!body && !title) return null;
+  const id =
+    typeof r.id === 'string' && r.id.trim()
+      ? r.id.trim().slice(0, 80)
+      : `rule_${idx + 1}_${crypto.randomBytes(3).toString('hex')}`;
+  return {
+    id,
+    title,
+    body,
+    enabled: r.enabled !== false,
+    source_slug:
+      typeof r.source_slug === 'string' && r.source_slug.trim() ? r.source_slug.trim() : null,
+    updated_at: typeof r.updated_at === 'string' ? r.updated_at : undefined,
+  };
+}
+
+export async function getPerGuideChatbotConfig(): Promise<PerGuideChatbotConfigMap> {
+  const now = Date.now();
+  if (perGuideConfigCache && perGuideConfigCache.expiresAt > now) {
+    return perGuideConfigCache.value;
+  }
+
+  const stored = await readSettingRow<PerGuideChatbotConfigMap>('per_guide_chatbot_config');
+  const cleaned: PerGuideChatbotConfigMap = {};
+
+  if (stored && typeof stored === 'object') {
+    for (const slug of GUIDE_SLUGS) {
+      const entry = stored[slug];
+      if (!entry || typeof entry !== 'object') continue;
+      const sanitizedRules = Array.isArray(entry.modular_rules)
+        ? entry.modular_rules
+            .map((r, i) => sanitizeModularRuleBlock(r, i))
+            .filter((r): r is ModularRuleBlock => Boolean(r))
+            .slice(0, 30)
+        : undefined;
+
+      cleaned[slug] = {
+        ...(typeof entry.welcome_title === 'string' ? { welcome_title: entry.welcome_title.trim().slice(0, 120) } : {}),
+        ...(typeof entry.welcome_subtitle === 'string' ? { welcome_subtitle: entry.welcome_subtitle.trim().slice(0, 400) } : {}),
+        ...(typeof entry.general_ready_message === 'string' ? { general_ready_message: entry.general_ready_message.trim().slice(0, 400) } : {}),
+        ...(typeof entry.composer_placeholder === 'string' ? { composer_placeholder: entry.composer_placeholder.trim().slice(0, 200) } : {}),
+        ...(entry.features && typeof entry.features === 'object' ? { features: entry.features } : {}),
+        ...(sanitizedRules ? { modular_rules: sanitizedRules } : {}),
+        ...(entry.suggestions && typeof entry.suggestions === 'object' ? { suggestions: entry.suggestions } : {}),
+        ...(entry.model_id !== undefined
+          ? {
+              model_id:
+                typeof entry.model_id === 'string' && entry.model_id.trim()
+                  ? entry.model_id.trim()
+                  : null,
+            }
+          : {}),
+      };
+    }
+  }
+
+  perGuideConfigCache = { value: cleaned, expiresAt: now + CACHE_TTL_MS };
+  return cleaned;
+}
+
+export function buildDefaultModularRulesForGuide(
+  slug: GuideSlug,
+  globalRulesText: string
+): ModularRuleBlock[] {
+  const meta = getGuideCatalogMeta(slug);
+  if (meta.pillar === 'companion') {
+    return [
+      {
+        id: 'default_companion_tone',
+        title: 'Human Texting Rhythm & Boundaries',
+        body: 'Keep replies emotionally attuned, natural in length, candid when helpful, and strictly platonic.',
+        enabled: true,
+        source_slug: null,
+      },
+    ];
+  }
+  if (meta.pillar === 'clarity') {
+    return [
+      {
+        id: 'default_clarity_focus',
+        title: 'Concise Off-Record Guidance',
+        body: 'Answer directly without demanding birth chart intake; provide 2–3 ready-to-copy sharp questions when helping craft Council prompts.',
+        enabled: true,
+        source_slug: null,
+      },
+    ];
+  }
+  return [
+    {
+      id: 'default_conversational_naturalness',
+      title: 'Conversational Naturalness & Continuity',
+      body: globalRulesText.trim() || DEFAULT_CONVERSATIONAL_RULES,
+      enabled: true,
+      source_slug: null,
+    },
+  ];
+}
+
+export async function getResolvedGuideConfig(rawSlug: string): Promise<ResolvedGuideConfig> {
+  const slug: GuideSlug = isValidGuideSlug(rawSlug) ? rawSlug : 'council_synthesis';
+  const meta = getGuideCatalogMeta(slug);
+  const [chatbotCfg, globalSug, perGuideMap] = await Promise.all([
+    getChatbotConfig(),
+    getSuggestionsConfig(),
+    getPerGuideChatbotConfig(),
+  ]);
+  const override = perGuideMap[slug];
+
+  const welcomeTitle =
+    override?.welcome_title !== undefined && override.welcome_title !== ''
+      ? override.welcome_title
+      : meta.pillar === 'council'
+      ? chatbotCfg.welcome_title
+      : meta.defaultWelcomeTitle;
+
+  const welcomeSubtitle =
+    override?.welcome_subtitle !== undefined
+      ? override.welcome_subtitle
+      : meta.pillar === 'council'
+      ? chatbotCfg.welcome_subtitle
+      : meta.defaultWelcomeSubtitle;
+
+  const generalReadyMessage =
+    override?.general_ready_message !== undefined && override.general_ready_message !== ''
+      ? override.general_ready_message
+      : slug === 'council_synthesis'
+      ? chatbotCfg.general_ready_message
+      : meta.defaultGeneralReadyMessage;
+
+  const composerPlaceholder =
+    override?.composer_placeholder !== undefined && override.composer_placeholder !== ''
+      ? override.composer_placeholder
+      : slug === 'council_synthesis'
+      ? chatbotCfg.composer_placeholder
+      : meta.defaultComposerPlaceholder;
+
+  const features: ChatbotFeaturesConfig = {
+    ...chatbotCfg.features,
+    ...(override?.features || {}),
+  };
+
+  const defaultMasterSuggestions =
+    features.followups !== false &&
+    meta.defaultSuggestionsEnabled &&
+    (globalSug.followups_enabled || globalSug.deeper_analysis_enabled);
+
+  const suggestionsEnabled =
+    typeof override?.suggestions?.enabled === 'boolean'
+      ? override.suggestions.enabled
+      : defaultMasterSuggestions;
+
+  const resolvedSuggestions: GuideSuggestionsConfig = {
+    enabled: suggestionsEnabled,
+    followups_enabled:
+      typeof override?.suggestions?.followups_enabled === 'boolean'
+        ? override.suggestions.followups_enabled
+        : globalSug.followups_enabled,
+    deeper_analysis_enabled:
+      typeof override?.suggestions?.deeper_analysis_enabled === 'boolean'
+        ? override.suggestions.deeper_analysis_enabled
+        : globalSug.deeper_analysis_enabled,
+    default_expanded:
+      typeof override?.suggestions?.default_expanded === 'boolean'
+        ? override.suggestions.default_expanded
+        : globalSug.default_expanded,
+    max_followups:
+      typeof override?.suggestions?.max_followups === 'number'
+        ? Math.max(1, Math.min(6, Math.round(override.suggestions.max_followups)))
+        : globalSug.max_followups,
+    max_deeper_analysis:
+      typeof override?.suggestions?.max_deeper_analysis === 'number'
+        ? Math.max(1, Math.min(6, Math.round(override.suggestions.max_deeper_analysis)))
+        : globalSug.max_deeper_analysis,
+    followups_rules:
+      typeof override?.suggestions?.followups_rules === 'string' && override.suggestions.followups_rules.trim()
+        ? override.suggestions.followups_rules.trim()
+        : globalSug.followups_rules,
+    deeper_analysis_rules:
+      typeof override?.suggestions?.deeper_analysis_rules === 'string' && override.suggestions.deeper_analysis_rules.trim()
+        ? override.suggestions.deeper_analysis_rules.trim()
+        : globalSug.deeper_analysis_rules,
+  };
+
+  const hasCustomRules = Array.isArray(override?.modular_rules);
+  const modularRules = hasCustomRules
+    ? override!.modular_rules!
+    : buildDefaultModularRulesForGuide(slug, chatbotCfg.conversational_rules);
+
+  const combinedRulesText = modularRules
+    .filter((r) => r.enabled && r.body.trim().length > 0)
+    .map((r, i) => `RULE #${i + 1} (${r.title}):\n${r.body.trim()}`)
+    .join('\n\n');
+
+  const isCustomized = Boolean(
+    override &&
+      (override.welcome_title !== undefined ||
+        override.welcome_subtitle !== undefined ||
+        override.general_ready_message !== undefined ||
+        override.composer_placeholder !== undefined ||
+        (override.features && Object.keys(override.features).length > 0) ||
+        hasCustomRules ||
+        (override.suggestions && Object.keys(override.suggestions).length > 0) ||
+        override.model_id)
+  );
+
+  return {
+    slug,
+    meta,
+    isCustomized,
+    welcome_title: welcomeTitle,
+    welcome_subtitle: welcomeSubtitle,
+    general_ready_message: generalReadyMessage,
+    composer_placeholder: composerPlaceholder,
+    features: {
+      ...features,
+      followups: suggestionsEnabled && resolvedSuggestions.followups_enabled !== false,
+    },
+    modular_rules: modularRules,
+    has_custom_modular_rules: hasCustomRules,
+    combined_rules_text: combinedRulesText,
+    suggestions: resolvedSuggestions,
+    model_id: override?.model_id || null,
+  };
+}
+
+export async function getEnginePromptOverrides(): Promise<EnginePromptOverrides> {
+  const now = Date.now();
+  if (enginePromptsCache && enginePromptsCache.expiresAt > now) {
+    return enginePromptsCache.value;
+  }
+  const stored = await readSettingRow<EnginePromptOverrides>('engine_prompt_overrides');
+  const cleaned: EnginePromptOverrides = stored && typeof stored === 'object' ? { ...stored } : {};
+  enginePromptsCache = { value: cleaned, expiresAt: now + CACHE_TTL_MS };
+  return cleaned;
+}
+
+export function getEnginePromptDefaultsBundle() {
+  return {
+    core_council_constitution: DEFAULT_CORE_COUNCIL_CONSTITUTION,
+    companion_constitution: DEFAULT_COMPANION_CONSTITUTION,
+    companion_archetypes: DEFAULT_COMPANION_ARCHETYPES,
+    companion_matcher_instructions: DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
+    clarity_helper_system_prompt: DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
+    sutra_tier1_reasoning_laws: DEFAULT_SUTRA_TIER1_REASONING_LAWS,
+    sutra_anti_cliche_rules: DEFAULT_SUTRA_ANTI_CLICHE_RULES,
+    intent_output_contracts: { ...DEFAULT_INTENT_OUTPUT_CONTRACTS },
+    fluency_instructions: { ...DEFAULT_FLUENCY_INSTRUCTIONS },
+    format_contracts: { ...DEFAULT_FORMAT_CONTRACTS },
+    stage1_router_prompt: DEFAULT_STAGE1_ROUTER_PROMPT,
+    deep_audit_lenses: { ...DEFAULT_DEEP_AUDIT_LENSES },
+    deep_audit_adjudicator_mandate: DEFAULT_DEEP_AUDIT_ADJUDICATOR_MANDATE,
+    stage4_aligned_suggestions_prompt: DEFAULT_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
+    stage4_fast_more_suggestions_prompt: DEFAULT_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
+  };
+}
+
+export async function getPlaybookOverrides(): Promise<PlaybookOverridesMap> {
+  const now = Date.now();
+  if (playbookOverridesCache && playbookOverridesCache.expiresAt > now) {
+    return playbookOverridesCache.value;
+  }
+  const stored = await readSettingRow<PlaybookOverridesMap>('playbook_overrides');
+  const cleaned: PlaybookOverridesMap = {};
+  if (stored && typeof stored === 'object') {
+    for (const [pbId, val] of Object.entries(stored)) {
+      if (!val || typeof val !== 'object') continue;
+      const key = pbId.trim().toUpperCase();
+      cleaned[key] = {
+        ...(typeof val.requiresTimingStack === 'boolean'
+          ? { requiresTimingStack: val.requiresTimingStack }
+          : {}),
+        ...(Array.isArray(val.formulaSlugs)
+          ? { formulaSlugs: val.formulaSlugs.map(String).filter(Boolean) }
+          : {}),
+        ...(typeof val.customInstructions === 'string' && val.customInstructions.trim()
+          ? { customInstructions: val.customInstructions.trim().slice(0, 3000) }
+          : {}),
+        ...(typeof val.updated_at === 'string' ? { updated_at: val.updated_at } : {}),
+      };
+    }
+  }
+  playbookOverridesCache = { value: cleaned, expiresAt: now + CACHE_TTL_MS };
+  return cleaned;
+}
+
 export async function getPublicChatbotUiConfig() {
-  const cfg = await getChatbotConfig();
+  const [cfg, resolvedGuides, engineOverrides] = await Promise.all([
+    getChatbotConfig(),
+    Promise.all(GUIDE_SLUGS.map((slug) => getResolvedGuideConfig(slug))),
+    getEnginePromptOverrides(),
+  ]);
+
+  const guide_overrides: Record<
+    string,
+    {
+      welcome_title: string;
+      welcome_subtitle: string;
+      general_ready_message: string;
+      composer_placeholder: string;
+      features: ChatbotFeaturesConfig;
+      suggestions_enabled: boolean;
+      suggestions: {
+        enabled: boolean;
+        followups_enabled: boolean;
+        deeper_analysis_enabled: boolean;
+        default_expanded: boolean;
+        max_followups: number;
+        max_deeper_analysis: number;
+      };
+    }
+  > = {};
+
+  for (const g of resolvedGuides) {
+    // STRICT SECURITY: NEVER include system_prompt, modular_rules, or engine instructions here
+    guide_overrides[g.slug] = {
+      welcome_title: g.welcome_title,
+      welcome_subtitle: g.welcome_subtitle,
+      general_ready_message: g.general_ready_message,
+      composer_placeholder: g.composer_placeholder,
+      features: g.features,
+      suggestions_enabled:
+        g.suggestions.enabled &&
+        (g.suggestions.followups_enabled || g.suggestions.deeper_analysis_enabled),
+      suggestions: {
+        enabled: g.suggestions.enabled,
+        followups_enabled: g.suggestions.followups_enabled,
+        deeper_analysis_enabled: g.suggestions.deeper_analysis_enabled,
+        default_expanded: g.suggestions.default_expanded,
+        max_followups: g.suggestions.max_followups,
+        max_deeper_analysis: g.suggestions.max_deeper_analysis,
+      },
+    };
+  }
+
+  const publicCompanionArchetypes =
+    Array.isArray(engineOverrides.companion_archetypes) &&
+    engineOverrides.companion_archetypes.length > 0
+      ? engineOverrides.companion_archetypes
+      : DEFAULT_COMPANION_ARCHETYPES;
+
   return {
     welcome_title: cfg.welcome_title,
     welcome_subtitle: cfg.welcome_subtitle,
@@ -687,6 +1147,8 @@ export async function getPublicChatbotUiConfig() {
     default_tone: cfg.default_tone,
     default_response_length: cfg.default_response_length,
     features: cfg.features,
+    guide_overrides,
+    companion_archetypes: publicCompanionArchetypes,
   };
 }
 

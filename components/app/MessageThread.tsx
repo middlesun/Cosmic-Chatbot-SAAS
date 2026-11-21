@@ -32,6 +32,7 @@ import type {
   ConversationRecord,
   PendingBirthProfileDraft,
   SuggestionItem,
+  TimingProgressWidget,
 } from './chatTypes';
 import type { ChatFontSize } from './ChatSettingsModal';
 import Tooltip from './Tooltip';
@@ -64,10 +65,12 @@ interface MessageThreadProps {
   loadingEarlierMessages?: boolean;
   streamingText: string;
   streamingStatus?: string | null;
+  streamingTimingWidgets?: TimingProgressWidget[];
   isStreaming: boolean;
   catalog: ChatCatalog | null;
   fontSize?: ChatFontSize;
   languageSlug?: string;
+  responseMode?: 'simple' | 'detailed';
   searchQuery?: string;
   activeMatchMessageId?: string | null;
   pendingProfileConfirm?: { messageId: string; draft: PendingBirthProfileDraft } | null;
@@ -115,6 +118,31 @@ interface MessageThreadProps {
   savingNoteMsgId?: string | null;
 }
 
+const TIMING_BAR_TOKEN_RE = /\[\[?TIMING_BAR\s*:\s*([a-z0-9_]+)\s*\]?\]/gi;
+const TIMING_BAR_ANY_RE = /\[\[?TIMING_BAR\s*:[^\]]*\]?\]?/gi;
+
+const stripTimingBarTokens = (text: string): string => {
+  const codeBlocks: string[] = [];
+  let working = text.replace(/```[\s\S]*?```/g, (match) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(match);
+    return `__CC_STRIP_CODE_${idx}__`;
+  });
+
+  working = working
+    .replace(TIMING_BAR_ANY_RE, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  if (codeBlocks.length > 0) {
+    working = working.replace(
+      /__CC_STRIP_CODE_(\d+)__/g,
+      (_, i) => codeBlocks[Number(i)] || ''
+    );
+  }
+  return working;
+};
+
 const stripInlineTechBreakdown = (text: string): string => {
   const withoutBreakdown = text.replace(/<<<TECH_BREAKDOWN[\s\S]*$/i, '');
   const codeBlocks: string[] = [];
@@ -131,6 +159,7 @@ const stripInlineTechBreakdown = (text: string): string => {
     .replace(/\[CONFIDENCE\s*:[^\]]*\][ \t]*/gi, '')
     .replace(/^[ \t]*\[FOLLOWUP\][^\n]*(?:\r?\n|$)/gim, '')
     .replace(/\[FOLLOWUP\][ \t]*/gi, '')
+    .replace(/\[\[?TIMING_BAR[^\]]*$/i, '')
     .replace(/\n{3,}/g, '\n\n');
 
   if (codeBlocks.length > 0) {
@@ -138,6 +167,148 @@ const stripInlineTechBreakdown = (text: string): string => {
   }
 
   return working.trimEnd();
+};
+
+type MarkdownSegment =
+  | { kind: 'markdown'; text: string }
+  | { kind: 'widget'; widget: TimingProgressWidget };
+
+const splitMarkdownWithTimingWidgets = (
+  markdown: string,
+  widgetMap: Map<string, TimingProgressWidget>
+): MarkdownSegment[] => {
+  const codeBlocks: string[] = [];
+  const protectedMd = markdown.replace(/```[\s\S]*?```/g, (match) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(match);
+    return `__CC_WIDGET_CODE_${idx}__`;
+  });
+
+  const restoreCode = (chunk: string) =>
+    codeBlocks.length > 0
+      ? chunk.replace(/__CC_WIDGET_CODE_(\d+)__/g, (_, i) => codeBlocks[Number(i)] || '')
+      : chunk;
+
+  const segments: MarkdownSegment[] = [];
+  const pushMarkdown = (raw: string) => {
+    const cleaned = restoreCode(raw).replace(TIMING_BAR_ANY_RE, '').trim();
+    if (!cleaned) return;
+    const prev = segments[segments.length - 1];
+    if (prev && prev.kind === 'markdown') {
+      prev.text = `${prev.text}\n\n${cleaned}`;
+    } else {
+      segments.push({ kind: 'markdown', text: cleaned });
+    }
+  };
+
+  let lastIdx = 0;
+  TIMING_BAR_TOKEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = TIMING_BAR_TOKEN_RE.exec(protectedMd)) !== null) {
+    if (match.index > lastIdx) {
+      pushMarkdown(protectedMd.slice(lastIdx, match.index));
+    }
+    const tokenId = match[1]?.toLowerCase();
+    const widget = tokenId ? widgetMap.get(tokenId) : undefined;
+    if (widget) {
+      segments.push({ kind: 'widget', widget });
+    }
+    lastIdx = match.index + match[0].length;
+  }
+
+  if (lastIdx < protectedMd.length) {
+    pushMarkdown(protectedMd.slice(lastIdx));
+  }
+
+  return segments;
+};
+
+const TimingProgressBar: React.FC<{
+  widget: TimingProgressWidget;
+  inCard: boolean;
+}> = ({ widget, inCard }) => {
+  const pct = Math.max(0, Math.min(100, Math.round(widget.current.percentElapsed)));
+  const daysLeft = Math.max(0, Math.round(widget.current.daysLeft));
+
+  return (
+    <div
+      className={`my-2.5 rounded-xl border border-[#3D3830]/12 ${
+        inCard ? 'bg-[#FAF7F2]/95' : 'bg-[#FDFBF7]'
+      } px-3.5 py-3 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0 max-w-full`}
+      role="region"
+      aria-label={`${widget.title}: ${widget.current.label}`}
+    >
+      <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#8B8275] truncate">
+          {widget.title}
+        </span>
+      </div>
+
+      {/* 3-Step Stepper: [ Previous ] ---> [ Highlighted Current ] ---> [ Next ] */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1.25fr)_auto_minmax(0,1fr)] items-center gap-1.5 sm:gap-2 mb-2.5 min-w-0">
+        <div className="min-w-0 flex items-center gap-1.5 text-[11px] leading-tight text-[#8B8275]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#8B8275]/45 shrink-0" />
+          <span className="line-clamp-2 break-words" title={widget.previous.label}>
+            {widget.previous.label}
+          </span>
+        </div>
+
+        <ArrowRight className="h-3 w-3 text-[#8B8275]/65 shrink-0" aria-hidden="true" />
+
+        <div className="min-w-0 flex flex-col items-center text-center rounded-lg border border-[#B8965A]/35 bg-[#F1ECE3]/75 px-2 py-1">
+          <div className="flex items-center justify-center gap-1.5 max-w-full min-w-0">
+            <span className="h-2 w-2 rounded-full bg-[#B8965A] ring-2 ring-[#B8965A]/25 shrink-0" />
+            <span
+              className="text-xs font-semibold leading-tight text-[#3D3830] line-clamp-2 break-words"
+              title={widget.current.label}
+            >
+              {widget.current.label}
+            </span>
+          </div>
+          <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[10px] text-[#5C5449] leading-tight mt-0.5 truncate max-w-full">
+            {widget.current.startDisplay}
+          </span>
+        </div>
+
+        <ArrowRight className="h-3 w-3 text-[#8B8275]/65 shrink-0" aria-hidden="true" />
+
+        <div className="min-w-0 flex items-center justify-end gap-1.5 text-[11px] leading-tight text-[#8B8275] text-right">
+          <span className="line-clamp-2 break-words" title={widget.next.label}>
+            {widget.next.label}
+          </span>
+          <span className="h-1.5 w-1.5 rounded-full bg-[#8B8275]/45 shrink-0" />
+        </div>
+      </div>
+
+      {/* Progress Track */}
+      <div
+        className="h-1.5 w-full rounded-full bg-[#EAE3D7] overflow-hidden"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${widget.current.label} progress`}
+      >
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-[#B8965A] to-[#4A453D] transition-[width] duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      {/* Bottom Metadata Row */}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 font-['JetBrains_Mono',monospace] tabular-nums text-[11px] text-[#5C5449]">
+        <span>
+          {widget.current.startDisplay} · {pct}% complete
+        </span>
+        <span>
+          <strong className="font-semibold text-[#3D3830]">
+            {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left
+          </strong>{' '}
+          · {widget.current.endDisplay}
+        </span>
+      </div>
+    </div>
+  );
 };
 
 const escapeRegExp = (str: string) =>
@@ -164,20 +335,112 @@ const highlightString = (text: string, query: string): React.ReactNode => {
   );
 };
 
-const highlightNodes = (children: React.ReactNode, query: string): React.ReactNode => {
-  if (!query.trim()) return children;
+// Matches planetary degrees (14°22', 14°22'10", 14.5°), SAV/BAV bindus (SAV 34, BAV 5), and dates (2026-11-21, Nov 2026, 14 Jan 2027)
+const TELEMETRY_TOKEN_RE =
+  /(\b(?:SAV|BAV)(?:\s*:?\s*\d{1,2}(?:\/\d{1,2})?)\b|\b\d{1,2}°\d{1,2}'(?:\d{1,2}")?|\b\d{1,2}(?:\.\d+)?°|\b\d{4}-\d{2}-\d{2}\b|\b(?:\d{1,2}\s+)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}\b)/g;
+
+const formatStringWithTelemetryAndHighlight = (
+  text: string,
+  query: string
+): React.ReactNode => {
+  const parts = text.split(TELEMETRY_TOKEN_RE);
+  if (parts.length <= 1) {
+    return highlightString(text, query);
+  }
+  return parts.map((part, idx) => {
+    if (!part) return null;
+    if (idx % 2 === 1) {
+      return (
+        <span
+          key={idx}
+          className="font-['JetBrains_Mono',monospace] tabular-nums text-[0.9em] font-medium text-[#3D3830]"
+        >
+          {highlightString(part, query)}
+        </span>
+      );
+    }
+    return <React.Fragment key={idx}>{highlightString(part, query)}</React.Fragment>;
+  });
+};
+
+const formatTelemetryAndHighlightNodes = (
+  children: React.ReactNode,
+  query: string
+): React.ReactNode => {
   return React.Children.map(children, (child) => {
     if (typeof child === 'string') {
-      return highlightString(child, query);
+      return formatStringWithTelemetryAndHighlight(child, query);
     }
     if (React.isValidElement<{ children?: React.ReactNode }>(child) && child.props.children) {
       return React.cloneElement(child, {
         ...child.props,
-        children: highlightNodes(child.props.children, query),
+        children: formatTelemetryAndHighlightNodes(child.props.children, query),
       });
     }
     return child;
   });
+};
+
+const splitMarkdownIntoDetailedSections = (
+  markdown: string
+): {
+  intro: string;
+  sections: Array<{ title: string; body: string }>;
+} => {
+  const lines = markdown.split(/\r?\n/);
+
+  const scanWithHeadingPrefix = (prefixRe: RegExp) => {
+    let inFence = false;
+    const introLines: string[] = [];
+    const sections: Array<{ title: string; lines: string[] }> = [];
+    let currentSection: { title: string; lines: string[] } | null = null;
+
+    for (const line of lines) {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence;
+      }
+      if (!inFence) {
+        const match = prefixRe.exec(line);
+        if (match) {
+          if (currentSection) {
+            sections.push(currentSection);
+          }
+          currentSection = { title: match[1].trim(), lines: [] };
+          continue;
+        }
+      }
+      if (currentSection) {
+        currentSection.lines.push(line);
+      } else {
+        introLines.push(line);
+      }
+    }
+
+    if (currentSection) {
+      sections.push(currentSection);
+    }
+
+    return {
+      intro: introLines.join('\n').trim(),
+      sections: sections.map((s) => ({
+        title: s.title,
+        body: s.lines.join('\n').trim(),
+      })),
+    };
+  };
+
+  const h2Split = scanWithHeadingPrefix(/^##\s+(.+?)\s*$/);
+  if (h2Split.sections.length > 0) {
+    return h2Split;
+  }
+
+  // Fallback for preview or legacy messages that use ### for top-level sections without ##
+  const h3Split = scanWithHeadingPrefix(/^###\s+(.+?)\s*$/);
+  if (h3Split.sections.length >= 2) {
+    return h3Split;
+  }
+
+  return { intro: markdown.trim(), sections: [] };
 };
 
 const getProfileDisplayLabel = (p: ChatProfile): string => {
@@ -282,10 +545,12 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   loadingEarlierMessages = false,
   streamingText,
   streamingStatus = null,
+  streamingTimingWidgets = [],
   isStreaming,
   catalog,
   fontSize = 'base',
   languageSlug = 'English',
+  responseMode = 'detailed',
   searchQuery = '',
   activeMatchMessageId = null,
   pendingProfileConfirm = null,
@@ -429,10 +694,14 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         setSpeakingMsgId(null);
         return;
       }
-      const started = speakMessageText(msg.content, msg.language_used || languageSlug, {
-        onEnd: () => setSpeakingMsgId((prev) => (prev === msg.id ? null : prev)),
-        onError: () => setSpeakingMsgId((prev) => (prev === msg.id ? null : prev)),
-      });
+      const started = speakMessageText(
+        stripTimingBarTokens(msg.content),
+        msg.language_used || languageSlug,
+        {
+          onEnd: () => setSpeakingMsgId((prev) => (prev === msg.id ? null : prev)),
+          onError: () => setSpeakingMsgId((prev) => (prev === msg.id ? null : prev)),
+        }
+      );
       if (started) {
         setSpeakingMsgId(msg.id);
       }
@@ -580,78 +849,206 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const activeExpertLabel = activeExpertOption?.displayName || 'Vedic Astrologer';
   const activeProfileButtonLabel = profile ? getProfileDisplayLabel(profile) : 'Select Chart';
 
-  const markdownComponents = useMemo(
-    () => ({
+  const buildMarkdownComponents = useCallback(
+    (inCard: boolean) => ({
       h1: ({ children }: { children?: React.ReactNode }) => (
-        <h2 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h1} font-medium text-[#3D3830] pt-2`}>
-          {highlightNodes(children, searchQuery)}
+        <h2 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h1} font-medium text-[#3D3830] pt-1`}>
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </h2>
       ),
       h2: ({ children }: { children?: React.ReactNode }) => (
-        <h3 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h2} font-medium text-[#3D3830] pt-2`}>
-          {highlightNodes(children, searchQuery)}
+        <h3 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h2} font-medium text-[#3D3830] pt-1`}>
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </h3>
       ),
       h3: ({ children }: { children?: React.ReactNode }) => (
-        <h4 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h3} font-medium text-[#3D3830] pt-1`}>
-          {highlightNodes(children, searchQuery)}
+        <h4 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h3} font-medium text-[#3D3830] pt-1.5`}>
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </h4>
       ),
       p: ({ children }: { children?: React.ReactNode }) => (
-        <p className={`${sizeTokens.body} text-[#3D3830]`}>
-          {highlightNodes(children, searchQuery)}
+        <p className={`${sizeTokens.body} text-[#5C5449]`}>
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </p>
       ),
       ul: ({ children }: { children?: React.ReactNode }) => (
-        <ul className={`list-disc pl-5 space-y-1.5 ${sizeTokens.body} text-[#3D3830]`}>
+        <ul className={`list-disc pl-5 space-y-1.5 ${sizeTokens.body} text-[#5C5449]`}>
           {children}
         </ul>
       ),
       ol: ({ children }: { children?: React.ReactNode }) => (
-        <ol className={`list-decimal pl-5 space-y-1.5 ${sizeTokens.body} text-[#3D3830]`}>
+        <ol className={`list-decimal pl-5 space-y-1.5 ${sizeTokens.body} text-[#5C5449]`}>
           {children}
         </ol>
       ),
       li: ({ children }: { children?: React.ReactNode }) => (
-        <li className="leading-[1.68]">{highlightNodes(children, searchQuery)}</li>
+        <li className="leading-[1.68]">
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
+        </li>
       ),
       strong: ({ children }: { children?: React.ReactNode }) => (
         <strong className="font-semibold text-[#3D3830]">
-          {highlightNodes(children, searchQuery)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </strong>
       ),
       blockquote: ({ children }: { children?: React.ReactNode }) => (
-        <blockquote className={`border-l-2 border-[#8B7355] pl-4 py-1 ${sizeTokens.body} text-[#5C5449] italic`}>
-          {highlightNodes(children, searchQuery)}
+        <blockquote className={`border-l-2 border-[#B8965A]/70 pl-4 py-1 ${sizeTokens.body} text-[#5C5449] italic`}>
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </blockquote>
       ),
       code: ({ children }: { children?: React.ReactNode }) => (
-        <code className="font-['DM_Sans',sans-serif] text-xs bg-[#F1ECE3] px-1.5 py-0.5 rounded text-[#3D3830]">
+        <code className="font-['JetBrains_Mono',monospace] tabular-nums text-[0.86em] bg-[#F1ECE3] px-1.5 py-0.5 rounded text-[#3D3830]">
           {children}
         </code>
       ),
       table: ({ children }: { children?: React.ReactNode }) => (
-        <div className="overflow-x-auto my-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7]">
-          <table className="w-full text-xs text-left border-collapse">
+        <div
+          className={`w-full max-w-full overflow-x-auto my-2.5 rounded-xl border border-[#3D3830]/12 ${
+            inCard ? 'bg-[#FAF7F2]/60' : 'bg-[#FDFBF7]'
+          }`}
+        >
+          <table className="w-full min-w-[440px] text-xs text-left border-collapse">
             {children}
           </table>
         </div>
       ),
       thead: ({ children }: { children?: React.ReactNode }) => (
-        <thead className="bg-[#F1ECE3] text-[#3D3830]">{children}</thead>
+        <thead className="bg-[#F1ECE3]/40 text-[#3D3830]">{children}</thead>
       ),
       th: ({ children }: { children?: React.ReactNode }) => (
-        <th className="px-3.5 py-2 font-medium border-b border-[#3D3830]/12">
-          {highlightNodes(children, searchQuery)}
+        <th className="px-3 sm:px-3.5 py-2 text-[11px] sm:text-xs font-semibold text-[#3D3830] border-b border-[#3D3830]/12 whitespace-nowrap">
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </th>
       ),
       td: ({ children }: { children?: React.ReactNode }) => (
-        <td className="px-3.5 py-2 border-b border-[#3D3830]/8 text-[#5C5449]">
-          {highlightNodes(children, searchQuery)}
+        <td className="px-3 sm:px-3.5 py-2 text-xs text-[#5C5449] border-b border-[#3D3830]/8 align-top leading-relaxed">
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </td>
       ),
     }),
     [searchQuery, sizeTokens]
+  );
+
+  const markdownComponents = useMemo(
+    () => buildMarkdownComponents(false),
+    [buildMarkdownComponents]
+  );
+
+  const cardMarkdownComponents = useMemo(
+    () => buildMarkdownComponents(true),
+    [buildMarkdownComponents]
+  );
+
+  const renderMarkdownWithWidgets = useCallback(
+    (
+      markdown: string,
+      components: ReturnType<typeof buildMarkdownComponents>,
+      widgetMap: Map<string, TimingProgressWidget>,
+      inCard: boolean,
+      className: string
+    ) => {
+      const segments = splitMarkdownWithTimingWidgets(markdown, widgetMap);
+      if (segments.length === 0) return null;
+      return (
+        <div className={className}>
+          {segments.map((seg, idx) =>
+            seg.kind === 'widget' ? (
+              <TimingProgressBar
+                key={`tw-${seg.widget.id}-${idx}`}
+                widget={seg.widget}
+                inCard={inCard}
+              />
+            ) : (
+              <ReactMarkdown
+                key={`md-${idx}`}
+                remarkPlugins={[remarkGfm]}
+                components={components}
+              >
+                {seg.text}
+              </ReactMarkdown>
+            )
+          )}
+        </div>
+      );
+    },
+    []
+  );
+
+  const renderEditorialContent = useCallback(
+    (
+      rawMarkdown: string,
+      useDetailedCards: boolean,
+      timingWidgets?: TimingProgressWidget[] | null
+    ) => {
+      const clean = stripInlineTechBreakdown(rawMarkdown);
+      const widgetMap = new Map<string, TimingProgressWidget>();
+      if (Array.isArray(timingWidgets)) {
+        for (const w of timingWidgets) {
+          if (w && w.id) widgetMap.set(w.id.toLowerCase(), w);
+        }
+      }
+
+      if (!useDetailedCards) {
+        return renderMarkdownWithWidgets(
+          clean,
+          markdownComponents,
+          widgetMap,
+          false,
+          `space-y-3 min-w-0 ${sizeTokens.body} text-[#5C5449]`
+        );
+      }
+
+      const { intro, sections } = splitMarkdownIntoDetailedSections(clean);
+      if (sections.length === 0) {
+        return renderMarkdownWithWidgets(
+          clean,
+          markdownComponents,
+          widgetMap,
+          false,
+          `space-y-3 min-w-0 ${sizeTokens.body} text-[#5C5449]`
+        );
+      }
+
+      return (
+        <div className="space-y-3 min-w-0">
+          {intro &&
+            renderMarkdownWithWidgets(
+              intro,
+              markdownComponents,
+              widgetMap,
+              false,
+              `space-y-3 min-w-0 ${sizeTokens.body} text-[#5C5449]`
+            )}
+          {sections.map((sec, sIdx) => (
+            <section
+              key={`${sIdx}-${sec.title}`}
+              className="rounded-2xl border border-[#3D3830]/10 bg-[#FDFBF7] px-4 py-3.5 sm:px-5 sm:py-4 my-3 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0"
+            >
+              <h3
+                className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h2} font-medium text-[#3D3830] pb-2 mb-2.5 border-b border-[#3D3830]/10`}
+              >
+                {formatStringWithTelemetryAndHighlight(sec.title, searchQuery)}
+              </h3>
+              {sec.body &&
+                renderMarkdownWithWidgets(
+                  sec.body,
+                  cardMarkdownComponents,
+                  widgetMap,
+                  true,
+                  `space-y-2.5 min-w-0 ${sizeTokens.body} text-[#5C5449]`
+                )}
+            </section>
+          ))}
+        </div>
+      );
+    },
+    [
+      cardMarkdownComponents,
+      markdownComponents,
+      renderMarkdownWithWidgets,
+      searchQuery,
+      sizeTokens,
+    ]
   );
 
   // Minimal Calm Empty State for New Chat
@@ -668,10 +1065,11 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 <Lightbulb className="h-5 w-5" />
               </div>
               <h2 className="font-['Cormorant_Garamond',serif] text-3xl sm:text-4xl font-medium text-[#3D3830] tracking-tight">
-                Clarity
+                {welcomeTitle && welcomeTitle !== "I'm ready" ? welcomeTitle : 'Clarity'}
               </h2>
               <p className="text-xs sm:text-sm text-[#5C5449] max-w-md mx-auto leading-relaxed">
-                Your off-record sidekick for quick doubts, prompt drafting, and everyday questions — kept completely separate from your birth chart memory.
+                {welcomeSubtitle ||
+                  'Your off-record sidekick for quick doubts, prompt drafting, and everyday questions — kept completely separate from your birth chart memory.'}
               </p>
             </div>
 
@@ -1021,7 +1419,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   {parentMsg && parentMsg.role === 'assistant' && (
                     <div className="max-w-[85%] rounded-xl border-l-2 border-[#8B7355] bg-[#F1ECE3]/70 px-3 py-1.5 text-[11px] text-[#5C5449]">
                       <span className="font-medium text-[#3D3830]">Replying to insight: </span>
-                      <span className="line-clamp-2">{parentMsg.content}</span>
+                      <span className="line-clamp-2">{stripTimingBarTokens(parentMsg.content)}</span>
                     </div>
                   )}
 
@@ -1145,7 +1543,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 : [];
 
             const showSuggestionsFooter =
-              activePillar === 'council' &&
               enableFollowups &&
               isLatestFollowupHolder &&
               idx === messages.length - 1;
@@ -1161,7 +1558,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 <Tooltip content={isCopied ? 'Copied' : 'Copy'} placement="top">
                   <button
                     type="button"
-                    onClick={() => void handleCopyMessage(msg.id, msg.content)}
+                    onClick={() =>
+                      void handleCopyMessage(msg.id, stripTimingBarTokens(msg.content))
+                    }
                     aria-label={isCopied ? 'Copied' : 'Copy response'}
                     className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
                       isCopied ? 'text-[#2D6A4F]' : 'hover:text-[#3D3830]'
@@ -1202,7 +1601,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 {enableWhatsappShare && (
                   <Tooltip content="Share on WhatsApp" placement="top">
                     <a
-                      href={getWhatsAppShareUrl(msg.content)}
+                      href={getWhatsAppShareUrl(stripTimingBarTokens(msg.content))}
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label="Share on WhatsApp"
@@ -1417,14 +1816,25 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   );
                 })()}
 
-                <div className={`space-y-3 ${sizeTokens.body} text-[#3D3830]`}>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={markdownComponents}
-                  >
-                    {stripInlineTechBreakdown(msg.content)}
-                  </ReactMarkdown>
-                </div>
+                {(() => {
+                  const hasTechBreakdown = Boolean(msg.suggestions_json?.tech_breakdown);
+                  const useDetailedCards =
+                    activePillar === 'council' &&
+                    !hasTechBreakdown &&
+                    msg.output_format_used !== 'short' &&
+                    msg.output_format_used !== 'concise' &&
+                    msg.output_format_used !== 'conversational' &&
+                    (msg.output_format_used === 'detailed' ||
+                      msg.output_format_used === 'bullets' ||
+                      msg.output_format_used === 'marriage_master' ||
+                      msg.output_format_used === 'dual_view' ||
+                      responseMode === 'detailed');
+                  return renderEditorialContent(
+                    msg.content,
+                    useDetailedCards,
+                    msg.suggestions_json?.timing_widgets
+                  );
+                })()}
 
                 {activePillar === 'council' && msg.suggestions_json?.tech_breakdown && (
                   <div className="pt-0.5">
@@ -1683,14 +2093,11 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 <p className="text-[11px] font-medium text-[#8B8275]">Clarity</p>
               )}
               {streamingText ? (
-                <div className={`space-y-3 ${sizeTokens.body} text-[#3D3830]`}>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={markdownComponents}
-                  >
-                    {stripInlineTechBreakdown(streamingText)}
-                  </ReactMarkdown>
-                </div>
+                renderEditorialContent(
+                  streamingText,
+                  activePillar === 'council' && responseMode === 'detailed',
+                  streamingTimingWidgets
+                )
               ) : (
                 <div className="flex items-center gap-2 text-xs text-[#8B8275]">
                   {streamingStatus && (

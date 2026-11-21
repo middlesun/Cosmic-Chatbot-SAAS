@@ -565,7 +565,7 @@ export function buildNatalTruthDossierLayerA(
   // 5. Yogas Split (YSI >= 50 vs suppressed)
   const validatedYogas = scoredYogas
     .filter((y) => y.ysiTotal >= 50 && y.status !== 'Blocked')
-    .slice(0, 8)
+    .slice(0, 10)
     .map((y) => ({
       name: y.name,
       classification: y.category || 'Classical',

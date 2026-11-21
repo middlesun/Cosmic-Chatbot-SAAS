@@ -1,5 +1,6 @@
 // Pure deterministic Vedic Astrology (Parashari, KP, Jaimini, Ashtakavarga, Vimshottari) math
 // Derived from Sidereal Lahiri planetary longitudes & birth coordinates.
+import type { TimingProgressWidget, TimingWidgetId } from '../../lib/sutraTypes';
 
 export const SIGNS = [
   'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo',
@@ -3760,5 +3761,593 @@ export function computeSlowPlanetTransitPairs(
     };
   });
 }
+
+// 11. Deterministic Sidereal Lahiri 9-Planet Ephemeris (Fallback when live FreeAstrologyAPI is unavailable)
+export function computeDeterministicSiderealPlanets(dateISO?: string): PlanetPosition[] {
+  const safeDate =
+    dateISO && /^\d{4}-\d{2}-\d{2}$/.test(dateISO)
+      ? dateISO
+      : new Date().toISOString().slice(0, 10);
+  const [y, m, day] = safeDate.split('-').map(Number);
+  const jd = toJulianDay(y || 2026, m || 1, day || 1, 12);
+
+  const computeAtJD = (j: number): Record<string, number> => {
+    const d = j - 2451543.5;
+    const toRad = Math.PI / 180;
+    const toDeg = 180 / Math.PI;
+    const lahiri = getLahiriAyanamsaApprox(j);
+    const precession = 1.39697 * ((j - 2451545.0) / 36525.0);
+
+    const solveKepler = (Mdeg: number, e: number): number => {
+      const M = normalizeDeg(Mdeg) * toRad;
+      let E = M + e * Math.sin(M) * (1 + e * Math.cos(M));
+      for (let k = 0; k < 6; k++) {
+        E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+      }
+      return E;
+    };
+
+    const helioXY = (N: number, i: number, w: number, a: number, e: number, M: number) => {
+      const E = solveKepler(M, e);
+      const xv = a * (Math.cos(E) - e);
+      const yv = a * Math.sqrt(1 - e * e) * Math.sin(E);
+      const v = Math.atan2(yv, xv);
+      const r = Math.hypot(xv, yv);
+      const Nrad = N * toRad;
+      const irad = i * toRad;
+      const vw = v + w * toRad;
+      const xh = r * (Math.cos(Nrad) * Math.cos(vw) - Math.sin(Nrad) * Math.sin(vw) * Math.cos(irad));
+      const yh = r * (Math.sin(Nrad) * Math.cos(vw) + Math.cos(Nrad) * Math.sin(vw) * Math.cos(irad));
+      return { xh, yh };
+    };
+
+    // Earth / Sun
+    const wSun = 282.9404 + 4.70935e-5 * d;
+    const eSun = 0.016709 - 1.151e-9 * d;
+    const MSun = 356.047 + 0.9856002585 * d;
+    const ESun = solveKepler(MSun, eSun);
+    const xvS = Math.cos(ESun) - eSun;
+    const yvS = Math.sqrt(1 - eSun * eSun) * Math.sin(ESun);
+    const lSun = Math.atan2(yvS, xvS) + wSun * toRad;
+    const rSun = Math.hypot(xvS, yvS);
+    const xe = -rSun * Math.cos(lSun);
+    const ye = -rSun * Math.sin(lSun);
+
+    const siderealGeo = (xh: number, yh: number) =>
+      normalizeDeg(Math.atan2(yh - ye, xh - xe) * toDeg + precession - lahiri);
+
+    const sunSid = siderealGeo(0, 0);
+
+    // Moon (Schlyter orbital elements + main lunar perturbations)
+    const Nm = 125.1228 - 0.0529538083 * d;
+    const wm = 318.0634 + 0.1643573223 * d;
+    const Mm = 115.3654 + 13.0649929509 * d;
+    const moonXY = helioXY(Nm, 5.1454, wm, 60.2666, 0.0549, Mm);
+    const Ls = MSun + wSun;
+    const Lm = Mm + wm + Nm;
+    const Dm = Lm - Ls;
+    const Fm = Lm - Nm;
+    const deltaMoon =
+      -1.274 * Math.sin((Mm - 2 * Dm) * toRad) +
+      0.658 * Math.sin(2 * Dm * toRad) -
+      0.186 * Math.sin(MSun * toRad) -
+      0.059 * Math.sin((2 * Mm - 2 * Dm) * toRad) -
+      0.057 * Math.sin((Mm - 2 * Dm + MSun) * toRad) +
+      0.053 * Math.sin((Mm + 2 * Dm) * toRad) +
+      0.046 * Math.sin((2 * Dm - MSun) * toRad) +
+      0.041 * Math.sin((Mm - MSun) * toRad) -
+      0.035 * Math.sin(Dm * toRad) -
+      0.031 * Math.sin((Mm + MSun) * toRad) -
+      0.015 * Math.sin((2 * Fm - 2 * Dm) * toRad) +
+      0.011 * Math.sin((Mm - 4 * Dm) * toRad);
+    const moonSid = normalizeDeg(
+      Math.atan2(moonXY.yh, moonXY.xh) * toDeg + deltaMoon + precession - lahiri
+    );
+
+    const me = helioXY(
+      48.3313 + 3.24587e-5 * d,
+      7.0047 + 5.0e-8 * d,
+      29.1241 + 1.01444e-5 * d,
+      0.387098,
+      0.205635 + 5.59e-10 * d,
+      168.6562 + 4.0923344368 * d
+    );
+    const ve = helioXY(
+      76.6799 + 2.4659e-5 * d,
+      3.3946 + 2.75e-8 * d,
+      54.891 + 1.38374e-5 * d,
+      0.72333,
+      0.006773 - 1.302e-9 * d,
+      48.0052 + 1.6021302244 * d
+    );
+    const ma = helioXY(
+      49.5574 + 2.11081e-5 * d,
+      1.8497 - 1.78e-8 * d,
+      286.5016 + 2.92961e-5 * d,
+      1.523688,
+      0.093405 + 2.516e-9 * d,
+      18.6021 + 0.5240207766 * d
+    );
+
+    const slow = computeSiderealSlowLongitudesAtJD(j);
+
+    return {
+      Sun: sunSid,
+      Moon: moonSid,
+      Mars: siderealGeo(ma.xh, ma.yh),
+      Mercury: siderealGeo(me.xh, me.yh),
+      Jupiter: slow.Jupiter,
+      Venus: siderealGeo(ve.xh, ve.yh),
+      Saturn: slow.Saturn,
+      Rahu: slow.Rahu,
+      Ketu: slow.Ketu,
+    };
+  };
+
+  const nowLon = computeAtJD(jd);
+  const prevLon = computeAtJD(jd - 1);
+  const orderedNames = [
+    'Sun',
+    'Moon',
+    'Mars',
+    'Mercury',
+    'Jupiter',
+    'Venus',
+    'Saturn',
+    'Rahu',
+    'Ketu',
+  ] as const;
+
+  return orderedNames.map((name) => {
+    const lon = normalizeDeg(nowLon[name]);
+    const signIndex = Math.floor(lon / 30) % 12;
+    const degreeInSign = lon % 30;
+    const nak = getNakshatraAndSubs(lon);
+    let delta = lon - prevLon[name];
+    if (delta < -180) delta += 360;
+    if (delta > 180) delta -= 360;
+    const isRetrograde =
+      name === 'Rahu' || name === 'Ketu'
+        ? true
+        : name === 'Sun' || name === 'Moon'
+        ? false
+        : delta < 0;
+
+    return {
+      name,
+      longitude: Number(lon.toFixed(4)),
+      signIndex,
+      sign: SIGNS[signIndex],
+      degreeInSign: Number(degreeInSign.toFixed(4)),
+      dms: formatDMS(degreeInSign),
+      nakshatra: nak.nakshatra,
+      nakshatraIndex: nak.nakshatraIndex,
+      nakshatraLord: nak.nakshatraLord,
+      pada: nak.pada,
+      subLord: nak.subLord,
+      subSubLord: nak.subSubLord,
+      isRetrograde,
+      house: signIndex + 1,
+      dignity: getDignity(name, signIndex),
+    };
+  });
+}
+
+// 12. Deterministic Dasha & Slow-Transit 3-Step Visual Progress Widgets (Zero LLM Math)
+export interface TimingWidgetChartInput {
+  vimshottari?: {
+    timeline?: DashaNode[];
+    currentStack?: {
+      mahadasha: string;
+      antardasha: string;
+      pratyantardasha: string;
+      mdStart?: string;
+      mdEnd: string;
+      adStart?: string;
+      adEnd: string;
+      pdStart?: string;
+      pdEnd: string;
+    } | null;
+  };
+}
+
+export interface TimingWidgetTransitFeedInput {
+  transitDate?: string;
+  planets?: PlanetPosition[];
+  slowTransitPairs?: SlowPlanetTransitPair[];
+}
+
+const PLANET_ABBR_3: Record<string, string> = {
+  Sun: 'Sun',
+  Moon: 'Moo',
+  Mars: 'Mar',
+  Mercury: 'Mer',
+  Jupiter: 'Jup',
+  Venus: 'Ven',
+  Saturn: 'Sat',
+  Rahu: 'Rah',
+  Ketu: 'Ket',
+};
+
+const DISPLAY_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+function formatWidgetDisplayDate(isoDate: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate || '').trim());
+  if (!m) return isoDate;
+  const monthIdx = Number(m[2]) - 1;
+  const day = Number(m[3]);
+  if (monthIdx < 0 || monthIdx > 11) return isoDate;
+  return `${day} ${DISPLAY_MONTHS[monthIdx]} ${m[1]}`;
+}
+
+function parseUtcDayMs(isoDate: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate || '').trim());
+  if (!m) return NaN;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function computeProgressMetrics(
+  startDateIso: string,
+  endDateIso: string,
+  nowDayMs: number
+): { percentElapsed: number; daysLeft: number } {
+  const startMs = parseUtcDayMs(startDateIso);
+  const endMs = parseUtcDayMs(endDateIso);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    return { percentElapsed: 0, daysLeft: 0 };
+  }
+
+  let percentElapsed = 0;
+  if (nowDayMs <= startMs) {
+    percentElapsed = 0;
+  } else if (nowDayMs >= endMs) {
+    percentElapsed = 100;
+  } else {
+    const raw = ((nowDayMs - startMs) / (endMs - startMs)) * 100;
+    percentElapsed = Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
+  }
+
+  const daysLeft = Math.max(0, Math.round((endMs - nowDayMs) / (24 * 60 * 60 * 1000)));
+  return { percentElapsed, daysLeft };
+}
+
+function findActivePeriodIndex<T extends { startDate: string; endDate: string }>(
+  list: T[],
+  nowISO: string
+): number {
+  if (list.length === 0) return -1;
+  const strictIdx = list.findIndex((item) => nowISO >= item.startDate && nowISO < item.endDate);
+  if (strictIdx !== -1) return strictIdx;
+  const inclusiveIdx = list.findIndex((item) => nowISO >= item.startDate && nowISO <= item.endDate);
+  return inclusiveIdx;
+}
+
+function computeSlowTransitWindow(
+  planetName: 'Jupiter' | 'Saturn' | 'Rahu',
+  nowISO: string,
+  nowDayMs: number,
+  pair?: SlowPlanetTransitPair
+): {
+  prevSignIndex: number;
+  currentSignIndex: number;
+  nextSignIndex: number;
+  startDateIso: string;
+  endDateIso: string;
+  percentElapsed: number;
+  daysLeft: number;
+} {
+  const [y, m, d] = nowISO.split('-').map(Number);
+  const baseJd = toJulianDay(y || 2026, m || 1, d || 1, 12);
+  const baseMath = computeSiderealSlowLongitudesAtJD(baseJd);
+  const currentSignIndex = pair?.currentSignIndex ?? Math.floor(baseMath[planetName] / 30) % 12;
+
+  const maxDays = 1300; // Covers Saturn (~912d), Rahu (~548d), Jupiter (~380d) cleanly
+  let daysSinceIngress = 180;
+  let prevSignIndex = (currentSignIndex + (planetName === 'Rahu' ? 1 : 11)) % 12;
+
+  for (let day = 7; day <= maxDays; day += 7) {
+    const lon = computeSiderealSlowLongitudesAtJD(baseJd - day)[planetName];
+    const sIdx = Math.floor(lon / 30) % 12;
+    if (sIdx !== currentSignIndex) {
+      for (let fine = Math.max(1, day - 7); fine <= day; fine++) {
+        const fineLon = computeSiderealSlowLongitudesAtJD(baseJd - fine)[planetName];
+        const fineSign = Math.floor(fineLon / 30) % 12;
+        if (fineSign !== currentSignIndex) {
+          daysSinceIngress = Math.max(0, fine - 1);
+          prevSignIndex = fineSign;
+          break;
+        }
+      }
+      break;
+    }
+  }
+
+  let daysUntilIngress = pair?.daysUntilIngress ?? 365;
+  let nextSignIndex =
+    pair?.nextSignIndex ?? (currentSignIndex + (planetName === 'Rahu' ? 11 : 1)) % 12;
+  let endDateIso = pair?.nextIngressApproxDate || '';
+
+  if (!endDateIso || endDateIso < nowISO) {
+    for (let day = 7; day <= maxDays; day += 7) {
+      const lon = computeSiderealSlowLongitudesAtJD(baseJd + day)[planetName];
+      const sIdx = Math.floor(lon / 30) % 12;
+      if (sIdx !== currentSignIndex) {
+        for (let fine = Math.max(1, day - 7); fine <= day; fine++) {
+          const fineLon = computeSiderealSlowLongitudesAtJD(baseJd + fine)[planetName];
+          const fineSign = Math.floor(fineLon / 30) % 12;
+          if (fineSign !== currentSignIndex) {
+            daysUntilIngress = fine;
+            nextSignIndex = fineSign;
+            break;
+          }
+        }
+        break;
+      }
+    }
+    endDateIso = new Date(nowDayMs + daysUntilIngress * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+  }
+
+  const startDateIso = new Date(nowDayMs - daysSinceIngress * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+
+  const { percentElapsed, daysLeft } = computeProgressMetrics(startDateIso, endDateIso, nowDayMs);
+
+  return {
+    prevSignIndex,
+    currentSignIndex,
+    nextSignIndex,
+    startDateIso,
+    endDateIso,
+    percentElapsed,
+    daysLeft,
+  };
+}
+
+export function buildDeterministicTimingWidgets(
+  compiledChart: TimingWidgetChartInput | null | undefined,
+  transitFeed?: TimingWidgetTransitFeedInput | null,
+  nowDate?: Date | string
+): TimingProgressWidget[] {
+  const parsedNow =
+    nowDate instanceof Date
+      ? nowDate
+      : typeof nowDate === 'string' && nowDate.trim()
+      ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(nowDate.trim()) ? `${nowDate.trim()}T12:00:00Z` : nowDate)
+      : new Date();
+  const safeNow = Number.isNaN(parsedNow.getTime()) ? new Date() : parsedNow;
+  const nowISO = safeNow.toISOString().slice(0, 10);
+  const nowDayMs = parseUtcDayMs(nowISO);
+
+  const widgets: TimingProgressWidget[] = [];
+  const timeline = compiledChart?.vimshottari?.timeline || [];
+
+  const abbr = (planet: string): string => PLANET_ABBR_3[planet] || planet.slice(0, 3);
+
+  // 1. Vimshottari Mahadasha / Antardasha / Pratyantardasha
+  if (timeline.length > 0) {
+    const mdList = timeline;
+    const adList: Array<{ mdLord: string; adLord: string; startDate: string; endDate: string }> =
+      [];
+    const pdList: Array<{
+      mdLord: string;
+      adLord: string;
+      pdLord: string;
+      startDate: string;
+      endDate: string;
+    }> = [];
+
+    for (const md of mdList) {
+      for (const ad of md.children || []) {
+        adList.push({
+          mdLord: md.lord,
+          adLord: ad.lord,
+          startDate: ad.startDate,
+          endDate: ad.endDate,
+        });
+        for (const pd of ad.children || []) {
+          pdList.push({
+            mdLord: md.lord,
+            adLord: ad.lord,
+            pdLord: pd.lord,
+            startDate: pd.startDate,
+            endDate: pd.endDate,
+          });
+        }
+      }
+    }
+
+    const activeAdIdx = findActivePeriodIndex(adList, nowISO);
+    if (activeAdIdx !== -1) {
+      const cur = adList[activeAdIdx];
+      const prev = activeAdIdx > 0 ? adList[activeAdIdx - 1] : null;
+      const nxt = activeAdIdx + 1 < adList.length ? adList[activeAdIdx + 1] : null;
+      const metrics = computeProgressMetrics(cur.startDate, cur.endDate, nowDayMs);
+      widgets.push({
+        id: 'ad',
+        kind: 'dasha',
+        title: 'Antardasha Chapter',
+        previous: {
+          label: prev ? `${abbr(prev.mdLord)}-${abbr(prev.adLord)}` : 'Birth Start',
+        },
+        current: {
+          label: `${cur.mdLord}–${cur.adLord}`,
+          startDateIso: cur.startDate,
+          endDateIso: cur.endDate,
+          startDisplay: formatWidgetDisplayDate(cur.startDate),
+          endDisplay: formatWidgetDisplayDate(cur.endDate),
+          percentElapsed: metrics.percentElapsed,
+          daysLeft: metrics.daysLeft,
+        },
+        next: {
+          label: nxt ? `${abbr(nxt.mdLord)}-${abbr(nxt.adLord)}` : 'Cycle End',
+        },
+      });
+    }
+
+    const activePdIdx = findActivePeriodIndex(pdList, nowISO);
+    if (activePdIdx !== -1) {
+      const cur = pdList[activePdIdx];
+      const prev = activePdIdx > 0 ? pdList[activePdIdx - 1] : null;
+      const nxt = activePdIdx + 1 < pdList.length ? pdList[activePdIdx + 1] : null;
+      const metrics = computeProgressMetrics(cur.startDate, cur.endDate, nowDayMs);
+      widgets.push({
+        id: 'pd',
+        kind: 'dasha',
+        title: 'Pratyantardasha Sub-Window',
+        previous: {
+          label: prev ? `${abbr(prev.adLord)}-${abbr(prev.pdLord)}` : 'Prior AD',
+        },
+        current: {
+          label: `${abbr(cur.mdLord)}–${abbr(cur.adLord)}–${cur.pdLord}`,
+          startDateIso: cur.startDate,
+          endDateIso: cur.endDate,
+          startDisplay: formatWidgetDisplayDate(cur.startDate),
+          endDisplay: formatWidgetDisplayDate(cur.endDate),
+          percentElapsed: metrics.percentElapsed,
+          daysLeft: metrics.daysLeft,
+        },
+        next: {
+          label: nxt ? `${abbr(nxt.adLord)}-${abbr(nxt.pdLord)}` : 'Next AD',
+        },
+      });
+    }
+
+    const activeMdIdx = findActivePeriodIndex(mdList, nowISO);
+    if (activeMdIdx !== -1) {
+      const cur = mdList[activeMdIdx];
+      const prev = activeMdIdx > 0 ? mdList[activeMdIdx - 1] : null;
+      const nxt = activeMdIdx + 1 < mdList.length ? mdList[activeMdIdx + 1] : null;
+      const metrics = computeProgressMetrics(cur.startDate, cur.endDate, nowDayMs);
+      widgets.push({
+        id: 'md',
+        kind: 'dasha',
+        title: 'Mahadasha Era',
+        previous: {
+          label: prev ? `${prev.lord} MD` : 'Birth MD',
+        },
+        current: {
+          label: `${cur.lord} Mahadasha`,
+          startDateIso: cur.startDate,
+          endDateIso: cur.endDate,
+          startDisplay: formatWidgetDisplayDate(cur.startDate),
+          endDisplay: formatWidgetDisplayDate(cur.endDate),
+          percentElapsed: metrics.percentElapsed,
+          daysLeft: metrics.daysLeft,
+        },
+        next: {
+          label: nxt ? `${nxt.lord} MD` : 'Next Cycle',
+        },
+      });
+    }
+  } else if (compiledChart?.vimshottari?.currentStack) {
+    const stack = compiledChart.vimshottari.currentStack;
+    if (stack.adStart && stack.adEnd) {
+      const metrics = computeProgressMetrics(stack.adStart, stack.adEnd, nowDayMs);
+      widgets.push({
+        id: 'ad',
+        kind: 'dasha',
+        title: 'Antardasha Chapter',
+        previous: { label: 'Previous AD' },
+        current: {
+          label: `${stack.mahadasha}–${stack.antardasha}`,
+          startDateIso: stack.adStart,
+          endDateIso: stack.adEnd,
+          startDisplay: formatWidgetDisplayDate(stack.adStart),
+          endDisplay: formatWidgetDisplayDate(stack.adEnd),
+          percentElapsed: metrics.percentElapsed,
+          daysLeft: metrics.daysLeft,
+        },
+        next: { label: 'Next AD' },
+      });
+    }
+  }
+
+  // 2. Slow-Planet Gochar Progress (Saturn, Jupiter, Rahu-Ketu)
+  const sameDatePairs =
+    transitFeed?.transitDate === nowISO && Array.isArray(transitFeed?.slowTransitPairs)
+      ? transitFeed.slowTransitPairs
+      : [];
+
+  const saturnPair = sameDatePairs.find((p) => p.planet === 'Saturn');
+  const satWin = computeSlowTransitWindow('Saturn', nowISO, nowDayMs, saturnPair);
+  widgets.push({
+    id: 'saturn' as TimingWidgetId,
+    kind: 'transit',
+    title: 'Saturn Gochar',
+    previous: { label: `Saturn in ${SIGNS[satWin.prevSignIndex]}` },
+    current: {
+      label: `Saturn in ${SIGNS[satWin.currentSignIndex]}`,
+      startDateIso: satWin.startDateIso,
+      endDateIso: satWin.endDateIso,
+      startDisplay: formatWidgetDisplayDate(satWin.startDateIso),
+      endDisplay: formatWidgetDisplayDate(satWin.endDateIso),
+      percentElapsed: satWin.percentElapsed,
+      daysLeft: satWin.daysLeft,
+    },
+    next: { label: `Saturn in ${SIGNS[satWin.nextSignIndex]}` },
+  });
+
+  const jupiterPair = sameDatePairs.find((p) => p.planet === 'Jupiter');
+  const jupWin = computeSlowTransitWindow('Jupiter', nowISO, nowDayMs, jupiterPair);
+  widgets.push({
+    id: 'jupiter' as TimingWidgetId,
+    kind: 'transit',
+    title: 'Jupiter Gochar',
+    previous: { label: `Jupiter in ${SIGNS[jupWin.prevSignIndex]}` },
+    current: {
+      label: `Jupiter in ${SIGNS[jupWin.currentSignIndex]}`,
+      startDateIso: jupWin.startDateIso,
+      endDateIso: jupWin.endDateIso,
+      startDisplay: formatWidgetDisplayDate(jupWin.startDateIso),
+      endDisplay: formatWidgetDisplayDate(jupWin.endDateIso),
+      percentElapsed: jupWin.percentElapsed,
+      daysLeft: jupWin.daysLeft,
+    },
+    next: { label: `Jupiter in ${SIGNS[jupWin.nextSignIndex]}` },
+  });
+
+  const rahuPair = sameDatePairs.find((p) => p.planet === 'Rahu');
+  const rahuWin = computeSlowTransitWindow('Rahu', nowISO, nowDayMs, rahuPair);
+  widgets.push({
+    id: 'rahu_ketu' as TimingWidgetId,
+    kind: 'transit',
+    title: 'Rahu–Ketu Gochar',
+    previous: {
+      label: `Rahu/Ketu ${SIGNS[rahuWin.prevSignIndex].slice(0, 3)}/${SIGNS[(rahuWin.prevSignIndex + 6) % 12].slice(0, 3)}`,
+    },
+    current: {
+      label: `Rahu ${SIGNS[rahuWin.currentSignIndex]} · Ketu ${SIGNS[(rahuWin.currentSignIndex + 6) % 12]}`,
+      startDateIso: rahuWin.startDateIso,
+      endDateIso: rahuWin.endDateIso,
+      startDisplay: formatWidgetDisplayDate(rahuWin.startDateIso),
+      endDisplay: formatWidgetDisplayDate(rahuWin.endDateIso),
+      percentElapsed: rahuWin.percentElapsed,
+      daysLeft: rahuWin.daysLeft,
+    },
+    next: {
+      label: `Rahu/Ketu ${SIGNS[rahuWin.nextSignIndex].slice(0, 3)}/${SIGNS[(rahuWin.nextSignIndex + 6) % 12].slice(0, 3)}`,
+    },
+  });
+
+  return widgets;
+}
+
+
 
 

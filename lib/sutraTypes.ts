@@ -69,3 +69,21 @@ export interface SutraUserProfile {
   last_updated_at: string;
 }
 
+export type TimingWidgetId = 'md' | 'ad' | 'pd' | 'saturn' | 'jupiter' | 'rahu_ketu';
+
+export interface TimingProgressWidget {
+  id: TimingWidgetId;
+  kind: 'dasha' | 'transit';
+  title: string;
+  previous: { label: string };
+  current: {
+    label: string;
+    startDateIso: string;
+    endDateIso: string;
+    startDisplay: string;
+    endDisplay: string;
+    percentElapsed: number;
+    daysLeft: number;
+  };
+  next: { label: string };
+}

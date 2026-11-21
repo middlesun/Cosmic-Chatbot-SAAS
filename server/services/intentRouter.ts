@@ -10,6 +10,7 @@ import {
   PROMPT_EXTRACTION_REFUSAL,
 } from './abuseGuard';
 import {
+  applyPlaybookOverride,
   CANONICAL_PLAYBOOKS,
   getJevPlaybookCriteria,
   getPlaybookById,
@@ -25,7 +26,12 @@ import {
   createOpenRouterCompletion,
   getUtilityModelAsync,
 } from './openrouter';
-import { getResolvedOpenRouterRuntime } from './platformSettings';
+import {
+  getEnginePromptOverrides,
+  getPlaybookOverrides,
+  getResolvedOpenRouterRuntime,
+} from './platformSettings';
+import { DEFAULT_STAGE1_ROUTER_PROMPT } from './enginePromptDefaults';
 
 const VALID_INTENTS = new Set<SutraIntentArchetype>([
   'CONVERSATIONAL',
@@ -370,28 +376,14 @@ function getCompactPlaybookMenu(): string {
 export class OpenRouterStructuredClassifier implements IntentClassifier {
   async classify(input: IntentClassificationInput): Promise<Stage1RouterResult> {
     const started = Date.now();
-    const utilityModel = await getUtilityModelAsync();
+    const [utilityModel, engineOverrides] = await Promise.all([
+      getUtilityModelAsync(),
+      getEnginePromptOverrides().catch(() => ({} as Record<string, never>)),
+    ]);
 
-    const systemPrompt = `You are Stage 1 Intent & Playbook Router for a Vedic astrology app.
-Classify the user message into the best matching Canonical Playbook ID from the catalog below, or OPEN_ENDED_SYNTHESIS if none fit cleanly.
-Return ONLY valid JSON matching this exact shape (no markdown, no explanation):
-{
-  "playbook_id": "CAR_01",
-  "playbook_confidence": 0.88,
-  "intent": "SOFT_HORIZON",
-  "intent_confidence": 0.84,
-  "detected_user_fluency": "beginner",
-  "is_prompt_extraction": false,
-  "needs_clarification": false,
-  "requires_synastry_partner": false,
-  "requests_remedy_or_guidance": false,
-  "complexity_intensity": 5
-}
-
-Allowed intent values: CONVERSATIONAL, SOFT_HORIZON, HARD_DECISION, TIMING, PEER_AUDIT.
-Allowed detected_user_fluency values: beginner, guided_bridge, practitioner.
-complexity_intensity: integer from 2 (simple) to 10 (complex life crisis).
-needs_clarification: true ONLY if the message is genuinely too ambiguous/vague to understand what life topic or question they are asking.
+    const routerHeader =
+      engineOverrides?.stage1_router_prompt?.trim() || DEFAULT_STAGE1_ROUTER_PROMPT;
+    const systemPrompt = `${routerHeader}
 
 PLAYBOOK CATALOG:
 ${getCompactPlaybookMenu()}`;
@@ -941,7 +933,9 @@ export async function evaluateStage1Routing(
     };
   }
 
-  const playbook = getPlaybookById(routerResult.playbook_id);
+  const pbOverrides = await getPlaybookOverrides().catch(() => ({} as Record<string, never>));
+  const rawPlaybook = getPlaybookById(routerResult.playbook_id);
+  const playbook = applyPlaybookOverride(rawPlaybook, pbOverrides[rawPlaybook.id] || null);
   const bypassClarify =
     Boolean(options.bypassClarification) ||
     Boolean(options.technicalDirective) ||
