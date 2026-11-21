@@ -4,6 +4,7 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  ChevronDown,
   Copy,
   Download,
   Eye,
@@ -225,7 +226,11 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
 
   // Export / Import modals
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportScope, setExportScope] = useState<'all' | 'filtered'>('all');
+  const [exportScope, setExportScope] = useState<'all' | 'filtered' | 'manual'>('all');
+  const [manualSelectedIds, setManualSelectedIds] = useState<string[]>([]);
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const [exportPromptSearch, setExportPromptSearch] = useState('');
+  const [exportCategoryFilter, setExportCategoryFilter] = useState<string>('all');
   const [exportActiveOnly, setExportActiveOnly] = useState(false);
   const [exportFormat, setExportFormat] = useState<'json' | 'markdown'>('json');
   const [exportCopied, setExportCopied] = useState(false);
@@ -800,10 +805,54 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
   };
 
   // Export & Import helpers
+  const manualSelectedSet = useMemo(() => new Set(manualSelectedIds), [manualSelectedIds]);
+
+  const sortedAllPrompts = useMemo(() => {
+    return [...prompts].sort(
+      (a, b) =>
+        (a.sort_order ?? 100) - (b.sort_order ?? 100) ||
+        a.display_name.localeCompare(b.display_name)
+    );
+  }, [prompts]);
+
+  const exportDropdownPrompts = useMemo(() => {
+    const q = exportPromptSearch.trim().toLowerCase();
+    const tagQ = q.replace(/^#+/, '');
+    return sortedAllPrompts.filter((p) => {
+      if (exportActiveOnly && !p.is_active) return false;
+      if (exportCategoryFilter !== 'all' && p.category !== exportCategoryFilter) return false;
+      if (!q) return true;
+      const catLabel = getCategoryLabel(p.category).toLowerCase();
+      const normalizedTags = (p.tags || []).map((t) => normalizeTagToken(t)).filter(Boolean);
+      return (
+        p.display_name.toLowerCase().includes(q) ||
+        p.slug.toLowerCase().includes(q) ||
+        catLabel.includes(q) ||
+        (tagQ.length > 0 && normalizedTags.some((t) => t.includes(tagQ)))
+      );
+    });
+  }, [sortedAllPrompts, exportPromptSearch, exportCategoryFilter, exportActiveOnly]);
+
+  const manualSelectedPrompts = useMemo(
+    () => sortedAllPrompts.filter((p) => manualSelectedSet.has(p.id)),
+    [sortedAllPrompts, manualSelectedSet]
+  );
+
+  const toggleManualPrompt = (promptId: string) => {
+    setManualSelectedIds((prev) =>
+      prev.includes(promptId) ? prev.filter((id) => id !== promptId) : [...prev, promptId]
+    );
+  };
+
   const promptsToExport = useMemo(() => {
-    const base = exportScope === 'filtered' ? filteredPrompts : prompts;
+    const base =
+      exportScope === 'filtered'
+        ? filteredPrompts
+        : exportScope === 'manual'
+        ? prompts.filter((p) => manualSelectedSet.has(p.id))
+        : prompts;
     return exportActiveOnly ? base.filter((p) => p.is_active) : base;
-  }, [exportScope, exportActiveOnly, filteredPrompts, prompts]);
+  }, [exportScope, exportActiveOnly, filteredPrompts, prompts, manualSelectedSet]);
 
   const exportPayloadText = useMemo(() => {
     if (exportFormat === 'markdown') {
@@ -1001,11 +1050,15 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
   const blockPickerOptions = useMemo(() => {
     return [
       { value: '', label: 'Choose a prompt block to append...' },
-      ...prompts.map((p) => ({
-        value: p.slug,
-        label: `[${p.category}] ${p.display_name}`,
-        description: p.slug,
-      })),
+      ...prompts.map((p) => {
+        const charLen = (p.prompt_body || '').length;
+        const tokenCount = Math.ceil(charLen / 4);
+        return {
+          value: p.slug,
+          label: p.display_name,
+          hint: `${getCategoryLabel(p.category)} - ${formatCharsCompact(charLen)} characters - ${tokenCount} Tokens`,
+        };
+      }),
     ];
   }, [prompts]);
 
@@ -2251,13 +2304,16 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
         createPortal(
           <div
             className="fixed inset-0 z-[120] flex items-center justify-center bg-[#1F2229]/45 backdrop-blur-xs p-4"
-            onClick={() => setShowExportModal(false)}
+            onClick={() => {
+              setExportDropdownOpen(false);
+              setShowExportModal(false);
+            }}
           >
             <div
-              className="w-full max-w-lg rounded-3xl border border-[#3D3830]/15 bg-[#FDFBF7] p-6 shadow-2xl space-y-4"
+              className="w-full max-w-xl max-h-[90vh] flex flex-col rounded-3xl border border-[#3D3830]/15 bg-[#FDFBF7] p-6 shadow-2xl space-y-4"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start justify-between gap-3 shrink-0">
                 <div>
                   <h3 className="font-serif text-xl font-medium text-[#3D3830]">
                     Export Prompt Library
@@ -2268,7 +2324,10 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowExportModal(false)}
+                  onClick={() => {
+                    setExportDropdownOpen(false);
+                    setShowExportModal(false);
+                  }}
                   aria-label="Close export modal"
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#8B8275] hover:bg-[#EAE3D7] hover:text-[#3D3830] cursor-pointer"
                 >
@@ -2276,15 +2335,18 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                 </button>
               </div>
 
-              <div className="space-y-3">
+              <div className="flex-1 overflow-y-auto space-y-3.5 pr-0.5">
                 <div>
                   <label className="block text-[11px] font-medium text-[#5C5449] mb-1.5">
                     Scope
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <button
                       type="button"
-                      onClick={() => setExportScope('all')}
+                      onClick={() => {
+                        setExportScope('all');
+                        setExportDropdownOpen(false);
+                      }}
                       className={`rounded-2xl border px-3.5 py-2.5 text-left text-xs transition-colors cursor-pointer ${
                         exportScope === 'all'
                           ? 'border-[#4A453D] bg-[#EAE3D7]/60 text-[#3D3830] font-medium'
@@ -2295,7 +2357,10 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setExportScope('filtered')}
+                      onClick={() => {
+                        setExportScope('filtered');
+                        setExportDropdownOpen(false);
+                      }}
                       className={`rounded-2xl border px-3.5 py-2.5 text-left text-xs transition-colors cursor-pointer ${
                         exportScope === 'filtered'
                           ? 'border-[#4A453D] bg-[#EAE3D7]/60 text-[#3D3830] font-medium'
@@ -2304,8 +2369,232 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                     >
                       Current filter ({filteredPrompts.length})
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExportScope('manual');
+                        if (manualSelectedIds.length === 0) {
+                          setExportDropdownOpen(true);
+                        }
+                      }}
+                      className={`rounded-2xl border px-3.5 py-2.5 text-left text-xs transition-colors cursor-pointer ${
+                        exportScope === 'manual'
+                          ? 'border-[#4A453D] bg-[#EAE3D7]/60 text-[#3D3830] font-medium'
+                          : 'border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:border-[#3D3830]/25'
+                      }`}
+                    >
+                      Select manually ({manualSelectedPrompts.length})
+                    </button>
                   </div>
                 </div>
+
+                {exportScope === 'manual' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="block text-[11px] font-medium text-[#5C5449]">
+                        Select Prompts
+                      </label>
+                      {manualSelectedPrompts.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setManualSelectedIds([])}
+                          className="text-[11px] text-[#8B8275] hover:text-[#7A3E36] cursor-pointer"
+                        >
+                          Clear ({manualSelectedPrompts.length})
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      aria-expanded={exportDropdownOpen}
+                      onClick={() => setExportDropdownOpen((prev) => !prev)}
+                      className={`w-full flex items-center justify-between gap-2 rounded-2xl border px-3.5 py-2.5 text-left text-xs transition-all cursor-pointer ${
+                        exportDropdownOpen
+                          ? 'border-[#3D3830]/45 bg-[#FAF7F2] ring-2 ring-[#B8965A]/20'
+                          : 'border-[#3D3830]/15 bg-[#FAF7F2] hover:border-[#3D3830]/35'
+                      }`}
+                    >
+                      <span
+                        className={`truncate ${
+                          manualSelectedPrompts.length === 0
+                            ? 'text-[#8B8275]'
+                            : 'text-[#3D3830] font-medium'
+                        }`}
+                      >
+                        {manualSelectedPrompts.length === 0
+                          ? 'Choose prompts to compile into bundle...'
+                          : manualSelectedPrompts.length === 1
+                          ? manualSelectedPrompts[0].display_name
+                          : `${manualSelectedPrompts.length} prompts selected`}
+                      </span>
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 shrink-0 text-[#8B8275] transition-transform duration-200 ${
+                          exportDropdownOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {exportDropdownOpen && (
+                      <div className="animate-cc-dropdown-down rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] shadow-[0_14px_34px_-12px_rgba(61,56,48,0.18)] overflow-hidden">
+                        <div className="p-2.5 border-b border-[#3D3830]/10 space-y-2 bg-[#FDFBF7]">
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <div className="relative flex-1">
+                              <Search className="h-3.5 w-3.5 text-[#8B8275] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              <input
+                                type="text"
+                                value={exportPromptSearch}
+                                onChange={(e) => setExportPromptSearch(e.target.value)}
+                                placeholder="Search prompt, category, or #tag..."
+                                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] pl-8 pr-2.5 py-1.5 text-xs text-[#3D3830] focus:outline-none focus:border-[#3D3830]/35"
+                              />
+                            </div>
+                            <div className="sm:w-[155px]">
+                              <CustomSelect
+                                size="xs"
+                                surface="canvas"
+                                align="right"
+                                ariaLabel="Filter export prompts by category"
+                                value={exportCategoryFilter}
+                                onChange={setExportCategoryFilter}
+                                options={[
+                                  { value: 'all', label: 'All categories' },
+                                  ...PROMPT_CATEGORIES.map((c) => ({
+                                    value: c.value,
+                                    label: c.label,
+                                  })),
+                                ]}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 text-[11px] text-[#8B8275]">
+                            <span className="font-mono tabular-nums">
+                              {exportDropdownPrompts.length} shown · {manualSelectedPrompts.length} selected
+                            </span>
+                            <div className="flex items-center gap-2.5">
+                              <button
+                                type="button"
+                                disabled={exportDropdownPrompts.length === 0}
+                                onClick={() => {
+                                  const visibleIds = exportDropdownPrompts.map((p) => p.id);
+                                  setManualSelectedIds((prev) =>
+                                    Array.from(new Set([...prev, ...visibleIds]))
+                                  );
+                                }}
+                                className="font-medium text-[#5C5449] hover:text-[#3D3830] disabled:opacity-40 cursor-pointer"
+                              >
+                                Select visible
+                              </button>
+                              <button
+                                type="button"
+                                disabled={manualSelectedPrompts.length === 0}
+                                onClick={() => setManualSelectedIds([])}
+                                className="font-medium text-[#5C5449] hover:text-[#7A3E36] disabled:opacity-40 cursor-pointer"
+                              >
+                                Clear all
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setExportDropdownOpen(false)}
+                                className="rounded-lg bg-[#EAE3D7] px-2 py-0.5 text-[10px] font-medium text-[#3D3830] hover:bg-[#DDD4C5] cursor-pointer"
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="max-h-60 overflow-y-auto divide-y divide-[#3D3830]/10">
+                          {exportDropdownPrompts.length === 0 ? (
+                            <p className="p-4 text-center text-xs text-[#8B8275]">
+                              No prompts match this filter.
+                            </p>
+                          ) : (
+                            exportDropdownPrompts.map((p) => {
+                              const checked = manualSelectedSet.has(p.id);
+                              const charLen = (p.prompt_body || '').length;
+                              const tokenCount = Math.ceil(charLen / 4);
+                              return (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={checked}
+                                  onClick={() => toggleManualPrompt(p.id)}
+                                  className={`w-full px-3.5 py-2.5 text-left flex items-start gap-2.5 transition-colors cursor-pointer ${
+                                    checked
+                                      ? 'bg-[#EAE3D7]/65'
+                                      : 'hover:bg-[#FDFBF7]'
+                                  }`}
+                                >
+                                  <span
+                                    className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                                      checked
+                                        ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2]'
+                                        : 'border-[#3D3830]/25 bg-[#FDFBF7]'
+                                    }`}
+                                  >
+                                    {checked && <Check className="h-3 w-3" />}
+                                  </span>
+
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span
+                                        className={`text-xs font-semibold truncate ${
+                                          p.is_active ? 'text-[#3D3830]' : 'text-[#8B8275]'
+                                        }`}
+                                      >
+                                        {p.display_name}
+                                      </span>
+                                      <span className="font-mono text-[10px] text-[#8B8275] shrink-0">
+                                        v{p.version}
+                                      </span>
+                                      {!p.is_active && (
+                                        <span className="font-mono text-[9px] text-[#8B8275] shrink-0">
+                                          · inactive
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="mt-0.5 font-mono text-[10px] text-[#8B7355] truncate tabular-nums">
+                                      {getCategoryLabel(p.category)} - {formatCharsCompact(charLen)} characters - {tokenCount} Tokens
+                                    </p>
+                                  </div>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {!exportDropdownOpen && manualSelectedPrompts.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto rounded-2xl border border-[#3D3830]/10 bg-[#FAF7F2]/80 p-2">
+                        {manualSelectedPrompts.map((p) => (
+                          <span
+                            key={p.id}
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#3D3830]/12 bg-[#FDFBF7] px-2 py-1 text-[11px] text-[#3D3830]"
+                          >
+                            <span className="truncate max-w-[180px] font-medium">
+                              {p.display_name}
+                            </span>
+                            <span className="font-mono text-[10px] text-[#8B7355]">
+                              ({getCategoryLabel(p.category)} · {formatCharsCompact((p.prompt_body || '').length)})
+                            </span>
+                            <button
+                              type="button"
+                              aria-label={`Remove ${p.display_name}`}
+                              onClick={() => toggleManualPrompt(p.id)}
+                              className="text-[#8B8275] hover:text-[#7A3E36] cursor-pointer ml-0.5"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-[11px] font-medium text-[#5C5449] mb-1.5">
@@ -2354,14 +2643,18 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                 </label>
 
                 <div className="rounded-2xl border border-[#3D3830]/10 bg-[#FAF7F2] px-3.5 py-2.5 flex items-center justify-between text-[11px] text-[#5C5449]">
-                  <span>Ready to export</span>
+                  <span>
+                    {exportScope === 'manual' && promptsToExport.length === 0
+                      ? 'Select at least 1 prompt above'
+                      : 'Ready to export'}
+                  </span>
                   <span className="font-mono tabular-nums text-[#3D3830] font-medium">
                     {promptsToExport.length} prompt(s) · ~{formatCharsCompact(exportPayloadText.length)} chars
                   </span>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-[#3D3830]/10">
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-[#3D3830]/10 shrink-0">
                 <button
                   type="button"
                   disabled={promptsToExport.length === 0}
