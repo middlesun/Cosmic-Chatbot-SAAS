@@ -113,6 +113,14 @@ INTERPRETIVE CRAFT:
 - Highlight harmonies or creative tensions between core numbers (for example, an ambitious Life Path paired with an introspective Soul Urge) and honor Master Numbers (11, 22, 33) without grandiosity or superstition.
 - Keep counsel calm, analytical, empathetic, and empowering.`,
   },
+  {
+    slug: 'learn_astrology',
+    category: 'expert',
+    display_name: 'Learn Astrology',
+    subtitle: 'Pedagogical breakdowns showing the Jyotish mechanics behind the reading.',
+    prompt_body: `CONSULTATION MODE: LEARN ASTROLOGY (EDUCATIONAL MENTOR).
+Teach Vedic Astrology step-by-step while answering the question. Explain the underlying principles (e.g., why a house lord acts as functional benefic/malefic, how KP Sub-Lords filter outcomes, how Ashtakavarga scores validate transits, or how D9 modifies D1). If a birth chart is attached, use it as a live worked case study; if no chart is attached, teach clearly with clean astronomical & Jyotish examples.`,
+  },
 ];
 
 // Preserved legacy Vedic sub-system prompts under category='analysis' so Admin
@@ -219,14 +227,6 @@ Focus on Lagna strength, Sun (vitality), Moon (mind/nervous system), 6th/8th/12t
     subtitle: '2nd/11th Dhana yogas, D2 Hora, 4th/9th assets, risk vs compounding.',
     prompt_body: `CONSULTATION MODE: WEALTH & ASSETS.
 Analyze 2nd (accumulated wealth), 11th (income/gains), 5th/9th (Lakshmi sthanas & speculative fortune), 4th (real estate/fixed assets), D2 Hora & D4 Chaturthamsa, Jupiter/Venus strength, KP 2-6-11 vs 5-8-12 significators, and risk-management timing across Dasha & Gochar.`,
-  },
-  {
-    slug: 'learn_astrology',
-    category: 'learn',
-    display_name: 'Learn Astrology',
-    subtitle: 'Pedagogical breakdowns showing the Jyotish mechanics behind the reading.',
-    prompt_body: `CONSULTATION MODE: LEARN ASTROLOGY (EDUCATIONAL MENTOR).
-Teach Vedic Astrology step-by-step while answering the question. Explain the underlying principles (e.g., why a house lord acts as functional benefic/malefic, how KP Sub-Lords filter outcomes, how Ashtakavarga scores validate transits, or how D9 modifies D1). If a birth chart is attached, use it as a live worked case study; if no chart is attached, teach clearly with clean astronomical & Jyotish examples.`,
   },
 ];
 
@@ -483,12 +483,12 @@ export async function getPublicChatCatalogCached() {
         subtitle: row.subtitle || def?.subtitle || '',
       };
 
-      if (row.category === 'expert') {
-        // Keep legacy Vedic sub-systems in Admin Recipes/Analysis rather than the primary 5-guide Council menu
+      if (row.category === 'expert' || row.category === 'learn' || row.slug === 'learn_astrology') {
+        // Keep legacy Vedic sub-systems in Admin Recipes/Analysis rather than the primary Council menu
         if (!LEGACY_VEDIC_SUBSYSTEM_SLUGS.has(row.slug)) {
           activeByCategory.experts.push(item);
         }
-      } else if (row.category === 'mode' || row.category === 'learn') {
+      } else if (row.category === 'mode') {
         activeByCategory.modes.push(item);
       } else if (row.category === 'output') {
         activeByCategory.outputs.push(item);

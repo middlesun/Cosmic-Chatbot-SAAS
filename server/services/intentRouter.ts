@@ -77,6 +77,8 @@ export interface IntentClassificationInput {
   profileName?: string | null;
   modeSlug?: string | null;
   isFollowUpTurn?: boolean;
+  isCuratedStarter?: boolean;
+  hasTechnicalDirective?: boolean;
 }
 
 export interface IntentClassifier {
@@ -455,15 +457,68 @@ ${getCompactPlaybookMenu()}`;
   }
 }
 
-function heuristicRuleGuardResult(
-  input: IntentClassificationInput,
-  started: number
-): Stage1RouterResult {
-  const q = (input.userPrompt || '').toLowerCase();
+function inferUserFluencyFromPrompt(prompt: string): UserFluencyTier {
+  const q = (prompt || '').toLowerCase();
+  if (
+    /\b(?:navamsa|d9|d10|d7|d4|sub[- ]?lord|ashtakavarga|shadbala|atmakaraka|darakaraka|kp\s+cusp|bindu|vargottama|bhava\s+chalit|badhaka|kendradhipati)\b/i.test(
+      q
+    )
+  ) {
+    return 'practitioner';
+  }
+  if (
+    /\b(?:dasha|mahadasha|antardasha|transit|gochar|lagna|ascendant|nakshatra|saturn|jupiter|rahu|ketu|venus|mars|mercury)\b/i.test(
+      q
+    )
+  ) {
+    return 'guided_bridge';
+  }
+  return 'beginner';
+}
+
+interface PlaybookHeuristicMatch {
+  playbookId: string;
+  intent: SutraIntentArchetype;
+  requiresSynastry: boolean;
+  requestsRemedy: boolean;
+  domainBucketCount: number;
+}
+
+function matchPlaybookHeuristic(
+  prompt: string,
+  modeSlug?: string | null,
+  hasTechnicalDirective?: boolean
+): PlaybookHeuristicMatch {
+  const q = (prompt || '').toLowerCase();
+  const requestsRemedy = /\b(?:remedy|remedies|upay|mantra|gemstone|donate|donation|puja)\b/i.test(q);
+
+  const hasMarriageSignals = /\b(?:marriage|married|spouse|wife|husband|wedding|divorce|separation|in-?laws?|partner|compatibility|synastry|kundli\s*milan|ashtakoot)\b/i.test(
+    q
+  );
+  const hasCareerSignals = /\b(?:career|profession|vocation|work\s+life|job|business|promotion|switch\s+job|job\s+change|startup)\b/i.test(
+    q
+  );
+  const hasWealthSignals = /\b(?:wealth|money|income|financial|finance|debt|loan|rich|prosperity|bankrupt|assets?|savings?)\b/i.test(
+    q
+  );
+  const hasForeignSignals = /\b(?:abroad|foreign|relocat|visa|immigrat|overseas)\b/i.test(q);
+  const hasHealthSignals = /\b(?:health|illness|vitality|disease|surgery|anxiety|depress|mental|overthink|stress|peace\s+of\s+mind)\b/i.test(
+    q
+  );
+  const hasProgenySignals = /\b(?:child|children|kids|progeny|fertility|parenthood)\b/i.test(q);
+
+  const domainBucketCount = [
+    hasMarriageSignals,
+    hasCareerSignals,
+    hasWealthSignals,
+    hasForeignSignals,
+    hasHealthSignals,
+    hasProgenySignals,
+  ].filter(Boolean).length;
+
   let playbookId = 'OPEN_ENDED_SYNTHESIS';
   let intent: SutraIntentArchetype = 'CONVERSATIONAL';
   let requiresSynastry = false;
-  let requestsRemedy = /\b(?:remedy|remedies|upay|mantra|gemstone|donate)\b/i.test(q);
 
   if (/\b(?:compare|synastry|kundli\s*milan|ashtakoot|compatibility\s+with|partner'?s?\s+chart)\b/i.test(q)) {
     playbookId = 'MAR_21';
@@ -478,67 +533,136 @@ function heuristicRuleGuardResult(
   } else if (/\b(?:will\s+i\s+(?:ever\s+)?get\s+married|support\s+marriage)\b/i.test(q)) {
     playbookId = 'MAR_01';
     intent = 'HARD_DECISION';
-  } else if (/\b(?:married\s+life|marriage\s+quality|divorce|separation)\b/i.test(q)) {
-    playbookId = /\b(?:divorce|separation)\b/i.test(q) ? 'MAR_14' : 'MAR_03';
-    intent = /\b(?:divorce|separation)\b/i.test(q) ? 'HARD_DECISION' : 'SOFT_HORIZON';
+  } else if (/\b(?:divorce|separation|split\s+up)\b/i.test(q)) {
+    playbookId = 'MAR_14';
+    intent = 'HARD_DECISION';
+  } else if (/\b(?:married\s+life|marriage\s+quality|how\s+will\s+my\s+marriage\s+be)\b/i.test(q)) {
+    playbookId = 'MAR_03';
+    intent = 'SOFT_HORIZON';
+  } else if (/\b(?:what\s+will\s+my\s+spouse\s+be\s+like|spouse\s+traits|future\s+spouse|in-?laws?)\b/i.test(q)) {
+    playbookId = 'MAR_05';
+    intent = 'CONVERSATIONAL';
+  } else if (/\b(?:where\s+(?:and\s+how\s+)?will\s+i\s+meet|how\s+will\s+i\s+meet\s+my\s+spouse)\b/i.test(q)) {
+    playbookId = 'MAR_06';
+    intent = 'CONVERSATIONAL';
   } else if (/\b(?:will\s+i\s+have\s+(?:a\s+)?(?:child|children|kids)|progeny|fertility)\b/i.test(q)) {
     playbookId = 'PRO_01';
     intent = 'HARD_DECISION';
   } else if (/\b(?:job\s+(?:or|vs\.?)\s+business|business\s+(?:or|vs\.?)\s+job)\b/i.test(q)) {
     playbookId = 'CAR_02';
     intent = 'HARD_DECISION';
-  } else if (/\b(?:promotion|switch\s+job|job\s+change|new\s+job)\b/i.test(q)) {
+  } else if (/\b(?:promotion|switch\s+job|job\s+change|new\s+job|when\s+will\s+i\s+get\s+a\s+job)\b/i.test(q)) {
     playbookId = 'CAR_03';
     intent = 'TIMING';
-  } else if (/\b(?:career|profession|vocation|work\s+life)\b/i.test(q) || input.modeSlug === 'career') {
+  } else if (/\b(?:career|profession|vocation|work\s+life)\b/i.test(q) || modeSlug === 'career') {
     playbookId = 'CAR_01';
     intent = 'SOFT_HORIZON';
   } else if (/\b(?:debt|loan|financial\s+loss|bankrupt)\b/i.test(q)) {
     playbookId = 'WLT_11';
     intent = 'HARD_DECISION';
-  } else if (/\b(?:wealth|money|income|financial|rich|prosperity)\b/i.test(q) || input.modeSlug === 'wealth') {
+  } else if (/\b(?:wealth|money|income|financial|rich|prosperity|wealth\s+after\s+marriage)\b/i.test(q) || modeSlug === 'wealth') {
     playbookId = 'WLT_01';
     intent = 'SOFT_HORIZON';
-  } else if (/\b(?:abroad|foreign|relocat|visa|immigrat)\b/i.test(q)) {
+  } else if (/\b(?:abroad|foreign|relocat|visa|immigrat|overseas)\b/i.test(q)) {
     playbookId = 'FOR_01';
     intent = 'HARD_DECISION';
   } else if (/\b(?:anxiety|depress|mental|overthink|stress|peace\s+of\s+mind)\b/i.test(q)) {
     playbookId = 'HLT_14';
     intent = 'CONVERSATIONAL';
-  } else if (/\b(?:health|illness|vitality|disease|surgery)\b/i.test(q) || input.modeSlug === 'health') {
+  } else if (/\b(?:health|illness|vitality|disease|surgery)\b/i.test(q) || modeSlug === 'health') {
     playbookId = 'HLT_01';
     intent = 'SOFT_HORIZON';
   } else if (/\b(?:next\s+12\s+months|upcoming\s+year|mahadasha|antardasha|dasha|transit|gochar)\b/i.test(q)) {
     playbookId = 'TIM_02';
     intent = 'TIMING';
+  } else if (hasMarriageSignals || modeSlug === 'marriage') {
+    playbookId = 'MAR_03';
+    intent = 'SOFT_HORIZON';
   }
 
-  const pb = PLAYBOOKS_BY_ID[playbookId];
-  const fluency: UserFluencyTier =
-    /\b(?:navamsa|d9|d10|sub[- ]?lord|ashtakavarga|shadbala|atmakaraka|kp\s+cusp|bindu)\b/i.test(q)
-      ? 'practitioner'
-      : /\b(?:dasha|transit|lagna|nakshatra|ascendant|saturn|jupiter)\b/i.test(q)
-      ? 'guided_bridge'
-      : 'beginner';
+  if (hasTechnicalDirective) {
+    intent = 'PEER_AUDIT';
+  }
+
+  return {
+    playbookId,
+    intent,
+    requiresSynastry,
+    requestsRemedy,
+    domainBucketCount,
+  };
+}
+
+function heuristicRuleGuardResult(
+  input: IntentClassificationInput,
+  started: number,
+  modelTag: 'rule_guard' | 'fast_path' = 'rule_guard'
+): Stage1RouterResult {
+  const match = matchPlaybookHeuristic(
+    input.userPrompt,
+    input.modeSlug,
+    input.hasTechnicalDirective
+  );
+  const pb = PLAYBOOKS_BY_ID[match.playbookId];
+  const fluency = inferUserFluencyFromPrompt(input.userPrompt);
 
   return {
     playbook_id: pb ? pb.id : 'OPEN_ENDED_SYNTHESIS',
-    playbook_confidence: playbookId === 'OPEN_ENDED_SYNTHESIS' ? 0.65 : 0.78,
-    intent: pb ? pb.defaultIntent : intent,
-    intent_confidence: 0.72,
+    playbook_confidence: match.playbookId === 'OPEN_ENDED_SYNTHESIS' ? 0.65 : 0.84,
+    intent: input.hasTechnicalDirective ? 'PEER_AUDIT' : pb ? pb.defaultIntent : match.intent,
+    intent_confidence: 0.8,
     detected_user_fluency: fluency,
     is_prompt_extraction: false,
     prompt_extraction_prob: 0.01,
     needs_clarification: false,
-    needs_clarification_prob: 0.1,
-    requires_synastry_partner: requiresSynastry,
-    synastry_prob: requiresSynastry ? 0.85 : 0.05,
-    requests_remedy_or_guidance: requestsRemedy,
+    needs_clarification_prob: 0.08,
+    requires_synastry_partner: match.requiresSynastry,
+    synastry_prob: match.requiresSynastry ? 0.85 : 0.05,
+    requests_remedy_or_guidance: match.requestsRemedy,
     complexity_intensity: 5,
     provider_used: 'rule_guard',
-    model_used: 'rule_guard',
+    model_used: modelTag,
     latency_ms: Date.now() - started,
   };
+}
+
+/**
+ * 0ms Local Fast-Path for curated prompts (Question Generator, Follow-up clicks)
+ * and unmistakable single-domain Vedic queries. Leaves multi-domain, nuanced, or
+ * vague free-text queries to Jev / OpenRouter.
+ */
+function tryDeterministicStage1FastPath(
+  input: IntentClassificationInput,
+  started: number
+): Stage1RouterResult | null {
+  const trimmed = (input.userPrompt || '').trim();
+  if (!trimmed) return null;
+
+  // Never fast-path long or multi-question essays unless the user clicked a curated starter
+  if (!input.isCuratedStarter && trimmed.length > 220) {
+    return null;
+  }
+
+  // Keep vague ultra-short free-text inputs routed through Jev so clarification stays smart
+  if (!input.isCuratedStarter && trimmed.length < 14) {
+    return null;
+  }
+
+  const match = matchPlaybookHeuristic(
+    trimmed,
+    input.modeSlug,
+    input.hasTechnicalDirective
+  );
+
+  // Ambiguous or cross-domain prompts should always go through Jev / OpenRouter arbitration
+  if (match.playbookId === 'OPEN_ENDED_SYNTHESIS') {
+    return null;
+  }
+  if (!input.isCuratedStarter && match.domainBucketCount > 1) {
+    return null;
+  }
+
+  return heuristicRuleGuardResult(input, started, 'fast_path');
 }
 
 export async function classifyStage1Intent(
@@ -571,6 +695,12 @@ export async function classifyStage1Intent(
 
   if (customClassifier) {
     return customClassifier.classify(input);
+  }
+
+  // 0ms local fast-path for curated prompts & crystal-clear single-intent queries
+  const fastPathResult = tryDeterministicStage1FastPath(input, started);
+  if (fastPathResult) {
+    return fastPathResult;
   }
 
   const runtime = await getResolvedOpenRouterRuntime();
@@ -706,6 +836,7 @@ export interface EvaluateStage1Options {
   explicitPlaybookId?: string | null;
   technicalDirective?: string | null;
   isBirthDetailsIntake?: boolean;
+  isCuratedStarter?: boolean;
   classifier?: IntentClassifier;
 }
 
@@ -768,9 +899,9 @@ export async function evaluateStage1Routing(
     routerResult = {
       playbook_id: explicitPb.id,
       playbook_confidence: 0.96,
-      intent: explicitPb.defaultIntent,
+      intent: options.technicalDirective ? 'PEER_AUDIT' : explicitPb.defaultIntent,
       intent_confidence: 0.95,
-      detected_user_fluency: 'beginner',
+      detected_user_fluency: inferUserFluencyFromPrompt(prompt),
       is_prompt_extraction: false,
       prompt_extraction_prob: 0.01,
       needs_clarification: false,
@@ -780,6 +911,7 @@ export async function evaluateStage1Routing(
       requests_remedy_or_guidance: explicitPb.domain === 'remedies',
       complexity_intensity: 5,
       provider_used: 'rule_guard',
+      model_used: 'fast_path',
       latency_ms: Date.now() - started,
     };
   } else {
@@ -791,6 +923,8 @@ export async function evaluateStage1Routing(
         profileName: options.profileName,
         modeSlug: options.modeSlug,
         isFollowUpTurn: options.isFollowUpTurn,
+        isCuratedStarter: options.isCuratedStarter,
+        hasTechnicalDirective: Boolean(options.technicalDirective),
       },
       options.classifier
     );

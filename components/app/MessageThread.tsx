@@ -63,6 +63,7 @@ interface MessageThreadProps {
   hasMoreMessages?: boolean;
   loadingEarlierMessages?: boolean;
   streamingText: string;
+  streamingStatus?: string | null;
   isStreaming: boolean;
   catalog: ChatCatalog | null;
   fontSize?: ChatFontSize;
@@ -105,6 +106,7 @@ interface MessageThreadProps {
   enableFollowups?: boolean;
   astrologyMode?: 'vedic' | 'western';
   expertSlug?: string;
+  onChangeExpert?: (slug: string) => void;
   onSelectClarificationChip?: (chip: ClarificationChip, messageId: string) => void;
   onSelectPartnerProfileForClarification?: (partnerId: string, originalQuestion: string) => void;
   onContinueWithoutDetails?: (originalQuestion: string, messageId: string) => void;
@@ -164,11 +166,6 @@ const getProfileDisplayLabel = (p: ChatProfile): string => {
   return short || p.name;
 };
 
-const getOwnChartButtonLabel = (p: ChatProfile): string => {
-  const short = p.short_name?.trim() || p.name.trim().split(/\s+/)[0] || p.name;
-  return `Your Chart (${short})`;
-};
-
 const formatReadableDate = (isoDate: string): string => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim());
   if (!match) return isoDate;
@@ -216,21 +213,21 @@ const FONT_SIZE_STYLES: Record<
   }
 > = {
   sm: {
-    body: 'text-[13px] leading-[1.66]',
+    body: 'text-[13px] leading-[1.64]',
     h1: 'text-xl',
     h2: 'text-lg',
     h3: 'text-base',
   },
   base: {
-    body: 'text-sm leading-[1.74]',
+    body: 'text-[15px] leading-[1.74]',
     h1: 'text-2xl',
     h2: 'text-xl',
     h3: 'text-lg',
   },
   lg: {
-    body: 'text-[15.5px] leading-[1.78]',
-    h1: 'text-[26px]',
-    h2: 'text-[22px]',
+    body: 'text-[17px] leading-[1.82]',
+    h1: 'text-[27px]',
+    h2: 'text-[23px]',
     h3: 'text-xl',
   },
 };
@@ -262,7 +259,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   hasMoreMessages = false,
   loadingEarlierMessages = false,
   streamingText,
+  streamingStatus = null,
   isStreaming,
+  catalog,
   fontSize = 'base',
   languageSlug = 'English',
   searchQuery = '',
@@ -296,6 +295,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   enableFollowups = true,
   astrologyMode = 'vedic',
   expertSlug = 'council_synthesis',
+  onChangeExpert,
   onSelectClarificationChip,
   onSelectPartnerProfileForClarification,
   onContinueWithoutDetails,
@@ -309,12 +309,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     (astrologyMode === 'western' &&
       expertSlug !== 'council_synthesis' &&
       expertSlug !== 'tarot_reader' &&
-      expertSlug !== 'numerologist');
+      expertSlug !== 'numerologist' &&
+      expertSlug !== 'learn_astrology');
   const [confirmDeleteMsgId, setConfirmDeleteMsgId] = useState<string | null>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [activeUserMsgId, setActiveUserMsgId] = useState<string | null>(null);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
-  const [showInlineChartPicker, setShowInlineChartPicker] = useState(false);
+  const [openEmptyDropdown, setOpenEmptyDropdown] = useState<'council' | 'profile' | null>(null);
   const [expandedBreakdownIds, setExpandedBreakdownIds] = useState<Record<string, boolean>>({});
 
   const [canScrollUp, setCanScrollUp] = useState(false);
@@ -323,6 +324,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const [isScrollingActive, setIsScrollingActive] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const emptyDropdownRef = useRef<HTMLDivElement | null>(null);
   const holdRafRef = useRef<number | null>(null);
   const holdTimerRef = useRef<number | null>(null);
   const scrollIdleTimerRef = useRef<number | null>(null);
@@ -333,18 +335,34 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const speechSupported = useMemo(() => isSpeechSynthesisSupported(), []);
   const sizeTokens = FONT_SIZE_STYLES[fontSize] || FONT_SIZE_STYLES.base;
 
-  const defaultOwnProfile = useMemo(
-    () => profiles.find((p) => p.is_default) || null,
-    [profiles]
-  );
-
   // Stop active voice playback when switching threads or unmounting
   useEffect(() => {
     stopSpeaking();
     setSpeakingMsgId(null);
-    setShowInlineChartPicker(false);
+    setOpenEmptyDropdown(null);
     setActiveUserMsgId(null);
   }, [conversation?.id]);
+
+  // Dismiss New Chat dropdowns on outside pointerdown or Escape
+  useEffect(() => {
+    if (!openEmptyDropdown) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (emptyDropdownRef.current && target && emptyDropdownRef.current.contains(target)) {
+        return;
+      }
+      setOpenEmptyDropdown(null);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenEmptyDropdown(null);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openEmptyDropdown]);
 
   useEffect(() => {
     return () => {
@@ -533,14 +551,12 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   }, [messages]);
 
   const profileLabel = profile ? getProfileDisplayLabel(profile) : null;
-
-  const handleAddChartButtonClick = () => {
-    if (profiles.length === 0) {
-      onOpenAddChartModal();
-      return;
-    }
-    setShowInlineChartPicker((prev) => !prev);
-  };
+  const activeExpertOption = useMemo(
+    () => (catalog?.experts || []).find((opt) => opt.slug === expertSlug) || null,
+    [catalog?.experts, expertSlug]
+  );
+  const activeExpertLabel = activeExpertOption?.displayName || 'Vedic Astrologer';
+  const activeProfileButtonLabel = profile ? getProfileDisplayLabel(profile) : 'Select Chart';
 
   const markdownComponents = useMemo(
     () => ({
@@ -658,6 +674,190 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       );
     }
 
+    const newChatActionButtons = (
+      <div
+        ref={emptyDropdownRef}
+        className="flex flex-wrap items-center justify-center gap-2.5 pt-1"
+      >
+        {/* 1. Council Guide Dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() =>
+              setOpenEmptyDropdown((prev) => (prev === 'council' ? null : 'council'))
+            }
+            aria-expanded={openEmptyDropdown === 'council'}
+            aria-haspopup="listbox"
+            className={`min-h-[44px] inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium transition-colors cursor-pointer ${
+              openEmptyDropdown === 'council'
+                ? 'border-[#3D3830]/35 bg-[#F1ECE3] text-[#3D3830]'
+                : 'border-[#3D3830]/15 bg-[#FDFBF7] text-[#3D3830] hover:bg-[#F1ECE3]'
+            }`}
+          >
+            <span className="truncate max-w-[160px]">{activeExpertLabel}</span>
+            <ChevronDown
+              className={`h-3.5 w-3.5 text-[#8B7355] shrink-0 transition-transform duration-150 ${
+                openEmptyDropdown === 'council' ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+
+          {openEmptyDropdown === 'council' && (
+            <div
+              role="listbox"
+              aria-label="Choose Council Guide"
+              className="animate-cc-dropdown-down absolute left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 mt-2 w-64 sm:w-72 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden text-left z-30"
+            >
+              <div className="max-h-64 overflow-y-auto p-1.5 space-y-0.5">
+                {(catalog?.experts || []).map((opt) => {
+                  const isSelected = expertSlug === opt.slug;
+                  return (
+                    <button
+                      key={opt.slug}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => {
+                        setOpenEmptyDropdown(null);
+                        onChangeExpert?.(opt.slug);
+                      }}
+                      className={`w-full flex items-center justify-between gap-2.5 rounded-xl px-3 py-2 text-left transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#F1ECE3] text-[#3D3830]'
+                          : 'hover:bg-[#F1ECE3]/75 text-[#3D3830]'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-[#3D3830] truncate">
+                          {opt.displayName}
+                        </p>
+                        {opt.subtitle && (
+                          <p className="text-[11px] text-[#8B8275] truncate mt-0.5">
+                            {opt.subtitle}
+                          </p>
+                        )}
+                      </div>
+                      {isSelected && <Check className="h-3.5 w-3.5 text-[#2D6A4F] shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 2. Profile / Chart Scrollable Dropdown with Pinned Bottom "Add New" */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() =>
+              setOpenEmptyDropdown((prev) => (prev === 'profile' ? null : 'profile'))
+            }
+            aria-expanded={openEmptyDropdown === 'profile'}
+            aria-haspopup="listbox"
+            className={`min-h-[44px] inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium transition-colors cursor-pointer ${
+              profile
+                ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E]'
+                : openEmptyDropdown === 'profile'
+                ? 'border-[#3D3830]/35 bg-[#F1ECE3] text-[#3D3830]'
+                : 'border-[#3D3830]/15 bg-[#FDFBF7] text-[#3D3830] hover:bg-[#F1ECE3]'
+            }`}
+          >
+            <UserCheck
+              className={`h-3.5 w-3.5 shrink-0 ${
+                profile ? 'text-[#FAF7F2]/85' : 'text-[#8B7355]'
+              }`}
+            />
+            <span className="truncate max-w-[150px]">{activeProfileButtonLabel}</span>
+            <ChevronDown
+              className={`h-3.5 w-3.5 shrink-0 transition-transform duration-150 ${
+                profile ? 'text-[#FAF7F2]/80' : 'text-[#8B7355]'
+              } ${openEmptyDropdown === 'profile' ? 'rotate-180' : ''}`}
+            />
+          </button>
+
+          {openEmptyDropdown === 'profile' && (
+            <div
+              role="listbox"
+              aria-label="Choose Birth Chart Profile"
+              className="animate-cc-dropdown-down absolute left-1/2 -translate-x-1/2 mt-2 w-64 sm:w-72 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden text-left z-30"
+            >
+              <div className="max-h-56 overflow-y-auto p-1.5 space-y-0.5">
+                {profiles.length === 0 ? (
+                  <p className="px-3 py-3 text-xs text-[#8B8275] text-center">
+                    No saved charts yet.
+                  </p>
+                ) : (
+                  profiles.map((p) => {
+                    const isSelected = profile?.id === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => {
+                          setOpenEmptyDropdown(null);
+                          onSelectProfile(p.id);
+                        }}
+                        className={`w-full min-h-[42px] flex items-center justify-between gap-2.5 rounded-xl px-3 py-2 text-left transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#F1ECE3] text-[#3D3830]'
+                            : 'hover:bg-[#F1ECE3]/75 text-[#3D3830]'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-[#3D3830] truncate">
+                            {getProfileDisplayLabel(p)}
+                          </p>
+                          <p className="text-[11px] text-[#8B8275] truncate">
+                            {formatReadableDate(p.birth_date)} · {p.birth_city}
+                            {p.birth_country ? `, ${p.birth_country}` : ''}
+                          </p>
+                        </div>
+                        {isSelected && <Check className="h-3.5 w-3.5 text-[#2D6A4F] shrink-0" />}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="border-t border-[#3D3830]/10 p-1.5 bg-[#FAF7F2]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenEmptyDropdown(null);
+                    onOpenAddChartModal();
+                  }}
+                  className="w-full min-h-[40px] inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#4A453D] px-3 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5 shrink-0" />
+                  <span>Add New</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 3. General Chart */}
+        <button
+          type="button"
+          onClick={() => {
+            setOpenEmptyDropdown(null);
+            onSelectGeneralChart();
+          }}
+          className={`min-h-[44px] inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium transition-colors cursor-pointer ${
+            generalReadyMode && !profile
+              ? 'border-[#4A453D]/40 bg-[#F1ECE3] text-[#3D3830]'
+              : 'border-[#3D3830]/15 bg-[#FDFBF7] text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3]'
+          }`}
+        >
+          <Sparkles className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
+          <span>General Chart</span>
+        </button>
+      </div>
+    );
+
     return (
       <div
         key={conversation?.id || 'empty'}
@@ -677,29 +877,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                       "Great, I'm ready to answer any question you may have regarding Vedic Astrology."}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-center gap-2.5">
-                {defaultOwnProfile && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowInlineChartPicker(false);
-                      onSelectProfile(defaultOwnProfile.id);
-                    }}
-                    className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-4 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                  >
-                    <UserCheck className="h-3.5 w-3.5 text-[#8B7355]" />
-                    <span>{getOwnChartButtonLabel(defaultOwnProfile)}</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleAddChartButtonClick}
-                  className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-4 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5 text-[#8B7355]" />
-                  <span>{profiles.length === 0 ? 'Add Birth Details' : 'Add Chart'}</span>
-                </button>
-              </div>
+              {newChatActionButtons}
             </div>
           ) : profile ? (
             <div className="space-y-4">
@@ -714,25 +892,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   {welcomeSubtitle}
                 </p>
               )}
-              <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
-                <button
-                  type="button"
-                  onClick={handleAddChartButtonClick}
-                  className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-4 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                >
-                  <span>Switch Chart</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowInlineChartPicker(false);
-                    onSelectGeneralChart();
-                  }}
-                  className="min-h-[44px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-4 py-2 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                >
-                  <span>General Chart</span>
-                </button>
-              </div>
+              {newChatActionButtons}
             </div>
           ) : (
             <div className="space-y-6 w-full">
@@ -747,110 +907,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center justify-center gap-3">
-                {defaultOwnProfile && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowInlineChartPicker(false);
-                      onSelectProfile(defaultOwnProfile.id);
-                    }}
-                    className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-6 py-2.5 text-sm font-medium text-[#FAF7F2] hover:bg-[#38342E] active:scale-[0.98] transition-all cursor-pointer"
-                  >
-                    <UserCheck className="h-4 w-4 shrink-0" />
-                    <span>{getOwnChartButtonLabel(defaultOwnProfile)}</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleAddChartButtonClick}
-                  className={`min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-medium active:scale-[0.98] transition-all cursor-pointer ${
-                    !defaultOwnProfile
-                      ? 'bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E]'
-                      : 'border border-[#3D3830]/18 bg-[#FDFBF7] text-[#3D3830] hover:bg-[#F1ECE3]'
-                  }`}
-                >
-                  <Plus className="h-4 w-4 shrink-0" />
-                  <span>Add Chart</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowInlineChartPicker(false);
-                    onSelectGeneralChart();
-                  }}
-                  className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full border border-[#3D3830]/18 bg-[#FDFBF7] px-6 py-2.5 text-sm font-medium text-[#3D3830] hover:bg-[#F1ECE3] active:scale-[0.98] transition-all cursor-pointer"
-                >
-                  <Sparkles className="h-4 w-4 text-[#8B7355] shrink-0" />
-                  <span>General Chart</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Inline Saved Charts Picker (expands cleanly when clicking Add Chart and saved profiles exist) */}
-          {showInlineChartPicker && profiles.length > 0 && (
-            <div className="animate-cc-dropdown-down w-full max-w-md rounded-2xl border border-[#3D3830]/14 bg-[#FDFBF7] shadow-sm p-2.5 text-left space-y-1.5">
-              <div className="flex items-center justify-between px-2 py-1">
-                <span className="text-[11px] font-medium uppercase tracking-wider text-[#8B8275]">
-                  Choose a Saved Chart
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowInlineChartPicker(false)}
-                  className="text-[11px] text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
-
-              <div className="max-h-56 overflow-y-auto space-y-1">
-                {profiles.map((p) => {
-                  const isSelected = profile?.id === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        setShowInlineChartPicker(false);
-                        onSelectProfile(p.id);
-                      }}
-                      className={`w-full min-h-[44px] flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors cursor-pointer ${
-                        isSelected
-                          ? 'bg-[#F1ECE3] text-[#3D3830]'
-                          : 'hover:bg-[#F1ECE3]/75 text-[#3D3830]'
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[#3D3830] truncate">
-                          {getProfileDisplayLabel(p)}
-                        </p>
-                        <p className="text-[11px] text-[#8B8275] truncate">
-                          {formatReadableDate(p.birth_date)} · {p.birth_city}
-                          {p.birth_country ? `, ${p.birth_country}` : ''}
-                        </p>
-                      </div>
-                      {isSelected && <Check className="h-4 w-4 text-[#2D6A4F] shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="border-t border-[#3D3830]/10 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowInlineChartPicker(false);
-                    onOpenAddChartModal();
-                  }}
-                  className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Add Birth Details</span>
-                </button>
-              </div>
+              {newChatActionButtons}
             </div>
           )}
         </div>
@@ -1608,14 +1665,21 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   </ReactMarkdown>
                 </div>
               ) : (
-                <div className="text-xs text-[#8B8275]">
-                  {activePillar === 'companion'
-                    ? `${activeCompanionPersona?.name || 'Companion'} is typing...`
-                    : activePillar === 'clarity'
-                    ? 'Thinking clearly...'
-                    : isWesternSystem
-                    ? 'Synthesizing Tropical chart positions, houses, aspects, and transits...'
-                    : 'Synthesizing chart positions, Dasha periods, and Gochar transits...'}
+                <div className="flex items-center gap-2 text-xs text-[#8B8275]">
+                  {streamingStatus && (
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#B8965A] animate-pulse shrink-0" />
+                  )}
+                  <span>
+                    {streamingStatus
+                      ? streamingStatus
+                      : activePillar === 'companion'
+                      ? `${activeCompanionPersona?.name || 'Companion'} is typing...`
+                      : activePillar === 'clarity'
+                      ? 'Thinking clearly...'
+                      : isWesternSystem
+                      ? 'Synthesizing Tropical chart positions, houses, aspects, and transits...'
+                      : 'Synthesizing chart positions, Dasha periods, and Gochar transits...'}
+                  </span>
                 </div>
               )}
             </article>

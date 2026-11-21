@@ -4,7 +4,6 @@ import {
   Bookmark,
   Brain,
   Check,
-  ChevronDown,
   ChevronRight,
   FileText,
   HeartHandshake,
@@ -12,7 +11,6 @@ import {
   Image as ImageIcon,
   Lightbulb,
   Loader2,
-  Lock,
   Mic,
   MicOff,
   Plus,
@@ -27,10 +25,8 @@ import {
   Wand2,
   X,
 } from 'lucide-react';
-import CustomSelect from './CustomSelect';
 import Tooltip from './Tooltip';
 import ComposerTabStrip from './ComposerTabStrip';
-import type { ChatFontSize } from './ChatSettingsModal';
 import type {
   ActiveChatTab,
   ChatAttachmentInput,
@@ -38,8 +34,6 @@ import type {
   ChatMessageRecord,
   ChatPillar,
   ChatProfile,
-  ChatResponseLength,
-  ChatToneMode,
   CompanionArchetypeSlug,
   CompanionPersona,
   ConversationRecord,
@@ -74,13 +68,9 @@ interface ChatComposerProps {
   extraProfileIds: string[];
   attachments: ChatAttachmentInput[];
   expertSlug: string;
-  modeSlug: string;
-  outputSlug: string;
   languageSlug: string;
-  fontSize: ChatFontSize;
   useFullProfileMemory: boolean;
-  toneMode: ChatToneMode;
-  responseLength: ChatResponseLength;
+  responseMode: 'simple' | 'detailed';
   replyTarget: ChatMessageRecord | null;
   activeFollowups: string[];
   customPrompts: CustomPromptRecord[];
@@ -88,14 +78,8 @@ interface ChatComposerProps {
   isThreadLocked?: boolean;
   isPreviewMode?: boolean;
   getAccessToken: () => Promise<string | null>;
-  onChangeExpert: (slug: string) => void;
-  onChangeMode: (slug: string) => void;
-  onChangeOutput: (slug: string) => void;
-  onChangeLanguage: (slug: string) => void;
-  onChangeFontSize: (size: ChatFontSize) => void;
   onToggleMemory: () => void;
-  onChangeToneMode: (mode: ChatToneMode) => void;
-  onChangeResponseLength: (len: ChatResponseLength) => void;
+  onChangeResponseMode: (mode: 'simple' | 'detailed') => void;
   onSwitchProfile: (profileId: string | null) => void;
   onAddExtraProfile: (profileId: string) => void;
   onRemoveExtraProfile: (profileId: string) => void;
@@ -106,7 +90,7 @@ interface ChatComposerProps {
   onOpenSettings: () => void;
   onOpenAddChartModal?: () => void;
   onNewChat: () => void;
-  onSendMessage: (overrideText?: string) => void;
+  onSendMessage: (overrideText?: string, options?: { curatedStarter?: boolean }) => void;
   onStopGeneration: () => void;
   pendingDirectiveLabel?: string | null;
   onClearPendingDirective?: () => void;
@@ -260,13 +244,9 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   extraProfileIds,
   attachments,
   expertSlug,
-  modeSlug,
-  outputSlug,
   languageSlug,
-  fontSize,
   useFullProfileMemory,
-  toneMode,
-  responseLength,
+  responseMode,
   replyTarget,
   activeFollowups,
   customPrompts,
@@ -274,14 +254,8 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   isThreadLocked = false,
   isPreviewMode = false,
   getAccessToken,
-  onChangeExpert,
-  onChangeMode,
-  onChangeOutput,
-  onChangeLanguage,
-  onChangeFontSize,
   onToggleMemory,
-  onChangeToneMode,
-  onChangeResponseLength,
+  onChangeResponseMode,
   onSwitchProfile,
   onAddExtraProfile,
   onRemoveExtraProfile,
@@ -590,7 +564,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
         body: JSON.stringify({
           toolSlug,
           inputText: current,
-          modeSlug,
+          modeSlug: expertSlug === 'learn_astrology' ? 'learn_astrology' : 'general',
           languageSlug,
           profileId: activeProfileId,
         }),
@@ -639,7 +613,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
         body: JSON.stringify({
           toolSlug: 'question_generator',
           inputText: draftText.trim(),
-          modeSlug,
+          modeSlug: expertSlug === 'learn_astrology' ? 'learn_astrology' : 'general',
           languageSlug,
           profileId: activeProfileId,
         }),
@@ -699,7 +673,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
         const idx = Number(trimmed) - 1;
         if (activeFollowups[idx]) {
           onDraftChange('');
-          onSendMessage(activeFollowups[idx]);
+          onSendMessage(activeFollowups[idx], { curatedStarter: true });
           return;
         }
       }
@@ -922,7 +896,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                       type="button"
                       onClick={() => {
                         setShowQuestionResults(false);
-                        onSendMessage(item);
+                        onSendMessage(item, { curatedStarter: true });
                       }}
                       className="rounded-lg bg-[#4A453D] px-2 py-1 text-[10px] font-medium text-[#FAF7F2] hover:bg-[#38342E] cursor-pointer"
                     >
@@ -1020,141 +994,8 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
             >
               <div className="min-h-0 overflow-hidden">
                 {activePillar === 'council' ? (
-                  <div className="border-b border-[#3D3830]/10 pb-2.5 pt-0.5 space-y-2.5">
-                    {/* ROW 1: [ Council | Mode | Output | Language | Font ] + [ Settings | Collapse ] */}
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
-                        <div className="min-w-0">
-                          <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                            {isThreadLocked && <Lock className="h-2.5 w-2.5" />}
-                            <span>Council</span>
-                          </span>
-                          <CustomSelect
-                            value={expertSlug}
-                            onChange={onChangeExpert}
-                            disabled={isThreadLocked}
-                            ariaLabel="Council guide"
-                            size="xs"
-                            surface="canvas"
-                            placement="top"
-                            minMenuWidth={230}
-                            className="w-full"
-                            options={(catalog?.experts || []).map((opt) => ({
-                              value: opt.slug,
-                              label: opt.displayName,
-                            }))}
-                          />
-                        </div>
-
-                        <div className="min-w-0">
-                          <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                            {isThreadLocked && <Lock className="h-2.5 w-2.5" />}
-                            <span>Mode</span>
-                          </span>
-                          <CustomSelect
-                            value={modeSlug}
-                            onChange={onChangeMode}
-                            disabled={isThreadLocked}
-                            ariaLabel="Area of life"
-                            size="xs"
-                            surface="canvas"
-                            placement="top"
-                            minMenuWidth={230}
-                            className="w-full"
-                            options={(catalog?.modes || []).map((opt) => ({
-                              value: opt.slug,
-                              label: opt.displayName,
-                            }))}
-                          />
-                        </div>
-
-                        <div className="min-w-0">
-                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                            Output
-                          </span>
-                          <CustomSelect
-                            value={outputSlug}
-                            onChange={onChangeOutput}
-                            ariaLabel="Output style"
-                            size="xs"
-                            surface="canvas"
-                            placement="top"
-                            minMenuWidth={240}
-                            className="w-full"
-                            options={(catalog?.outputs || []).map((opt) => ({
-                              value: opt.slug,
-                              label: opt.displayName,
-                            }))}
-                          />
-                        </div>
-
-                        <div className="min-w-0">
-                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                            Language
-                          </span>
-                          <CustomSelect
-                            value={languageSlug}
-                            onChange={onChangeLanguage}
-                            ariaLabel="Consultation language"
-                            size="xs"
-                            surface="canvas"
-                            placement="top"
-                            align="right"
-                            minMenuWidth={195}
-                            className="w-full"
-                            options={(catalog?.languages || []).map((opt) => ({
-                              value: opt.slug,
-                              label: opt.displayName,
-                            }))}
-                          />
-                        </div>
-
-                        <div className="min-w-0 col-span-2 sm:col-span-1">
-                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                            Font
-                          </span>
-                          <CustomSelect
-                            value={fontSize}
-                            onChange={(val) => onChangeFontSize(val as ChatFontSize)}
-                            ariaLabel="Reading font size"
-                            size="xs"
-                            surface="canvas"
-                            placement="top"
-                            align="right"
-                            minMenuWidth={168}
-                            className="w-full"
-                            options={[
-                              { value: 'sm', label: 'Compact' },
-                              { value: 'base', label: 'Balanced' },
-                              { value: 'lg', label: 'Large' },
-                            ]}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Settings Gear + Collapse Arrow */}
-                      <div className="flex items-center gap-1 shrink-0 pt-4">
-                        <button
-                          type="button"
-                          onClick={onOpenSettings}
-                          aria-label="Open Chat Settings"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
-                        >
-                          <Settings2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsExpanded(false)}
-                          aria-expanded={true}
-                          aria-label="Collapse composer tools"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/15 bg-[#F1ECE3] text-[#3D3830] hover:bg-[#EAE3D7] transition-colors cursor-pointer"
-                        >
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* ROW 2: Left = [ Question | Expander | Optimizer ], Right = [ Technical | Detailed | Memory ] */}
+                  <div className="border-b border-[#3D3830]/10 pb-2.5 pt-0.5">
+                    {/* Single Clean Row: Left = [ Question | Expander | Optimizer ], Right = [ Technical | Detailed | Memory | Settings ] */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       {enableQuickTools && (
                         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
@@ -1242,140 +1083,132 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                       )}
 
                       <div className="flex flex-wrap items-center gap-1.5 ml-auto">
-                        <Tooltip
-                          content={
-                            toneMode === 'friendly'
-                              ? 'Easy to understand'
-                              : 'With full technical insights'
-                          }
-                          placement="top"
+                        <div
+                          role="group"
+                          aria-label="Response depth mode"
+                          className="inline-flex items-center rounded-full border border-[#3D3830]/12 bg-[#F1ECE3] p-0.5"
                         >
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={toneMode === 'friendly'}
-                            aria-label="Toggle Friendly or Technical response mode"
-                            onClick={() =>
-                              onChangeToneMode(toneMode === 'technical' ? 'friendly' : 'technical')
-                            }
-                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
+                          <Tooltip
+                            content="Crisp, everyday-friendly reading with expandable astrological breakdown"
+                            placement="top"
                           >
-                            <span
-                              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
-                                toneMode === 'friendly' ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                            <button
+                              type="button"
+                              aria-pressed={responseMode === 'simple'}
+                              onClick={() => onChangeResponseMode('simple')}
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                                responseMode === 'simple'
+                                  ? 'bg-[#4A453D] text-[#FAF7F2] shadow-xs'
+                                  : 'text-[#5C5449] hover:text-[#3D3830]'
                               }`}
                             >
-                              <span
-                                className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
-                                  toneMode === 'friendly' ? 'translate-x-3' : 'translate-x-0'
-                                }`}
-                              />
-                            </span>
-                            <span className="font-medium select-none">
-                              {toneMode === 'friendly' ? 'Friendly' : 'Technical'}
-                            </span>
-                          </button>
-                        </Tooltip>
+                              Simple
+                            </button>
+                          </Tooltip>
+                          <Tooltip
+                            content="Comprehensive reading free to explain technical astrology inline"
+                            placement="top"
+                          >
+                            <button
+                              type="button"
+                              aria-pressed={responseMode === 'detailed'}
+                              onClick={() => onChangeResponseMode('detailed')}
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                                responseMode === 'detailed'
+                                  ? 'bg-[#4A453D] text-[#FAF7F2] shadow-xs'
+                                  : 'text-[#5C5449] hover:text-[#3D3830]'
+                              }`}
+                            >
+                              Detailed
+                            </button>
+                          </Tooltip>
+                        </div>
 
-                        <Tooltip
-                          content={
-                            responseLength === 'short'
-                              ? 'Quick & fast response'
-                              : 'With comprehensive explanations'
-                          }
-                          placement="top"
-                        >
+                        <Tooltip content="Chat Settings" placement="top">
                           <button
                             type="button"
-                            role="switch"
-                            aria-checked={responseLength === 'short'}
-                            aria-label="Toggle Short or Detailed response length"
-                            onClick={() =>
-                              onChangeResponseLength(
-                                responseLength === 'detailed' ? 'short' : 'detailed'
-                              )
-                            }
-                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
+                            onClick={onOpenSettings}
+                            aria-label="Open Chat Settings"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
                           >
-                            <span
-                              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
-                                responseLength === 'short' ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
-                              }`}
-                            >
-                              <span
-                                className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
-                                  responseLength === 'short' ? 'translate-x-3' : 'translate-x-0'
-                                }`}
-                              />
-                            </span>
-                            <span className="font-medium select-none">
-                              {responseLength === 'short' ? 'Short' : 'Detailed'}
-                            </span>
-                          </button>
-                        </Tooltip>
-
-                        <Tooltip
-                          content="Storing this chat in memory for better analysis"
-                          placement="top"
-                        >
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={useFullProfileMemory}
-                            aria-label="Toggle longitudinal context memory"
-                            onClick={onToggleMemory}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
-                          >
-                            <span
-                              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
-                                useFullProfileMemory ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
-                              }`}
-                            >
-                              <span
-                                className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
-                                  useFullProfileMemory ? 'translate-x-3' : 'translate-x-0'
-                                }`}
-                              />
-                            </span>
-                            <Brain className="h-3 w-3 text-[#8B7355]" />
-                            <span className="font-medium select-none">Memory</span>
+                            <Settings2 className="h-3.5 w-3.5" />
                           </button>
                         </Tooltip>
                       </div>
                     </div>
                   </div>
                 ) : activePillar === 'companion' ? (
-                  /* COMPANION ADAPTIVE CONTROL PANEL: Companion Bio + Language, Font, Memory */
-                  <div className="border-b border-[#3D3830]/10 pb-2.5 pt-0.5 space-y-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      {activeCompanionPersona ? (
-                        <div className="flex items-start gap-2.5 min-w-0 flex-1 rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-2">
-                          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EAE3D7] font-serif text-sm font-semibold text-[#3D3830]">
-                            {activeCompanionPersona.name.charAt(0).toUpperCase()}
-                          </span>
-                          <div className="min-w-0 flex-1 space-y-0.5">
-                            <p className="text-xs font-semibold text-[#3D3830] truncate">
-                              {activeCompanionPersona.name}{' '}
-                              <span className="font-['DM_Sans',sans-serif] text-[11px] font-normal tabular-nums text-[#8B8275]">
-                                {activeCompanionPersona.age}
-                              </span>
-                              <span className="font-normal text-[#5C5449]">
-                                {' '}· {activeCompanionPersona.role_label}
-                              </span>
-                            </p>
-                            <p className="text-[11px] text-[#5C5449] leading-snug line-clamp-2">
-                              {activeCompanionPersona.bio}
-                            </p>
-                          </div>
+                  /* COMPANION ADAPTIVE CONTROL PANEL: Companion Bio + Match another, Memory, Settings */
+                  <div className="border-b border-[#3D3830]/10 pb-2.5 pt-0.5 space-y-2">
+                    {activeCompanionPersona ? (
+                      <div className="flex items-start gap-2.5 rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-2">
+                        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EAE3D7] font-serif text-sm font-semibold text-[#3D3830]">
+                          {activeCompanionPersona.name.charAt(0).toUpperCase()}
+                        </span>
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <p className="text-xs font-semibold text-[#3D3830] truncate">
+                            {activeCompanionPersona.name}{' '}
+                            <span className="font-['DM_Sans',sans-serif] text-[11px] font-normal tabular-nums text-[#8B8275]">
+                              {activeCompanionPersona.age}
+                            </span>
+                            <span className="font-normal text-[#5C5449]">
+                              {' '}· {activeCompanionPersona.role_label}
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-[#5C5449] leading-snug line-clamp-2">
+                            {activeCompanionPersona.bio}
+                          </p>
                         </div>
-                      ) : (
-                        <div className="flex items-center gap-2 text-xs text-[#5C5449] py-1">
-                          <HeartHandshake className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
-                          <span>Select a companion above to view their profile and begin chatting.</span>
-                        </div>
-                      )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-xs text-[#5C5449] py-1">
+                        <HeartHandshake className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
+                        <span>Select a companion above to view their profile and begin chatting.</span>
+                      </div>
+                    )}
 
-                      <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      {onStartNewCompanion && activeCompanionPersona && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsExpanded(false);
+                            onStartNewCompanion();
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2.5 py-1 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                        >
+                          <RefreshCw className="h-3 w-3 text-[#8B7355]" />
+                          <span>Match another</span>
+                        </button>
+                      )}
+                      <Tooltip
+                        content="Keep continuity across your companion conversation (separate from your birth chart)"
+                        placement="top"
+                      >
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={useFullProfileMemory}
+                          aria-label="Toggle companion conversation memory"
+                          onClick={onToggleMemory}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
+                        >
+                          <span
+                            className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
+                              useFullProfileMemory ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                            }`}
+                          >
+                            <span
+                              className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
+                                useFullProfileMemory ? 'translate-x-3' : 'translate-x-0'
+                              }`}
+                            />
+                          </span>
+                          <Brain className="h-3 w-3 text-[#8B7355]" />
+                          <span className="font-medium select-none">Memory</span>
+                        </button>
+                      </Tooltip>
+                      <Tooltip content="Chat Settings" placement="top">
                         <button
                           type="button"
                           onClick={onOpenSettings}
@@ -1384,116 +1217,61 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                         >
                           <Settings2 className="h-3.5 w-3.5" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsExpanded(false)}
-                          aria-expanded={true}
-                          aria-label="Collapse companion controls"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/15 bg-[#F1ECE3] text-[#3D3830] hover:bg-[#EAE3D7] transition-colors cursor-pointer"
-                        >
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-end justify-between gap-2">
-                      <div className="flex items-end gap-2 flex-1 min-w-[200px] max-w-sm">
-                        <div className="flex-1 min-w-0">
-                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                            Language
-                          </span>
-                          <CustomSelect
-                            value={languageSlug}
-                            onChange={onChangeLanguage}
-                            ariaLabel="Conversation language"
-                            size="xs"
-                            surface="canvas"
-                            placement="top"
-                            minMenuWidth={185}
-                            className="w-full"
-                            options={(catalog?.languages || []).map((opt) => ({
-                              value: opt.slug,
-                              label: opt.displayName,
-                            }))}
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                            Font
-                          </span>
-                          <CustomSelect
-                            value={fontSize}
-                            onChange={(val) => onChangeFontSize(val as ChatFontSize)}
-                            ariaLabel="Reading font size"
-                            size="xs"
-                            surface="canvas"
-                            placement="top"
-                            minMenuWidth={155}
-                            className="w-full"
-                            options={[
-                              { value: 'sm', label: 'Compact' },
-                              { value: 'base', label: 'Balanced' },
-                              { value: 'lg', label: 'Large' },
-                            ]}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 ml-auto">
-                        {onStartNewCompanion && activeCompanionPersona && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsExpanded(false);
-                              onStartNewCompanion();
-                            }}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2.5 py-1 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                          >
-                            <RefreshCw className="h-3 w-3 text-[#8B7355]" />
-                            <span>Match another</span>
-                          </button>
-                        )}
-                        <Tooltip
-                          content="Keep continuity across your companion conversation (separate from your birth chart)"
-                          placement="top"
-                        >
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={useFullProfileMemory}
-                            aria-label="Toggle companion conversation memory"
-                            onClick={onToggleMemory}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
-                          >
-                            <span
-                              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
-                                useFullProfileMemory ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
-                              }`}
-                            >
-                              <span
-                                className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
-                                  useFullProfileMemory ? 'translate-x-3' : 'translate-x-0'
-                                }`}
-                              />
-                            </span>
-                            <Brain className="h-3 w-3 text-[#8B7355]" />
-                            <span className="font-medium select-none">Memory</span>
-                          </button>
-                        </Tooltip>
-                      </div>
+                      </Tooltip>
                     </div>
                   </div>
                 ) : (
-                  /* CLARITY ADAPTIVE CONTROL PANEL: Language, Font, Memory (default OFF) + Reset */
-                  <div className="border-b border-[#3D3830]/10 pb-2.5 pt-0.5 space-y-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2 min-w-0">
-                        <Lightbulb className="h-3.5 w-3.5 text-[#B8965A] mt-0.5 shrink-0" />
-                        <p className="text-[11px] text-[#5C5449] leading-relaxed">
-                          <span className="font-semibold text-[#3D3830]">Clarity</span> · Off-record sidekick for quick doubts, prompt drafting &amp; general questions. Never mixed with your birth chart memory.
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                  /* CLARITY ADAPTIVE CONTROL PANEL: Info + Clear Clarity, Memory (default OFF), Settings */
+                  <div className="border-b border-[#3D3830]/10 pb-2.5 pt-0.5 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-start gap-2 min-w-0 flex-1">
+                      <Lightbulb className="h-3.5 w-3.5 text-[#B8965A] mt-0.5 shrink-0" />
+                      <p className="text-[11px] text-[#5C5449] leading-relaxed">
+                        <span className="font-semibold text-[#3D3830]">Clarity</span> · Off-record sidekick for quick doubts, prompt drafting &amp; general questions. Never mixed with your birth chart memory.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                      {onResetClarity && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsExpanded(false);
+                            onResetClarity();
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2.5 py-1 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="h-3 w-3 text-[#8B7355]" />
+                          <span>Clear Clarity</span>
+                        </button>
+                      )}
+                      <Tooltip
+                        content="Off by default — Clarity stays off-record and never touches your birth chart memory"
+                        placement="top"
+                      >
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={useFullProfileMemory}
+                          aria-label="Toggle Clarity memory"
+                          onClick={onToggleMemory}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
+                        >
+                          <span
+                            className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
+                              useFullProfileMemory ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                            }`}
+                          >
+                            <span
+                              className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
+                                useFullProfileMemory ? 'translate-x-3' : 'translate-x-0'
+                              }`}
+                            />
+                          </span>
+                          <Brain className="h-3 w-3 text-[#8B7355]" />
+                          <span className="font-medium select-none">Memory</span>
+                        </button>
+                      </Tooltip>
+                      <Tooltip content="Chat Settings" placement="top">
                         <button
                           type="button"
                           onClick={onOpenSettings}
@@ -1502,103 +1280,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                         >
                           <Settings2 className="h-3.5 w-3.5" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsExpanded(false)}
-                          aria-expanded={true}
-                          aria-label="Collapse Clarity controls"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#3D3830]/15 bg-[#F1ECE3] text-[#3D3830] hover:bg-[#EAE3D7] transition-colors cursor-pointer"
-                        >
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-end justify-between gap-2">
-                      <div className="flex items-end gap-2 flex-1 min-w-[200px] max-w-sm">
-                        <div className="flex-1 min-w-0">
-                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                            Language
-                          </span>
-                          <CustomSelect
-                            value={languageSlug}
-                            onChange={onChangeLanguage}
-                            ariaLabel="Clarity language"
-                            size="xs"
-                            surface="canvas"
-                            placement="top"
-                            minMenuWidth={185}
-                            className="w-full"
-                            options={(catalog?.languages || []).map((opt) => ({
-                              value: opt.slug,
-                              label: opt.displayName,
-                            }))}
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="block text-[10px] font-medium uppercase tracking-wider text-[#8B8275] mb-1 px-0.5">
-                            Font
-                          </span>
-                          <CustomSelect
-                            value={fontSize}
-                            onChange={(val) => onChangeFontSize(val as ChatFontSize)}
-                            ariaLabel="Reading font size"
-                            size="xs"
-                            surface="canvas"
-                            placement="top"
-                            minMenuWidth={155}
-                            className="w-full"
-                            options={[
-                              { value: 'sm', label: 'Compact' },
-                              { value: 'base', label: 'Balanced' },
-                              { value: 'lg', label: 'Large' },
-                            ]}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 ml-auto">
-                        {onResetClarity && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsExpanded(false);
-                              onResetClarity();
-                            }}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2.5 py-1 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                          >
-                            <RotateCcw className="h-3 w-3 text-[#8B7355]" />
-                            <span>Clear Clarity</span>
-                          </button>
-                        )}
-                        <Tooltip
-                          content="Off by default — Clarity stays off-record and never touches your birth chart memory"
-                          placement="top"
-                        >
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={useFullProfileMemory}
-                            aria-label="Toggle Clarity memory"
-                            onClick={onToggleMemory}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2 py-1 text-[11px] text-[#3D3830] hover:border-[#3D3830]/25 transition-colors cursor-pointer"
-                          >
-                            <span
-                              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${
-                                useFullProfileMemory ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
-                              }`}
-                            >
-                              <span
-                                className={`h-3 w-3 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
-                                  useFullProfileMemory ? 'translate-x-3' : 'translate-x-0'
-                                }`}
-                              />
-                            </span>
-                            <Brain className="h-3 w-3 text-[#8B7355]" />
-                            <span className="font-medium select-none">Memory</span>
-                          </button>
-                        </Tooltip>
-                      </div>
+                      </Tooltip>
                     </div>
                   </div>
                 )}

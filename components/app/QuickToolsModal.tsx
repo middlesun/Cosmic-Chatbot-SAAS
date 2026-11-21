@@ -5,7 +5,7 @@ import type { ChatCatalogOption } from './chatTypes';
 interface QuickToolsModalProps {
   isOpen: boolean;
   initialDraft: string;
-  modeSlug: string;
+  modeSlug?: string;
   languageSlug: string;
   profileId: string | null;
   toolsCatalog?: ChatCatalogOption[];
@@ -19,7 +19,7 @@ type ToolSlug = 'question_generator' | 'prompt_expander' | 'prompt_optimizer';
 const QuickToolsModal: React.FC<QuickToolsModalProps> = ({
   isOpen,
   initialDraft,
-  modeSlug,
+  modeSlug = 'general',
   languageSlug,
   profileId,
   toolsCatalog,

@@ -196,7 +196,12 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
   const expertsList = useMemo(
     () =>
       mergeOrderedSlugs(
-        prompts.filter((p) => p.category === 'expert'),
+        prompts.filter(
+          (p) =>
+            p.category === 'expert' ||
+            p.category === 'learn' ||
+            p.slug === 'learn_astrology'
+        ),
         config?.expert_order || []
       ),
     [prompts, config?.expert_order]
@@ -205,7 +210,7 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
   const modesList = useMemo(
     () =>
       mergeOrderedSlugs(
-        prompts.filter((p) => p.category === 'mode' || p.category === 'learn'),
+        prompts.filter((p) => p.category === 'mode' && p.slug !== 'learn_astrology'),
         config?.mode_order || []
       ),
     [prompts, config?.mode_order]

@@ -181,6 +181,7 @@ export interface StreamConsultationParams {
   voicePreset?: SutraVoicePreset;
   dailyTransitsOverride?: DailyTransitSliceInput | null;
   abortSignal: AbortSignal;
+  onStatus?: (statusText: string) => void;
   onChunk: (chunkText: string) => void;
 }
 
@@ -435,11 +436,13 @@ async function buildStaticSystemInstruction(params: {
   const recipeSteps = activeModeRecipe
     ? (activeModeRecipe.steps_json || []).filter((s) => s && s.enabled !== false && s.prompt_slug)
     : [];
+  const isLearnAstrology =
+    params.expertSlug === 'learn_astrology' || params.modeType === 'learn_astrology';
+
   const slugsToResolve = Array.from(
     new Set([
       params.expertSlug,
-      params.modeSlug,
-      params.outputSlug,
+      ...(isLearnAstrology ? ['learn_astrology'] : []),
       params.languageSlug,
       ...recipeSteps.map((s) => s.prompt_slug),
     ])
@@ -450,8 +453,7 @@ async function buildStaticSystemInstruction(params: {
   const modelOverride =
     activeModeRecipe?.model_id ||
     promptModels[params.expertSlug] ||
-    promptModels[params.modeSlug] ||
-    promptModels[params.outputSlug] ||
+    (isLearnAstrology ? promptModels['learn_astrology'] : null) ||
     promptModels[params.languageSlug] ||
     null;
 
@@ -466,13 +468,16 @@ async function buildStaticSystemInstruction(params: {
     }
   }
 
+  const primaryExpertPrompt =
+    promptBodies[params.expertSlug] ||
+    (isLearnAstrology ? promptBodies['learn_astrology'] : '') ||
+    '';
+
   const sections: string[] = [
     CORE_COUNCIL_CONSTITUTION,
     chatbotConfig.conversational_rules || '',
-    promptBodies[params.expertSlug] || '',
-    promptBodies[params.modeSlug] || '',
+    primaryExpertPrompt,
     ...recipeBlocks,
-    promptBodies[params.outputSlug] || '',
     promptBodies[params.languageSlug] || '',
   ].filter(Boolean);
 
@@ -487,11 +492,11 @@ async function buildStaticSystemInstruction(params: {
     );
   } else if (isWesternOrModern) {
     sections.push(
-      `COMMUNICATION DEPTH — TECHNICAL MODE: Include authentic Tropical Western technical precision—citing exact Tropical sign placements, degrees, house cusps, tight Ptolemaic aspect orbs, elemental/modal balance, and transit timing cycles.`
+      `COMMUNICATION DEPTH — DETAILED MODE: You are free to weave in authentic Tropical Western technical precision—exact Tropical sign placements, degrees, house cusps, tight Ptolemaic aspect orbs, elemental/modal balance, and transit timing cycles—wherever it clarifies and deepens the explanation, keeping the prose natural rather than forcefully academic.`
     );
   } else if (!isTarot && !isNumerology) {
     sections.push(
-      `COMMUNICATION DEPTH — TECHNICAL MODE: Include authentic Jyotish technical precision—citing exact Rashi placements, house lordships, planetary strengths/Shadbala/Ashtakavarga, Nakshatra & KP Sub-Lord significators, divisional Vargas (D9/D10), and active Vimshottari Mahadasha–Antardasha–Pratyantardasha mechanics.`
+      `COMMUNICATION DEPTH — DETAILED MODE: You are free to weave in authentic Jyotish technical precision—Rashi placements, house lordships, planetary strengths/Shadbala/Ashtakavarga, Nakshatra & KP Sub-Lord significators, divisional Vargas (D9/D10), and active Vimshottari Mahadasha–Antardasha–Pratyantardasha cycles—wherever it illuminates the reasoning, keeping the explanation clear and natural rather than forcefully jargon-heavy.`
     );
   }
 
@@ -499,7 +504,7 @@ async function buildStaticSystemInstruction(params: {
     sections.push(
       `RESPONSE LENGTH — SHORT: Keep the answer crisp, high-signal, and concise (around 120–200 words max). Lead with the direct conclusion upfront, give the top 2–3 key insights or timing dates, and skip unnecessary filler or lengthy preambles.`
     );
-    if (!isTarot && !isNumerology && params.modeType !== 'learn_astrology') {
+    if (!isTarot && !isNumerology && !isLearnAstrology) {
       sections.push(
         buildShortReplyBreakdownInstruction(
           params.toneMode === 'friendly' ? 'beginner' : 'guided_bridge',
@@ -627,7 +632,7 @@ Note: Full planetary ephemeris data is being prepared for this profile. Do not g
     !params.profile &&
     !isTarot &&
     !isNumerology &&
-    params.modeType !== 'learn_astrology' &&
+    !isLearnAstrology &&
     chatbotConfig.features.auto_intake !== false
   ) {
     sections.push(`CONVERSATIONAL BIRTH CHART INTAKE (WHEN NO CHART IS ATTACHED):
@@ -764,6 +769,7 @@ User's specific question: ${finalUserText}`;
     params.expertSlug !== 'modern_astrologer' &&
     params.expertSlug !== 'tarot_reader' &&
     params.expertSlug !== 'numerologist' &&
+    params.expertSlug !== 'learn_astrology' &&
     params.modeSlug !== 'learn_astrology' &&
     params.conversation.mode_type !== 'learn_astrology' &&
     params.conversation.mode_type !== 'report_followup' &&
@@ -908,6 +914,7 @@ User's specific question: ${finalUserText}`;
         priorInferredFluency: params.userPriorFluency,
         maxOutputTokens: sutraBaseTokens,
         abortSignal: params.abortSignal,
+        onStatus: params.onStatus,
         onChunk: params.onChunk,
       });
 

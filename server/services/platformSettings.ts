@@ -195,8 +195,9 @@ export const DEFAULT_CHATBOT_CONFIG: ChatbotConfig = {
     'modern_astrologer',
     'tarot_reader',
     'numerologist',
+    'learn_astrology',
   ],
-  mode_order: ['general', 'life', 'career', 'love', 'marriage', 'health', 'wealth', 'learn_astrology'],
+  mode_order: ['general', 'life', 'career', 'love', 'marriage', 'health', 'wealth'],
   language_order: ['English', 'Hindi', 'Hinglish'],
   features: {
     voice_input: true,

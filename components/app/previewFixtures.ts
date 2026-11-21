@@ -62,6 +62,12 @@ export const PREVIEW_CHAT_CATALOG: ChatCatalog = {
       displayName: 'Numerology',
       subtitle: 'Pythagorean Life Path, Expression, Soul Urge & Personal Year cycle calculations.',
     },
+    {
+      slug: 'learn_astrology',
+      category: 'expert',
+      displayName: 'Learn Astrology',
+      subtitle: 'Pedagogical breakdowns showing the Jyotish mechanics behind the reading.',
+    },
   ],
   modes: [
     {
@@ -105,12 +111,6 @@ export const PREVIEW_CHAT_CATALOG: ChatCatalog = {
       category: 'mode',
       displayName: 'Wealth & Assets',
       subtitle: '2nd/11th Dhana yogas, D2 Hora, 4th/9th assets, risk vs compounding.',
-    },
-    {
-      slug: 'learn_astrology',
-      category: 'learn',
-      displayName: 'Learn Astrology',
-      subtitle: 'Pedagogical breakdowns showing the Jyotish mechanics behind the reading.',
     },
   ],
   outputs: [

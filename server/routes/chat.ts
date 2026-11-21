@@ -1039,6 +1039,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     bypassClarification,
     clarifiedPlaybookId,
     clarifiedContextPatch,
+    curatedStarter,
     deepAudit,
   } = req.body || {};
 
@@ -1145,7 +1146,8 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       expert !== 'western_astrologer' &&
       expert !== 'modern_astrologer' &&
       expert !== 'tarot_reader' &&
-      expert !== 'numerologist';
+      expert !== 'numerologist' &&
+      expert !== 'learn_astrology';
     const minCredits = useDeepAuditRequested
       ? Math.max(pricingConfig.min_credits_to_chat * 3, 75)
       : pricingConfig.min_credits_to_chat;
@@ -1175,22 +1177,18 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       : typeof expert === 'string' && expert
       ? expert
       : fallbackCouncilExpert;
+  const isLearnAstrologyTurn =
+    activePillar === 'council' &&
+    (expertSlug === 'learn_astrology' || conversation.mode_type === 'learn_astrology');
   const modeSlug =
     activePillar === 'companion'
       ? activeCompanionPersona?.companion_type || 'companion'
       : activePillar === 'clarity'
       ? 'clarity'
-      : typeof mode === 'string' && mode
-      ? mode
-      : conversation.mode_type === 'learn_astrology'
+      : isLearnAstrologyTurn
       ? 'learn_astrology'
       : 'general';
-  const outputSlug =
-    activePillar === 'council'
-      ? typeof outputFormat === 'string' && outputFormat
-        ? outputFormat
-        : req.appUser.default_output || 'detailed'
-      : 'conversational';
+  const outputSlug = activePillar === 'council' ? 'detailed' : 'conversational';
   const languageSlug =
     typeof language === 'string' && language
       ? language
@@ -1206,8 +1204,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     expertSlug !== 'numerologist';
   const isVedicReadingTurn =
     isVedicCouncilTurn &&
-    modeSlug !== 'learn_astrology' &&
-    conversation.mode_type !== 'learn_astrology' &&
+    !isLearnAstrologyTurn &&
     conversation.mode_type !== 'report_followup';
   const useDeepAudit =
     Boolean(deepAudit) &&
@@ -1601,6 +1598,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
           typeof clarifiedPlaybookId === 'string' ? clarifiedPlaybookId : null,
         technicalDirective: safeTechnicalDirective,
         isBirthDetailsIntake,
+        isCuratedStarter: Boolean(curatedStarter),
       });
     } catch {
       stage1Decision = null;
@@ -1819,6 +1817,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       userPriorFluency: req.appUser.sutra_user_profile_json?.inferred_fluency || null,
       deepAudit: useDeepAudit,
       abortSignal: abortController.signal,
+      onStatus: (statusText) => {
+        sendEvent({ type: 'status', text: statusText });
+      },
       onChunk: (chunkText) => {
         sendEvent({ type: 'chunk', text: chunkText });
       },
@@ -1891,53 +1892,31 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       Boolean(streamResult.stage2Pkg) &&
       Boolean(streamResult.sutraMeta);
 
-    const [structuredSuggestions, generatedTitle] = await Promise.all([
-      activePillar !== 'council' ||
-      streamResult.aborted ||
-      wasLeakIntercepted ||
-      Boolean(pendingProfile)
-        ? Promise.resolve<MessageSuggestions>({ followups: [], deeper_analysis: [] })
-        : hasInlineSuggestions && streamResult.suggestions
-        ? Promise.resolve<MessageSuggestions>(streamResult.suggestions)
-        : useStage4AlignedSuggestions && streamResult.stage2Pkg && streamResult.sutraMeta
-        ? generateAlignedStage4Suggestions({
-            stage2Pkg: streamResult.stage2Pkg,
-            dossier: profileData?.natal_truth_dossier_json || null,
-            routerResult: stage1Decision?.routerResult || null,
-            sutraMeta: streamResult.sutraMeta,
-            userQuestion: promptText,
-            assistantAnswer: finalAssistantText,
-            languageSlug,
-            userFluency: streamResult.sutraMeta.effectiveFluency,
-          })
-        : generateStructuredSuggestions({
-            userQuestion: promptText,
-            assistantAnswer: finalAssistantText,
-            expertSlug,
-            modeSlug,
-            languageSlug,
-            hasProfile: Boolean(profileData?.chart_text_context || profileData?.is_activated),
-          }),
-      isFirstUserTurn && !wasLeakIntercepted && activePillar !== 'clarity'
-        ? generateConversationTitle(
-            promptText,
-            profileData?.name,
-            activePillar,
-            activeCompanionPersona?.name
-          )
-        : Promise.resolve(conversation.title),
-    ]);
+    const needsAsyncSuggestions =
+      activePillar === 'council' &&
+      !streamResult.aborted &&
+      !wasLeakIntercepted &&
+      !pendingProfile &&
+      !hasInlineSuggestions;
 
-    const followups = structuredSuggestions.followups.map((item) => item.text);
-    const hasAnyStructured =
-      structuredSuggestions.followups.length > 0 ||
-      structuredSuggestions.deeper_analysis.length > 0;
+    const needsAsyncTitle =
+      isFirstUserTurn && !wasLeakIntercepted && activePillar !== 'clarity';
+
+    const initialStructuredSuggestions: MessageSuggestions =
+      hasInlineSuggestions && streamResult.suggestions
+        ? streamResult.suggestions
+        : { followups: [], deeper_analysis: [] };
+
+    const initialFollowups = initialStructuredSuggestions.followups.map((item) => item.text);
+    const hasInitialStructured =
+      initialStructuredSuggestions.followups.length > 0 ||
+      initialStructuredSuggestions.deeper_analysis.length > 0;
     const hasSutraMetadata = Boolean(stage1Decision?.routerResult || streamResult.sutraMeta);
     const hasTechBreakdown = Boolean(streamResult.techBreakdown);
-    const persistedSuggestionsPayload =
-      hasAnyStructured || hasSutraMetadata || hasTechBreakdown
+    const initialSuggestionsPayload =
+      hasInitialStructured || hasSutraMetadata || hasTechBreakdown
         ? {
-            ...structuredSuggestions,
+            ...initialStructuredSuggestions,
             ...(stage1Decision?.routerResult ? { sutra_stage1: stage1Decision.routerResult } : {}),
             ...(streamResult.sutraMeta ? { sutra_meta: streamResult.sutraMeta } : {}),
             ...(streamResult.techBreakdown ? { tech_breakdown: streamResult.techBreakdown } : {}),
@@ -1954,7 +1933,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       mode_used: modeSlug,
       output_format_used: outputSlug,
       language_used: languageSlug,
-      followups_json: followups,
+      followups_json: initialFollowups,
       tokens_in: streamResult.tokensIn,
       tokens_out: streamResult.tokensOut,
       credits_charged: chargeTarget,
@@ -1965,7 +1944,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       .from('messages')
       .insert({
         ...baseAssistantRow,
-        suggestions_json: persistedSuggestionsPayload,
+        suggestions_json: initialSuggestionsPayload,
       })
       .select('*')
       .single();
@@ -1980,19 +1959,18 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       assistantMessage = insertBase.data
         ? {
             ...(insertBase.data as unknown as Record<string, unknown>),
-            suggestions_json: persistedSuggestionsPayload,
+            suggestions_json: initialSuggestionsPayload,
           }
         : null;
     } else {
       assistantMessage = insertWithSug.data as unknown as Record<string, unknown>;
     }
 
-    // Update conversation total_word_count & title & updated_at
+    // Update conversation total_word_count & updated_at immediately so 'done' can unlock the UI right away
     const nextTotalWords = (conversation.total_word_count || 0) + userWordCount + assistantWordCount;
     const { data: updatedConversation } = await supabaseAdmin
       .from('conversations')
       .update({
-        title: generatedTitle,
         total_word_count: nextTotalWords,
         updated_at: new Date().toISOString(),
       })
@@ -2023,6 +2001,119 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       });
     }
 
+    const enrichedConversation = normalizeConversationDefaults({
+      ...((updatedConversation || conversation) as Record<string, unknown>),
+      pillar: activePillar,
+      companion_persona_json: activeCompanionPersona,
+    });
+
+    // Unlock client composer & action bar the instant prose + DB persistence complete
+    sendEvent({
+      type: 'done',
+      assistantMessage,
+      followups: initialFollowups,
+      suggestions: initialSuggestionsPayload,
+      techBreakdown: streamResult.techBreakdown || null,
+      sutraMeta: streamResult.sutraMeta || null,
+      pendingProfile,
+      conversation: enrichedConversation,
+      creditsBalance: updatedBalance,
+      creditsCharged: chargeTarget,
+      aborted: streamResult.aborted,
+    });
+
+    const firstDoneLatencyMs = Date.now() - turnStartedAt;
+
+    let finalStructuredSuggestions = initialStructuredSuggestions;
+    let finalTitle = conversation.title;
+
+    if (needsAsyncSuggestions || needsAsyncTitle) {
+      const [asyncSuggestions, asyncTitle] = await Promise.all([
+        needsAsyncSuggestions
+          ? useStage4AlignedSuggestions && streamResult.stage2Pkg && streamResult.sutraMeta
+            ? generateAlignedStage4Suggestions({
+                stage2Pkg: streamResult.stage2Pkg,
+                dossier: profileData?.natal_truth_dossier_json || null,
+                routerResult: stage1Decision?.routerResult || null,
+                sutraMeta: streamResult.sutraMeta,
+                userQuestion: promptText,
+                assistantAnswer: finalAssistantText,
+                languageSlug,
+                userFluency: streamResult.sutraMeta.effectiveFluency,
+              }).catch(() => ({ followups: [], deeper_analysis: [] }))
+            : generateStructuredSuggestions({
+                userQuestion: promptText,
+                assistantAnswer: finalAssistantText,
+                expertSlug,
+                modeSlug,
+                languageSlug,
+                hasProfile: Boolean(profileData?.chart_text_context || profileData?.is_activated),
+              }).catch(() => ({ followups: [], deeper_analysis: [] }))
+          : Promise.resolve<MessageSuggestions>(initialStructuredSuggestions),
+        needsAsyncTitle
+          ? generateConversationTitle(
+              promptText,
+              profileData?.name,
+              activePillar,
+              activeCompanionPersona?.name
+            ).catch(() => conversation.title)
+          : Promise.resolve(conversation.title),
+      ]);
+
+      finalStructuredSuggestions = asyncSuggestions;
+      finalTitle = asyncTitle || conversation.title;
+
+      const finalFollowups = finalStructuredSuggestions.followups.map((item) => item.text);
+      const hasAnyFinalStructured =
+        finalStructuredSuggestions.followups.length > 0 ||
+        finalStructuredSuggestions.deeper_analysis.length > 0;
+      const finalSuggestionsPayload =
+        hasAnyFinalStructured || hasSutraMetadata || hasTechBreakdown
+          ? {
+              ...finalStructuredSuggestions,
+              ...(stage1Decision?.routerResult ? { sutra_stage1: stage1Decision.routerResult } : {}),
+              ...(streamResult.sutraMeta ? { sutra_meta: streamResult.sutraMeta } : {}),
+              ...(streamResult.techBreakdown ? { tech_breakdown: streamResult.techBreakdown } : {}),
+            }
+          : null;
+
+      const assistantMsgId =
+        assistantMessage && typeof assistantMessage.id === 'string'
+          ? assistantMessage.id
+          : null;
+
+      await Promise.all([
+        needsAsyncSuggestions && assistantMsgId
+          ? supabaseAdmin
+              .from('messages')
+              .update({
+                followups_json: finalFollowups,
+                suggestions_json: finalSuggestionsPayload,
+              })
+              .eq('id', assistantMsgId)
+              .then(() => undefined, () => undefined)
+          : Promise.resolve(),
+        needsAsyncTitle && finalTitle !== conversation.title
+          ? supabaseAdmin
+              .from('conversations')
+              .update({ title: finalTitle })
+              .eq('id', conversation.id)
+              .then(() => undefined, () => undefined)
+          : Promise.resolve(),
+      ]);
+
+      if (!res.writableEnded) {
+        sendEvent({
+          type: 'post_meta',
+          messageId: assistantMsgId,
+          conversationId: conversation.id,
+          followups: finalFollowups,
+          suggestions: finalSuggestionsPayload,
+          title: needsAsyncTitle && finalTitle !== conversation.title ? finalTitle : undefined,
+        });
+      }
+    }
+
     void recordChatbotPipelineLog({
       user_id: req.appUser.id,
       conversation_id: conversation.id,
@@ -2037,6 +2128,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
             ...stage1Decision.routerResult,
             trap_id: stage1Decision.trapCheck.trapId,
             bypass_clarification: Boolean(bypassClarification),
+            is_curated_starter: Boolean(curatedStarter),
           }
         : null,
       stage2_json: streamResult.stage2Pkg
@@ -2054,36 +2146,20 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         has_tech_breakdown: Boolean(streamResult.techBreakdown),
         tech_breakdown_chars: streamResult.techBreakdown?.length || 0,
         leak_intercepted: wasLeakIntercepted,
+        first_done_latency_ms: firstDoneLatencyMs,
         ...(streamResult.sutraMeta || {}),
       },
       stage4_json: {
-        followups_count: structuredSuggestions.followups.length,
-        deeper_analysis_count: structuredSuggestions.deeper_analysis.length,
+        followups_count: finalStructuredSuggestions.followups.length,
+        deeper_analysis_count: finalStructuredSuggestions.deeper_analysis.length,
         decoupled_stage4: useStage4AlignedSuggestions,
       },
       total_latency_ms: Date.now() - turnStartedAt,
     });
 
-    const enrichedConversation = normalizeConversationDefaults({
-      ...((updatedConversation || conversation) as Record<string, unknown>),
-      pillar: activePillar,
-      companion_persona_json: activeCompanionPersona,
-    });
-
-    sendEvent({
-      type: 'done',
-      assistantMessage,
-      followups,
-      suggestions: persistedSuggestionsPayload,
-      techBreakdown: streamResult.techBreakdown || null,
-      sutraMeta: streamResult.sutraMeta || null,
-      pendingProfile,
-      conversation: enrichedConversation,
-      creditsBalance: updatedBalance,
-      creditsCharged: chargeTarget,
-      aborted: streamResult.aborted,
-    });
-    res.end();
+    if (!res.writableEnded) {
+      res.end();
+    }
   } catch (err) {
     req.off('close', handleDisconnect);
     const message = err instanceof Error ? err.message : 'Consultation generation failed';

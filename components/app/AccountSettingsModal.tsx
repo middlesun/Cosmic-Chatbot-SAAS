@@ -14,17 +14,12 @@ interface AccountSettingsModalProps {
 }
 
 const FALLBACK_EXPERTS = [
-  { value: 'council_synthesis', label: 'Vedic astrologer' },
-  { value: 'parashari', label: 'Parashari Strategist' },
-  { value: 'kp_precision', label: 'KP Precision Analyst' },
-  { value: 'jaimini', label: 'Jaimini & Karma Reader' },
-  { value: 'nadi', label: 'Nadi Synthesizer' },
-];
-
-const FALLBACK_OUTPUTS = [
-  { value: 'detailed', label: 'Detailed Explanation' },
-  { value: 'concise', label: 'Concise Summary' },
-  { value: 'bullets', label: 'Structured Bullet Points' },
+  { value: 'council_synthesis', label: 'Vedic Astrologer' },
+  { value: 'western_astrologer', label: 'Western Astrologer' },
+  { value: 'modern_astrologer', label: 'Modern Astrologer' },
+  { value: 'tarot_reader', label: 'Tarot' },
+  { value: 'numerologist', label: 'Numerology' },
+  { value: 'learn_astrology', label: 'Learn Astrology' },
 ];
 
 const FALLBACK_LANGUAGES = [
@@ -52,7 +47,6 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
   const [defaultExpert, setDefaultExpert] = useState(
     appUser?.default_expert || 'council_synthesis'
   );
-  const [defaultOutput, setDefaultOutput] = useState(appUser?.default_output || 'detailed');
   const [defaultLanguage, setDefaultLanguage] = useState(
     appUser?.default_language || 'English'
   );
@@ -72,7 +66,6 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
       );
       setCurrencyPref(appUser.currency_pref || 'INR');
       setDefaultExpert(appUser.default_expert || 'council_synthesis');
-      setDefaultOutput(appUser.default_output || 'detailed');
       setDefaultLanguage(appUser.default_language || 'English');
       setError(null);
       setSaveMessage(null);
@@ -143,7 +136,6 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
           default_astrology_mode: defaultAstrologyMode,
           currency_pref: currencyPref,
           default_expert: defaultExpert,
-          default_output: defaultOutput,
           default_language: defaultLanguage,
         }),
       });
@@ -304,44 +296,23 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
-                Default Output Style
-              </label>
-              <CustomSelect
-                value={defaultOutput}
-                onChange={setDefaultOutput}
-                ariaLabel="Default Output Style"
-                size="md"
-                surface="elevated"
-                className="w-full"
-                options={
-                  catalog?.outputs.length
-                    ? catalog.outputs.map((o) => ({ value: o.slug, label: o.displayName }))
-                    : FALLBACK_OUTPUTS
-                }
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
-                Default Language
-              </label>
-              <CustomSelect
-                value={defaultLanguage}
-                onChange={setDefaultLanguage}
-                ariaLabel="Default Language"
-                size="md"
-                surface="elevated"
-                className="w-full"
-                options={
-                  catalog?.languages.length
-                    ? catalog.languages.map((o) => ({ value: o.slug, label: o.displayName }))
-                    : FALLBACK_LANGUAGES
-                }
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
+              Default Language
+            </label>
+            <CustomSelect
+              value={defaultLanguage}
+              onChange={setDefaultLanguage}
+              ariaLabel="Default Language"
+              size="md"
+              surface="elevated"
+              className="w-full"
+              options={
+                catalog?.languages.length
+                  ? catalog.languages.map((o) => ({ value: o.slug, label: o.displayName }))
+                  : FALLBACK_LANGUAGES
+              }
+            />
           </div>
 
           <div>

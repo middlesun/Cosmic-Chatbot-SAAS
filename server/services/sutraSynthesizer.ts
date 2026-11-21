@@ -349,13 +349,7 @@ export function buildVoiceAndFormatInstructions(params: {
   };
 
   let outputShape = '';
-  if (params.outputSlug === 'concise') {
-    outputShape =
-      'OUTPUT FORMAT — CONCISE SUMMARY: Strictly under 280 words. Lead with a crisp 2-sentence conclusion, then the 2–3 highest-signal drivers and one clear takeaway.';
-  } else if (params.outputSlug === 'bullets') {
-    outputShape =
-      'OUTPUT FORMAT — STRUCTURED BREAKDOWN: Use clean scannable headings, crisp bullet points, bolded takeaways, and a compact Markdown timing/comparison table when dates or options apply.';
-  } else if (params.outputSlug === 'marriage_master' || params.outputSlug === 'dual_view') {
+  if (params.outputSlug === 'marriage_master' || params.outputSlug === 'dual_view') {
     outputShape =
       'OUTPUT FORMAT — DUAL VIEW (WRITE-UP -> TECH BREAKDOWN): Deliver 2–3 cohesive, bullet-free narrative paragraphs answering the question in lived human terms first, followed cleanly by a compact "Technical Mechanics" bullet section.';
   } else if (params.responseLength === 'short') {

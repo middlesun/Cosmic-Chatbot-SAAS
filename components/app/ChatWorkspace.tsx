@@ -78,7 +78,6 @@ interface TabStateSnapshot {
   pendingProfileId: string | null;
   pendingMemory: boolean;
   expertSlug: string;
-  modeSlug: string;
   generalReadyMode: boolean;
   extraProfileIds: string[];
   messages: ChatMessageRecord[];
@@ -291,11 +290,20 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
   // Active consultation parameters
   const [expertSlug, setExpertSlug] = useState(appUser?.default_expert || 'council_synthesis');
-  const [modeSlug, setModeSlug] = useState('general');
-  const [outputSlug, setOutputSlug] = useState(appUser?.default_output || 'detailed');
   const [languageSlug, setLanguageSlug] = useState(appUser?.default_language || 'English');
   const [toneMode, setToneMode] = useState<ChatToneMode>('technical');
   const [responseLength, setResponseLength] = useState<ChatResponseLength>('detailed');
+  const responseMode: 'simple' | 'detailed' =
+    responseLength === 'short' || toneMode === 'friendly' ? 'simple' : 'detailed';
+  const handleChangeResponseMode = (nextMode: 'simple' | 'detailed') => {
+    if (nextMode === 'simple') {
+      setToneMode('friendly');
+      setResponseLength('short');
+    } else {
+      setToneMode('technical');
+      setResponseLength('detailed');
+    }
+  };
   const [pendingMemory, setPendingMemory] = useState<boolean>(true);
   const [chatFontSize, setChatFontSize] = useState<ChatFontSize>(appUser?.chat_font_size || 'base');
   const [suggestionsAutoExpand, setSuggestionsAutoExpand] = useState<boolean>(
@@ -318,6 +326,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingTabId, setStreamingTabId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
+  const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   // Phase 2: Multi-Thread Tabs (Council | Companion | Clarity | + up to 10)
@@ -390,7 +399,6 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   useEffect(() => {
     if (appUser) {
       setExpertSlug((prev) => prev || appUser.default_expert || 'council_synthesis');
-      setOutputSlug((prev) => prev || appUser.default_output || 'detailed');
       setLanguageSlug((prev) => prev || appUser.default_language || 'English');
       setChatFontSize(appUser.chat_font_size || 'base');
       if (typeof appUser.suggestions_auto_expand === 'boolean') {
@@ -444,20 +452,16 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       if (cfg.chatbotConfig) {
         const uiCfg = cfg.chatbotConfig as PublicChatbotUiConfig;
         setChatbotConfig(uiCfg);
-        setToneMode(uiCfg.default_tone || 'technical');
-        setResponseLength(uiCfg.default_response_length || 'detailed');
+        const isDefaultSimple =
+          uiCfg.default_response_length === 'short' || uiCfg.default_tone === 'friendly';
+        setToneMode(isDefaultSimple ? 'friendly' : 'technical');
+        setResponseLength(isDefaultSimple ? 'short' : 'detailed');
         if (embeddedPreview) {
           if (uiCfg.default_expert) setExpertSlug(uiCfg.default_expert);
-          if (uiCfg.default_mode) setModeSlug(uiCfg.default_mode);
-          if (uiCfg.default_output) setOutputSlug(uiCfg.default_output);
           if (uiCfg.default_language) setLanguageSlug(uiCfg.default_language);
         } else {
-          if (uiCfg.default_mode) setModeSlug((prev) => prev || uiCfg.default_mode);
           if (!appUser?.default_expert && uiCfg.default_expert) {
             setExpertSlug(uiCfg.default_expert);
-          }
-          if (!appUser?.default_output && uiCfg.default_output) {
-            setOutputSlug(uiCfg.default_output);
           }
           if (!appUser?.default_language && uiCfg.default_language) {
             setLanguageSlug(uiCfg.default_language);
@@ -469,7 +473,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       const pr = await promptRes.json();
       setCustomPrompts(pr.prompts || []);
     }
-  }, [getAccessToken, isPreviewMode, embeddedPreview, appUser?.default_expert, appUser?.default_output, appUser?.default_language]);
+  }, [getAccessToken, isPreviewMode, embeddedPreview, appUser?.default_expert, appUser?.default_language]);
 
   const loadConversations = useCallback(async () => {
     if (isPreviewMode) {
@@ -591,7 +595,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         setReplyTarget(null);
         setPendingTechnicalDirective(null);
         if (foundConv.mode_type === 'learn_astrology') {
-          setModeSlug('learn_astrology');
+          setExpertSlug('learn_astrology');
         }
         return foundConv;
       }
@@ -618,11 +622,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
         const firstAssistant = loadedMsgs.find((m) => m.role === 'assistant');
         if (loadedConv?.pillar === 'council' || !loadedConv?.pillar) {
-          if (firstAssistant?.expert_used) setExpertSlug(firstAssistant.expert_used);
-          if (loadedConv?.mode_type === 'learn_astrology') {
-            setModeSlug('learn_astrology');
-          } else if (firstAssistant?.mode_used) {
-            setModeSlug(firstAssistant.mode_used);
+          if (firstAssistant?.expert_used) {
+            setExpertSlug(firstAssistant.expert_used);
+          } else if (loadedConv?.mode_type === 'learn_astrology') {
+            setExpertSlug('learn_astrology');
           }
         }
         return loadedConv;
@@ -709,7 +712,6 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         pendingProfileId,
         pendingMemory,
         expertSlug,
-        modeSlug,
         generalReadyMode,
         extraProfileIds,
         messages,
@@ -723,7 +725,6 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       pendingProfileId,
       pendingMemory,
       expertSlug,
-      modeSlug,
       generalReadyMode,
       extraProfileIds,
       messages,
@@ -794,9 +795,6 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           setExpertSlug(nextTab.expertSlug);
         } else if (cached?.expertSlug) {
           setExpertSlug(cached.expertSlug);
-        }
-        if (cached?.modeSlug) {
-          setModeSlug(cached.modeSlug);
         }
       }
 
@@ -1126,9 +1124,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     setMessages([]);
     if (targetPillar === 'council') {
       if (modeType === 'learn_astrology') {
-        setModeSlug('learn_astrology');
-      } else if (modeSlug === 'learn_astrology') {
-        setModeSlug(chatbotConfig?.default_mode || 'general');
+        seededExpertRef.current = true;
+        setExpertSlug('learn_astrology');
+      } else if (expertSlug === 'learn_astrology') {
+        seededExpertRef.current = false;
+        setExpertSlug(appUser?.default_expert || chatbotConfig?.default_expert || 'council_synthesis');
       }
     }
 
@@ -1275,7 +1275,6 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     snapshotActiveTabState(activeTabId);
     setTabs((prev) => [...prev, newTab]);
     setExpertSlug(guideSlug);
-    setModeSlug(chatbotConfig?.default_mode || 'general');
     activateTab(newTab, { skipSnapshot: true });
     setComposerFocusTrigger((n) => n + 1);
   };
@@ -1734,8 +1733,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     setPendingTechnicalDirective(null);
     setExtraProfileIds([]);
     setAttachments([]);
-    if (modeSlug === 'learn_astrology') {
-      setModeSlug(chatbotConfig?.default_mode || 'general');
+    if (expertSlug === 'learn_astrology') {
+      seededExpertRef.current = false;
+      setExpertSlug(appUser?.default_expert || chatbotConfig?.default_expert || 'council_synthesis');
     }
     setTabs((prev) =>
       prev.map((t) =>
@@ -1810,6 +1810,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       clarifiedContextPatch?: Partial<LifeContextData>;
       overrideExtraProfileIds?: string[];
       overrideDeepAudit?: boolean;
+      curatedStarter?: boolean;
     }
   ) => {
     const promptToSend = (overrideText ?? draftText).trim();
@@ -1877,7 +1878,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         return;
       }
       const inferredMode =
-        sendPillar === 'council' && modeSlug === 'learn_astrology'
+        sendPillar === 'council' && expertSlug === 'learn_astrology'
           ? 'learn_astrology'
           : 'reading';
       targetConversation = await handleCreateConversation(
@@ -1909,6 +1910,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     setIsStreaming(true);
     setStreamingTabId(sendTabId);
     setStreamingText('');
+    setStreamingStatus(null);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -1929,8 +1931,6 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
               : undefined,
           technicalDirective: directiveToSend || undefined,
           expert: sendPillar === 'council' ? expertSlug : undefined,
-          mode: sendPillar === 'council' ? modeSlug : undefined,
-          outputFormat: sendPillar === 'council' ? outputSlug : undefined,
           language: languageSlug,
           toneMode,
           responseLength,
@@ -1942,7 +1942,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             expertSlug !== 'modern_astrologer' &&
             expertSlug !== 'tarot_reader' &&
             expertSlug !== 'numerologist' &&
-            modeSlug !== 'learn_astrology' &&
+            expertSlug !== 'learn_astrology' &&
             targetConversation.mode_type !== 'learn_astrology' &&
             targetConversation.mode_type !== 'report_followup' &&
             pendingAttachments.length === 0 &&
@@ -1952,6 +1952,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           bypassClarification: sutraOptions?.bypassClarification || undefined,
           clarifiedPlaybookId: sutraOptions?.clarifiedPlaybookId || undefined,
           clarifiedContextPatch: sutraOptions?.clarifiedContextPatch || undefined,
+          curatedStarter: sutraOptions?.curatedStarter || undefined,
           attachments: pendingAttachments.map((a) => ({
             kind: a.kind,
             name: a.name,
@@ -1995,19 +1996,32 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             type: string;
             message?: ChatMessageRecord;
             assistantMessage?: ChatMessageRecord;
+            messageId?: string | null;
+            conversationId?: string;
+            followups?: string[];
             suggestions?: MessageSuggestions | null;
             techBreakdown?: string | null;
+            title?: string;
             conversation?: ConversationRecord;
             pendingProfile?: PendingBirthProfileDraft | null;
             text?: string;
             error?: string;
           };
 
+          const isCurrentStreamOwner = abortControllerRef.current === controller;
+
           if (evt.type === 'user_message' && evt.message) {
             setMessages((prev) => [...prev, evt.message!]);
+          } else if (evt.type === 'status' && evt.text) {
+            if (isCurrentStreamOwner) {
+              setStreamingStatus(evt.text);
+            }
           } else if (evt.type === 'chunk' && evt.text) {
             accumulated += evt.text;
-            setStreamingText(accumulated);
+            if (isCurrentStreamOwner) {
+              setStreamingStatus(null);
+              setStreamingText(accumulated);
+            }
           } else if (evt.type === 'done') {
             if (evt.assistantMessage) {
               const baseSuggestions =
@@ -2063,10 +2077,48 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                 )
               );
             }
-            setStreamingText('');
-            setIsStreaming(false);
-            setStreamingTabId(null);
-            await Promise.all([loadConversations(), refreshUser()]);
+            if (isCurrentStreamOwner) {
+              setStreamingText('');
+              setStreamingStatus(null);
+              setIsStreaming(false);
+              setStreamingTabId(null);
+              abortControllerRef.current = null;
+            }
+            void Promise.all([loadConversations(), refreshUser()]);
+          } else if (evt.type === 'post_meta') {
+            if (evt.messageId) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === evt.messageId
+                    ? {
+                        ...m,
+                        followups_json: Array.isArray(evt.followups)
+                          ? evt.followups
+                          : m.followups_json,
+                        suggestions_json:
+                          evt.suggestions !== undefined ? evt.suggestions : m.suggestions_json,
+                      }
+                    : m
+                )
+              );
+            }
+            if (evt.title && evt.conversationId) {
+              const nextTitle = evt.title;
+              const targetConvId = evt.conversationId;
+              setActiveConversation((prev) =>
+                prev && prev.id === targetConvId ? { ...prev, title: nextTitle } : prev
+              );
+              setConversations((prev) =>
+                prev.map((c) => (c.id === targetConvId ? { ...c, title: nextTitle } : c))
+              );
+              setTabs((prev) =>
+                prev.map((t) =>
+                  t.conversationId === targetConvId && !t.customLabel
+                    ? { ...t, label: nextTitle }
+                    : t
+                )
+              );
+            }
           } else if (evt.type === 'error') {
             throw new Error(evt.error || 'Consultation interrupted');
           }
@@ -2077,10 +2129,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         setErrorBanner(err instanceof Error ? err.message : 'Consultation error');
       }
     } finally {
-      setIsStreaming(false);
-      setStreamingTabId(null);
-      setStreamingText('');
-      abortControllerRef.current = null;
+      if (abortControllerRef.current === controller) {
+        setIsStreaming(false);
+        setStreamingTabId(null);
+        setStreamingText('');
+        setStreamingStatus(null);
+        abortControllerRef.current = null;
+      }
     }
   };
 
@@ -2504,6 +2559,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       ),
       clarifiedPlaybookId: item.playbook_id,
       overrideDeepAudit: item.action === 'deep_audit',
+      curatedStarter: true,
     });
   };
 
@@ -2870,7 +2926,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const headerProfileName = getHeaderProfileLabel(
     activeProfile,
     activeConversation?.mode_type ||
-      (modeSlug === 'learn_astrology' ? 'learn_astrology' : 'reading')
+      (expertSlug === 'learn_astrology' ? 'learn_astrology' : 'reading')
   );
 
   const activeTabConversationIds = useMemo(
@@ -3099,7 +3155,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                           } else {
                             void handleCreateConversation(
                               effectiveProfileId || null,
-                              activeConversation?.mode_type === 'learn_astrology'
+                              activeConversation?.mode_type === 'learn_astrology' ||
+                              expertSlug === 'learn_astrology'
                                 ? 'learn_astrology'
                                 : 'reading',
                               'council'
@@ -3367,6 +3424,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             hasMoreMessages={hasMoreMessages}
             loadingEarlierMessages={loadingEarlierMessages}
             streamingText={streamingText}
+            streamingStatus={streamingStatus}
             isStreaming={isStreaming}
             catalog={catalog}
             fontSize={chatFontSize}
@@ -3380,7 +3438,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             onToggleStar={handleToggleStar}
             onToggleExclude={handleToggleExclude}
             onDeleteMessage={handleDeleteMessage}
-            onSelectFollowUp={(q) => void handleSendMessage(q)}
+            onSelectFollowUp={(q) =>
+              void handleSendMessage(q, undefined, undefined, { curatedStarter: true })
+            }
             onSubmitSuggestion={handleSubmitSuggestion}
             onInsertSuggestion={handleInsertSuggestion}
             onInsertSuggestions={handleInsertSuggestions}
@@ -3411,6 +3471,17 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             }
             astrologyMode={astrologyMode}
             expertSlug={expertSlug}
+            onChangeExpert={(nextExpert) => {
+              seededExpertRef.current = true;
+              setExpertSlug(nextExpert);
+              if (!isThreadLocked) {
+                if (nextExpert === 'western_astrologer' || nextExpert === 'modern_astrologer') {
+                  setAstrologyMode('western');
+                } else if (nextExpert === 'council_synthesis') {
+                  setAstrologyMode('vedic');
+                }
+              }
+            }}
             onSelectClarificationChip={(chip) => void handleSelectClarificationChip(chip)}
             onSelectPartnerProfileForClarification={(partnerId, originalQ) =>
               handleSelectPartnerProfileForClarification(partnerId, originalQ)
@@ -3451,13 +3522,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           extraProfileIds={extraProfileIds}
           attachments={attachments}
           expertSlug={expertSlug}
-          modeSlug={modeSlug}
-          outputSlug={outputSlug}
           languageSlug={languageSlug}
-          fontSize={chatFontSize}
           useFullProfileMemory={effectiveMemory}
-          toneMode={toneMode}
-          responseLength={responseLength}
+          responseMode={responseMode}
           replyTarget={replyTarget}
           activeFollowups={activeFollowups}
           customPrompts={customPrompts}
@@ -3465,39 +3532,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           isThreadLocked={isThreadLocked}
           isPreviewMode={isPreviewMode}
           getAccessToken={getAccessToken}
-          onChangeExpert={(nextExpert) => {
-            seededExpertRef.current = true;
-            setExpertSlug(nextExpert);
-            if (!isThreadLocked) {
-              if (nextExpert === 'western_astrologer' || nextExpert === 'modern_astrologer') {
-                setAstrologyMode('western');
-              } else if (nextExpert === 'council_synthesis') {
-                setAstrologyMode('vedic');
-              }
-            }
-          }}
-          onChangeMode={setModeSlug}
-          onChangeOutput={setOutputSlug}
-          onChangeLanguage={setLanguageSlug}
-          onChangeFontSize={(nextSize) => {
-            setChatFontSize(nextSize);
-            if (!isPreviewMode) {
-              void getAccessToken().then((token) => {
-                if (!token) return;
-                return fetch('/api/app/me/preferences', {
-                  method: 'PATCH',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                  },
-                  body: JSON.stringify({ chat_font_size: nextSize }),
-                });
-              });
-            }
-          }}
           onToggleMemory={handleToggleMemory}
-          onChangeToneMode={setToneMode}
-          onChangeResponseLength={setResponseLength}
+          onChangeResponseMode={handleChangeResponseMode}
           onSwitchProfile={handleSwitchProfileBeforeStart}
           onAddExtraProfile={(pid) =>
             setExtraProfileIds((prev) =>
@@ -3518,7 +3554,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           onOpenSettings={() => setShowChatSettings(true)}
           onOpenAddChartModal={() => handleOpenAddChartModal()}
           onNewChat={handleNewChat}
-          onSendMessage={handleSendMessage}
+          onSendMessage={(overrideText, composerOpts) =>
+            void handleSendMessage(overrideText, undefined, undefined, composerOpts)
+          }
           onStopGeneration={handleStopGeneration}
           pendingDirectiveLabel={pendingTechnicalDirective?.label || null}
           onClearPendingDirective={() => setPendingTechnicalDirective(null)}
@@ -3535,7 +3573,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             expertSlug !== 'modern_astrologer' &&
             expertSlug !== 'tarot_reader' &&
             expertSlug !== 'numerologist' &&
-            modeSlug !== 'learn_astrology' &&
+            expertSlug !== 'learn_astrology' &&
             activeConversation?.mode_type !== 'learn_astrology' &&
             activeConversation?.mode_type !== 'report_followup' &&
             attachments.length === 0
@@ -3591,22 +3629,17 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         activeProfileId={effectiveProfileId}
         useFullProfileMemory={effectiveMemory}
         expertSlug={expertSlug}
-        modeSlug={modeSlug}
-        outputSlug={outputSlug}
         languageSlug={languageSlug}
-        toneMode={toneMode}
-        responseLength={responseLength}
         isThreadLocked={isThreadLocked}
         initialFontSize={chatFontSize}
         initialSuggestionsAutoExpand={suggestionsAutoExpand}
         getAccessToken={getAccessToken}
         onSwitchProfile={handleSwitchProfileBeforeStart}
-        onChangeExpert={setExpertSlug}
-        onChangeMode={setModeSlug}
-        onChangeOutput={setOutputSlug}
+        onChangeExpert={(nextExpert) => {
+          seededExpertRef.current = true;
+          setExpertSlug(nextExpert);
+        }}
         onChangeLanguage={setLanguageSlug}
-        onChangeToneMode={setToneMode}
-        onChangeResponseLength={setResponseLength}
         onToggleMemory={handleToggleMemory}
         onSaved={(updated) => {
           setChatFontSize(updated.chatFontSize);
@@ -3614,7 +3647,6 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           if (!isThreadLocked) {
             setExpertSlug(updated.defaultExpert);
           }
-          setOutputSlug(updated.defaultOutput);
           setLanguageSlug(updated.defaultLanguage);
           if (!isPreviewMode) {
             void refreshUser();

@@ -6,17 +6,12 @@ import CustomSelect from './CustomSelect';
 import type { ChatCatalog } from './chatTypes';
 
 const FALLBACK_EXPERTS = [
-  { value: 'council_synthesis', label: 'Vedic astrologer' },
-  { value: 'parashari', label: 'Parashari Strategist' },
-  { value: 'kp_precision', label: 'KP Precision Analyst' },
-  { value: 'jaimini', label: 'Jaimini & Karma Reader' },
-  { value: 'nadi', label: 'Nadi Synthesizer' },
-];
-
-const FALLBACK_OUTPUTS = [
-  { value: 'detailed', label: 'Detailed Explanation' },
-  { value: 'concise', label: 'Concise Summary' },
-  { value: 'bullets', label: 'Structured Bullet Points' },
+  { value: 'council_synthesis', label: 'Vedic Astrologer' },
+  { value: 'western_astrologer', label: 'Western Astrologer' },
+  { value: 'modern_astrologer', label: 'Modern Astrologer' },
+  { value: 'tarot_reader', label: 'Tarot' },
+  { value: 'numerologist', label: 'Numerology' },
+  { value: 'learn_astrology', label: 'Learn Astrology' },
 ];
 
 const FALLBACK_LANGUAGES = [
@@ -36,9 +31,6 @@ const SettingsPage: React.FC = () => {
   const [defaultExpert, setDefaultExpert] = useState(
     appUser?.default_expert || 'council_synthesis'
   );
-  const [defaultOutput, setDefaultOutput] = useState(
-    appUser?.default_output || 'detailed'
-  );
   const [defaultLanguage, setDefaultLanguage] = useState(
     appUser?.default_language || 'English'
   );
@@ -53,7 +45,6 @@ const SettingsPage: React.FC = () => {
       setFullName(appUser.full_name || '');
       setCurrencyPref(appUser.currency_pref || 'INR');
       setDefaultExpert(appUser.default_expert || 'council_synthesis');
-      setDefaultOutput(appUser.default_output || 'detailed');
       setDefaultLanguage(appUser.default_language || 'English');
     }
   }, [appUser]);
@@ -100,7 +91,6 @@ const SettingsPage: React.FC = () => {
           full_name: fullName.trim(),
           currency_pref: currencyPref,
           default_expert: defaultExpert,
-          default_output: defaultOutput,
           default_language: defaultLanguage,
         }),
       });
@@ -143,7 +133,7 @@ const SettingsPage: React.FC = () => {
           Settings
         </h1>
         <p className="mt-2 text-sm text-[#5C5449]">
-          Configure your default astrological council discipline, output format, language, and billing currency.
+          Configure your default astrological council discipline, language, and billing currency.
         </p>
       </section>
 
@@ -188,7 +178,7 @@ const SettingsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-2 border-t border-[#3D3830]/8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-[#3D3830]/8">
           <div>
             <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
               Default Council Expert
@@ -208,29 +198,6 @@ const SettingsPage: React.FC = () => {
                       hint: e.subtitle,
                     }))
                   : FALLBACK_EXPERTS
-              }
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
-              Default Output Format
-            </label>
-            <CustomSelect
-              value={defaultOutput}
-              onChange={setDefaultOutput}
-              ariaLabel="Default Output Format"
-              size="md"
-              surface="canvas"
-              className="w-full"
-              options={
-                catalog?.outputs.length
-                  ? catalog.outputs.map((o) => ({
-                      value: o.slug,
-                      label: o.displayName,
-                      hint: o.subtitle,
-                    }))
-                  : FALLBACK_OUTPUTS
               }
             />
           </div>

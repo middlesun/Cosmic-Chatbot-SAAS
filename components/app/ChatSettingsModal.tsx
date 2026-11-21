@@ -6,8 +6,6 @@ import CustomSelect from './CustomSelect';
 import type {
   ChatCatalog,
   ChatProfile,
-  ChatResponseLength,
-  ChatToneMode,
 } from './chatTypes';
 
 export type ChatFontSize = 'sm' | 'base' | 'lg';
@@ -20,27 +18,18 @@ interface ChatSettingsModalProps {
   activeProfileId: string | null;
   useFullProfileMemory: boolean;
   expertSlug: string;
-  modeSlug: string;
-  outputSlug: string;
   languageSlug: string;
-  toneMode: ChatToneMode;
-  responseLength: ChatResponseLength;
   isThreadLocked: boolean;
   initialFontSize: ChatFontSize;
   initialSuggestionsAutoExpand?: boolean;
   getAccessToken: () => Promise<string | null>;
   onSwitchProfile: (profileId: string | null) => void;
   onChangeExpert: (slug: string) => void;
-  onChangeMode: (slug: string) => void;
-  onChangeOutput: (slug: string) => void;
   onChangeLanguage: (slug: string) => void;
-  onChangeToneMode: (mode: ChatToneMode) => void;
-  onChangeResponseLength: (len: ChatResponseLength) => void;
   onToggleMemory: () => void;
   onSaved: (updated: {
     chatFontSize: ChatFontSize;
     defaultExpert: string;
-    defaultOutput: string;
     defaultLanguage: string;
     suggestionsAutoExpand: boolean;
   }) => void;
@@ -63,22 +52,14 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
   activeProfileId,
   useFullProfileMemory,
   expertSlug,
-  modeSlug,
-  outputSlug,
   languageSlug,
-  toneMode,
-  responseLength,
   isThreadLocked,
   initialFontSize,
   initialSuggestionsAutoExpand = true,
   getAccessToken,
   onSwitchProfile,
   onChangeExpert,
-  onChangeMode,
-  onChangeOutput,
   onChangeLanguage,
-  onChangeToneMode,
-  onChangeResponseLength,
   onToggleMemory,
   onSaved,
   onClose,
@@ -118,8 +99,6 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
 
   const activeExpertLabel =
     catalog?.experts.find((opt) => opt.slug === expertSlug)?.displayName || 'Vedic Astrologer';
-  const activeModeLabel =
-    catalog?.modes.find((opt) => opt.slug === modeSlug)?.displayName || 'General';
   const activeProfileObj = profiles.find((p) => p.id === activeProfileId);
   const activeProfileLabel = activeProfileObj
     ? getProfileDisplayLabel(activeProfileObj)
@@ -134,7 +113,6 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
       onSaved({
         chatFontSize: fontSize,
         defaultExpert: expertSlug,
-        defaultOutput: outputSlug,
         defaultLanguage: languageSlug,
         suggestionsAutoExpand,
       });
@@ -157,7 +135,6 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
           chat_font_size: fontSize,
           default_astrology_mode: defaultAstrologyMode,
           default_expert: expertSlug,
-          default_output: outputSlug,
           default_language: languageSlug,
           suggestions_auto_expand: suggestionsAutoExpand,
         }),
@@ -173,7 +150,6 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
       onSaved({
         chatFontSize: fontSize,
         defaultExpert: expertSlug,
-        defaultOutput: outputSlug,
         defaultLanguage: languageSlug,
         suggestionsAutoExpand,
       });
@@ -255,7 +231,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
               )}
             </div>
 
-            {/* Context-Locked Pair: Council & Area of Life */}
+            {/* Context-Locked Pair: Council & Editable Language */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
                 <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
@@ -284,58 +260,6 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
 
               <div>
                 <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
-                  Area of Life
-                </label>
-                {isThreadLocked ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-[#3D3830]/12 bg-[#F1ECE3]/80 px-3.5 py-2.5 text-xs font-medium text-[#3D3830]">
-                    <Lock className="h-3.5 w-3.5 text-[#8B8275] shrink-0" />
-                    <span className="truncate">{activeModeLabel}</span>
-                  </div>
-                ) : (
-                  <CustomSelect
-                    value={modeSlug}
-                    onChange={onChangeMode}
-                    ariaLabel="Select area of life"
-                    size="sm"
-                    surface="elevated"
-                    className="w-full"
-                    options={(catalog?.modes || []).map((opt) => ({
-                      value: opt.slug,
-                      label: opt.displayName,
-                    }))}
-                  />
-                )}
-              </div>
-            </div>
-
-            {isThreadLocked && (
-              <p className="text-[11px] text-[#8B8275] leading-relaxed -mt-1">
-                Profile, council guide, and area of life are locked for this thread. Start a New Chat to switch them; all fields below remain editable anytime.
-              </p>
-            )}
-
-            {/* Editable Pair: Output Style & Language */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1 border-t border-[#3D3830]/10">
-              <div className="pt-2">
-                <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
-                  Output Style
-                </label>
-                <CustomSelect
-                  value={outputSlug}
-                  onChange={onChangeOutput}
-                  ariaLabel="Select output format"
-                  size="sm"
-                  surface="elevated"
-                  className="w-full"
-                  options={(catalog?.outputs || []).map((opt) => ({
-                    value: opt.slug,
-                    label: opt.displayName,
-                  }))}
-                />
-              </div>
-
-              <div className="pt-2">
-                <label className="block text-xs font-medium text-[#5C5449] mb-1.5">
                   Language
                 </label>
                 <CustomSelect
@@ -353,64 +277,11 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
               </div>
             </div>
 
-            {/* Toggles: Technical / Friendly & Detailed / Short */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-2.5">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-[#3D3830]">Tone Mode</p>
-                  <p className="text-[11px] text-[#8B8275]">
-                    {toneMode === 'friendly' ? 'Friendly (everyday)' : 'Technical (Jyotish)'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={toneMode === 'friendly'}
-                  aria-label="Toggle Friendly or Technical response mode"
-                  onClick={() =>
-                    onChangeToneMode(toneMode === 'technical' ? 'friendly' : 'technical')
-                  }
-                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 cursor-pointer ${
-                    toneMode === 'friendly' ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
-                  }`}
-                >
-                  <span
-                    className={`h-4 w-4 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
-                      toneMode === 'friendly' ? 'translate-x-4' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-2.5">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-[#3D3830]">Response Length</p>
-                  <p className="text-[11px] text-[#8B8275]">
-                    {responseLength === 'short' ? 'Short summary' : 'Detailed reading'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={responseLength === 'short'}
-                  aria-label="Toggle Short or Detailed response length"
-                  onClick={() =>
-                    onChangeResponseLength(
-                      responseLength === 'detailed' ? 'short' : 'detailed'
-                    )
-                  }
-                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 cursor-pointer ${
-                    responseLength === 'short' ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
-                  }`}
-                >
-                  <span
-                    className={`h-4 w-4 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
-                      responseLength === 'short' ? 'translate-x-4' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
+            {isThreadLocked && (
+              <p className="text-[11px] text-[#8B8275] leading-relaxed -mt-1">
+                Profile and council guide are locked for this thread. Start a New Chat to switch them; all fields below remain editable anytime.
+              </p>
+            )}
 
             {/* Default Astrology Mode */}
             <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-2.5">
@@ -502,14 +373,14 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
                 <p className="text-xs font-medium text-[#3D3830]">
                   {activeProfileId
                     ? 'Longitudinal Profile Memory'
-                    : modeSlug === 'learn_astrology'
+                    : expertSlug === 'learn_astrology'
                     ? 'Longitudinal Learning Memory'
                     : 'Longitudinal General Memory'}
                 </p>
                 <p className="text-[11px] text-[#8B8275]">
                   {activeProfileId
                     ? 'Carry key life context across sessions for this chart'
-                    : modeSlug === 'learn_astrology'
+                    : expertSlug === 'learn_astrology'
                     ? 'Carry your astrology study progress across learning sessions'
                     : 'Carry context across your General discussions'}
                 </p>

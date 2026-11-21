@@ -165,6 +165,7 @@ export interface RunDeepCouncilAuditParams {
   priorInferredFluency?: UserFluencyTier | null;
   maxOutputTokens: number;
   abortSignal: AbortSignal;
+  onStatus?: (statusText: string) => void;
   onChunk: (chunkText: string) => void;
 }
 
@@ -260,6 +261,15 @@ export async function runDeepCouncilAudit(
     technicalDirective: params.technicalDirective,
   });
 
+  const lensShortLabels: Record<DeepAuditLensSpec['id'], string> = {
+    parashari_divisional: 'Parashari & Vargas',
+    kp_nadi: 'KP & Nadi',
+    multi_clock_timing: 'Timing',
+    contrarian_auditor: 'Contrarian Audit',
+  };
+  const completedLabels: string[] = [];
+  params.onStatus?.('Running 4-system council audit (Parashari, KP, Timing, Contrarian)…');
+
   // Step 1: 4 Parallel Isolated Lens Calls via Promise.allSettled
   const settled = await Promise.allSettled(
     lensSpecs.map(async (spec): Promise<DeepAuditLensResult> => {
@@ -271,6 +281,12 @@ export async function runDeepCouncilAudit(
         maxTokens: 700,
         abortSignal: params.abortSignal,
       });
+      completedLabels.push(lensShortLabels[spec.id]);
+      if (completedLabels.length < lensSpecs.length) {
+        params.onStatus?.(
+          `Audited ${completedLabels.join(', ')} (${completedLabels.length}/${lensSpecs.length} checks)…`
+        );
+      }
       return {
         id: spec.id,
         name: spec.name,
@@ -329,6 +345,7 @@ export async function runDeepCouncilAudit(
   }
 
   // Step 2: Streaming Master Convergence Adjudicator
+  params.onStatus?.('Adjudicating Truth Gates & synthesizing reading…');
   const adjudicatorSystem = buildAdjudicatorSystemPrompt({
     base: params,
     convergence,
