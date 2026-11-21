@@ -78,11 +78,17 @@ interface MessageThreadProps {
   onSelectFollowUp: (question: string) => void;
   onSubmitSuggestion?: (item: SuggestionItem) => void;
   onInsertSuggestion?: (item: SuggestionItem) => void;
+  onInsertSuggestions?: (items: SuggestionItem[]) => void;
   onToggleAskLater?: (
     item: SuggestionItem,
     tier: 'followup' | 'deeper_analysis',
     messageId: string
   ) => void;
+  onBookmarkSuggestions?: (
+    entries: Array<{ item: SuggestionItem; tier: 'followup' | 'deeper_analysis' }>,
+    messageId: string
+  ) => void;
+  onLoadMoreSuggestions?: (messageId: string) => Promise<void> | void;
   askLaterItems?: AskLaterItem[];
   suggestionsDefaultExpanded?: boolean;
   onSelectProfile: (profileId: string) => void;
@@ -264,7 +270,10 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   onSelectFollowUp,
   onSubmitSuggestion,
   onInsertSuggestion,
+  onInsertSuggestions,
   onToggleAskLater,
+  onBookmarkSuggestions,
+  onLoadMoreSuggestions,
   askLaterItems = [],
   suggestionsDefaultExpanded = true,
   onSelectProfile,
@@ -1357,9 +1366,12 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                       onInsertSuggestion={(item) => {
                         onInsertSuggestion?.(item);
                       }}
+                      onInsertSuggestions={onInsertSuggestions}
                       onToggleAskLater={(item, tier, sourceMsgId) => {
                         onToggleAskLater?.(item, tier, sourceMsgId);
                       }}
+                      onBookmarkSuggestions={onBookmarkSuggestions}
+                      onLoadMoreSuggestions={onLoadMoreSuggestions}
                     />
                   )}
               </article>

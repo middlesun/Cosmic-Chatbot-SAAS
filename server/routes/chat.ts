@@ -7,6 +7,7 @@ import {
   countWords,
   detectPromptExtractionAttempt,
   generateConversationTitle,
+  generateMoreStructuredSuggestions,
   generateStructuredSuggestions,
   isOpenRouterConfiguredAsync,
   runQuickTool,
@@ -37,7 +38,7 @@ import {
 
 const router = Router();
 
-const MAX_ACTIVE_TABS = 5;
+const MAX_ACTIVE_TABS = 10;
 
 const CONVERSATION_LIST_COLUMNS_BASE =
   'id, user_id, profile_id, linked_report_id, title, mode_type, is_bookmarked, total_word_count, use_full_profile_memory, updated_at, created_at';
@@ -794,12 +795,17 @@ router.post('/conversations/:id/ask-later', requireAuth, async (req: Authenticat
     return;
   }
 
-  const { action = 'toggle', item } = req.body || {};
+  const { action = 'toggle', item, items } = req.body || {};
   const text = typeof item?.text === 'string' ? item.text.trim().slice(0, 260) : '';
   const itemId = typeof item?.id === 'string' && item.id.trim() ? item.id.trim() : '';
 
-  if (!text && action !== 'remove') {
+  if (action !== 'add_many' && !text && action !== 'remove') {
     res.status(400).json({ error: 'Suggestion text is required' });
+    return;
+  }
+
+  if (action === 'add_many' && (!Array.isArray(items) || items.length === 0)) {
+    res.status(400).json({ error: 'At least one suggestion item is required' });
     return;
   }
 
@@ -810,24 +816,47 @@ router.post('/conversations/:id/ask-later', requireAuth, async (req: Authenticat
     .eq('user_id', req.appUser.id)
     .maybeSingle();
 
+  type StoredAskLater = {
+    id: string;
+    text: string;
+    tier: 'followup' | 'deeper_analysis';
+    technical_directive?: string;
+    source_message_id?: string;
+    saved_at: string;
+  };
+
+  const normalizeEntry = (raw: any): StoredAskLater | null => {
+    const cleanText = typeof raw?.text === 'string' ? raw.text.trim().slice(0, 260) : '';
+    if (!cleanText) return null;
+    const rawId = typeof raw?.id === 'string' && raw.id.trim() ? raw.id.trim() : '';
+    return {
+      id: rawId || `ask_${crypto.randomBytes(4).toString('hex')}`,
+      text: cleanText,
+      tier: raw?.tier === 'deeper_analysis' ? 'deeper_analysis' : 'followup',
+      technical_directive:
+        typeof raw?.technical_directive === 'string' && raw.technical_directive.trim()
+          ? raw.technical_directive.trim().slice(0, 600)
+          : undefined,
+      source_message_id:
+        typeof raw?.source_message_id === 'string' ? raw.source_message_id : undefined,
+      saved_at: new Date().toISOString(),
+    };
+  };
+
   if (convErr) {
     // Graceful fallback if migration 005 hasn't added ask_later_json yet
     const msg = String(convErr.message || '').toLowerCase();
     if (convErr.code === '42703' || msg.includes('ask_later_json') || msg.includes('column')) {
-      const normalizedItem = {
-        id: itemId || `ask_${crypto.randomBytes(4).toString('hex')}`,
-        text,
-        tier: item?.tier === 'deeper_analysis' ? 'deeper_analysis' : 'followup',
-        technical_directive:
-          typeof item?.technical_directive === 'string' && item.technical_directive.trim()
-            ? item.technical_directive.trim().slice(0, 600)
-            : undefined,
-        source_message_id:
-          typeof item?.source_message_id === 'string' ? item.source_message_id : undefined,
-        saved_at: new Date().toISOString(),
-      };
+      if (action === 'add_many') {
+        const normalizedMany = (items as any[])
+          .map(normalizeEntry)
+          .filter((e): e is StoredAskLater => Boolean(e));
+        res.json({ items: normalizedMany, saved: true, persisted: false });
+        return;
+      }
+      const normalizedItem = normalizeEntry({ ...item, id: itemId, text });
       res.json({
-        items: action === 'remove' ? [] : [normalizedItem],
+        items: action === 'remove' || !normalizedItem ? [] : [normalizedItem],
         saved: action !== 'remove',
         persisted: false,
       });
@@ -842,51 +871,51 @@ router.post('/conversations/:id/ask-later', requireAuth, async (req: Authenticat
     return;
   }
 
-  type StoredAskLater = {
-    id: string;
-    text: string;
-    tier: 'followup' | 'deeper_analysis';
-    technical_directive?: string;
-    source_message_id?: string;
-    saved_at: string;
-  };
-
   const currentList: StoredAskLater[] = Array.isArray(convRow.ask_later_json)
     ? (convRow.ask_later_json as StoredAskLater[])
     : [];
 
-  const normalizedKey = text.toLowerCase();
-  const existingIndex = currentList.findIndex(
-    (entry) =>
-      (itemId && entry.id === itemId) ||
-      (normalizedKey && String(entry.text || '').trim().toLowerCase() === normalizedKey)
-  );
-
   let nextList = [...currentList];
   let saved = false;
 
-  if (action === 'remove' || (action === 'toggle' && existingIndex !== -1)) {
-    if (existingIndex !== -1) {
-      nextList.splice(existingIndex, 1);
+  if (action === 'add_many') {
+    const incoming = (items as any[])
+      .slice(0, 10)
+      .map(normalizeEntry)
+      .filter((e): e is StoredAskLater => Boolean(e));
+    for (const entry of [...incoming].reverse()) {
+      const key = entry.text.toLowerCase();
+      const dup = nextList.some(
+        (existing) =>
+          existing.id === entry.id ||
+          String(existing.text || '').trim().toLowerCase() === key
+      );
+      if (!dup) {
+        nextList = [entry, ...nextList];
+      }
     }
-    saved = false;
-  } else {
-    const newEntry: StoredAskLater = {
-      id: itemId || `ask_${crypto.randomBytes(4).toString('hex')}`,
-      text,
-      tier: item?.tier === 'deeper_analysis' ? 'deeper_analysis' : 'followup',
-      technical_directive:
-        typeof item?.technical_directive === 'string' && item.technical_directive.trim()
-          ? item.technical_directive.trim().slice(0, 600)
-          : undefined,
-      source_message_id:
-        typeof item?.source_message_id === 'string' ? item.source_message_id : undefined,
-      saved_at: new Date().toISOString(),
-    };
-    if (existingIndex === -1) {
-      nextList = [newEntry, ...nextList].slice(0, 50);
-    }
+    nextList = nextList.slice(0, 50);
     saved = true;
+  } else {
+    const normalizedKey = text.toLowerCase();
+    const existingIndex = currentList.findIndex(
+      (entry) =>
+        (itemId && entry.id === itemId) ||
+        (normalizedKey && String(entry.text || '').trim().toLowerCase() === normalizedKey)
+    );
+
+    if (action === 'remove' || (action === 'toggle' && existingIndex !== -1)) {
+      if (existingIndex !== -1) {
+        nextList.splice(existingIndex, 1);
+      }
+      saved = false;
+    } else {
+      const newEntry = normalizeEntry({ ...item, id: itemId, text });
+      if (newEntry && existingIndex === -1) {
+        nextList = [newEntry, ...nextList].slice(0, 50);
+      }
+      saved = true;
+    }
   }
 
   const { error: updateErr } = await supabaseAdmin
@@ -1714,6 +1743,171 @@ router.patch('/messages/:id', requireAuth, async (req: AuthenticatedRequest, res
   }
 
   res.json({ message: updated });
+});
+
+// 9b. Generate 8 More Followup / Deeper Analysis Suggestions for an assistant message
+router.post('/messages/:id/suggestions/more', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  if (!(await isOpenRouterConfiguredAsync())) {
+    res.status(503).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' });
+    return;
+  }
+
+  const msgResPrimary = await supabaseAdmin
+    .from('messages')
+    .select(MESSAGE_SELECT_COLUMNS)
+    .eq('id', req.params.id)
+    .maybeSingle();
+
+  let msgRow: Record<string, unknown> | null = null;
+  if (msgResPrimary.error) {
+    const msgResFallback = await supabaseAdmin
+      .from('messages')
+      .select(MESSAGE_SELECT_COLUMNS_BASE)
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (msgResFallback.data) {
+      msgRow = {
+        ...(msgResFallback.data as unknown as Record<string, unknown>),
+        suggestions_json: null,
+      };
+    }
+  } else if (msgResPrimary.data) {
+    msgRow = msgResPrimary.data as unknown as Record<string, unknown>;
+  }
+
+  if (!msgRow) {
+    res.status(404).json({ error: 'Message not found' });
+    return;
+  }
+
+  const { data: conv } = await supabaseAdmin
+    .from('conversations')
+    .select('id, user_id, profile_id')
+    .eq('id', String(msgRow.conversation_id))
+    .eq('user_id', req.appUser.id)
+    .maybeSingle();
+
+  if (!conv) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  if (msgRow.role !== 'assistant') {
+    res.status(400).json({ error: 'Suggestions can only be extended for assistant replies' });
+    return;
+  }
+
+  // Gather preceding user question + profile status
+  let userQuestion = '';
+  if (typeof msgRow.parent_message_id === 'string' && msgRow.parent_message_id) {
+    const { data: parentMsg } = await supabaseAdmin
+      .from('messages')
+      .select('content')
+      .eq('id', msgRow.parent_message_id)
+      .maybeSingle();
+    if (parentMsg?.content) {
+      userQuestion = String(parentMsg.content);
+    }
+  }
+  if (!userQuestion) {
+    const { data: prevUser } = await supabaseAdmin
+      .from('messages')
+      .select('content')
+      .eq('conversation_id', conv.id)
+      .eq('role', 'user')
+      .lt('created_at', String(msgRow.created_at))
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (prevUser?.content) {
+      userQuestion = String(prevUser.content);
+    }
+  }
+
+  let hasProfile = false;
+  if (conv.profile_id) {
+    const { data: prof } = await supabaseAdmin
+      .from('profiles')
+      .select('is_activated, chart_text_context')
+      .eq('id', conv.profile_id)
+      .maybeSingle();
+    hasProfile = Boolean(prof?.chart_text_context || prof?.is_activated);
+  }
+
+  const rawExisting = (msgRow.suggestions_json || null) as MessageSuggestions | null;
+  const legacyFollowups = Array.isArray(msgRow.followups_json)
+    ? (msgRow.followups_json as unknown[])
+        .filter((q): q is string => typeof q === 'string' && Boolean(q.trim()))
+        .map((q, idx) => ({ id: `legacy_${idx + 1}`, text: q.trim() }))
+    : [];
+
+  const existingFollowups =
+    Array.isArray(rawExisting?.followups) && rawExisting.followups.length > 0
+      ? rawExisting.followups
+      : legacyFollowups;
+  const existingDeeper = Array.isArray(rawExisting?.deeper_analysis)
+    ? rawExisting.deeper_analysis
+    : [];
+
+  const existingTexts = [
+    ...existingFollowups.map((item) => item.text),
+    ...existingDeeper.map((item) => item.text),
+  ].filter(Boolean);
+
+  const generated = await generateMoreStructuredSuggestions({
+    userQuestion: userQuestion || 'Follow-up reading insight',
+    assistantAnswer: String(msgRow.content || ''),
+    expertSlug:
+      typeof msgRow.expert_used === 'string' && msgRow.expert_used
+        ? msgRow.expert_used
+        : 'council_synthesis',
+    modeSlug:
+      typeof msgRow.mode_used === 'string' && msgRow.mode_used ? msgRow.mode_used : 'general',
+    languageSlug:
+      typeof msgRow.language_used === 'string' && msgRow.language_used
+        ? msgRow.language_used
+        : req.appUser.default_language || 'English',
+    hasProfile,
+    existingTexts,
+    count: 8,
+  });
+
+  const merged: MessageSuggestions = {
+    followups: [...existingFollowups, ...generated.followups],
+    deeper_analysis: [...existingDeeper, ...generated.deeper_analysis],
+  };
+
+  const mergedFollowupsStrings = merged.followups.map((f) => f.text);
+
+  const updatePrimary = await supabaseAdmin
+    .from('messages')
+    .update({
+      suggestions_json: merged,
+      followups_json: mergedFollowupsStrings,
+    })
+    .eq('id', String(msgRow.id));
+
+  if (updatePrimary.error) {
+    // Graceful fallback if migration 005 hasn't added suggestions_json
+    await supabaseAdmin
+      .from('messages')
+      .update({
+        followups_json: mergedFollowupsStrings,
+      })
+      .eq('id', String(msgRow.id));
+  }
+
+  const addedCount = generated.followups.length + generated.deeper_analysis.length;
+  res.json({
+    suggestions: merged,
+    addedCount,
+  });
 });
 
 // 10. Delete individual message + recalculate total_word_count + rebuild memory

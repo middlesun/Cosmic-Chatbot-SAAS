@@ -83,7 +83,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   conversations,
   activeConversationId,
   activeTabConversationIds,
-  maxActiveTabs = 5,
+  maxActiveTabs = 10,
   favorites,
   searchQuery,
   sortBy,

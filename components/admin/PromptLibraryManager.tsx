@@ -5,6 +5,7 @@ import {
   ArrowUp,
   Check,
   Copy,
+  Download,
   Eye,
   FlaskConical,
   History,
@@ -16,6 +17,7 @@ import {
   Search,
   Tag,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react';
 import CustomSelect from '../app/CustomSelect';
@@ -29,6 +31,7 @@ export interface SystemPromptRecord {
     | 'expert'
     | 'analysis'
     | 'modifier'
+    | 'tone'
     | 'mode'
     | 'output'
     | 'language'
@@ -93,6 +96,7 @@ const PROMPT_CATEGORIES: Array<{ value: SystemPromptRecord['category']; label: s
   { value: 'expert', label: 'Expert' },
   { value: 'analysis', label: 'Analysis' },
   { value: 'modifier', label: 'Modifier' },
+  { value: 'tone', label: 'Tone' },
   { value: 'mode', label: 'Mode' },
   { value: 'output', label: 'Output' },
   { value: 'language', label: 'Language' },
@@ -218,6 +222,20 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
 
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Export / Import modals
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportScope, setExportScope] = useState<'all' | 'filtered'>('all');
+  const [exportActiveOnly, setExportActiveOnly] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'json' | 'markdown'>('json');
+  const [exportCopied, setExportCopied] = useState(false);
+
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importJsonText, setImportJsonText] = useState('');
+  const [importConflictMode, setImportConflictMode] = useState<'skip' | 'upsert'>('skip');
+  const [importingPrompts, setImportingPrompts] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
 
   const loadRecipes = async () => {
     setLoadingRecipes(true);
@@ -781,6 +799,197 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
     }
   };
 
+  // Export & Import helpers
+  const promptsToExport = useMemo(() => {
+    const base = exportScope === 'filtered' ? filteredPrompts : prompts;
+    return exportActiveOnly ? base.filter((p) => p.is_active) : base;
+  }, [exportScope, exportActiveOnly, filteredPrompts, prompts]);
+
+  const exportPayloadText = useMemo(() => {
+    if (exportFormat === 'markdown') {
+      const header = `# Cosmic Council Prompt Library Export\nExported: ${new Date().toISOString()}\nTotal prompts: ${promptsToExport.length}\n`;
+      const sections = promptsToExport.map((p, idx) => {
+        const tagsStr = (p.tags || []).length > 0 ? (p.tags || []).map((t) => `#${t}`).join(', ') : 'none';
+        return [
+          `---`,
+          `## ${idx + 1}. ${p.display_name}`,
+          `- **Slug:** \`${p.slug}\``,
+          `- **Category:** ${getCategoryLabel(p.category)} (\`${p.category}\`)`,
+          `- **Active:** ${p.is_active ? 'Yes' : 'No'} | **Version:** v${p.version} | **Sort Order:** ${p.sort_order ?? 100}`,
+          `- **Model Override:** ${p.model_id || 'Platform Default'}`,
+          `- **Tags:** ${tagsStr}`,
+          p.subtitle ? `- **Subtitle:** ${p.subtitle}` : null,
+          p.description ? `- **Internal Notes:** ${p.description}` : null,
+          ``,
+          `\`\`\`text`,
+          p.prompt_body || '',
+          `\`\`\``,
+        ]
+          .filter((line) => line !== null)
+          .join('\n');
+      });
+      return `${header}\n${sections.join('\n\n')}\n`;
+    }
+
+    const bundle = {
+      format: 'cosmic-council-prompts-v1',
+      exported_at: new Date().toISOString(),
+      count: promptsToExport.length,
+      prompts: promptsToExport.map((p) => ({
+        slug: p.slug,
+        category: p.category,
+        display_name: p.display_name,
+        subtitle: p.subtitle || null,
+        description: p.description || null,
+        tags: (p.tags || []).map((t) => normalizeTagToken(t)).filter(Boolean),
+        sort_order: p.sort_order ?? 100,
+        model_id: p.model_id || null,
+        is_active: p.is_active,
+        version: p.version,
+        prompt_body: p.prompt_body,
+      })),
+    };
+    return JSON.stringify(bundle, null, 2);
+  }, [promptsToExport, exportFormat]);
+
+  const handleDownloadExport = () => {
+    if (promptsToExport.length === 0) return;
+    const ext = exportFormat === 'markdown' ? 'md' : 'json';
+    const mime = exportFormat === 'markdown' ? 'text/markdown;charset=utf-8' : 'application/json;charset=utf-8';
+    const blob = new Blob([exportPayloadText], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cosmic-council-prompts-${new Date().toISOString().slice(0, 10)}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setFeedback(`Exported ${promptsToExport.length} prompt(s) as .${ext}.`);
+  };
+
+  const handleCopyExport = async () => {
+    if (promptsToExport.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(exportPayloadText);
+      setExportCopied(true);
+      window.setTimeout(() => setExportCopied(false), 1800);
+    } catch {
+      setError('Clipboard copy failed. Use Download File instead.');
+    }
+  };
+
+  const parsedImportPreview = useMemo(() => {
+    const rawText = importJsonText.trim();
+    if (!rawText) {
+      return { items: [] as Array<Record<string, unknown>>, parseError: null as string | null };
+    }
+    try {
+      const parsed = JSON.parse(rawText);
+      const list = Array.isArray(parsed)
+        ? parsed
+        : parsed && typeof parsed === 'object' && Array.isArray((parsed as any).prompts)
+        ? (parsed as any).prompts
+        : null;
+      if (!list) {
+        return {
+          items: [] as Array<Record<string, unknown>>,
+          parseError: 'Expected a JSON array or an export object containing a "prompts" array.',
+        };
+      }
+      const validObjects = list.filter(
+        (entry: unknown): entry is Record<string, unknown> =>
+          Boolean(entry && typeof entry === 'object')
+      );
+      return { items: validObjects, parseError: null };
+    } catch (err) {
+      return {
+        items: [] as Array<Record<string, unknown>>,
+        parseError: err instanceof Error ? err.message : 'Invalid JSON syntax',
+      };
+    }
+  }, [importJsonText]);
+
+  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportError(null);
+    try {
+      const text = await file.text();
+      setImportJsonText(text);
+    } catch {
+      setImportError('Could not read the selected file.');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleRunImport = async () => {
+    if (parsedImportPreview.parseError || parsedImportPreview.items.length === 0) return;
+    setImportingPrompts(true);
+    setImportError(null);
+    setError(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/admin/prompts/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          prompts: parsedImportPreview.items,
+          conflictMode: importConflictMode,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Import failed');
+
+      const createdList = Array.isArray(data.created) ? (data.created as SystemPromptRecord[]) : [];
+      const updatedList = Array.isArray(data.updated) ? (data.updated as SystemPromptRecord[]) : [];
+      const skippedList = Array.isArray(data.skipped) ? data.skipped : [];
+      const errorList = Array.isArray(data.errors) ? data.errors : [];
+
+      for (const item of createdList) {
+        onPromptSaved(item, true);
+      }
+      for (const item of updatedList) {
+        onPromptSaved(item, false);
+      }
+
+      const firstTouched = createdList[0] || updatedList[0];
+      if (firstTouched) {
+        setIsCreatingPrompt(false);
+        setSelectedPromptId(firstTouched.id);
+      }
+
+      const summaryParts = [
+        `${createdList.length} created`,
+        `${updatedList.length} updated`,
+        `${skippedList.length} skipped`,
+      ];
+      if (errorList.length > 0) {
+        summaryParts.push(`${errorList.length} failed`);
+      }
+      setFeedback(`Prompt import complete: ${summaryParts.join(', ')}.`);
+      if (errorList.length > 0) {
+        setImportError(
+          errorList
+            .slice(0, 5)
+            .map((er: { slug?: string; error?: string }) => `${er.slug}: ${er.error}`)
+            .join(' | ')
+        );
+      } else {
+        setShowImportModal(false);
+        setImportJsonText('');
+      }
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setImportingPrompts(false);
+    }
+  };
+
   const modeChoices = useMemo(() => {
     const modes = prompts.filter((p) => p.category === 'mode' || p.category === 'learn');
     return [
@@ -813,29 +1022,58 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
           </p>
         </div>
 
-        <div className="inline-flex rounded-full bg-[#EAE3D7]/80 border border-[#3D3830]/12 p-1">
-          {[
-            { id: 'prompts' as const, label: `Prompts (${prompts.length})` },
-            { id: 'recipes' as const, label: `Composable Recipes (${recipes.length})` },
-            { id: 'sandbox' as const, label: 'Sandbox' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => {
-                setSubView(tab.id);
-                setError(null);
-                setFeedback(null);
-              }}
-              className={`rounded-full px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-                subView === tab.id
-                  ? 'bg-[#4A453D] text-[#FAF7F2]'
-                  : 'text-[#5C5449] hover:text-[#3D3830]'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {subView === 'prompts' && (
+            <div className="inline-flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setExportCopied(false);
+                  setShowExportModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors cursor-pointer"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setImportError(null);
+                  setShowImportModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors cursor-pointer"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Import
+              </button>
+            </div>
+          )}
+
+          <div className="inline-flex rounded-full bg-[#EAE3D7]/80 border border-[#3D3830]/12 p-1">
+            {[
+              { id: 'prompts' as const, label: `Prompts (${prompts.length})` },
+              { id: 'recipes' as const, label: `Composable Recipes (${recipes.length})` },
+              { id: 'sandbox' as const, label: 'Sandbox' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setSubView(tab.id);
+                  setError(null);
+                  setFeedback(null);
+                }}
+                className={`rounded-full px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                  subView === tab.id
+                    ? 'bg-[#4A453D] text-[#FAF7F2]'
+                    : 'text-[#5C5449] hover:text-[#3D3830]'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -2007,6 +2245,365 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
           </div>
         </div>
       )}
+      {/* Export Prompts Modal */}
+      {showExportModal &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-[#1F2229]/45 backdrop-blur-xs p-4"
+            onClick={() => setShowExportModal(false)}
+          >
+            <div
+              className="w-full max-w-lg rounded-3xl border border-[#3D3830]/15 bg-[#FDFBF7] p-6 shadow-2xl space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-serif text-xl font-medium text-[#3D3830]">
+                    Export Prompt Library
+                  </h3>
+                  <p className="mt-0.5 text-xs text-[#5C5449]">
+                    Download a re-importable JSON bundle or clean Markdown for review.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowExportModal(false)}
+                  aria-label="Close export modal"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#8B8275] hover:bg-[#EAE3D7] hover:text-[#3D3830] cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-[#5C5449] mb-1.5">
+                    Scope
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setExportScope('all')}
+                      className={`rounded-2xl border px-3.5 py-2.5 text-left text-xs transition-colors cursor-pointer ${
+                        exportScope === 'all'
+                          ? 'border-[#4A453D] bg-[#EAE3D7]/60 text-[#3D3830] font-medium'
+                          : 'border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:border-[#3D3830]/25'
+                      }`}
+                    >
+                      All prompts ({prompts.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExportScope('filtered')}
+                      className={`rounded-2xl border px-3.5 py-2.5 text-left text-xs transition-colors cursor-pointer ${
+                        exportScope === 'filtered'
+                          ? 'border-[#4A453D] bg-[#EAE3D7]/60 text-[#3D3830] font-medium'
+                          : 'border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:border-[#3D3830]/25'
+                      }`}
+                    >
+                      Current filter ({filteredPrompts.length})
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-[#5C5449] mb-1.5">
+                    Format
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setExportFormat('json')}
+                      className={`rounded-2xl border px-3.5 py-2.5 text-left text-xs transition-colors cursor-pointer ${
+                        exportFormat === 'json'
+                          ? 'border-[#4A453D] bg-[#EAE3D7]/60 text-[#3D3830] font-medium'
+                          : 'border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:border-[#3D3830]/25'
+                      }`}
+                    >
+                      <div>JSON (.json)</div>
+                      <div className="text-[10px] text-[#8B8275] mt-0.5">
+                        Full metadata · Re-importable
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExportFormat('markdown')}
+                      className={`rounded-2xl border px-3.5 py-2.5 text-left text-xs transition-colors cursor-pointer ${
+                        exportFormat === 'markdown'
+                          ? 'border-[#4A453D] bg-[#EAE3D7]/60 text-[#3D3830] font-medium'
+                          : 'border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449] hover:border-[#3D3830]/25'
+                      }`}
+                    >
+                      <div>Markdown (.md)</div>
+                      <div className="text-[10px] text-[#8B8275] mt-0.5">
+                        Readable doc for review & sharing
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <label className="inline-flex items-center gap-2 text-xs text-[#5C5449] cursor-pointer pt-1">
+                  <input
+                    type="checkbox"
+                    checked={exportActiveOnly}
+                    onChange={(e) => setExportActiveOnly(e.target.checked)}
+                    className="accent-[#4A453D]"
+                  />
+                  Include active prompts only
+                </label>
+
+                <div className="rounded-2xl border border-[#3D3830]/10 bg-[#FAF7F2] px-3.5 py-2.5 flex items-center justify-between text-[11px] text-[#5C5449]">
+                  <span>Ready to export</span>
+                  <span className="font-mono tabular-nums text-[#3D3830] font-medium">
+                    {promptsToExport.length} prompt(s) · ~{formatCharsCompact(exportPayloadText.length)} chars
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-[#3D3830]/10">
+                <button
+                  type="button"
+                  disabled={promptsToExport.length === 0}
+                  onClick={() => void handleCopyExport()}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-4 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7]/60 disabled:opacity-45 cursor-pointer"
+                >
+                  {exportCopied ? <Check className="h-3.5 w-3.5 text-[#2D6A4F]" /> : <Copy className="h-3.5 w-3.5" />}
+                  {exportCopied ? 'Copied!' : 'Copy to Clipboard'}
+                </button>
+                <button
+                  type="button"
+                  disabled={promptsToExport.length === 0}
+                  onClick={handleDownloadExport}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-45 cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download .{exportFormat === 'markdown' ? 'md' : 'json'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Import Prompts Modal */}
+      {showImportModal &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-[#1F2229]/45 backdrop-blur-xs p-4"
+            onClick={() => !importingPrompts && setShowImportModal(false)}
+          >
+            <div
+              className="w-full max-w-2xl rounded-3xl border border-[#3D3830]/15 bg-[#FDFBF7] p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-serif text-xl font-medium text-[#3D3830]">
+                    Import Prompts (JSON)
+                  </h3>
+                  <p className="mt-0.5 text-xs text-[#5C5449]">
+                    Upload an exported Cosmic Council JSON file or paste prompt JSON below.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={importingPrompts}
+                  onClick={() => setShowImportModal(false)}
+                  aria-label="Close import modal"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#8B8275] hover:bg-[#EAE3D7] hover:text-[#3D3830] cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {importError && (
+                <div className="rounded-2xl border border-[#7A3E36]/25 bg-[#7A3E36]/8 px-3.5 py-2.5 text-xs text-[#7A3E36]">
+                  {importError}
+                </div>
+              )}
+
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                <div className="flex items-center justify-between gap-2">
+                  <input
+                    ref={importFileRef}
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={(e) => void handleImportFileChange(e)}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => importFileRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7]/60 cursor-pointer"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    Choose .json file
+                  </button>
+                  {importJsonText.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportJsonText('');
+                        setImportError(null);
+                      }}
+                      className="text-[11px] text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
+                    >
+                      Clear input
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-[#5C5449] mb-1">
+                    Or paste JSON payload
+                  </label>
+                  <textarea
+                    rows={7}
+                    value={importJsonText}
+                    onChange={(e) => {
+                      setImportJsonText(e.target.value);
+                      setImportError(null);
+                    }}
+                    placeholder='{"prompts":[{"slug":"my_prompt","category":"master_prompts","display_name":"My Prompt","tags":["vedic"],"prompt_body":"..."}]}'
+                    className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 font-mono text-[11px] leading-relaxed text-[#3D3830] focus:outline-none focus:border-[#3D3830]/35"
+                  />
+                </div>
+
+                {parsedImportPreview.parseError && (
+                  <p className="text-[11px] text-[#7A3E36]">
+                    JSON parse error: {parsedImportPreview.parseError}
+                  </p>
+                )}
+
+                {parsedImportPreview.items.length > 0 && (
+                  <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-3 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-[#5C5449]">
+                      <span className="font-medium text-[#3D3830]">
+                        Detected {parsedImportPreview.items.length} prompt(s)
+                      </span>
+                      <span className="font-mono text-[10px] text-[#8B8275]">
+                        {
+                          parsedImportPreview.items.filter((it) => {
+                            const slugVal = String(
+                              it.slug || it.display_name || ''
+                            )
+                              .trim()
+                              .toLowerCase()
+                              .replace(/[^a-z0-9_]+/g, '_')
+                              .replace(/^_+|_+$/g, '');
+                            return slugVal && promptBySlug.has(slugVal);
+                          }).length
+                        }{' '}
+                        matching existing slug(s)
+                      </span>
+                    </div>
+                    <div className="max-h-36 overflow-y-auto divide-y divide-[#3D3830]/8">
+                      {parsedImportPreview.items.slice(0, 50).map((it, idx) => {
+                        const title = String(it.display_name || it.slug || `Item ${idx + 1}`);
+                        const rawSlug = String(it.slug || title)
+                          .trim()
+                          .toLowerCase()
+                          .replace(/[^a-z0-9_]+/g, '_')
+                          .replace(/^_+|_+$/g, '');
+                        const exists = Boolean(rawSlug && promptBySlug.has(rawSlug));
+                        const catLabel = getCategoryLabel(String(it.category || 'unknown'));
+                        return (
+                          <div
+                            key={`${rawSlug}-${idx}`}
+                            className="py-1.5 flex items-center justify-between gap-2 text-[11px]"
+                          >
+                            <div className="min-w-0 truncate">
+                              <span className="font-medium text-[#3D3830]">{title}</span>
+                              <span className="ml-2 font-mono text-[10px] text-[#8B8275]">
+                                {catLabel} · {rawSlug || 'no-slug'}
+                              </span>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] ${
+                                exists
+                                  ? 'bg-[#EAE3D7] text-[#5C5449]'
+                                  : 'bg-[#2D6A4F]/10 text-[#2D6A4F]'
+                              }`}
+                            >
+                              {exists ? 'exists' : 'new'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-medium text-[#5C5449] mb-1.5">
+                    If slug already exists
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setImportConflictMode('skip')}
+                      className={`rounded-2xl border px-3.5 py-2 text-left text-xs transition-colors cursor-pointer ${
+                        importConflictMode === 'skip'
+                          ? 'border-[#4A453D] bg-[#EAE3D7]/60 text-[#3D3830] font-medium'
+                          : 'border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449]'
+                      }`}
+                    >
+                      <div>Skip existing (Safe)</div>
+                      <div className="text-[10px] text-[#8B8275] mt-0.5">
+                        Only adds brand-new slugs
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImportConflictMode('upsert')}
+                      className={`rounded-2xl border px-3.5 py-2 text-left text-xs transition-colors cursor-pointer ${
+                        importConflictMode === 'upsert'
+                          ? 'border-[#4A453D] bg-[#EAE3D7]/60 text-[#3D3830] font-medium'
+                          : 'border-[#3D3830]/12 bg-[#FAF7F2] text-[#5C5449]'
+                      }`}
+                    >
+                      <div>Update matching slugs</div>
+                      <div className="text-[10px] text-[#8B8275] mt-0.5">
+                        Archives old body in version history
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#3D3830]/10">
+                <button
+                  type="button"
+                  disabled={importingPrompts}
+                  onClick={() => setShowImportModal(false)}
+                  className="rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-4 py-2 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    importingPrompts ||
+                    Boolean(parsedImportPreview.parseError) ||
+                    parsedImportPreview.items.length === 0
+                  }
+                  onClick={() => void handleRunImport()}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-45 cursor-pointer"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {importingPrompts
+                    ? 'Importing...'
+                    : `Import ${parsedImportPreview.items.length || ''} Prompt${
+                        parsedImportPreview.items.length === 1 ? '' : 's'
+                      }`}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

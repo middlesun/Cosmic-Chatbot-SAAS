@@ -6,7 +6,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  ChevronUp,
   FileText,
   HeartHandshake,
   HelpCircle,
@@ -60,6 +59,8 @@ interface ChatComposerProps {
   composerDisabledHint?: string;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
+  onReorderTabs: (orderedTabIds: string[]) => void;
+  onRenameTab: (tabId: string, nextLabel: string) => void;
   onAddCouncilTab: (expertSlug: string) => void;
   onAddCompanionArchetypeTab: (archetype: CompanionArchetypeSlug) => void;
   onOpenExistingConversationAsTab: (conv: ConversationRecord) => void;
@@ -233,7 +234,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   activeCompanionPersona = null,
   tabs,
   activeTabId,
-  maxActiveTabs = 5,
+  maxActiveTabs = 10,
   pastCompanionConversations,
   recentConversations,
   isStreamingTabId = null,
@@ -241,6 +242,8 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   composerDisabledHint,
   onSelectTab,
   onCloseTab,
+  onReorderTabs,
+  onRenameTab,
   onAddCouncilTab,
   onAddCompanionArchetypeTab,
   onOpenExistingConversationAsTab,
@@ -954,59 +957,52 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
           </div>
         )}
 
-        {/* FLOATING COMPOSER CARD + TOP-EDGE MULTI-THREAD TAB STRIP & EXPAND TAB */}
-        <div className="relative">
-          {/* Unified Top Edge: Multi-Thread Tabs (Left) + Outer Expand ChevronUp Tab (Right) */}
-          <div className="relative flex items-end justify-between z-20">
-            <div className="min-w-0 flex-1">
-              <ComposerTabStrip
-                tabs={tabs}
-                activeTabId={activeTabId}
-                maxTabs={maxActiveTabs}
-                catalog={catalog}
-                pastCompanionConversations={pastCompanionConversations}
-                recentConversations={recentConversations}
-                isStreamingTabId={isStreamingTabId}
-                onSelectTab={onSelectTab}
-                onCloseTab={onCloseTab}
-                onAddCouncilTab={onAddCouncilTab}
-                onAddCompanionArchetypeTab={onAddCompanionArchetypeTab}
-                onOpenExistingConversationAsTab={onOpenExistingConversationAsTab}
-              />
-            </div>
-
-            {!isExpanded && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsExpanded(true);
+        {/* UNIFIED COMPOSER CARD WITH RECESSED SEGMENTED TOP TRAY */}
+        <div
+          onDragOver={(e) => {
+            if (composerDisabled) return;
+            e.preventDefault();
+            setIsDraggingOver(true);
+          }}
+          onDragLeave={() => setIsDraggingOver(false)}
+          onDrop={handleDrop}
+          className={`relative rounded-2xl border shadow-[0_12px_36px_-14px_rgba(31,34,41,0.22)] transition-colors ${
+            isDraggingOver
+              ? 'border-[#B8965A] bg-[#FBF6EC]'
+              : 'border-[#3D3830]/[0.18] bg-[#FDFBF7] focus-within:border-[#3D3830]/35'
+          }`}
+        >
+          {/* Recessed Segmented Tab Tray Flush Top Cap (Zero transparent gaps) */}
+          <ComposerTabStrip
+            tabs={tabs}
+            activeTabId={activeTabId}
+            maxTabs={maxActiveTabs}
+            catalog={catalog}
+            pastCompanionConversations={pastCompanionConversations}
+            recentConversations={recentConversations}
+            isStreamingTabId={isStreamingTabId}
+            isExpanded={isExpanded}
+            onToggleExpand={() => {
+              setIsExpanded((prev) => {
+                const next = !prev;
+                if (next) {
                   setIsPlusOpen(false);
                   setPlusSubMenu(null);
-                }}
-                aria-expanded={false}
-                aria-label="Expand composer tools and controls"
-                className="absolute right-3 sm:right-5 bottom-0 z-20 inline-flex h-[24px] w-8 items-center justify-center rounded-t-xl border border-b-0 border-[#3D3830]/18 bg-[#FDFBF7] text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830] shadow-xs transition-all duration-150 cursor-pointer"
-              >
-                <ChevronUp className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Main Floating Rounded Box (100% solid opaque surface) */}
-          <div
-            onDragOver={(e) => {
-              if (composerDisabled) return;
-              e.preventDefault();
-              setIsDraggingOver(true);
+                }
+                return next;
+              });
             }}
-            onDragLeave={() => setIsDraggingOver(false)}
-            onDrop={handleDrop}
-            className={`relative rounded-2xl border px-3 pt-1.5 pb-1 shadow-[0_12px_36px_-14px_rgba(31,34,41,0.22)] transition-colors ${
-              isDraggingOver
-                ? 'border-[#B8965A] bg-[#FBF6EC]'
-                : 'border-[#3D3830]/18 bg-[#FDFBF7] focus-within:border-[#3D3830]/35'
-            }`}
-          >
+            onSelectTab={onSelectTab}
+            onCloseTab={onCloseTab}
+            onReorderTabs={onReorderTabs}
+            onRenameTab={onRenameTab}
+            onAddCouncilTab={onAddCouncilTab}
+            onAddCompanionArchetypeTab={onAddCompanionArchetypeTab}
+            onOpenExistingConversationAsTab={onOpenExistingConversationAsTab}
+          />
+
+          {/* Main Input Body */}
+          <div className="px-3 pt-2 pb-1.5 rounded-b-[15px]">
             {/* SMOOTH SLIDING ADAPTIVE EXPANDED PANEL (Council vs Companion vs Clarity) */}
             <div
               aria-hidden={!isExpanded}

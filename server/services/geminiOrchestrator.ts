@@ -1036,6 +1036,117 @@ ${params.assistantAnswer.slice(0, 1800)}`,
   }
 }
 
+export async function generateMoreStructuredSuggestions(params: {
+  userQuestion: string;
+  assistantAnswer: string;
+  expertSlug: string;
+  modeSlug: string;
+  languageSlug: string;
+  hasProfile: boolean;
+  existingTexts: string[];
+  count?: number;
+}): Promise<MessageSuggestions> {
+  try {
+    const [chatbotConfig, suggestionsConfig, runtime] = await Promise.all([
+      getChatbotConfig(),
+      getSuggestionsConfig(),
+      getResolvedOpenRouterRuntime(),
+    ]);
+
+    if (
+      chatbotConfig.features.followups === false ||
+      (!suggestionsConfig.followups_enabled && !suggestionsConfig.deeper_analysis_enabled)
+    ) {
+      return { followups: [], deeper_analysis: [] };
+    }
+
+    const totalTarget = Math.max(2, Math.min(12, params.count || 8));
+    const bothEnabled =
+      suggestionsConfig.followups_enabled && suggestionsConfig.deeper_analysis_enabled;
+    const countF = bothEnabled
+      ? Math.ceil(totalTarget / 2)
+      : suggestionsConfig.followups_enabled
+      ? totalTarget
+      : 0;
+    const countD = bothEnabled
+      ? Math.floor(totalTarget / 2)
+      : suggestionsConfig.deeper_analysis_enabled
+      ? totalTarget
+      : 0;
+
+    const existingListBlock = params.existingTexts
+      .slice(0, 24)
+      .map((t, i) => `${i + 1}. ${t}`)
+      .join('\n');
+
+    const completion = await createOpenRouterCompletion({
+      model: runtime.utilityModel || getUtilityModel(),
+      maxTokens: Math.max(950, runtime.tokenLimits.utility),
+      jsonMode: true,
+      temperature: 0.65,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate ${totalTarget} BRAND-NEW structured suggestions for this Cosmic Council consultation exchange.
+Active Council Guide: ${params.expertSlug}
+Topic Mode: ${params.modeSlug}
+Language: ${params.languageSlug}
+Chart Attached: ${params.hasProfile ? 'Yes' : 'No'}
+
+${countF > 0 ? `TIER 1 — "followups" (EXACTLY ${countF} new items):\n${suggestionsConfig.followups_rules}\n` : ''}
+${countD > 0 ? `TIER 2 — "deeper_analysis" (EXACTLY ${countD} new items):\n${suggestionsConfig.deeper_analysis_rules}\n` : ''}
+
+CRITICAL DEDUPLICATION RULE:
+Do NOT repeat, reword, or closely overlap with any of these ALREADY SHOWN questions:
+${existingListBlock || '(none yet)'}
+
+Return STRICTLY JSON with shape:
+{
+  "followups": ${countF > 0 ? '[{ "text": "..." }]' : '[]'},
+  "deeper_analysis": ${countD > 0 ? '[{ "text": "...", "technical_directive": "..." }]' : '[]'}
+}
+
+USER QUESTION:
+${params.userQuestion.slice(0, 600)}
+
+COUNCIL ANSWER EXCERPT:
+${params.assistantAnswer.slice(0, 1800)}`,
+        },
+      ],
+    });
+
+    const parsed = safeExtractJson<{
+      followups?: unknown;
+      deeper_analysis?: unknown;
+    }>(completion.text, {});
+
+    const existingKeys = new Set(
+      params.existingTexts.map((t) => t.trim().toLowerCase()).filter(Boolean)
+    );
+
+    const filterFresh = (list: SuggestionItem[]) =>
+      list.filter((item) => {
+        const key = item.text.trim().toLowerCase();
+        if (!key || existingKeys.has(key)) return false;
+        existingKeys.add(key);
+        return true;
+      });
+
+    return {
+      followups:
+        countF > 0
+          ? filterFresh(normalizeSuggestionList(parsed.followups, 'fu', countF + 2, false)).slice(0, countF)
+          : [],
+      deeper_analysis:
+        countD > 0
+          ? filterFresh(normalizeSuggestionList(parsed.deeper_analysis, 'da', countD + 2, true)).slice(0, countD)
+          : [],
+    };
+  } catch {
+    return { followups: [], deeper_analysis: [] };
+  }
+}
+
 export async function generateFollowUpQuestions(params: {
   userQuestion: string;
   assistantAnswer: string;

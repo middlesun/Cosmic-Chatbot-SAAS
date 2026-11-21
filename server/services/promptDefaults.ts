@@ -7,6 +7,7 @@ export type PromptCategory =
   | 'expert'
   | 'analysis'
   | 'modifier'
+  | 'tone'
   | 'mode'
   | 'output'
   | 'language'

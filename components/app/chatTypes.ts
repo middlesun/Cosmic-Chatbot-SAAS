@@ -95,6 +95,7 @@ export interface ActiveChatTab {
   pillar: ChatPillar;
   conversationId: string | null;
   label: string;
+  customLabel?: boolean;
   subtitle?: string;
   expertSlug?: string;
   companionType?: CompanionArchetypeSlug | null;

@@ -483,6 +483,7 @@ const VALID_PROMPT_CATEGORIES = [
   'expert',
   'analysis',
   'modifier',
+  'tone',
   'mode',
   'output',
   'language',
@@ -490,6 +491,8 @@ const VALID_PROMPT_CATEGORIES = [
   'report_step',
   'learn',
 ];
+
+const FALLBACK_OVERRIDE_CATEGORIES = new Set(['master_prompts', 'tone']);
 
 const PROMPT_CATEGORY_OVERRIDES_KEY = 'prompt_category_overrides';
 const promptCategoryOverridesMemory = new Map<string, string>();
@@ -696,7 +699,11 @@ router.post('/prompts', async (req: AuthenticatedRequest, res) => {
   let usedFallbackOverride = false;
   let insertRes = await insertAttempt(category);
 
-  if (insertRes.error && isCategoryCheckConstraintError(insertRes.error) && category === 'master_prompts') {
+  if (
+    insertRes.error &&
+    isCategoryCheckConstraintError(insertRes.error) &&
+    FALLBACK_OVERRIDE_CATEGORIES.has(category)
+  ) {
     usedFallbackOverride = true;
     insertRes = await insertAttempt('system');
   }
@@ -706,7 +713,7 @@ router.post('/prompts', async (req: AuthenticatedRequest, res) => {
     if (isCategoryCheckConstraintError(insertRes.error)) {
       res.status(400).json({
         error:
-          'New prompt categories require running supabase/migrations/009_master_prompts_category.sql in Supabase SQL Editor first.',
+          'New prompt categories require running supabase/migrations/010_tone_prompt_category.sql in Supabase SQL Editor first.',
       });
       return;
     }
@@ -715,13 +722,13 @@ router.post('/prompts', async (req: AuthenticatedRequest, res) => {
   }
 
   if (usedFallbackOverride) {
-    await writePromptCategoryOverride(supabaseAdmin, insertRes.data.id, 'master_prompts');
+    await writePromptCategoryOverride(supabaseAdmin, insertRes.data.id, category);
   }
 
   invalidatePromptCache();
   res.status(201).json({
     prompt: usedFallbackOverride
-      ? { ...insertRes.data, category: 'master_prompts' }
+      ? { ...insertRes.data, category }
       : insertRes.data,
   });
 });
@@ -851,7 +858,8 @@ router.patch('/prompts/:id', async (req: AuthenticatedRequest, res) => {
   if (
     updateRes.error &&
     isCategoryCheckConstraintError(updateRes.error) &&
-    category === 'master_prompts'
+    typeof category === 'string' &&
+    FALLBACK_OVERRIDE_CATEGORIES.has(category)
   ) {
     usedFallbackOverride = true;
     updateRes = await runUpdate(false);
@@ -862,8 +870,8 @@ router.patch('/prompts/:id', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  if (usedFallbackOverride) {
-    await writePromptCategoryOverride(supabaseAdmin, existing.id, 'master_prompts');
+  if (usedFallbackOverride && typeof category === 'string') {
+    await writePromptCategoryOverride(supabaseAdmin, existing.id, category);
   } else if (hasValidCategoryUpdate) {
     // Clear any stale override once DB accepted the native category directly
     await writePromptCategoryOverride(supabaseAdmin, existing.id, null);
@@ -961,6 +969,328 @@ router.post('/prompts/:id/rollback', async (req: AuthenticatedRequest, res) => {
 
   invalidatePromptCache();
   res.json({ prompt: updated });
+});
+
+router.post('/prompts/import', async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const rawList = Array.isArray(req.body?.prompts)
+    ? req.body.prompts
+    : Array.isArray(req.body)
+    ? req.body
+    : null;
+
+  if (!rawList || rawList.length === 0) {
+    res.status(400).json({ error: 'Provide a non-empty "prompts" array to import.' });
+    return;
+  }
+
+  if (rawList.length > 500) {
+    res.status(400).json({ error: 'Import is limited to 500 prompts per batch.' });
+    return;
+  }
+
+  const conflictMode: 'skip' | 'upsert' =
+    req.body?.conflictMode === 'upsert' ? 'upsert' : 'skip';
+
+  const normalizeIncomingCategory = (rawCat: unknown): string | null => {
+    if (typeof rawCat !== 'string') return null;
+    const cleaned = rawCat
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
+    return VALID_PROMPT_CATEGORIES.includes(cleaned) ? cleaned : null;
+  };
+
+  const normalizeIncomingTags = (rawTags: unknown): string[] => {
+    const list = Array.isArray(rawTags)
+      ? rawTags
+      : typeof rawTags === 'string'
+      ? rawTags.split(',')
+      : [];
+    return Array.from(
+      new Set(
+        list
+          .map((t) => String(t).trim().replace(/^#+/, '').toLowerCase())
+          .filter(Boolean)
+      )
+    ).slice(0, 25);
+  };
+
+  const { data: existingRows, error: fetchErr } = await supabaseAdmin
+    .from('system_prompts')
+    .select('*');
+
+  if (fetchErr) {
+    res.status(500).json({ error: 'Failed to inspect existing prompt library.' });
+    return;
+  }
+
+  const existingBySlug = new Map<string, any>();
+  for (const row of existingRows || []) {
+    if (row?.slug) {
+      existingBySlug.set(String(row.slug).toLowerCase(), row);
+    }
+  }
+
+  const created: any[] = [];
+  const updated: any[] = [];
+  const skipped: Array<{ slug: string; display_name: string; reason: string }> = [];
+  const errors: Array<{ slug: string; error: string }> = [];
+
+  for (let i = 0; i < rawList.length; i++) {
+    const raw = rawList[i] as Record<string, unknown> | null;
+    if (!raw || typeof raw !== 'object') {
+      errors.push({ slug: `item_${i + 1}`, error: 'Invalid prompt entry object' });
+      continue;
+    }
+
+    const displayName =
+      typeof raw.display_name === 'string' ? raw.display_name.trim() : '';
+    const rawSlugInput =
+      typeof raw.slug === 'string' && raw.slug.trim() ? raw.slug : displayName;
+    const normalizedSlug = String(rawSlugInput || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+    const category = normalizeIncomingCategory(raw.category);
+    const promptBody =
+      typeof raw.prompt_body === 'string' ? raw.prompt_body.trim() : '';
+
+    if (!normalizedSlug || !displayName || !promptBody || !category) {
+      errors.push({
+        slug: normalizedSlug || displayName || `item_${i + 1}`,
+        error: !category
+          ? `Invalid or missing category "${String(raw.category || '')}"`
+          : 'Missing required display_name, slug, or prompt_body',
+      });
+      continue;
+    }
+
+    const normalizedSubtitle =
+      typeof raw.subtitle === 'string' && raw.subtitle.trim() ? raw.subtitle.trim() : null;
+    const normalizedDescription =
+      typeof raw.description === 'string' && raw.description.trim()
+        ? raw.description.trim()
+        : null;
+    const normalizedModelId =
+      typeof raw.model_id === 'string' && raw.model_id.trim() ? raw.model_id.trim() : null;
+    const normalizedTags = normalizeIncomingTags(raw.tags);
+    const normalizedSortOrder =
+      typeof raw.sort_order === 'number' && Number.isFinite(raw.sort_order)
+        ? Math.round(raw.sort_order)
+        : 100;
+    const normalizedActive =
+      typeof raw.is_active === 'boolean' ? raw.is_active : true;
+
+    const existing = existingBySlug.get(normalizedSlug);
+
+    if (existing) {
+      if (conflictMode === 'skip') {
+        skipped.push({
+          slug: normalizedSlug,
+          display_name: displayName,
+          reason: 'Slug already exists',
+        });
+        continue;
+      }
+
+      const prevHistory = Array.isArray(existing.previous_versions)
+        ? existing.previous_versions
+        : [];
+      const bodyChanged = promptBody !== String(existing.prompt_body || '');
+      const nextHistory = bodyChanged
+        ? [
+            {
+              version: existing.version || 1,
+              prompt_body: existing.prompt_body,
+              archived_at: new Date().toISOString(),
+            },
+            ...prevHistory,
+          ].slice(0, 20)
+        : prevHistory;
+
+      const buildUpdatePayloads = (includeCategory: boolean) => {
+        const basePayload: Record<string, unknown> = {
+          display_name: displayName,
+          ...(includeCategory ? { category } : {}),
+          prompt_body: promptBody,
+          is_active: normalizedActive,
+          version: bodyChanged ? (existing.version || 1) + 1 : existing.version || 1,
+          previous_versions: nextHistory,
+          updated_at: new Date().toISOString(),
+        };
+        const midPayload: Record<string, unknown> = {
+          ...basePayload,
+          subtitle: normalizedSubtitle,
+          model_id: normalizedModelId,
+        };
+        const extendedPayload: Record<string, unknown> = {
+          ...midPayload,
+          description: normalizedDescription,
+          tags: normalizedTags,
+          sort_order: normalizedSortOrder,
+        };
+        return { basePayload, midPayload, extendedPayload };
+      };
+
+      const runUpdate = async (includeCategory: boolean) => {
+        const { basePayload, midPayload, extendedPayload } = buildUpdatePayloads(includeCategory);
+        let attempt = await supabaseAdmin
+          .from('system_prompts')
+          .update(extendedPayload)
+          .eq('id', existing.id)
+          .select('*')
+          .single();
+        if (attempt.error && isMissingColumnError(attempt.error)) {
+          attempt = await supabaseAdmin
+            .from('system_prompts')
+            .update(midPayload)
+            .eq('id', existing.id)
+            .select('*')
+            .single();
+        }
+        if (attempt.error && isMissingColumnError(attempt.error)) {
+          attempt = await supabaseAdmin
+            .from('system_prompts')
+            .update(basePayload)
+            .eq('id', existing.id)
+            .select('*')
+            .single();
+        }
+        return attempt;
+      };
+
+      let usedFallbackOverride = false;
+      let updateRes = await runUpdate(true);
+      if (
+        updateRes.error &&
+        isCategoryCheckConstraintError(updateRes.error) &&
+        FALLBACK_OVERRIDE_CATEGORIES.has(category)
+      ) {
+        usedFallbackOverride = true;
+        updateRes = await runUpdate(false);
+      }
+
+      if (updateRes.error || !updateRes.data) {
+        errors.push({
+          slug: normalizedSlug,
+          error: updateRes.error?.message || 'Failed to update existing prompt',
+        });
+        continue;
+      }
+
+      if (usedFallbackOverride) {
+        await writePromptCategoryOverride(supabaseAdmin, existing.id, category);
+      } else {
+        await writePromptCategoryOverride(supabaseAdmin, existing.id, null);
+      }
+
+      const resolved = usedFallbackOverride
+        ? { ...updateRes.data, category }
+        : updateRes.data;
+      existingBySlug.set(normalizedSlug, resolved);
+      updated.push(resolved);
+    } else {
+      const insertAttempt = async (dbCategory: string) => {
+        let attempt = await supabaseAdmin
+          .from('system_prompts')
+          .insert({
+            slug: normalizedSlug,
+            category: dbCategory,
+            display_name: displayName,
+            subtitle: normalizedSubtitle,
+            description: normalizedDescription,
+            prompt_body: promptBody,
+            model_id: normalizedModelId,
+            tags: normalizedTags,
+            sort_order: normalizedSortOrder,
+            version: 1,
+            previous_versions: [],
+            is_active: normalizedActive,
+          })
+          .select('*')
+          .single();
+
+        if (attempt.error && isMissingColumnError(attempt.error)) {
+          attempt = await supabaseAdmin
+            .from('system_prompts')
+            .insert({
+              slug: normalizedSlug,
+              category: dbCategory,
+              display_name: displayName,
+              subtitle: normalizedSubtitle,
+              prompt_body: promptBody,
+              model_id: normalizedModelId,
+              version: 1,
+              previous_versions: [],
+              is_active: normalizedActive,
+            })
+            .select('*')
+            .single();
+        }
+
+        if (attempt.error && isMissingColumnError(attempt.error)) {
+          attempt = await supabaseAdmin
+            .from('system_prompts')
+            .insert({
+              slug: normalizedSlug,
+              category: dbCategory,
+              display_name: displayName,
+              prompt_body: promptBody,
+              version: 1,
+              previous_versions: [],
+              is_active: normalizedActive,
+            })
+            .select('*')
+            .single();
+        }
+
+        return attempt;
+      };
+
+      let usedFallbackOverride = false;
+      let insertRes = await insertAttempt(category);
+      if (
+        insertRes.error &&
+        isCategoryCheckConstraintError(insertRes.error) &&
+        FALLBACK_OVERRIDE_CATEGORIES.has(category)
+      ) {
+        usedFallbackOverride = true;
+        insertRes = await insertAttempt('system');
+      }
+
+      if (insertRes.error || !insertRes.data) {
+        errors.push({
+          slug: normalizedSlug,
+          error: insertRes.error?.message || 'Failed to insert prompt',
+        });
+        continue;
+      }
+
+      if (usedFallbackOverride) {
+        await writePromptCategoryOverride(supabaseAdmin, insertRes.data.id, category);
+      }
+
+      const resolved = usedFallbackOverride
+        ? { ...insertRes.data, category }
+        : insertRes.data;
+      existingBySlug.set(normalizedSlug, resolved);
+      created.push(resolved);
+    }
+  }
+
+  if (created.length > 0 || updated.length > 0) {
+    invalidatePromptCache();
+  }
+
+  res.json({ created, updated, skipped, errors });
 });
 
 // Live Prompt Test Sandbox (Server-side OpenRouter evaluation)

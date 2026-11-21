@@ -63,7 +63,7 @@ import {
 const SIDEBAR_LOCK_STORAGE_KEY = 'cc_chat_sidebar_locked';
 const ACTIVE_TABS_STORAGE_KEY = 'cc_active_tabs_v1';
 const LOCAL_CONV_META_STORAGE_KEY = 'cc_conv_pillar_meta_v1';
-const MAX_ACTIVE_TABS = 5;
+const MAX_ACTIVE_TABS = 10;
 
 interface LocalConvPillarMeta {
   pillar: ChatPillar;
@@ -317,7 +317,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const [streamingText, setStreamingText] = useState('');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
-  // Phase 2: Multi-Thread Tabs (Council | Companion | Clarity | + up to 5)
+  // Phase 2: Multi-Thread Tabs (Council | Companion | Clarity | + up to 10)
   const [tabs, setTabs] = useState<ActiveChatTab[]>(() => loadInitialTabs(isPreviewMode));
   const [activeTabId, setActiveTabId] = useState<string>('core-council');
   const [companionSetupArchetype, setCompanionSetupArchetype] =
@@ -511,6 +511,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                 return {
                   ...t,
                   conversationId: null,
+                  customLabel: false,
                   label:
                     t.pillar === 'companion'
                       ? 'Companion'
@@ -523,13 +524,17 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             }
             return {
               ...t,
-              label: deriveTabLabelForConversation(match, loadedProfiles),
+              label: t.customLabel
+                ? t.label
+                : deriveTabLabelForConversation(match, loadedProfiles),
             };
           }).filter((t): t is ActiveChatTab => Boolean(t));
 
           if (!didHydrateDbTabsRef.current) {
             didHydrateDbTabsRef.current = true;
-            const dbPinned = enrichedConvs.filter((c) => c.is_active_tab);
+            const dbPinned = enrichedConvs
+              .filter((c) => c.is_active_tab)
+              .sort((a, b) => (a.active_tab_order ?? 0) - (b.active_tab_order ?? 0));
             for (const pinned of dbPinned) {
               if (nextTabs.some((t) => t.conversationId === pinned.id)) continue;
               const p: ChatPillar =
@@ -542,7 +547,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                 nextTabs[emptyCoreIdx] = {
                   ...nextTabs[emptyCoreIdx],
                   conversationId: pinned.id,
-                  label: deriveTabLabelForConversation(pinned, loadedProfiles),
+                  label: nextTabs[emptyCoreIdx].customLabel
+                    ? nextTabs[emptyCoreIdx].label
+                    : deriveTabLabelForConversation(pinned, loadedProfiles),
                 };
               } else if (nextTabs.length < MAX_ACTIVE_TABS) {
                 nextTabs = [
@@ -1129,10 +1136,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           return {
             ...t,
             conversationId: created.id,
-            label:
-              targetPillar === 'clarity'
-                ? 'Clarity'
-                : deriveTabLabelForConversation(created, profiles),
+            label: t.customLabel
+              ? t.label
+              : targetPillar === 'clarity'
+              ? 'Clarity'
+              : deriveTabLabelForConversation(created, profiles),
           };
         }
         return t;
@@ -1168,6 +1176,77 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     if (activeTabId === tabIdToClose) {
       const fallback = remaining[0] || DEFAULT_CORE_TABS[0];
       activateTab(fallback, { skipSnapshot: true });
+    }
+  };
+
+  const handleReorderTabs = (orderedTabIds: string[]) => {
+    setTabs((prev) => {
+      const byId = new Map(prev.map((t) => [t.tabId, t]));
+      const reordered: ActiveChatTab[] = [];
+      for (const id of orderedTabIds) {
+        const match = byId.get(id);
+        if (match) {
+          reordered.push(match);
+          byId.delete(id);
+        }
+      }
+      for (const leftover of byId.values()) {
+        reordered.push(leftover);
+      }
+
+      if (!isPreviewMode) {
+        const prevIndexById = new Map(prev.map((t, i) => [t.tabId, i]));
+        reordered.forEach((tab, idx) => {
+          if (tab.conversationId && prevIndexById.get(tab.tabId) !== idx) {
+            void syncTabPinBackend(tab.conversationId, true, idx);
+          }
+        });
+      }
+      return reordered;
+    });
+  };
+
+  const handleRenameTab = (tabId: string, rawLabel: string) => {
+    const clean = rawLabel.trim().slice(0, 32);
+    if (!clean) return;
+    const targetTab = tabs.find((t) => t.tabId === tabId);
+    if (!targetTab) return;
+
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.tabId === tabId ? { ...t, label: clean, customLabel: true } : t
+      )
+    );
+
+    if (targetTab.conversationId) {
+      const convId = targetTab.conversationId;
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convId ? { ...c, title: clean } : c))
+      );
+      setActiveConversation((prev) =>
+        prev && prev.id === convId ? { ...prev, title: clean } : prev
+      );
+      const cached = tabCacheRef.current[tabId];
+      if (cached?.conversation && cached.conversation.id === convId) {
+        tabCacheRef.current[tabId] = {
+          ...cached,
+          conversation: { ...cached.conversation, title: clean },
+        };
+      }
+
+      if (!isPreviewMode) {
+        void getAccessToken().then((token) => {
+          if (!token) return;
+          return fetch(`/api/chat/conversations/${convId}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ title: clean }),
+          });
+        });
+      }
     }
   };
 
@@ -2238,6 +2317,222 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     setComposerFocusTrigger((n) => n + 1);
   };
 
+  const handleInsertSuggestions = (items: SuggestionItem[]) => {
+    const valid = items.filter((it) => it && typeof it.text === 'string' && it.text.trim());
+    if (valid.length === 0) return;
+    if (valid.length === 1) {
+      handleInsertSuggestion(valid[0]);
+      return;
+    }
+    const combinedText = valid
+      .map((it, idx) => `${idx + 1}. ${it.text.trim()}`)
+      .join('\n');
+    setDraftText(combinedText);
+    const directives = valid
+      .map((it) => it.technical_directive?.trim())
+      .filter((d): d is string => Boolean(d));
+    if (directives.length > 0) {
+      setPendingTechnicalDirective({
+        label: `${valid.length} selected questions`,
+        directive: directives.join(' | '),
+      });
+    } else {
+      setPendingTechnicalDirective(null);
+    }
+    setComposerFocusTrigger((n) => n + 1);
+  };
+
+  const handleBookmarkSuggestions = async (
+    entries: Array<{ item: SuggestionItem; tier: 'followup' | 'deeper_analysis' }>,
+    sourceMessageId: string
+  ) => {
+    const incomingEntries = entries.filter(
+      (entry) => entry?.item && typeof entry.item.text === 'string' && entry.item.text.trim()
+    );
+    if (incomingEntries.length === 0) return;
+
+    const existingKeys = new Set(
+      askLaterItems.map((entry) => entry.text.trim().toLowerCase())
+    );
+    const existingIds = new Set(askLaterItems.map((entry) => entry.id));
+
+    const toAdd: AskLaterItem[] = [];
+    for (const { item, tier } of incomingEntries) {
+      const cleanText = item.text.trim();
+      const key = cleanText.toLowerCase();
+      const itemId =
+        item.id || `ask_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      if (existingKeys.has(key) || existingIds.has(itemId)) continue;
+      existingKeys.add(key);
+      existingIds.add(itemId);
+      toAdd.push({
+        id: itemId,
+        text: cleanText,
+        tier,
+        technical_directive: item.technical_directive,
+        source_message_id: sourceMessageId,
+        saved_at: new Date().toISOString(),
+      });
+    }
+
+    if (toAdd.length === 0) return;
+
+    const optimisticNext = [...toAdd, ...askLaterItems].slice(0, 50);
+    setAskLaterItems(optimisticNext);
+    setActiveConversation((prev) =>
+      prev ? { ...prev, ask_later_json: optimisticNext } : prev
+    );
+
+    if (isPreviewMode || !activeConversation?.id) return;
+
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      const res = await fetch(`/api/chat/conversations/${activeConversation.id}/ask-later`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: 'add_many',
+          items: toAdd.map((entry) => ({
+            id: entry.id,
+            text: entry.text,
+            tier: entry.tier,
+            technical_directive: entry.technical_directive,
+            source_message_id: entry.source_message_id,
+          })),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.persisted !== false && Array.isArray(data.items)) {
+          setAskLaterItems(data.items as AskLaterItem[]);
+          setActiveConversation((prev) =>
+            prev ? { ...prev, ask_later_json: data.items as AskLaterItem[] } : prev
+          );
+        }
+      }
+    } catch {
+      // Retain optimistic state on transient error
+    }
+  };
+
+  const handleLoadMoreSuggestions = async (messageId: string) => {
+    const applyUpdatedSuggestions = (nextSuggestions: MessageSuggestions) => {
+      const nextFollowups = (nextSuggestions.followups || []).map((f) => f.text);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? { ...m, suggestions_json: nextSuggestions, followups_json: nextFollowups }
+            : m
+        )
+      );
+      for (const [tabKey, cached] of Object.entries(tabCacheRef.current)) {
+        if (cached?.messages?.some((m) => m.id === messageId)) {
+          tabCacheRef.current[tabKey] = {
+            ...cached,
+            messages: cached.messages.map((m) =>
+              m.id === messageId
+                ? { ...m, suggestions_json: nextSuggestions, followups_json: nextFollowups }
+                : m
+            ),
+          };
+        }
+      }
+    };
+
+    if (isPreviewMode) {
+      const targetMsg = messages.find((m) => m.id === messageId);
+      const existingFollowups = targetMsg?.suggestions_json?.followups || [];
+      const existingDeeper = targetMsg?.suggestions_json?.deeper_analysis || [];
+      const seen = new Set(
+        [...existingFollowups, ...existingDeeper].map((s) => s.text.trim().toLowerCase())
+      );
+
+      const sampleFollowups: SuggestionItem[] = [
+        {
+          id: `pf_${Date.now()}_1`,
+          text: 'Which specific dates next month favor key conversations?',
+        },
+        {
+          id: `pf_${Date.now()}_2`,
+          text: 'What small daily habit best supports this planetary period?',
+        },
+        {
+          id: `pf_${Date.now()}_3`,
+          text: 'How might this transit show up in close partnerships?',
+        },
+        {
+          id: `pf_${Date.now()}_4`,
+          text: 'Where should I conserve energy over the coming quarter?',
+        },
+      ];
+      const sampleDeeper: SuggestionItem[] = [
+        {
+          id: `pd_${Date.now()}_1`,
+          text: 'Check D9 Navamsa strength and aspect on the 7th lord',
+          technical_directive:
+            'Inspect D9 Navamsa dignity and planetary aspects on the 7th house and its lord.',
+        },
+        {
+          id: `pd_${Date.now()}_2`,
+          text: 'Evaluate Ashtakavarga bindus for upcoming transit houses',
+          technical_directive:
+            'Review Bhinnashtakavarga and Sarvashtakavarga scores for active Gochar houses.',
+        },
+        {
+          id: `pd_${Date.now()}_3`,
+          text: 'Cross-check Pratyantardasha ruler via KP Sub-Lord cusps',
+          technical_directive:
+            'Analyze the active Pratyantardasha planet as KP Sub-Lord and its star-lord significations.',
+        },
+        {
+          id: `pd_${Date.now()}_4`,
+          text: 'Inspect Jaimini Chara Karakas for career and support shifts',
+          technical_directive:
+            'Examine Amatyakaraka and Atmakaraka placements in Rasi and Navamsa.',
+        },
+      ];
+
+      const uniqueFollowups = sampleFollowups.filter(
+        (item) => !seen.has(item.text.trim().toLowerCase())
+      );
+      const uniqueDeeper = sampleDeeper.filter(
+        (item) => !seen.has(item.text.trim().toLowerCase())
+      );
+      applyUpdatedSuggestions({
+        followups: [...existingFollowups, ...uniqueFollowups],
+        deeper_analysis: [...existingDeeper, ...uniqueDeeper],
+      });
+      return;
+    }
+
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      const res = await fetch(`/api/chat/messages/${messageId}/suggestions/more`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setErrorBanner(errData.error || 'Could not generate more suggestions.');
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (data?.suggestions) {
+        applyUpdatedSuggestions(data.suggestions as MessageSuggestions);
+      }
+    } catch {
+      setErrorBanner('Network error while generating more suggestions.');
+    }
+  };
+
   const handleToggleAskLater = async (
     item: SuggestionItem,
     tier: 'followup' | 'deeper_analysis',
@@ -2885,9 +3180,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             onSelectFollowUp={(q) => void handleSendMessage(q)}
             onSubmitSuggestion={handleSubmitSuggestion}
             onInsertSuggestion={handleInsertSuggestion}
+            onInsertSuggestions={handleInsertSuggestions}
             onToggleAskLater={(item, tier, msgId) =>
               void handleToggleAskLater(item, tier, msgId)
             }
+            onBookmarkSuggestions={(entries, msgId) =>
+              void handleBookmarkSuggestions(entries, msgId)
+            }
+            onLoadMoreSuggestions={handleLoadMoreSuggestions}
             askLaterItems={askLaterItems}
             suggestionsDefaultExpanded={suggestionsDefaultExpanded}
             onSelectProfile={handleSelectProfileFromEmpty}
@@ -2928,6 +3228,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           composerDisabledHint="Choose a companion above to begin talking..."
           onSelectTab={handleSelectTab}
           onCloseTab={handleCloseTab}
+          onReorderTabs={handleReorderTabs}
+          onRenameTab={handleRenameTab}
           onAddCouncilTab={handleAddCouncilTab}
           onAddCompanionArchetypeTab={(archetype) => handleOpenNewCompanionSetup(archetype)}
           onOpenExistingConversationAsTab={handleOpenExistingConversationAsTab}
