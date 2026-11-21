@@ -49,6 +49,7 @@ export interface MessageSuggestions {
   clarification?: ClarificationPayload | null;
   sutra_stage1?: Stage1RouterResult | null;
   sutra_meta?: SutraSynthesisMeta | null;
+  tech_breakdown?: string | null;
 }
 
 export interface AskLaterItem {

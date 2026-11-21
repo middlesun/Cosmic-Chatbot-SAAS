@@ -107,10 +107,14 @@ interface MessageThreadProps {
   expertSlug?: string;
   onSelectClarificationChip?: (chip: ClarificationChip, messageId: string) => void;
   onSelectPartnerProfileForClarification?: (partnerId: string, originalQuestion: string) => void;
+  onContinueWithoutDetails?: (originalQuestion: string, messageId: string) => void;
   onSaveToNotes?: (message: ChatMessageRecord) => void;
   savedNoteMsgIds?: Set<string>;
   savingNoteMsgId?: string | null;
 }
+
+const stripInlineTechBreakdown = (text: string): string =>
+  text.replace(/<<<TECH_BREAKDOWN[\s\S]*$/i, '').trimEnd();
 
 const escapeRegExp = (str: string) =>
   str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -294,6 +298,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   expertSlug = 'council_synthesis',
   onSelectClarificationChip,
   onSelectPartnerProfileForClarification,
+  onContinueWithoutDetails,
   onSaveToNotes,
   savedNoteMsgIds,
   savingNoteMsgId = null,
@@ -310,6 +315,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const [activeUserMsgId, setActiveUserMsgId] = useState<string | null>(null);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [showInlineChartPicker, setShowInlineChartPicker] = useState(false);
+  const [expandedBreakdownIds, setExpandedBreakdownIds] = useState<Record<string, boolean>>({});
 
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
@@ -1145,9 +1151,52 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     remarkPlugins={[remarkGfm]}
                     components={markdownComponents}
                   >
-                    {msg.content}
+                    {stripInlineTechBreakdown(msg.content)}
                   </ReactMarkdown>
                 </div>
+
+                {activePillar === 'council' && msg.suggestions_json?.tech_breakdown && (
+                  <div className="pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedBreakdownIds((prev) => ({
+                          ...prev,
+                          [msg.id]: !prev[msg.id],
+                        }))
+                      }
+                      aria-expanded={Boolean(expandedBreakdownIds[msg.id])}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/14 bg-[#FDFBF7] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                    >
+                      {expandedBreakdownIds[msg.id] ? (
+                        <ChevronUp className="h-3.5 w-3.5 text-[#8B7355]" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5 text-[#8B7355]" />
+                      )}
+                      <span>
+                        {expandedBreakdownIds[msg.id]
+                          ? 'Hide technical breakdown'
+                          : 'View technical breakdown'}
+                      </span>
+                    </button>
+
+                    {expandedBreakdownIds[msg.id] && (
+                      <div className="mt-2.5 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-4 py-3.5 space-y-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8B8275]">
+                          Astrological Evidence &amp; Verification
+                        </p>
+                        <div className="space-y-2.5 text-[13px] leading-[1.66] text-[#3D3830]">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={markdownComponents}
+                          >
+                            {msg.suggestions_json.tech_breakdown}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Phase 3: One-Tap Birth Details Confirmation Card */}
                 {showConfirmCard && pendingProfileConfirm && (
@@ -1278,6 +1327,21 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                           </button>
                         );
                       })}
+
+                      {isActiveClarificationCard && onContinueWithoutDetails && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onContinueWithoutDetails(
+                              clarificationData.originalQuestion || '',
+                              msg.id
+                            )
+                          }
+                          className="min-h-[40px] inline-flex items-center gap-1.5 rounded-full border border-dashed border-[#3D3830]/20 bg-transparent px-3.5 py-2 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3]/65 transition-colors cursor-pointer"
+                        >
+                          <span>Continue without details</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1540,7 +1604,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     remarkPlugins={[remarkGfm]}
                     components={markdownComponents}
                   >
-                    {streamingText}
+                    {stripInlineTechBreakdown(streamingText)}
                   </ReactMarkdown>
                 </div>
               ) : (

@@ -1,9 +1,20 @@
+import type {
+  CareerContextMode,
+  RelationshipContextStatus,
+} from '../../lib/lifeContextSchema';
+import {
+  VALID_ANCHOR_TAGS,
+  VALID_CAREER_MODES,
+  VALID_RELATIONSHIP_STATUSES,
+} from '../../lib/lifeContextSchema';
 import type { Stage1RouterResult, SutraUserProfile, UserFluencyTier } from '../../lib/sutraTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
+import { mergeExtractedLifeFacts } from './lifeContextGuard';
 import {
   createOpenRouterCompletion,
-  getUtilityModel,
-  isOpenRouterConfigured,
+  getUtilityModelAsync,
+  isOpenRouterConfiguredAsync,
+  safeExtractJson,
 } from './openrouter';
 
 export interface ArchivistTurnContext {
@@ -13,6 +24,9 @@ export interface ArchivistTurnContext {
   hasTechnicalDirective?: boolean;
   isDeepAudit?: boolean;
   tradition?: 'vedic' | 'western';
+  latestUserPrompt?: string;
+  latestAssistantAnswer?: string;
+  extractedStressAreas?: string[];
 }
 
 const FLUENCY_ORDER: Record<UserFluencyTier, number> = {
@@ -24,6 +38,29 @@ const FLUENCY_ORDER: Record<UserFluencyTier, number> = {
 function stepFluencyUp(tier: UserFluencyTier): UserFluencyTier {
   if (tier === 'beginner') return 'guided_bridge';
   return 'practitioner';
+}
+
+export function mergeCoreStressAreas(
+  existing?: string[] | null,
+  incoming?: string[] | null
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [...(existing || []), ...(incoming || [])]) {
+    if (typeof raw !== 'string') continue;
+    const cleaned = raw
+      .replace(/[\u0000-\u001F\u007F]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 100);
+    if (!cleaned || cleaned.length < 3) continue;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(cleaned);
+    if (out.length >= 8) break;
+  }
+  return out;
 }
 
 /**
@@ -99,13 +136,168 @@ export function computeUpdatedSutraUserProfile(
     preferredTradition = 'dual';
   }
 
+  const mergedStressAreas = mergeCoreStressAreas(
+    existing?.core_stress_areas,
+    turnContext.extractedStressAreas
+  );
+
   return {
     inferred_fluency: nextFluency,
     recurring_domains: recurringDomains,
     domain_weights: compactWeights,
+    ...(mergedStressAreas.length > 0 ? { core_stress_areas: mergedStressAreas } : {}),
     preferred_tradition: preferredTradition,
     last_updated_at: new Date().toISOString(),
   };
+}
+
+async function extractAndPersistLifeEvents(
+  profileId: string,
+  userId: string,
+  turnContext?: ArchivistTurnContext
+): Promise<string[]> {
+  const userPrompt = (turnContext?.latestUserPrompt || '').trim();
+  if (userPrompt.length < 12) return [];
+
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !(await isOpenRouterConfiguredAsync())) return [];
+
+  try {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('id, user_id, life_context_json')
+      .eq('id', profileId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!profile) return [];
+
+    const utilityModel = await getUtilityModelAsync();
+    const completion = await createOpenRouterCompletion({
+      model: utilityModel,
+      jsonMode: true,
+      temperature: 0.1,
+      maxTokens: 320,
+      messages: [
+        {
+          role: 'user',
+          content: `Extract ONLY explicit, real-world facts stated by the user in this message. NEVER guess or invent years.
+Return strictly JSON:
+{
+  "milestones": [{"year": 2019, "tag": "married", "note": "short 3-8 word fact"}],
+  "core_stress_areas": ["concise recurring life concern if clearly expressed"],
+  "relationship_status": null,
+  "marriage_year": null,
+  "has_children": null,
+  "career_mode": null
+}
+
+Allowed milestone tags: ${Array.from(VALID_ANCHOR_TAGS).join(', ')}.
+Allowed relationship_status: ${Array.from(VALID_RELATIONSHIP_STATUSES).join(', ')} or null.
+Allowed career_mode: ${Array.from(VALID_CAREER_MODES).join(', ')} or null.
+Rules:
+- Only include a milestone if the user explicitly stated the exact 4-digit year in their message (e.g. "married in 2019", "started job in 2018", "lost my father in 2021").
+- core_stress_areas: 0 to 2 concise themes (e.g. "relationship friction with ex", "delayed marriage despite career success", "debt recovery pressure"). Empty array if none.
+
+USER MESSAGE:
+${userPrompt.slice(0, 1400)}`,
+        },
+      ],
+    });
+
+    const parsed = safeExtractJson<{
+      milestones?: unknown;
+      core_stress_areas?: unknown;
+      relationship_status?: unknown;
+      marriage_year?: unknown;
+      has_children?: unknown;
+      career_mode?: unknown;
+    }>(completion.text, {});
+
+    const milestones: Array<{ year: number; tag: string; note?: string }> = [];
+    if (Array.isArray(parsed.milestones)) {
+      for (const item of parsed.milestones) {
+        if (!item || typeof item !== 'object') continue;
+        const rec = item as Record<string, unknown>;
+        const yr = typeof rec.year === 'number' ? rec.year : Number(rec.year);
+        if (!Number.isInteger(yr) || yr < 1930 || yr > new Date().getFullYear() + 1) continue;
+        // Guardrail: ensure the year literally appeared in the user's message
+        if (!userPrompt.includes(String(yr))) continue;
+        const tag = typeof rec.tag === 'string' ? rec.tag.trim() : '';
+        if (!tag) continue;
+        milestones.push({
+          year: yr,
+          tag,
+          note: typeof rec.note === 'string' ? rec.note.trim().slice(0, 80) : undefined,
+        });
+      }
+    }
+
+    const stressAreas = Array.isArray(parsed.core_stress_areas)
+      ? parsed.core_stress_areas.filter((s): s is string => typeof s === 'string')
+      : [];
+
+    const relStatus =
+      typeof parsed.relationship_status === 'string' &&
+      VALID_RELATIONSHIP_STATUSES.has(parsed.relationship_status)
+        ? (parsed.relationship_status as RelationshipContextStatus)
+        : undefined;
+
+    const marriageYrRaw =
+      typeof parsed.marriage_year === 'number' ? parsed.marriage_year : Number(parsed.marriage_year);
+    const marriageYear =
+      Number.isInteger(marriageYrRaw) &&
+      marriageYrRaw >= 1940 &&
+      marriageYrRaw <= new Date().getFullYear() &&
+      userPrompt.includes(String(marriageYrRaw))
+        ? marriageYrRaw
+        : undefined;
+
+    const careerMode =
+      typeof parsed.career_mode === 'string' && VALID_CAREER_MODES.has(parsed.career_mode)
+        ? (parsed.career_mode as CareerContextMode)
+        : undefined;
+
+    const hasChildren =
+      typeof parsed.has_children === 'boolean' ? parsed.has_children : undefined;
+
+    if (
+      milestones.length === 0 &&
+      stressAreas.length === 0 &&
+      !relStatus &&
+      !marriageYear &&
+      hasChildren === undefined &&
+      !careerMode
+    ) {
+      return [];
+    }
+
+    const merged = mergeExtractedLifeFacts(profile.life_context_json, {
+      milestones,
+      core_stress_areas: stressAreas,
+      relationship_status: relStatus,
+      marriage_year: marriageYear,
+      has_children: hasChildren,
+      career_mode: careerMode,
+    });
+
+    if (merged.changed) {
+      await supabaseAdmin
+        .from('profiles')
+        .update({
+          life_context_json: merged.sanitized,
+          life_context_completeness: merged.completeness,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', profileId)
+        .eq('user_id', userId);
+    }
+
+    return stressAreas;
+  } catch (err) {
+    console.warn('[memoryArchivist] Non-fatal life-event extraction error:', err);
+    return [];
+  }
 }
 
 async function updateSilentUserIntelligence(
@@ -141,18 +333,31 @@ async function updateSilentUserIntelligence(
 }
 
 /**
- * Incrementally summarizes the latest consultation exchange into `profiles.profile_memory_summary`
- * (skipping any messages flagged `excluded_from_context`) AND updates silent user intelligence
- * (`users.sutra_user_profile_json`) in the background.
+ * Incrementally summarizes the latest consultation exchange into `profiles.profile_memory_summary`,
+ * silently extracts dated milestones + recurring stress areas into `life_context_json`,
+ * AND updates silent user intelligence (`users.sutra_user_profile_json`) in the background.
  */
 export async function updateProfileMemoryAfterTurn(
   profileId: string,
   userId: string,
   turnContext?: ArchivistTurnContext
 ): Promise<void> {
+  const extractedStress = await extractAndPersistLifeEvents(profileId, userId, turnContext).catch(
+    () => [] as string[]
+  );
+  const enrichedTurnContext: ArchivistTurnContext | undefined = turnContext
+    ? {
+        ...turnContext,
+        extractedStressAreas: mergeCoreStressAreas(
+          turnContext.extractedStressAreas,
+          extractedStress
+        ),
+      }
+    : undefined;
+
   await Promise.allSettled([
     rebuildProfileMemory(profileId, userId),
-    updateSilentUserIntelligence(userId, turnContext),
+    updateSilentUserIntelligence(userId, enrichedTurnContext),
   ]);
 }
 
@@ -165,7 +370,7 @@ export async function rebuildProfileMemory(
   userId: string
 ): Promise<void> {
   const supabaseAdmin = getSupabaseAdmin();
-  if (!supabaseAdmin || !isOpenRouterConfigured()) return;
+  if (!supabaseAdmin || !(await isOpenRouterConfiguredAsync())) return;
 
   try {
     const { data: profile } = await supabaseAdmin
@@ -215,8 +420,9 @@ export async function rebuildProfileMemory(
       .map((m) => `${m.role === 'user' ? 'USER' : 'COUNCIL'}: ${String(m.content).slice(0, 600)}`)
       .join('\n\n');
 
+    const utilityModel = await getUtilityModelAsync();
     const completion = await createOpenRouterCompletion({
-      model: getUtilityModel(),
+      model: utilityModel,
       temperature: 0.3,
       messages: [
         {

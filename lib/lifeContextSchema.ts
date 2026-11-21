@@ -54,6 +54,7 @@ export interface LifeContextData {
   career_role?: string;
   location_status?: LocationContextStatus;
   past_anchors?: LifeContextAnchor[];
+  core_stress_areas?: string[];
   updated_at?: string;
 }
 
@@ -138,6 +139,8 @@ export const PAST_ANCHOR_TAG_OPTIONS: Array<{ value: string; label: string }> = 
   { value: 'education_milestone', label: 'Degree / Exam Milestone' },
   { value: 'health_recovery', label: 'Health Turning Point' },
   { value: 'separation_reset', label: 'Separation / Major Reset' },
+  { value: 'bereavement_loss', label: 'Family Loss / Bereavement' },
+  { value: 'relationship_milestone', label: 'Major Relationship Milestone' },
   { value: 'windfall_breakthrough', label: 'Financial Breakthrough' },
 ];
 

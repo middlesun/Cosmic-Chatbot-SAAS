@@ -37,6 +37,9 @@ export interface AiSettingsResponse {
   hasEnvKey: boolean;
   consultation_model: string;
   utility_model: string;
+  jev_classifier_enabled?: boolean;
+  jev_model?: string;
+  chatbot_pipeline_logging_enabled?: boolean;
   custom_models: CustomModelEntry[];
   builtin_models: CustomModelEntry[];
   token_limits: TokenLimitsConfig;
@@ -68,6 +71,9 @@ const AdminAiSettings: React.FC<AdminAiSettingsProps> = ({
 
   const [consultationModel, setConsultationModel] = useState('google/gemini-2.5-flash');
   const [utilityModel, setUtilityModel] = useState('google/gemini-2.5-flash');
+  const [jevClassifierEnabled, setJevClassifierEnabled] = useState(true);
+  const [jevModel, setJevModel] = useState('typesafe/jev-1.14');
+  const [pipelineLoggingEnabled, setPipelineLoggingEnabled] = useState(false);
   const [builtinModels, setBuiltinModels] = useState<CustomModelEntry[]>([]);
   const [customModels, setCustomModels] = useState<CustomModelEntry[]>([]);
 
@@ -110,6 +116,9 @@ const AdminAiSettings: React.FC<AdminAiSettingsProps> = ({
       setHasEnvKey(Boolean(data.hasEnvKey));
       setConsultationModel(data.consultation_model || 'google/gemini-2.5-flash');
       setUtilityModel(data.utility_model || 'google/gemini-2.5-flash');
+      setJevClassifierEnabled(data.jev_classifier_enabled !== false);
+      setJevModel(data.jev_model || 'typesafe/jev-1.14');
+      setPipelineLoggingEnabled(Boolean(data.chatbot_pipeline_logging_enabled));
       setBuiltinModels(Array.isArray(data.builtin_models) ? data.builtin_models : []);
       setCustomModels(Array.isArray(data.custom_models) ? data.custom_models : []);
       if (data.token_limits) {
@@ -190,6 +199,9 @@ const AdminAiSettings: React.FC<AdminAiSettingsProps> = ({
           ...(newApiKey.trim() ? { openrouter_api_key: newApiKey.trim() } : {}),
           consultation_model: consultationModel,
           utility_model: utilityModel,
+          jev_classifier_enabled: jevClassifierEnabled,
+          jev_model: jevModel,
+          chatbot_pipeline_logging_enabled: pipelineLoggingEnabled,
           custom_models: customModels,
           token_limits: tokenLimits,
         }),
@@ -580,6 +592,94 @@ const AdminAiSettings: React.FC<AdminAiSettingsProps> = ({
           </div>
         </section>
       </div>
+
+      {/* 2B. Stage 1 Jev Decisions & Pipeline Diagnostics */}
+      <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 sm:p-6 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-[#3D3830]">
+              Stage 1 Intent Classifier &amp; Pipeline Diagnostics
+            </h3>
+            <p className="text-xs text-[#8B8275] mt-0.5">
+              Uses your single OpenRouter API key via OpenRouter Alpha Decisions (typesafe/jev-1.14 / 1.13) with automatic Utility LLM fallback.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+          <div className="rounded-2xl border border-[#3D3830]/10 bg-[#FAF7F2] p-4 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-[#3D3830]">
+                Enable Stage 1 Jev Decisions Classifier
+              </span>
+              <button
+                type="button"
+                onClick={() => setJevClassifierEnabled((v) => !v)}
+                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                  jevClassifierEnabled
+                    ? 'bg-[#2D6A4F] text-[#FAF7F2]'
+                    : 'bg-[#EAE3D7] text-[#5C5449]'
+                }`}
+              >
+                {jevClassifierEnabled ? 'On' : 'Off'}
+              </button>
+            </div>
+            <p className="text-[11px] text-[#8B8275] leading-relaxed">
+              When Off (or if Jev times out past 1.2s), routing falls back directly to your OpenRouter Utility Model.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-[#3D3830]/10 bg-[#FAF7F2] p-4 space-y-2">
+            <label className="block text-xs font-semibold text-[#3D3830]">
+              Stage 1 Decisions Model
+            </label>
+            <CustomSelect
+              value={jevModel}
+              onChange={setJevModel}
+              disabled={!jevClassifierEnabled}
+              options={[
+                {
+                  value: 'typesafe/jev-1.14',
+                  label: 'typesafe/jev-1.14 (Default)',
+                  hint: 'OpenRouter Alpha Decisions',
+                },
+                {
+                  value: 'typesafe/jev-1.13',
+                  label: 'typesafe/jev-1.13',
+                  hint: 'OpenRouter Alpha Decisions',
+                },
+                {
+                  value: 'utility_model',
+                  label: 'OpenRouter Utility LLM',
+                  hint: 'Skip Alpha Decisions & classify via Utility Model',
+                },
+              ]}
+            />
+          </div>
+
+          <div className="rounded-2xl border border-[#3D3830]/10 bg-[#FAF7F2] p-4 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-[#3D3830]">
+                Enable Chatbot Pipeline Logs
+              </span>
+              <button
+                type="button"
+                onClick={() => setPipelineLoggingEnabled((v) => !v)}
+                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                  pipelineLoggingEnabled
+                    ? 'bg-[#2D6A4F] text-[#FAF7F2]'
+                    : 'bg-[#EAE3D7] text-[#5C5449]'
+                }`}
+              >
+                {pipelineLoggingEnabled ? 'On' : 'Off'}
+              </button>
+            </div>
+            <p className="text-[11px] text-[#8B8275] leading-relaxed">
+              Records Stage 1–4 routing decisions, cancellations, latency, and failures in Admin → Chatbot Logs.
+            </p>
+          </div>
+        </div>
+      </section>
 
       {/* 3. Custom OpenRouter Model Registry */}
       <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 sm:p-6 space-y-4">

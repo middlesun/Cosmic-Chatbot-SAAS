@@ -51,6 +51,7 @@ import {
   generateMoreAlignedStage4Suggestions,
 } from '../services/suggestionEngine';
 import { USE_DECOUPLED_STAGE4_SUGGESTIONS } from '../services/sutraSynthesizer';
+import { recordChatbotPipelineLog } from '../services/pipelineLogger';
 import type {
   Stage1RouterResult,
   SutraSynthesisMeta,
@@ -1478,6 +1479,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   };
 
   sendEvent({ type: 'user_message', message: userMessage });
+  const turnStartedAt = Date.now();
 
   if (isExtractionProbe) {
     const refusalText = PROMPT_EXTRACTION_REFUSAL;
@@ -1515,6 +1517,19 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       .eq('id', conversation.id)
       .select('*')
       .single();
+
+    void recordChatbotPipelineLog({
+      user_id: req.appUser.id,
+      conversation_id: conversation.id,
+      profile_id: conversation.profile_id,
+      expert_slug: expertSlug,
+      mode_slug: modeSlug,
+      response_length: normalizedResponseLength,
+      user_prompt_preview: promptText,
+      action_taken: 'refuse_extraction',
+      stage1_json: { provider_used: 'rule_guard', is_prompt_extraction: true },
+      total_latency_ms: Date.now() - turnStartedAt,
+    });
 
     sendEvent({
       type: 'done',
@@ -1629,6 +1644,19 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       .select('*')
       .single();
 
+    void recordChatbotPipelineLog({
+      user_id: req.appUser.id,
+      conversation_id: conversation.id,
+      profile_id: conversation.profile_id,
+      expert_slug: expertSlug,
+      mode_slug: modeSlug,
+      response_length: normalizedResponseLength,
+      user_prompt_preview: promptText,
+      action_taken: 'refuse_extraction',
+      stage1_json: stage1Decision.routerResult as unknown as Record<string, unknown>,
+      total_latency_ms: Date.now() - turnStartedAt,
+    });
+
     sendEvent({
       type: 'done',
       assistantMessage,
@@ -1716,6 +1744,23 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       ...((updatedConversation || conversation) as Record<string, unknown>),
       pillar: activePillar,
       companion_persona_json: activeCompanionPersona,
+    });
+
+    void recordChatbotPipelineLog({
+      user_id: req.appUser.id,
+      conversation_id: conversation.id,
+      profile_id: conversation.profile_id,
+      expert_slug: expertSlug,
+      mode_slug: modeSlug,
+      response_length: normalizedResponseLength,
+      user_prompt_preview: promptText,
+      action_taken: stage1Decision.action,
+      stage1_json: {
+        ...stage1Decision.routerResult,
+        trap_id: stage1Decision.trapCheck.trapId,
+        clarification_kind: stage1Decision.clarification.kind,
+      },
+      total_latency_ms: Date.now() - turnStartedAt,
     });
 
     sendEvent({
@@ -1888,12 +1933,14 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       structuredSuggestions.followups.length > 0 ||
       structuredSuggestions.deeper_analysis.length > 0;
     const hasSutraMetadata = Boolean(stage1Decision?.routerResult || streamResult.sutraMeta);
+    const hasTechBreakdown = Boolean(streamResult.techBreakdown);
     const persistedSuggestionsPayload =
-      hasAnyStructured || hasSutraMetadata
+      hasAnyStructured || hasSutraMetadata || hasTechBreakdown
         ? {
             ...structuredSuggestions,
             ...(stage1Decision?.routerResult ? { sutra_stage1: stage1Decision.routerResult } : {}),
             ...(streamResult.sutraMeta ? { sutra_meta: streamResult.sutraMeta } : {}),
+            ...(streamResult.techBreakdown ? { tech_breakdown: streamResult.techBreakdown } : {}),
           }
         : null;
 
@@ -1971,8 +2018,51 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         hasTechnicalDirective: Boolean(safeTechnicalDirective),
         isDeepAudit: useDeepAudit,
         tradition: archivistTradition,
+        latestUserPrompt: promptText,
+        latestAssistantAnswer: finalAssistantText,
       });
     }
+
+    void recordChatbotPipelineLog({
+      user_id: req.appUser.id,
+      conversation_id: conversation.id,
+      profile_id: conversation.profile_id,
+      expert_slug: expertSlug,
+      mode_slug: modeSlug,
+      response_length: normalizedResponseLength,
+      user_prompt_preview: promptText,
+      action_taken: streamResult.aborted ? 'aborted' : 'proceed',
+      stage1_json: stage1Decision
+        ? {
+            ...stage1Decision.routerResult,
+            trap_id: stage1Decision.trapCheck.trapId,
+            bypass_clarification: Boolean(bypassClarification),
+          }
+        : null,
+      stage2_json: streamResult.stage2Pkg
+        ? {
+            playbook_id: streamResult.stage2Pkg.playbookId,
+            domain: streamResult.stage2Pkg.domain,
+            intent: streamResult.stage2Pkg.intent,
+            ...streamResult.stage2Pkg.metrics,
+          }
+        : null,
+      stage3_json: {
+        tokens_in: streamResult.tokensIn,
+        tokens_out: streamResult.tokensOut,
+        credits_charged: chargeTarget,
+        has_tech_breakdown: Boolean(streamResult.techBreakdown),
+        tech_breakdown_chars: streamResult.techBreakdown?.length || 0,
+        leak_intercepted: wasLeakIntercepted,
+        ...(streamResult.sutraMeta || {}),
+      },
+      stage4_json: {
+        followups_count: structuredSuggestions.followups.length,
+        deeper_analysis_count: structuredSuggestions.deeper_analysis.length,
+        decoupled_stage4: useStage4AlignedSuggestions,
+      },
+      total_latency_ms: Date.now() - turnStartedAt,
+    });
 
     const enrichedConversation = normalizeConversationDefaults({
       ...((updatedConversation || conversation) as Record<string, unknown>),
@@ -1985,6 +2075,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       assistantMessage,
       followups,
       suggestions: persistedSuggestionsPayload,
+      techBreakdown: streamResult.techBreakdown || null,
       sutraMeta: streamResult.sutraMeta || null,
       pendingProfile,
       conversation: enrichedConversation,
@@ -1996,6 +2087,21 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   } catch (err) {
     req.off('close', handleDisconnect);
     const message = err instanceof Error ? err.message : 'Consultation generation failed';
+    void recordChatbotPipelineLog({
+      user_id: req.appUser.id,
+      conversation_id: conversation.id,
+      profile_id: conversation.profile_id,
+      expert_slug: expertSlug,
+      mode_slug: modeSlug,
+      response_length: normalizedResponseLength,
+      user_prompt_preview: promptText,
+      action_taken: 'error',
+      stage1_json: stage1Decision
+        ? (stage1Decision.routerResult as unknown as Record<string, unknown>)
+        : null,
+      total_latency_ms: Date.now() - turnStartedAt,
+      error_message: message,
+    });
     sendEvent({ type: 'error', error: message });
     res.end();
   }

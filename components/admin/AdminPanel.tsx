@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
+  Activity,
   ArrowLeft,
   ArrowUpRight,
   Coins,
@@ -26,6 +27,7 @@ import PromptLibraryManager, {
   type SystemPromptRecord,
 } from './PromptLibraryManager';
 import AdminChatbotControl from './AdminChatbotControl';
+import AdminChatbotLogs from './AdminChatbotLogs';
 import AdminReportsManager, { type AdminReportRecord } from './AdminReportsManager';
 import AdminAiSettings, { type AiSettingsResponse } from './AdminAiSettings';
 import AdminPricingPlans from './AdminPricingPlans';
@@ -38,6 +40,7 @@ type AdminSectionKey =
   | 'users'
   | 'prompts'
   | 'chatbot'
+  | 'chatbot-logs'
   | 'reports'
   | 'apps'
   | 'ai-settings'
@@ -116,6 +119,13 @@ const PRIMARY_ADMIN_NAV: SidebarNavItem[] = [
     icon: MessageSquare,
   },
   {
+    key: 'chatbot-logs',
+    label: 'Chatbot Logs',
+    path: '/app/admin/chatbot-logs',
+    description: 'Stage 1–4 pipeline execution diagnostics, latency, and error traces.',
+    icon: Activity,
+  },
+  {
     key: 'reports',
     label: 'Reports manager',
     path: '/app/admin/reports',
@@ -174,6 +184,8 @@ function resolveSectionFromPath(pathname: string): AdminSectionKey {
       return 'prompts';
     case 'chatbot':
       return 'chatbot';
+    case 'chatbot-logs':
+      return 'chatbot-logs';
     case 'reports':
       return 'reports';
     case 'apps':
@@ -836,6 +848,11 @@ const AdminPanel: React.FC = () => {
               getAccessToken={getAccessToken}
               onPromptsChanged={() => void loadCoreAdminData(true)}
             />
+          )}
+
+          {/* SECTION 4B: Chatbot Pipeline Logs */}
+          {activeSection === 'chatbot-logs' && (
+            <AdminChatbotLogs getAccessToken={getAccessToken} />
           )}
 
           {/* SECTION 5: Reports manager */}

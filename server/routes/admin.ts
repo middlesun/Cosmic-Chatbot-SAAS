@@ -47,6 +47,11 @@ import { MINI_APPS_CATALOG } from '../services/miniAppsCatalog';
 import { clearMiniAppsMemoryCache } from './apps';
 import { ensureReportCatalogSeeded } from '../services/reportDefaults';
 import { isSanityConfigured } from '../../lib/sanity';
+import {
+  clearChatbotPipelineLogs,
+  getChatbotPipelineLogs,
+  isPipelineLogsTableReady,
+} from '../services/pipelineLogger';
 
 const router = Router();
 
@@ -309,6 +314,9 @@ router.get('/overview', async (_req: AuthenticatedRequest, res) => {
     aiRuntime: {
       consultationModel: runtime.consultationModel,
       utilityModel: runtime.utilityModel,
+      jevClassifierEnabled: runtime.jevClassifierEnabled,
+      jevModel: runtime.jevModel,
+      pipelineLoggingEnabled: runtime.pipelineLoggingEnabled,
       keySource: runtime.keySource,
       maskedKey: runtime.maskedKey,
     },
@@ -1840,7 +1848,7 @@ router.post('/import-clients', async (req: AuthenticatedRequest, res) => {
   res.json({ results });
 });
 
-// 7. AI Settings (OpenRouter API Key Override, Models Registry, Token Limits)
+// 7. AI Settings (OpenRouter API Key Override, Models Registry, Token Limits, Jev & Pipeline Logs)
 router.get('/settings/ai', async (_req: AuthenticatedRequest, res) => {
   const runtime = await getResolvedOpenRouterRuntime();
   res.json({
@@ -1850,6 +1858,9 @@ router.get('/settings/ai', async (_req: AuthenticatedRequest, res) => {
     hasEnvKey: runtime.hasEnvKey,
     consultation_model: runtime.consultationModel,
     utility_model: runtime.utilityModel,
+    jev_classifier_enabled: runtime.jevClassifierEnabled,
+    jev_model: runtime.jevModel,
+    chatbot_pipeline_logging_enabled: runtime.pipelineLoggingEnabled,
     custom_models: runtime.customModels,
     builtin_models: BUILTIN_MODEL_SUGGESTIONS,
     token_limits: runtime.tokenLimits,
@@ -1867,6 +1878,9 @@ router.put('/settings/ai', async (req: AuthenticatedRequest, res) => {
     openrouter_api_key,
     consultation_model,
     utility_model,
+    jev_classifier_enabled,
+    jev_model,
+    chatbot_pipeline_logging_enabled,
     custom_models,
     token_limits,
   } = req.body || {};
@@ -1930,6 +1944,18 @@ router.put('/settings/ai', async (req: AuthenticatedRequest, res) => {
       typeof utility_model === 'string' && utility_model.trim()
         ? utility_model.trim()
         : current.utility_model,
+    jev_classifier_enabled:
+      typeof jev_classifier_enabled === 'boolean'
+        ? jev_classifier_enabled
+        : current.jev_classifier_enabled,
+    jev_model:
+      typeof jev_model === 'string' && jev_model.trim()
+        ? jev_model.trim().slice(0, 120)
+        : current.jev_model,
+    chatbot_pipeline_logging_enabled:
+      typeof chatbot_pipeline_logging_enabled === 'boolean'
+        ? chatbot_pipeline_logging_enabled
+        : current.chatbot_pipeline_logging_enabled,
     custom_models: sanitizedCustomModels,
     token_limits: nextLimits,
   };
@@ -1949,6 +1975,9 @@ router.put('/settings/ai', async (req: AuthenticatedRequest, res) => {
     hasEnvKey: runtime.hasEnvKey,
     consultation_model: runtime.consultationModel,
     utility_model: runtime.utilityModel,
+    jev_classifier_enabled: runtime.jevClassifierEnabled,
+    jev_model: runtime.jevModel,
+    chatbot_pipeline_logging_enabled: runtime.pipelineLoggingEnabled,
     custom_models: runtime.customModels,
     builtin_models: BUILTIN_MODEL_SUGGESTIONS,
     token_limits: runtime.tokenLimits,
@@ -3050,6 +3079,7 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     hasAppCache,
     hasAppUsageLogs,
     hasUserFavoriteApps,
+    hasPipelineLogs,
   ] = await Promise.all([
     checkTable('users'),
     checkTable('profiles'),
@@ -3063,12 +3093,14 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     checkTable('app_cache'),
     checkTable('app_usage_logs'),
     checkTable('user_favorite_apps', 'user_id, app_slug'),
+    isPipelineLogsTableReady(),
   ]);
 
   const migration004Ready = hasPlatformSettings && hasPromptRecipes && hasSupportTickets;
   const migration005Ready = hasMigration005Profiles && hasMigration005Messages;
   const migration006Ready = hasMigration006Conversations;
   const migration007Ready = hasAppCache && hasAppUsageLogs && hasUserFavoriteApps;
+  const migration012Ready = hasPipelineLogs;
 
   res.json({
     integrations: {
@@ -3096,13 +3128,67 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
       app_cache: hasAppCache,
       app_usage_logs: hasAppUsageLogs,
       user_favorite_apps: hasUserFavoriteApps,
+      chatbot_pipeline_logs: hasPipelineLogs,
     },
     migration004Ready,
     migration005Ready,
     migration006Ready,
     migration007Ready,
+    migration012Ready,
     timestamp: new Date().toISOString(),
   });
+});
+
+// 14. Chatbot Pipeline Diagnostics & Execution Logs
+router.get('/chatbot-logs', async (req: AuthenticatedRequest, res) => {
+  const limitRaw = Number(req.query.limit || 60);
+  const actionFilter = typeof req.query.action === 'string' ? req.query.action : 'all';
+  const [ai, result] = await Promise.all([
+    getAiSettings(),
+    getChatbotPipelineLogs({
+      limit: Number.isFinite(limitRaw) ? limitRaw : 60,
+      actionFilter,
+    }),
+  ]);
+  res.json({
+    enabled: Boolean(ai.chatbot_pipeline_logging_enabled),
+    jevClassifierEnabled: Boolean(ai.jev_classifier_enabled),
+    jevModel: ai.jev_model,
+    logs: result.logs,
+    storage: result.storage,
+    tableMissing: result.tableMissing,
+  });
+});
+
+router.post('/chatbot-logs/toggle', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+  const { enabled } = req.body || {};
+  if (typeof enabled !== 'boolean') {
+    res.status(400).json({ error: 'enabled (boolean) is required.' });
+    return;
+  }
+  const current = await getAiSettings();
+  const saved = await savePlatformSetting(
+    'ai_config',
+    {
+      ...current,
+      chatbot_pipeline_logging_enabled: enabled,
+    },
+    req.appUser.id
+  );
+  if (!saved.ok) {
+    res.status(400).json({ error: saved.error || 'Failed to update pipeline logging toggle.' });
+    return;
+  }
+  res.json({ enabled });
+});
+
+router.delete('/chatbot-logs', async (_req: AuthenticatedRequest, res) => {
+  const result = await clearChatbotPipelineLogs();
+  res.json({ cleared: true, ...result });
 });
 
 router.post('/platform/cache-flush', async (_req: AuthenticatedRequest, res) => {

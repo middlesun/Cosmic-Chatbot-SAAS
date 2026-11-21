@@ -35,11 +35,13 @@ interface PlatformHealthResponse {
     app_cache?: boolean;
     app_usage_logs?: boolean;
     user_favorite_apps?: boolean;
+    chatbot_pipeline_logs?: boolean;
   };
   migration004Ready: boolean;
   migration005Ready?: boolean;
   migration006Ready?: boolean;
   migration007Ready?: boolean;
+  migration012Ready?: boolean;
   timestamp: string;
 }
 
@@ -186,6 +188,11 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
           ok: Boolean(health.tables.user_favorite_apps),
           group: 'Mini-Apps & Telemetry (007)',
         },
+        {
+          name: 'public.chatbot_pipeline_logs',
+          ok: Boolean(health.tables.chatbot_pipeline_logs),
+          group: 'Pipeline Diagnostics (012)',
+        },
       ]
     : [];
 
@@ -224,6 +231,15 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
                 id: '007',
                 file: 'supabase/migrations/007_mini_apps_and_usage.sql',
                 summary: 'Mini-Apps response cache, token telemetry logs & saved favorites',
+              },
+            ]
+          : []),
+        ...(health.migration012Ready === false
+          ? [
+              {
+                id: '012',
+                file: 'supabase/migrations/012_pipeline_logs_and_stress_context.sql',
+                summary: 'Chatbot Pipeline Diagnostics Logs & User Stress Context',
               },
             ]
           : []),

@@ -27,7 +27,8 @@ export type {
 export { computeLifeContextCompleteness };
 
 const MAX_CHILDREN = 10;
-const MAX_ANCHORS = 10;
+const MAX_ANCHORS = 12;
+const MAX_STRESS_AREAS = 8;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_24H_RE = /^\d{2}:\d{2}(:\d{2})?$/;
 
@@ -138,7 +139,7 @@ export function sanitizeLifeContext(rawInput: unknown): {
   }
 
   if (Array.isArray(src.past_anchors)) {
-    const cleanedAnchors: LifeContextAnchor[] = [];
+    const anchorMap = new Map<string, LifeContextAnchor>();
     for (const item of src.past_anchors) {
       if (!item || typeof item !== 'object') continue;
       const row = item as Record<string, unknown>;
@@ -149,15 +150,34 @@ export function sanitizeLifeContext(rawInput: unknown): {
         : cleanShortText(rawTag, 32)?.toLowerCase().replace(/[^a-z0-9_]+/g, '_');
       if (year === undefined || !safeTag) continue;
 
-      const anchor: LifeContextAnchor = { year, tag: safeTag };
       const note = cleanShortText(row.note, 80);
-      if (note) anchor.note = note;
-      cleanedAnchors.push(anchor);
-      if (cleanedAnchors.length >= MAX_ANCHORS) break;
+      const dedupeKey = `${year}:${safeTag}`;
+      const existing = anchorMap.get(dedupeKey);
+      if (!existing || ((note?.length || 0) > (existing.note?.length || 0))) {
+        anchorMap.set(dedupeKey, note ? { year, tag: safeTag, note } : { year, tag: safeTag });
+      }
+      if (anchorMap.size >= MAX_ANCHORS) break;
     }
-    if (cleanedAnchors.length > 0) {
-      cleanedAnchors.sort((a, b) => a.year - b.year);
+    if (anchorMap.size > 0) {
+      const cleanedAnchors = Array.from(anchorMap.values()).sort((a, b) => a.year - b.year);
       sanitized.past_anchors = cleanedAnchors;
+    }
+  }
+
+  if (Array.isArray(src.core_stress_areas)) {
+    const seenStress = new Set<string>();
+    const cleanedStress: string[] = [];
+    for (const rawItem of src.core_stress_areas) {
+      const text = cleanShortText(rawItem, 100);
+      if (!text || text.length < 3) continue;
+      const key = text.toLowerCase();
+      if (seenStress.has(key)) continue;
+      seenStress.add(key);
+      cleanedStress.push(text);
+      if (cleanedStress.length >= MAX_STRESS_AREAS) break;
+    }
+    if (cleanedStress.length > 0) {
+      sanitized.core_stress_areas = cleanedStress;
     }
   }
 
@@ -183,6 +203,54 @@ export function mergeLifeContextPatch(
     ...existing,
     ...patchRaw,
   });
+}
+
+export interface ExtractedLifeFactsPatch {
+  milestones?: Array<{ year: number; tag: string; note?: string }>;
+  core_stress_areas?: string[];
+  relationship_status?: RelationshipContextStatus;
+  marriage_year?: number;
+  has_children?: boolean;
+  career_mode?: CareerContextMode;
+}
+
+/**
+ * Non-destructively merges silently extracted chat milestones & recurring stress areas
+ * onto an existing `life_context_json` object without overwriting user-entered fields.
+ */
+export function mergeExtractedLifeFacts(
+  existingRaw: unknown,
+  extracted: ExtractedLifeFactsPatch
+): { sanitized: LifeContextData; completeness: number; changed: boolean } {
+  const { sanitized: base } = sanitizeLifeContext(existingRaw);
+  const existingAnchors = Array.isArray(base.past_anchors) ? [...base.past_anchors] : [];
+  const existingStress = Array.isArray(base.core_stress_areas) ? [...base.core_stress_areas] : [];
+
+  const nextCandidate: LifeContextData = {
+    ...base,
+    past_anchors: [...existingAnchors, ...(extracted.milestones || [])],
+    core_stress_areas: [...existingStress, ...(extracted.core_stress_areas || [])],
+  };
+
+  if (!base.relationship_status && extracted.relationship_status) {
+    nextCandidate.relationship_status = extracted.relationship_status;
+  }
+  if (!base.marriage_year && extracted.marriage_year) {
+    nextCandidate.marriage_year = extracted.marriage_year;
+  }
+  if (base.has_children === undefined && typeof extracted.has_children === 'boolean') {
+    nextCandidate.has_children = extracted.has_children;
+  }
+  if (!base.career_mode && extracted.career_mode) {
+    nextCandidate.career_mode = extracted.career_mode;
+  }
+
+  const { sanitized, completeness } = sanitizeLifeContext(nextCandidate);
+  const changed =
+    JSON.stringify({ ...base, updated_at: undefined }) !==
+    JSON.stringify({ ...sanitized, updated_at: undefined });
+
+  return { sanitized, completeness, changed };
 }
 
 export interface ContextTrapCheckResult {
@@ -226,9 +294,14 @@ export function detectContextTrapMismatch(
   const playbook = (playbookId || '').trim().toUpperCase();
   const isFollowUp = Boolean(options?.isFollowUpTurn);
 
+  const hasMarriedAnchor = Boolean(
+    ctx.marriage_year ||
+      (Array.isArray(ctx.past_anchors) && ctx.past_anchors.some((a) => a.tag === 'married'))
+  );
   const isMarried =
     ctx.relationship_status === 'married_no_children' ||
-    ctx.relationship_status === 'married_with_children';
+    ctx.relationship_status === 'married_with_children' ||
+    (!ctx.relationship_status && hasMarriedAnchor);
 
   // 1. Married user asking first-marriage timing/likelihood
   if (
@@ -244,6 +317,7 @@ export function detectContextTrapMismatch(
       clarification: {
         kind: 'trap_mismatch',
         trapId: 'MARRIED_ASKING_FIRST_MARRIAGE',
+        originalQuestion: prompt,
         message:
           "I see your profile notes you're already married. Would you like to verify your past marriage window against the chart, explore how your current partnership evolves next, or ask about a second chapter?",
         chips: [
@@ -274,10 +348,14 @@ export function detectContextTrapMismatch(
   }
 
   // 2. Parent asking "Will I have children?"
+  const hasChildAnchor = Boolean(
+    Array.isArray(ctx.past_anchors) && ctx.past_anchors.some((a) => a.tag === 'child_born')
+  );
   const hasExistingChildren =
     ctx.has_children === true ||
     ctx.relationship_status === 'married_with_children' ||
-    (Array.isArray(ctx.children) && ctx.children.length > 0);
+    (Array.isArray(ctx.children) && ctx.children.length > 0) ||
+    hasChildAnchor;
 
   if (
     hasExistingChildren &&
@@ -341,6 +419,7 @@ export function detectContextTrapMismatch(
   // 3. Missing Marital Status on marriage-timing / love vs arranged / delay questions
   if (
     !ctx.relationship_status &&
+    !hasMarriedAnchor &&
     !isFollowUp &&
     !EXPLICIT_STATUS_IN_PROMPT_RE.test(prompt) &&
     ['MAR_01', 'MAR_02', 'MAR_04', 'MAR_08', 'MAR_09', 'MAR_12'].includes(playbook)
@@ -353,6 +432,7 @@ export function detectContextTrapMismatch(
       clarification: {
         kind: 'missing_context',
         trapId: 'MISSING_MARRIAGE_STATUS',
+        originalQuestion: prompt,
         message:
           'To anchor this reading in your real-life situation, what is your relationship status right now?',
         chips: [

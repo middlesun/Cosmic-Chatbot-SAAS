@@ -31,7 +31,11 @@ import {
   SIGNS,
   type PlanetPosition,
 } from '../server/services/jyotishMath';
-import { computeUpdatedSutraUserProfile } from '../server/services/memoryArchivist';
+import {
+  computeUpdatedSutraUserProfile,
+  mergeCoreStressAreas,
+} from '../server/services/memoryArchivist';
+import { mergeExtractedLifeFacts } from '../server/services/lifeContextGuard';
 import { compileNatalTruthDossier, type NatalTruthDossierV1 } from '../server/services/natalDossier';
 import {
   buildStage4StructuredSeeds,
@@ -41,6 +45,7 @@ import {
 import {
   buildSutraPathAPrompt,
   computeDeterministicPillarConvergence,
+  extractTechBreakdown,
   USE_DECOUPLED_STAGE4_SUGGESTIONS,
 } from '../server/services/sutraSynthesizer';
 
@@ -667,6 +672,71 @@ async function runBenchmark() {
       cancellations: pkg.triggeredCancellations.length,
       suggestionsInfo: `Sandhi Flagged · Escalation=${seeds.needsDeepAuditEscalation}`,
       notes: '4 isolated slices verified',
+    });
+  }
+
+  // ── Case 9: Short Breakdown Extraction, Silent Milestones & Natural Clarification ──
+  {
+    const t0 = Date.now();
+    const closedSample = extractTechBreakdown(
+      'Calm plain answer here.\n<<<TECH_BREAKDOWN>>>\n**KP Check:** 7th CSL supports commitment.\n<<<END_TECH_BREAKDOWN>>>'
+    );
+    assert.equal(closedSample.mainText, 'Calm plain answer here.');
+    assert.ok(closedSample.techBreakdown?.includes('7th CSL supports commitment'));
+
+    const unclosedSample = extractTechBreakdown(
+      'Short insight.\n<<<TECH_BREAKDOWN>>>\n- Saturn transits 10th house.'
+    );
+    assert.equal(unclosedSample.mainText, 'Short insight.');
+    assert.ok(unclosedSample.techBreakdown?.includes('Saturn transits 10th house'));
+
+    const mergedResult = mergeExtractedLifeFacts(
+      {
+        relationship_status: 'single',
+        past_anchors: [{ year: 2018, tag: 'career_milestone', note: 'First job' }],
+      },
+      {
+        milestones: [
+          { year: 2018, tag: 'career_milestone', note: 'Duplicate job' },
+          { year: 2021, tag: 'bereavement_loss', note: 'Lost father' },
+        ],
+        core_stress_areas: ['career stagnation', 'relationship friction with ex'],
+        marriage_year: 2020,
+      }
+    );
+    const mergedContext = mergedResult.sanitized;
+    assert.equal(mergedResult.changed, true);
+    assert.equal(mergedContext.past_anchors?.length, 2, 'Past anchors should deduplicate by year+tag');
+    assert.equal(mergedContext.relationship_status, 'single', 'Existing relationship_status should not be overwritten');
+    assert.equal(mergedContext.marriage_year, 2020, 'Missing marriage_year should backfill');
+    assert.equal(mergedContext.core_stress_areas?.length, 2);
+
+    const stressMerged = mergeCoreStressAreas(
+      ['Career stagnation', 'Debt pressure'],
+      ['career stagnation', 'Relationship friction with ex']
+    );
+    assert.equal(stressMerged.length, 3);
+
+    const followUpRoute = await evaluateStage1Routing({
+      userPrompt: 'What about next year?',
+      hasPrimaryProfile: true,
+      extraProfilesCount: 0,
+      lifeContext: marriedContext,
+      isFollowUpTurn: true,
+    });
+    assert.equal(followUpRoute.action, 'proceed', 'Natural follow-up turn should not pause for clarification');
+
+    results.push({
+      id: 'CASE-09',
+      label: 'Short Breakdown + Milestones + Escape',
+      passed: true,
+      latencyMs: Date.now() - t0,
+      playbook: followUpRoute.playbook.id,
+      intentOrAction: `${followUpRoute.action} (${followUpRoute.routerResult.provider_used})`,
+      convergence: 'N/A',
+      cancellations: 0,
+      suggestionsInfo: `Anchors=${mergedContext.past_anchors?.length}, Stress=${stressMerged.length}`,
+      notes: 'Breakdown markers & dedup verified',
     });
   }
 

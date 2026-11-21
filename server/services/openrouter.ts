@@ -47,7 +47,7 @@ export async function getUtilityModelAsync(): Promise<string> {
   return runtime.utilityModel;
 }
 
-function buildOpenRouterHeaders(apiKey: string): Record<string, string> {
+export function buildOpenRouterHeaders(apiKey: string): Record<string, string> {
   return {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',

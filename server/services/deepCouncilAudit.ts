@@ -13,8 +13,10 @@ import {
 } from './openrouter';
 import {
   buildIntentOutputContract,
+  buildShortReplyBreakdownInstruction,
   buildVoiceAndFormatInstructions,
   computeDeterministicPillarConvergence,
+  extractTechBreakdown,
   resolveEffectiveFluency,
   SUTRA_ANTI_CLICHE_RULES,
   SUTRA_TIER1_REASONING_LAWS,
@@ -168,6 +170,7 @@ export interface RunDeepCouncilAuditParams {
 
 export interface RunDeepCouncilAuditResult {
   fullText: string;
+  techBreakdown?: string | null;
   tokensIn: number;
   tokensOut: number;
   aborted: boolean;
@@ -191,7 +194,9 @@ function buildAdjudicatorSystemPrompt(params: {
     .join('\n\n');
 
   const dualViewRule =
-    effectiveFluency !== 'beginner' || base.outputSlug === 'marriage_master'
+    base.responseLength === 'short'
+      ? buildShortReplyBreakdownInstruction(effectiveFluency, base.languageSlug)
+      : effectiveFluency !== 'beginner' || base.outputSlug === 'marriage_master'
       ? `TECHNICAL TRACE REQUIREMENT:
 End cleanly with a concise, clearly labeled **System Convergence & Technical Trace** section showing how KP promise, D9 Navamsa endurance, Shadbala/SAV stamina, and active Dasha timing resolve any friction (keep bullet points crisp and mobile-readable).`
       : '';
@@ -338,6 +343,7 @@ export async function runDeepCouncilAudit(
   let rawAccumulated = '';
   let flushedLength = 0;
   let leakIntercepted = false;
+  let hiddenBreakdownHoldStarted = false;
   const HOLD_BACK_CHARS = 72;
 
   try {
@@ -359,6 +365,21 @@ export async function runDeepCouncilAudit(
           internalAbortController.abort();
           return;
         }
+        if (hiddenBreakdownHoldStarted) return;
+
+        const breakdownIdx = rawAccumulated.search(/<<<TECH_BREAKDOWN/i);
+        if (breakdownIdx !== -1) {
+          if (breakdownIdx > flushedLength) {
+            const beforeTag = sanitizeSutraProse(
+              rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, '')
+            );
+            if (beforeTag) params.onChunk(beforeTag);
+            flushedLength = breakdownIdx;
+          }
+          hiddenBreakdownHoldStarted = true;
+          return;
+        }
+
         let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
         if (safeEnd > flushedLength) {
           const tentative = rawAccumulated.slice(flushedLength, safeEnd);
@@ -397,6 +418,7 @@ export async function runDeepCouncilAudit(
     if (leakIntercepted || containsInternalPromptLeak(streamResult.fullText)) {
       return {
         fullText: PROMPT_EXTRACTION_REFUSAL,
+        techBreakdown: null,
         tokensIn: totalTokensIn,
         tokensOut: totalTokensOut,
         aborted: false,
@@ -407,16 +429,19 @@ export async function runDeepCouncilAudit(
       };
     }
 
-    if (rawAccumulated.length > flushedLength) {
-      const remaining = sanitizeSutraProse(rawAccumulated.slice(flushedLength));
-      flushedLength = rawAccumulated.length;
+    const extractedAccumulated = extractTechBreakdown(rawAccumulated);
+    if (!hiddenBreakdownHoldStarted && extractedAccumulated.mainText.length > flushedLength) {
+      const remaining = sanitizeSutraProse(extractedAccumulated.mainText.slice(flushedLength));
+      flushedLength = extractedAccumulated.mainText.length;
       if (remaining) params.onChunk(remaining);
     }
 
-    const sanitized = sanitizeAssistantOutput(streamResult.fullText.trim());
+    const extractedFinal = extractTechBreakdown(streamResult.fullText.trim());
+    const sanitized = sanitizeAssistantOutput(extractedFinal.mainText);
     if (sanitized.leaked) {
       return {
         fullText: sanitized.text,
+        techBreakdown: null,
         tokensIn: totalTokensIn,
         tokensOut: totalTokensOut,
         aborted: false,
@@ -425,10 +450,19 @@ export async function runDeepCouncilAudit(
         convergence,
         meta,
       };
+    }
+
+    let safeBreakdown: string | null = null;
+    if (extractedFinal.techBreakdown) {
+      const bdSanitized = sanitizeAssistantOutput(extractedFinal.techBreakdown);
+      if (!bdSanitized.leaked && bdSanitized.text.trim()) {
+        safeBreakdown = bdSanitized.text.trim();
+      }
     }
 
     return {
       fullText: sanitized.text,
+      techBreakdown: safeBreakdown,
       tokensIn: totalTokensIn,
       tokensOut: totalTokensOut,
       aborted: streamResult.aborted && !leakIntercepted,

@@ -1834,6 +1834,34 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       return;
     }
 
+    // Clarification escape hatch: if user types "continue", "skip", "proceed", etc. right after
+    // a clarification card, bypass clarification and answer the original question directly.
+    if (
+      !overrideConversation &&
+      !overrideText &&
+      !sutraOptions?.bypassClarification &&
+      pendingAttachments.length === 0 &&
+      /^(?:continue|skip|proceed|go ahead|just answer|answer anyway|continue without details|no details|skip details)[.!]?$/i.test(
+        promptToSend
+      )
+    ) {
+      const lastMsg = messages[messages.length - 1];
+      const activeClarification =
+        lastMsg?.role === 'assistant' ? lastMsg.suggestions_json?.clarification : null;
+      if (activeClarification) {
+        const resolvedQ =
+          activeClarification.originalQuestion?.trim() ||
+          findPrecedingUserMessageText(messages, lastMsg.id);
+        if (resolvedQ) {
+          setDraftText('');
+          void handleSendMessage(resolvedQ, undefined, undefined, {
+            bypassClarification: true,
+          });
+          return;
+        }
+      }
+    }
+
     setErrorBanner(null);
     setGeneralReadyMode(false);
     const token = await getAccessToken();
@@ -1968,6 +1996,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             message?: ChatMessageRecord;
             assistantMessage?: ChatMessageRecord;
             suggestions?: MessageSuggestions | null;
+            techBreakdown?: string | null;
             conversation?: ConversationRecord;
             pendingProfile?: PendingBirthProfileDraft | null;
             text?: string;
@@ -1981,12 +2010,22 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             setStreamingText(accumulated);
           } else if (evt.type === 'done') {
             if (evt.assistantMessage) {
+              const baseSuggestions =
+                evt.assistantMessage.suggestions_json ?? evt.suggestions ?? null;
+              const mergedSuggestions =
+                sendPillar === 'council' && baseSuggestions
+                  ? {
+                      ...baseSuggestions,
+                      ...(evt.techBreakdown && !baseSuggestions.tech_breakdown
+                        ? { tech_breakdown: evt.techBreakdown }
+                        : {}),
+                    }
+                  : sendPillar === 'council' && evt.techBreakdown
+                  ? { followups: [], deeper_analysis: [], tech_breakdown: evt.techBreakdown }
+                  : null;
               const enrichedAssistant: ChatMessageRecord = {
                 ...evt.assistantMessage,
-                suggestions_json:
-                  sendPillar === 'council'
-                    ? evt.assistantMessage.suggestions_json ?? evt.suggestions ?? null
-                    : null,
+                suggestions_json: sendPillar === 'council' ? mergedSuggestions : null,
               };
               setMessages((prev) => [...prev, enrichedAssistant]);
               if (sendPillar === 'council' && evt.pendingProfile) {
@@ -2125,6 +2164,32 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     void handleSendMessage(questionText, undefined, undefined, {
       bypassClarification: true,
       overrideExtraProfileIds: nextExtra,
+    });
+  };
+
+  const findPrecedingUserMessageText = (
+    list: ChatMessageRecord[],
+    beforeMessageId?: string
+  ): string => {
+    const startIdx = beforeMessageId
+      ? list.findIndex((m) => m.id === beforeMessageId)
+      : list.length;
+    const upper = startIdx >= 0 ? startIdx : list.length;
+    for (let i = upper - 1; i >= 0; i--) {
+      if (list[i].role === 'user' && list[i].content.trim()) {
+        return list[i].content.trim();
+      }
+    }
+    return '';
+  };
+
+  const handleContinueWithoutDetails = (originalQuestion: string, messageId: string) => {
+    if (isStreaming) return;
+    const resolvedQ =
+      originalQuestion.trim() || findPrecedingUserMessageText(messages, messageId);
+    if (!resolvedQ) return;
+    void handleSendMessage(resolvedQ, undefined, undefined, {
+      bypassClarification: true,
     });
   };
 
@@ -3350,6 +3415,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             onSelectPartnerProfileForClarification={(partnerId, originalQ) =>
               handleSelectPartnerProfileForClarification(partnerId, originalQ)
             }
+            onContinueWithoutDetails={handleContinueWithoutDetails}
             onSaveToNotes={(msg) => void handleSaveMessageToNotes(msg)}
             savedNoteMsgIds={savedNoteMsgIds}
             savingNoteMsgId={savingNoteMsgId}

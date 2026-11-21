@@ -26,6 +26,7 @@ export interface Stage1RouterResult {
   requests_remedy_or_guidance: boolean;
   complexity_intensity: number; // 2..10
   provider_used: Stage1ProviderUsed;
+  model_used?: string;
   latency_ms: number;
 }
 
@@ -42,6 +43,7 @@ export interface ClarificationPayload {
   kind: 'trap_mismatch' | 'missing_context' | 'ambiguous_intent' | 'partner_required';
   trapId?: string | null;
   message: string;
+  originalQuestion?: string;
   chips: ClarificationChip[];
 }
 
@@ -62,6 +64,7 @@ export interface SutraUserProfile {
   inferred_fluency: UserFluencyTier;
   recurring_domains: string[];
   domain_weights?: Record<string, number>;
+  core_stress_areas?: string[];
   preferred_tradition?: 'vedic' | 'western' | 'dual';
   last_updated_at: string;
 }

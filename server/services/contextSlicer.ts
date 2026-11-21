@@ -239,6 +239,13 @@ function formatLifeContextAnchor(
         .join('; ')}`
     );
   }
+  if (Array.isArray(ctx.core_stress_areas) && ctx.core_stress_areas.length > 0) {
+    lines.push(
+      `Core recurring life concerns (stay empathetic and mindful without reciting mechanically): ${ctx.core_stress_areas
+        .slice(0, 5)
+        .join('; ')}`
+    );
+  }
   if (contextTrapPromptNote) {
     lines.push(`Context adaptation: ${contextTrapPromptNote}`);
   }

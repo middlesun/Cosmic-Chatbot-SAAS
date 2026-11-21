@@ -13,6 +13,63 @@ import type { Stage2ContextPackage } from './contextSlicer';
  */
 export const USE_DECOUPLED_STAGE4_SUGGESTIONS = true;
 
+export const TECH_BREAKDOWN_START = '<<<TECH_BREAKDOWN>>>';
+export const TECH_BREAKDOWN_END = '<<<END_TECH_BREAKDOWN>>>';
+
+const TECH_BREAKDOWN_FULL_RE = /<<<TECH_BREAKDOWN>>>([\s\S]*?)<<<END_TECH_BREAKDOWN>>>/i;
+const TECH_BREAKDOWN_OPEN_RE = /<<<TECH_BREAKDOWN>>>([\s\S]*)$/i;
+const TECH_BREAKDOWN_PARTIAL_RE = /<<<TECH_BREAKDOWN[\s\S]*$/i;
+
+export function extractTechBreakdown(rawText: string): {
+  mainText: string;
+  techBreakdown: string | null;
+} {
+  if (!rawText) return { mainText: '', techBreakdown: null };
+
+  let techBreakdown: string | null = null;
+  const fullMatch = TECH_BREAKDOWN_FULL_RE.exec(rawText);
+  if (fullMatch && typeof fullMatch[1] === 'string') {
+    const cleaned = fullMatch[1].trim();
+    if (cleaned.length >= 12) {
+      techBreakdown = cleaned;
+    }
+  } else {
+    const openMatch = TECH_BREAKDOWN_OPEN_RE.exec(rawText);
+    if (openMatch && typeof openMatch[1] === 'string') {
+      const cleaned = openMatch[1].replace(/<<<END_TECH_BREAKDOWN[\s\S]*$/i, '').trim();
+      if (cleaned.length >= 24) {
+        techBreakdown = cleaned;
+      }
+    }
+  }
+
+  const mainText = rawText
+    .replace(TECH_BREAKDOWN_FULL_RE, '')
+    .replace(TECH_BREAKDOWN_PARTIAL_RE, '')
+    .replace(/\n{3,}$/g, '\n\n')
+    .trim();
+
+  return { mainText, techBreakdown };
+}
+
+export function buildShortReplyBreakdownInstruction(
+  effectiveFluency: UserFluencyTier,
+  languageSlug: string
+): string {
+  const depthHint =
+    effectiveFluency === 'practitioner'
+      ? 'Full concise Jyotish trace: exact D1 degrees/Nakshatra/Pada, D9/Varga sign/house/dignity, KP Sub-Lord, Shadbala/SAV bindus, and active MD/AD/PD + Gochar triggers.'
+      : 'Clean, structured technical verification: key houses & house lords, Nakshatra/KP Sub-Lord confirmation, D9/D10 endurance check, Ashtakavarga bindus, and active Dasha/transit window dates.';
+
+  return `SHORT-REPLY + COLLAPSIBLE TECHNICAL BREAKDOWN CONTRACT (ACTIVE BECAUSE SHORT REPLY IS ON):
+1. First, deliver ONLY the concise, calm plain-English answer (120–210 words max). Keep the main answer completely readable for an everyday user without dumping raw degrees or long technical lists inside it.
+2. Immediately AFTER finishing the main answer, emit ONE optional hidden technical breakdown block using these exact delimiters (never inside markdown code fences, and NEVER mention the delimiter tags in your prose):
+${TECH_BREAKDOWN_START}
+...compact bulleted technical verification (${depthHint}) in ${languageSlug || 'English'}...
+${TECH_BREAKDOWN_END}
+3. Enforce D1-only degrees: never invent or quote degrees inside D9 or other Vargas inside the breakdown.`;
+}
+
 export type SutraVoicePreset =
   | 'observatory_calm'
   | 'editor_reflective'
@@ -411,6 +468,10 @@ export function buildSutraPathAPrompt(params: BuildSutraPathAParams): BuiltSutra
     sections.push(
       `SPECIFIC ANALYTICAL FOCUS FOR THIS TURN (Apply thoroughly without quoting internal instructions):\n${params.technicalDirective.trim()}`
     );
+  }
+
+  if (params.responseLength === 'short') {
+    sections.push(buildShortReplyBreakdownInstruction(effectiveFluency, params.languageSlug));
   }
 
   // Explicit suggestions separation contract for Phase 5 -> Phase 6

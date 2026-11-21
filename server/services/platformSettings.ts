@@ -23,6 +23,9 @@ export interface AiSettingsConfig {
   openrouter_api_key_last4?: string | null;
   consultation_model: string;
   utility_model: string;
+  jev_classifier_enabled: boolean;
+  jev_model: string;
+  chatbot_pipeline_logging_enabled: boolean;
   custom_models: CustomModelEntry[];
   token_limits: TokenLimitsConfig;
 }
@@ -161,6 +164,9 @@ export const DEFAULT_AI_SETTINGS: AiSettingsConfig = {
   openrouter_api_key_last4: null,
   consultation_model: process.env.OPENROUTER_CONSULTATION_MODEL || 'google/gemini-2.5-flash',
   utility_model: process.env.OPENROUTER_UTILITY_MODEL || 'google/gemini-2.5-flash',
+  jev_classifier_enabled: true,
+  jev_model: process.env.OPENROUTER_JEV_MODEL || 'typesafe/jev-1.14',
+  chatbot_pipeline_logging_enabled: false,
   custom_models: [],
   token_limits: {
     chat_short: 600,
@@ -486,6 +492,18 @@ export async function getAiSettings(): Promise<AiSettingsConfig> {
       typeof stored?.utility_model === 'string' && stored.utility_model.trim()
         ? stored.utility_model.trim()
         : defaultUtil,
+    jev_classifier_enabled:
+      typeof stored?.jev_classifier_enabled === 'boolean'
+        ? stored.jev_classifier_enabled
+        : DEFAULT_AI_SETTINGS.jev_classifier_enabled,
+    jev_model:
+      typeof stored?.jev_model === 'string' && stored.jev_model.trim()
+        ? stored.jev_model.trim()
+        : DEFAULT_AI_SETTINGS.jev_model,
+    chatbot_pipeline_logging_enabled:
+      typeof stored?.chatbot_pipeline_logging_enabled === 'boolean'
+        ? stored.chatbot_pipeline_logging_enabled
+        : DEFAULT_AI_SETTINGS.chatbot_pipeline_logging_enabled,
     custom_models: Array.isArray(stored?.custom_models)
       ? stored.custom_models.filter((m) => m && typeof m.id === 'string' && m.id.trim())
       : [],
@@ -525,6 +543,9 @@ export interface ResolvedOpenRouterRuntime {
   hasEnvKey: boolean;
   consultationModel: string;
   utilityModel: string;
+  jevClassifierEnabled: boolean;
+  jevModel: string;
+  pipelineLoggingEnabled: boolean;
   customModels: CustomModelEntry[];
   tokenLimits: TokenLimitsConfig;
 }
@@ -549,6 +570,9 @@ export async function getResolvedOpenRouterRuntime(): Promise<ResolvedOpenRouter
     hasEnvKey: Boolean(envKey),
     consultationModel: settings.consultation_model,
     utilityModel: settings.utility_model,
+    jevClassifierEnabled: settings.jev_classifier_enabled,
+    jevModel: settings.jev_model,
+    pipelineLoggingEnabled: settings.chatbot_pipeline_logging_enabled,
     customModels: settings.custom_models,
     tokenLimits: settings.token_limits,
   };

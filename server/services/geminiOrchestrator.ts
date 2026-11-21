@@ -63,7 +63,9 @@ import {
 } from './intentRouter';
 import type { NatalTruthDossierV1 } from './natalDossier';
 import {
+  buildShortReplyBreakdownInstruction,
   buildSutraPathAPrompt,
+  extractTechBreakdown,
   type SutraVoicePreset,
 } from './sutraSynthesizer';
 
@@ -198,6 +200,7 @@ export interface PendingBirthProfileDraft {
 
 export interface StreamConsultationResult {
   fullText: string;
+  techBreakdown?: string | null;
   tokensIn: number;
   tokensOut: number;
   creditsCharged: number;
@@ -311,6 +314,7 @@ export function extractHiddenDirectives(
   >
 ): {
   cleanText: string;
+  techBreakdown: string | null;
   pendingProfile: PendingBirthProfileDraft | null;
   suggestions: MessageSuggestions | null;
 } {
@@ -387,15 +391,15 @@ export function extractHiddenDirectives(
     }
   }
 
-  const cleanText = rawText
+  const strippedBase = rawText
     .replace(PROFILE_CONFIRM_REGEX, '')
     .replace(SUGGESTIONS_BLOCK_REGEX, '')
     .replace(PARTIAL_PROFILE_CONFIRM_REGEX, '')
-    .replace(PARTIAL_SUGGESTIONS_REGEX, '')
-    .replace(/\n{3,}$/g, '\n\n')
-    .trim();
+    .replace(PARTIAL_SUGGESTIONS_REGEX, '');
 
-  return { cleanText, pendingProfile, suggestions };
+  const { mainText: cleanText, techBreakdown } = extractTechBreakdown(strippedBase);
+
+  return { cleanText, techBreakdown, pendingProfile, suggestions };
 }
 
 export function extractPendingProfileConfirmation(rawText: string): {
@@ -495,6 +499,14 @@ async function buildStaticSystemInstruction(params: {
     sections.push(
       `RESPONSE LENGTH — SHORT: Keep the answer crisp, high-signal, and concise (around 120–200 words max). Lead with the direct conclusion upfront, give the top 2–3 key insights or timing dates, and skip unnecessary filler or lengthy preambles.`
     );
+    if (!isTarot && !isNumerology && params.modeType !== 'learn_astrology') {
+      sections.push(
+        buildShortReplyBreakdownInstruction(
+          params.toneMode === 'friendly' ? 'beginner' : 'guided_bridge',
+          params.languageSlug
+        )
+      );
+    }
   } else {
     sections.push(
       `RESPONSE LENGTH — DETAILED: Provide a thorough, well-paced, comprehensive reading that unpacks the reasoning, relevant timing shifts, and practical next steps without cutting corners.`
@@ -846,7 +858,7 @@ User's specific question: ${finalUserText}`;
 
     const sutraBaseTokens =
       responseLength === 'short'
-        ? runtime.tokenLimits.chat_short
+        ? Math.max(runtime.tokenLimits.chat_short + 350, 900)
         : runtime.tokenLimits.chat_detailed;
 
     const currentLocationLabel = [
@@ -912,6 +924,7 @@ User's specific question: ${finalUserText}`;
 
       return {
         fullText: deepRes.fullText,
+        techBreakdown: deepRes.techBreakdown || null,
         tokensIn: deepRes.tokensIn,
         tokensOut: deepRes.tokensOut,
         creditsCharged: deepCreditsCharged,
@@ -957,6 +970,7 @@ User's specific question: ${finalUserText}`;
     let rawAccumulated = '';
     let flushedLength = 0;
     let leakIntercepted = false;
+    let hiddenBreakdownHoldStarted = false;
     const HOLD_BACK_CHARS = 72;
 
     try {
@@ -977,6 +991,21 @@ User's specific question: ${finalUserText}`;
             pathAAbortController.abort();
             return;
           }
+          if (hiddenBreakdownHoldStarted) return;
+
+          const breakdownIdx = rawAccumulated.search(/<<<TECH_BREAKDOWN/i);
+          if (breakdownIdx !== -1) {
+            if (breakdownIdx > flushedLength) {
+              const beforeTag = sanitizeSutraProse(
+                rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, '')
+              );
+              if (beforeTag) params.onChunk(beforeTag);
+              flushedLength = breakdownIdx;
+            }
+            hiddenBreakdownHoldStarted = true;
+            return;
+          }
+
           let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
           if (safeEnd > flushedLength) {
             const tentative = rawAccumulated.slice(flushedLength, safeEnd);
@@ -996,6 +1025,7 @@ User's specific question: ${finalUserText}`;
       if (leakIntercepted || containsInternalPromptLeak(streamResult.fullText)) {
         return {
           fullText: PROMPT_EXTRACTION_REFUSAL,
+          techBreakdown: null,
           tokensIn: streamResult.tokensIn,
           tokensOut: streamResult.tokensOut,
           creditsCharged: 0,
@@ -1007,16 +1037,19 @@ User's specific question: ${finalUserText}`;
         };
       }
 
-      if (rawAccumulated.length > flushedLength) {
-        const remaining = sanitizeSutraProse(rawAccumulated.slice(flushedLength));
-        flushedLength = rawAccumulated.length;
+      const extractedAccumulated = extractTechBreakdown(rawAccumulated);
+      if (!hiddenBreakdownHoldStarted && extractedAccumulated.mainText.length > flushedLength) {
+        const remaining = sanitizeSutraProse(extractedAccumulated.mainText.slice(flushedLength));
+        flushedLength = extractedAccumulated.mainText.length;
         if (remaining) params.onChunk(remaining);
       }
 
-      const sanitized = sanitizeAssistantOutput(streamResult.fullText.trim());
+      const extractedFinal = extractTechBreakdown(streamResult.fullText.trim());
+      const sanitized = sanitizeAssistantOutput(extractedFinal.mainText);
       if (sanitized.leaked) {
         return {
           fullText: sanitized.text,
+          techBreakdown: null,
           tokensIn: streamResult.tokensIn,
           tokensOut: streamResult.tokensOut,
           creditsCharged: 0,
@@ -1026,6 +1059,14 @@ User's specific question: ${finalUserText}`;
           suggestions: null,
           sutraMeta: pathAPrompt.meta,
         };
+      }
+
+      let safeBreakdown: string | null = null;
+      if (extractedFinal.techBreakdown) {
+        const bdSanitized = sanitizeAssistantOutput(extractedFinal.techBreakdown);
+        if (!bdSanitized.leaked && bdSanitized.text.trim()) {
+          safeBreakdown = bdSanitized.text.trim();
+        }
       }
 
       const creditsCharged = calculateCreditsFromUsage(
@@ -1037,6 +1078,7 @@ User's specific question: ${finalUserText}`;
 
       return {
         fullText: sanitized.text,
+        techBreakdown: safeBreakdown,
         tokensIn: streamResult.tokensIn,
         tokensOut: streamResult.tokensOut,
         creditsCharged,
@@ -1147,7 +1189,7 @@ User's specific question: ${finalUserText}`;
       : activePillar === 'clarity'
       ? Math.min(runtime.tokenLimits.chat_detailed, 1400)
       : responseLength === 'short'
-      ? runtime.tokenLimits.chat_short
+      ? Math.max(runtime.tokenLimits.chat_short + 350, 900)
       : runtime.tokenLimits.chat_detailed;
   // Reserve headroom for compact single-turn suggestions JSON so prose is never clipped
   const maxOutputTokens = wantsSuggestions ? baseOutputTokens + 420 : baseOutputTokens;
@@ -1201,11 +1243,12 @@ User's specific question: ${finalUserText}`;
   const HOLD_BACK_CHARS = 72;
 
   const findEarliestHiddenTagIndex = (text: string): number => {
-    const idxProfile = text.search(/<CC_PROFILE_CONFIRM/i);
-    const idxSug = text.search(/<<<SUGGESTIONS/i);
-    if (idxProfile === -1) return idxSug;
-    if (idxSug === -1) return idxProfile;
-    return Math.min(idxProfile, idxSug);
+    const indices = [
+      text.search(/<CC_PROFILE_CONFIRM/i),
+      text.search(/<<<SUGGESTIONS/i),
+      text.search(/<<<TECH_BREAKDOWN/i),
+    ].filter((idx) => idx !== -1);
+    return indices.length > 0 ? Math.min(...indices) : -1;
   };
 
   try {
@@ -1297,8 +1340,17 @@ User's specific question: ${finalUserText}`;
       pricingConfig.chat_billing
     );
 
+    let safeLegacyBreakdown: string | null = null;
+    if (!streamResult.aborted && extractedFinal.techBreakdown) {
+      const bdSanitized = sanitizeAssistantOutput(extractedFinal.techBreakdown);
+      if (!bdSanitized.leaked && bdSanitized.text.trim()) {
+        safeLegacyBreakdown = bdSanitized.text.trim();
+      }
+    }
+
     return {
       fullText: sanitized.text,
+      techBreakdown: safeLegacyBreakdown,
       tokensIn: streamResult.tokensIn,
       tokensOut: streamResult.tokensOut,
       creditsCharged,
