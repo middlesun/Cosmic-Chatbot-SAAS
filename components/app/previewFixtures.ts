@@ -276,6 +276,8 @@ export const PREVIEW_CONVERSATIONS: ConversationRecord[] = [
     total_word_count: 112,
     use_full_profile_memory: true,
     ask_later_json: [],
+    last_message_preview:
+      'That kind of late-night looping is exhausting — especially when you have already done the hard thinking and your head still will not clock out.',
     updated_at: '2026-11-17T17:15:00.000Z',
     created_at: '2026-11-17T17:00:00.000Z',
   },

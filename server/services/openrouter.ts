@@ -177,6 +177,7 @@ export async function createOpenRouterCompletion(params: {
   temperature?: number;
   maxTokens?: number;
   jsonMode?: boolean;
+  disableReasoning?: boolean;
   abortSignal?: AbortSignal;
 }): Promise<{ text: string; tokensIn: number; tokensOut: number }> {
   const runtime = await getResolvedOpenRouterRuntime();
@@ -190,8 +191,9 @@ export async function createOpenRouterCompletion(params: {
   }
   fullMessages.push(...params.messages);
 
+  const selectedModel = params.model || runtime.utilityModel || getUtilityModel();
   const bodyPayload: Record<string, unknown> = {
-    model: params.model || runtime.utilityModel || getUtilityModel(),
+    model: selectedModel,
     messages: fullMessages,
     temperature: params.temperature ?? 0.4,
     stream: false,
@@ -203,13 +205,36 @@ export async function createOpenRouterCompletion(params: {
   if (params.jsonMode) {
     bodyPayload.response_format = { type: 'json_object' };
   }
+  const supportsReasoningControl =
+    params.disableReasoning &&
+    /gemini-2\.5|gemini-3|openai\/(?:gpt-5|o1|o3|o4)|deepseek\/deepseek-r1|qwen/i.test(
+      selectedModel
+    );
+  if (supportsReasoningControl) {
+    bodyPayload.reasoning = { effort: 'none' };
+  }
 
-  const response = await fetch(OPENROUTER_API_URL, {
+  let response = await fetch(OPENROUTER_API_URL, {
     method: 'POST',
     headers: buildOpenRouterHeaders(runtime.apiKey),
     body: JSON.stringify(bodyPayload),
     signal: params.abortSignal,
   });
+
+  if (!response.ok && response.status === 400 && bodyPayload.reasoning) {
+    const errPreview = await response.text().catch(() => '');
+    if (/reasoning/i.test(errPreview)) {
+      delete bodyPayload.reasoning;
+      response = await fetch(OPENROUTER_API_URL, {
+        method: 'POST',
+        headers: buildOpenRouterHeaders(runtime.apiKey),
+        body: JSON.stringify(bodyPayload),
+        signal: params.abortSignal,
+      });
+    } else {
+      throw new Error(`OpenRouter API error (${response.status}): ${errPreview.slice(0, 260)}`);
+    }
+  }
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '');

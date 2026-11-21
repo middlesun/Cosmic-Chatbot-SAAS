@@ -2032,10 +2032,11 @@ router.get('/settings/chatbot', async (_req: AuthenticatedRequest, res) => {
 
   await ensureDefaultPromptsSeeded();
 
-  const [config, suggestionsConfig, recipes, promptsRes] = await Promise.all([
+  const [config, suggestionsConfig, recipes, aiSettings, promptsRes] = await Promise.all([
     getChatbotConfig(),
     getSuggestionsConfig(),
     getPromptRecipes(),
+    getAiSettings(),
     supabaseAdmin
       .from('system_prompts')
       .select('id, slug, category, display_name, subtitle, is_active, model_id, sort_order')
@@ -2065,6 +2066,7 @@ router.get('/settings/chatbot', async (_req: AuthenticatedRequest, res) => {
   res.json({
     config,
     suggestionsConfig,
+    pipelineLoggingEnabled: Boolean(aiSettings.chatbot_pipeline_logging_enabled),
     defaultConversationalRules: DEFAULT_CONVERSATIONAL_RULES,
     defaultSuggestionsConfig: DEFAULT_SUGGESTIONS_CONFIG,
     prompts: cleanedPrompts,
@@ -3157,6 +3159,8 @@ router.get('/chatbot-logs', async (req: AuthenticatedRequest, res) => {
     logs: result.logs,
     storage: result.storage,
     tableMissing: result.tableMissing,
+    schemaCacheStale: result.schemaCacheStale,
+    schemaErrorDetail: result.schemaErrorDetail,
   });
 });
 

@@ -115,8 +115,30 @@ interface MessageThreadProps {
   savingNoteMsgId?: string | null;
 }
 
-const stripInlineTechBreakdown = (text: string): string =>
-  text.replace(/<<<TECH_BREAKDOWN[\s\S]*$/i, '').trimEnd();
+const stripInlineTechBreakdown = (text: string): string => {
+  const withoutBreakdown = text.replace(/<<<TECH_BREAKDOWN[\s\S]*$/i, '');
+  const codeBlocks: string[] = [];
+  let working = withoutBreakdown.replace(/```[\s\S]*?```/g, (match) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(match);
+    return `__CC_MD_CODE_BLOCK_${idx}__`;
+  });
+
+  working = working
+    .replace(/^[ \t]*:::[a-zA-Z0-9_-]*[ \t]*(?:\r?\n|$)/gm, '')
+    .replace(/:::(?:prediction|analysis)\b[ \t]*/gi, '')
+    .replace(/[ \t]*:::[ \t]*$/gm, '')
+    .replace(/\[CONFIDENCE\s*:[^\]]*\][ \t]*/gi, '')
+    .replace(/^[ \t]*\[FOLLOWUP\][^\n]*(?:\r?\n|$)/gim, '')
+    .replace(/\[FOLLOWUP\][ \t]*/gi, '')
+    .replace(/\n{3,}/g, '\n\n');
+
+  if (codeBlocks.length > 0) {
+    working = working.replace(/__CC_MD_CODE_BLOCK_(\d+)__/g, (_, i) => codeBlocks[Number(i)] || '');
+  }
+
+  return working.trimEnd();
+};
 
 const escapeRegExp = (str: string) =>
   str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1122,6 +1144,198 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 ? profiles.filter((p) => p.id !== profile?.id).slice(0, 3)
                 : [];
 
+            const showSuggestionsFooter =
+              activePillar === 'council' &&
+              enableFollowups &&
+              isLatestFollowupHolder &&
+              idx === messages.length - 1;
+
+            const utilityFooterContent = (
+              <div className="flex flex-wrap items-center justify-end gap-0.5 text-[#8B8275]">
+                {msg.excluded_from_context && (
+                  <span className="mr-1.5 text-[11px] text-[#7A3E36]">
+                    Excluded from context
+                  </span>
+                )}
+
+                <Tooltip content={isCopied ? 'Copied' : 'Copy'} placement="top">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyMessage(msg.id, msg.content)}
+                    aria-label={isCopied ? 'Copied' : 'Copy response'}
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
+                      isCopied ? 'text-[#2D6A4F]' : 'hover:text-[#3D3830]'
+                    }`}
+                  >
+                    {isCopied ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </Tooltip>
+
+                {enableListen && speechSupported && (
+                  <Tooltip
+                    content={isSpeaking ? 'Stop reading' : 'Listen'}
+                    placement="top"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleToggleListen(msg)}
+                      aria-label={isSpeaking ? 'Stop reading aloud' : 'Listen to response'}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
+                        isSpeaking
+                          ? 'bg-[#F1ECE3] text-[#8B7355]'
+                          : 'hover:text-[#3D3830]'
+                      }`}
+                    >
+                      {isSpeaking ? (
+                        <VolumeX className="h-3.5 w-3.5 animate-pulse" />
+                      ) : (
+                        <Volume2 className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </Tooltip>
+                )}
+
+                {enableWhatsappShare && (
+                  <Tooltip content="Share on WhatsApp" placement="top">
+                    <a
+                      href={getWhatsAppShareUrl(msg.content)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Share on WhatsApp"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                    >
+                      <WhatsAppOutlineIcon className="h-3.5 w-3.5" />
+                    </a>
+                  </Tooltip>
+                )}
+
+                {onSaveToNotes && (
+                  <Tooltip
+                    content={
+                      savedNoteMsgIds?.has(msg.id)
+                        ? 'Saved to Notes'
+                        : 'Save to Notes'
+                    }
+                    placement="top"
+                  >
+                    <button
+                      type="button"
+                      disabled={savingNoteMsgId === msg.id}
+                      onClick={() => onSaveToNotes(msg)}
+                      aria-label={
+                        savedNoteMsgIds?.has(msg.id)
+                          ? 'Saved to Notes'
+                          : 'Save insight to Notes'
+                      }
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer disabled:opacity-50 ${
+                        savedNoteMsgIds?.has(msg.id)
+                          ? 'text-[#2D6A4F]'
+                          : 'hover:text-[#3D3830]'
+                      }`}
+                    >
+                      {savingNoteMsgId === msg.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Bookmark
+                          className={`h-3.5 w-3.5 ${
+                            savedNoteMsgIds?.has(msg.id) ? 'fill-current' : ''
+                          }`}
+                        />
+                      )}
+                    </button>
+                  </Tooltip>
+                )}
+
+                <Tooltip
+                  content={msg.is_starred ? 'Unstar' : 'Star'}
+                  placement="top"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onToggleStar(msg)}
+                    aria-label={msg.is_starred ? 'Unstar response' : 'Star response'}
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
+                      msg.is_starred ? 'text-[#8B7355]' : 'hover:text-[#3D3830]'
+                    }`}
+                  >
+                    <Star
+                      className={`h-3.5 w-3.5 ${msg.is_starred ? 'fill-current' : ''}`}
+                    />
+                  </button>
+                </Tooltip>
+
+                <Tooltip content="Reply" placement="top">
+                  <button
+                    type="button"
+                    onClick={() => onReplyToMessage(msg)}
+                    aria-label="Reply to response"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                  >
+                    <Reply className="h-3.5 w-3.5" />
+                  </button>
+                </Tooltip>
+
+                <Tooltip
+                  content={msg.excluded_from_context ? 'Include' : 'Exclude'}
+                  placement="top"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onToggleExclude(msg)}
+                    aria-label={
+                      msg.excluded_from_context
+                        ? 'Include response in context'
+                        : 'Exclude response from context'
+                    }
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                  >
+                    {msg.excluded_from_context ? (
+                      <Eye className="h-3.5 w-3.5" />
+                    ) : (
+                      <EyeOff className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </Tooltip>
+
+                {confirmDeleteMsgId === msg.id ? (
+                  <span className="inline-flex items-center gap-1.5 pl-1 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onDeleteMessage(msg.id);
+                        setConfirmDeleteMsgId(null);
+                      }}
+                      className="text-[#7A3E36] font-medium hover:underline cursor-pointer"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteMsgId(null)}
+                      className="text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <Tooltip content="Delete" placement="top">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteMsgId(msg.id)}
+                      aria-label="Delete response"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#7A3E36] transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
+            );
+
             return (
               <article
                 key={msg.id}
@@ -1403,225 +1617,38 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   </div>
                 )}
 
-                {/* Clean Icon-Only Assistant Action Bar (No metadata string clutter) */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[#8B8275]">
-                  <div className="flex items-center gap-2">
-                    {msg.excluded_from_context && (
-                      <span className="text-[11px] text-[#7A3E36]">
-                        Excluded from context
-                      </span>
-                    )}
+                {/* Unified Option-A Message Footer (Suggestions Left + Utility Icons Right) */}
+                {showSuggestionsFooter ? (
+                  <SuggestionsPanel
+                    messageId={msg.id}
+                    suggestions={msg.suggestions_json}
+                    legacyFollowups={msg.followups_json}
+                    askLaterItems={askLaterItems}
+                    defaultExpanded={suggestionsDefaultExpanded}
+                    disabled={isStreaming}
+                    utilityBar={utilityFooterContent}
+                    onSubmitSuggestion={(item) => {
+                      if (onSubmitSuggestion) {
+                        onSubmitSuggestion(item);
+                      } else {
+                        onSelectFollowUp(item.text);
+                      }
+                    }}
+                    onInsertSuggestion={(item) => {
+                      onInsertSuggestion?.(item);
+                    }}
+                    onInsertSuggestions={onInsertSuggestions}
+                    onToggleAskLater={(item, tier, sourceMsgId) => {
+                      onToggleAskLater?.(item, tier, sourceMsgId);
+                    }}
+                    onBookmarkSuggestions={onBookmarkSuggestions}
+                    onLoadMoreSuggestions={onLoadMoreSuggestions}
+                  />
+                ) : (
+                  <div className="mt-2 border-t border-[#3D3830]/[0.08] pt-2.5 flex flex-wrap items-center justify-end gap-2">
+                    {utilityFooterContent}
                   </div>
-
-                  <div className="flex items-center gap-1">
-                    <Tooltip content={isCopied ? 'Copied' : 'Copy'} placement="top">
-                      <button
-                        type="button"
-                        onClick={() => void handleCopyMessage(msg.id, msg.content)}
-                        aria-label={isCopied ? 'Copied' : 'Copy response'}
-                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
-                          isCopied ? 'text-[#2D6A4F]' : 'hover:text-[#3D3830]'
-                        }`}
-                      >
-                        {isCopied ? (
-                          <Check className="h-3.5 w-3.5" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                    </Tooltip>
-
-                    {enableListen && speechSupported && (
-                      <Tooltip
-                        content={isSpeaking ? 'Stop reading' : 'Listen'}
-                        placement="top"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => handleToggleListen(msg)}
-                          aria-label={isSpeaking ? 'Stop reading aloud' : 'Listen to response'}
-                          className={`inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
-                            isSpeaking
-                              ? 'bg-[#F1ECE3] text-[#8B7355]'
-                              : 'hover:text-[#3D3830]'
-                          }`}
-                        >
-                          {isSpeaking ? (
-                            <VolumeX className="h-3.5 w-3.5 animate-pulse" />
-                          ) : (
-                            <Volume2 className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      </Tooltip>
-                    )}
-
-                    {enableWhatsappShare && (
-                      <Tooltip content="Share on WhatsApp" placement="top">
-                        <a
-                          href={getWhatsAppShareUrl(msg.content)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label="Share on WhatsApp"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
-                        >
-                          <WhatsAppOutlineIcon className="h-3.5 w-3.5" />
-                        </a>
-                      </Tooltip>
-                    )}
-
-                    {onSaveToNotes && (
-                      <Tooltip
-                        content={
-                          savedNoteMsgIds?.has(msg.id)
-                            ? 'Saved to Notes'
-                            : 'Save to Notes'
-                        }
-                        placement="top"
-                      >
-                        <button
-                          type="button"
-                          disabled={savingNoteMsgId === msg.id}
-                          onClick={() => onSaveToNotes(msg)}
-                          aria-label={
-                            savedNoteMsgIds?.has(msg.id)
-                              ? 'Saved to Notes'
-                              : 'Save insight to Notes'
-                          }
-                          className={`inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer disabled:opacity-50 ${
-                            savedNoteMsgIds?.has(msg.id)
-                              ? 'text-[#2D6A4F]'
-                              : 'hover:text-[#3D3830]'
-                          }`}
-                        >
-                          {savingNoteMsgId === msg.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Bookmark
-                              className={`h-3.5 w-3.5 ${
-                                savedNoteMsgIds?.has(msg.id) ? 'fill-current' : ''
-                              }`}
-                            />
-                          )}
-                        </button>
-                      </Tooltip>
-                    )}
-
-                    <Tooltip
-                      content={msg.is_starred ? 'Unstar' : 'Star'}
-                      placement="top"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => onToggleStar(msg)}
-                        aria-label={msg.is_starred ? 'Unstar response' : 'Star response'}
-                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
-                          msg.is_starred ? 'text-[#8B7355]' : 'hover:text-[#3D3830]'
-                        }`}
-                      >
-                        <Star
-                          className={`h-3.5 w-3.5 ${msg.is_starred ? 'fill-current' : ''}`}
-                        />
-                      </button>
-                    </Tooltip>
-
-                    <Tooltip content="Reply" placement="top">
-                      <button
-                        type="button"
-                        onClick={() => onReplyToMessage(msg)}
-                        aria-label="Reply to response"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
-                      >
-                        <Reply className="h-3.5 w-3.5" />
-                      </button>
-                    </Tooltip>
-
-                    <Tooltip
-                      content={msg.excluded_from_context ? 'Include' : 'Exclude'}
-                      placement="top"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => onToggleExclude(msg)}
-                        aria-label={
-                          msg.excluded_from_context
-                            ? 'Include response in context'
-                            : 'Exclude response from context'
-                        }
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
-                      >
-                        {msg.excluded_from_context ? (
-                          <Eye className="h-3.5 w-3.5" />
-                        ) : (
-                          <EyeOff className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                    </Tooltip>
-
-                    {confirmDeleteMsgId === msg.id ? (
-                      <span className="inline-flex items-center gap-1.5 pl-1 text-[11px]">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onDeleteMessage(msg.id);
-                            setConfirmDeleteMsgId(null);
-                          }}
-                          className="text-[#7A3E36] font-medium hover:underline cursor-pointer"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteMsgId(null)}
-                          className="text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      </span>
-                    ) : (
-                      <Tooltip content="Delete" placement="top">
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteMsgId(msg.id)}
-                          aria-label="Delete response"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#7A3E36] transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </Tooltip>
-                    )}
-                  </div>
-                </div>
-
-                {/* Two-Tier Followup & Deeper analysis Suggestions Panel (Council only) */}
-                {activePillar === 'council' &&
-                  enableFollowups &&
-                  isLatestFollowupHolder &&
-                  idx === messages.length - 1 && (
-                    <SuggestionsPanel
-                      messageId={msg.id}
-                      suggestions={msg.suggestions_json}
-                      legacyFollowups={msg.followups_json}
-                      askLaterItems={askLaterItems}
-                      defaultExpanded={suggestionsDefaultExpanded}
-                      disabled={isStreaming}
-                      onSubmitSuggestion={(item) => {
-                        if (onSubmitSuggestion) {
-                          onSubmitSuggestion(item);
-                        } else {
-                          onSelectFollowUp(item.text);
-                        }
-                      }}
-                      onInsertSuggestion={(item) => {
-                        onInsertSuggestion?.(item);
-                      }}
-                      onInsertSuggestions={onInsertSuggestions}
-                      onToggleAskLater={(item, tier, sourceMsgId) => {
-                        onToggleAskLater?.(item, tier, sourceMsgId);
-                      }}
-                      onBookmarkSuggestions={onBookmarkSuggestions}
-                      onLoadMoreSuggestions={onLoadMoreSuggestions}
-                    />
-                  )}
+                )}
               </article>
             );
           })}

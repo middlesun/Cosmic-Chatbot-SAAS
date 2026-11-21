@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import {
   Bookmark,
@@ -17,6 +17,7 @@ import {
   LogOut,
   MessageSquarePlus,
   PanelLeftClose,
+  Pencil,
   ScrollText,
   Search,
   Settings,
@@ -65,6 +66,7 @@ interface ChatSidebarProps {
   onStartNewCompanion: () => void;
   onOpenClarity: () => void;
   onToggleBookmark: (conversation: ConversationRecord) => void;
+  onRenameConversation?: (conversationId: string, nextTitle: string) => void;
   onDeleteConversation: (conversationId: string) => void;
   onLoadFavorites: (profileId?: string) => void;
   onOpenAddChartModal?: () => void;
@@ -104,6 +106,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onStartNewCompanion,
   onOpenClarity,
   onToggleBookmark,
+  onRenameConversation,
   onDeleteConversation,
   onLoadFavorites,
   onOpenAddChartModal,
@@ -117,8 +120,41 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     companions: true,
   });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editingConvId, setEditingConvId] = useState<string | null>(null);
+  const [editingConvTitle, setEditingConvTitle] = useState<string>('');
   const [favFilterProfile, setFavFilterProfile] = useState<string>('');
   const [showNewMenu, setShowNewMenu] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!editingConvId) return;
+    const raf = window.requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [editingConvId]);
+
+  const startRenameConversation = (convId: string, currentTitle: string) => {
+    setConfirmDeleteId(null);
+    setEditingConvId(convId);
+    setEditingConvTitle(currentTitle);
+  };
+
+  const commitRenameConversation = () => {
+    if (!editingConvId) return;
+    const clean = editingConvTitle.trim();
+    if (clean && onRenameConversation) {
+      onRenameConversation(editingConvId, clean);
+    }
+    setEditingConvId(null);
+    setEditingConvTitle('');
+  };
+
+  const cancelRenameConversation = () => {
+    setEditingConvId(null);
+    setEditingConvTitle('');
+  };
 
   const toggleFolder = (key: string) => {
     setExpandedFolders((prev) => ({
@@ -168,10 +204,19 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const renderConversationRow = (conv: ConversationRecord) => {
     const isActive = conv.id === activeConversationId;
     const isConfirming = confirmDeleteId === conv.id;
+    const isEditing = editingConvId === conv.id;
     const isPinnedTab = activeTabConversationIds.includes(conv.id);
     const isCompanion = conv.pillar === 'companion' || Boolean(conv.companion_persona_json);
     const companionName = conv.companion_persona_json?.name;
     const companionRole = conv.companion_persona_json?.role_label;
+    const displayTitle =
+      isCompanion &&
+      companionName &&
+      (!conv.title ||
+        conv.title === 'Companion Chat' ||
+        conv.title.startsWith(`${companionName} ·`))
+        ? companionName
+        : conv.title;
 
     return (
       <div
@@ -182,93 +227,140 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             : 'text-[#5C5449] hover:bg-[#FAF7F2]/60'
         }`}
       >
-        <button
-          type="button"
-          onClick={() => {
-            onSelectConversation(conv.id);
-            onCloseMobileDrawer();
-          }}
-          className="flex-1 min-w-0 text-left cursor-pointer"
-        >
-          <div className="flex items-center gap-1.5">
-            {conv.is_bookmarked && (
-              <Bookmark className="h-3 w-3 shrink-0 fill-[#8B7355] text-[#8B7355]" />
-            )}
-            <span className="truncate text-xs font-medium text-[#3D3830]">
-              {isCompanion && companionName ? companionName : conv.title}
-            </span>
+        {isEditing ? (
+          <div className="flex-1 min-w-0 py-0.5">
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={editingConvTitle}
+              maxLength={80}
+              onChange={(e) => setEditingConvTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitRenameConversation();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  cancelRenameConversation();
+                }
+              }}
+              onBlur={commitRenameConversation}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Rename ${displayTitle}`}
+              className="w-full rounded-lg border border-[#B8965A]/65 bg-[#FDFBF7] px-2 py-1 text-xs font-medium text-[#3D3830] focus:outline-none"
+            />
           </div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
-            {isCompanion && companionRole && (
-              <span className="truncate max-w-[115px] text-[#5C5449]">{companionRole} ·</span>
-            )}
-            <span className="shrink-0">{new Date(conv.updated_at).toLocaleDateString()}</span>
-          </div>
-        </button>
-
-        <div className="flex items-center gap-0.5 shrink-0 pt-0.5">
-          {isConfirming ? (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  onDeleteConversation(conv.id);
-                  setConfirmDeleteId(null);
-                }}
-                className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-[#7A3E36] text-[#FAF7F2] cursor-pointer"
-              >
-                Delete
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteId(null)}
-                className="rounded px-1 py-0.5 text-[10px] text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
-              >
-                No
-              </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              onSelectConversation(conv.id);
+              onCloseMobileDrawer();
+            }}
+            onDoubleClick={(e) => {
+              if (!onRenameConversation) return;
+              e.stopPropagation();
+              startRenameConversation(conv.id, displayTitle);
+            }}
+            className="flex-1 min-w-0 text-left cursor-pointer"
+          >
+            <div className="flex items-center gap-1.5">
+              {conv.is_bookmarked && (
+                <Bookmark className="h-3 w-3 shrink-0 fill-[#8B7355] text-[#8B7355]" />
+              )}
+              <span className="truncate text-xs font-medium text-[#3D3830]">
+                {displayTitle}
+              </span>
             </div>
-          ) : (
-            <>
-              <Tooltip
-                content={isPinnedTab ? 'Remove from chat' : 'Add to chat'}
-                placement="top"
-              >
+            <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
+              {isCompanion && companionRole && (
+                <span className="truncate max-w-[115px] text-[#5C5449]">{companionRole} ·</span>
+              )}
+              <span className="shrink-0">{new Date(conv.updated_at).toLocaleDateString()}</span>
+            </div>
+          </button>
+        )}
+
+        {!isEditing && (
+          <div className="flex items-center gap-0.5 shrink-0 pt-0.5">
+            {isConfirming ? (
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => onToggleActiveTab(conv)}
-                  aria-label={isPinnedTab ? 'Remove from chat' : 'Add to chat'}
-                  className={`p-1 rounded hover:bg-[#3D3830]/10 transition-all cursor-pointer ${
-                    isPinnedTab
-                      ? 'opacity-100 text-[#B8965A] bg-[#B8965A]/12'
-                      : 'opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275] hover:text-[#3D3830]'
+                  onClick={() => {
+                    onDeleteConversation(conv.id);
+                    setConfirmDeleteId(null);
+                  }}
+                  className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-[#7A3E36] text-[#FAF7F2] cursor-pointer"
+                >
+                  Delete
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="rounded px-1 py-0.5 text-[10px] text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <>
+                <Tooltip
+                  content={isPinnedTab ? 'Remove from chat' : 'Add to chat'}
+                  placement="top"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onToggleActiveTab(conv)}
+                    aria-label={isPinnedTab ? 'Remove from chat' : 'Add to chat'}
+                    className={`p-1 rounded hover:bg-[#3D3830]/10 transition-all cursor-pointer ${
+                      isPinnedTab
+                        ? 'opacity-100 text-[#B8965A] bg-[#B8965A]/12'
+                        : 'opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275] hover:text-[#3D3830]'
+                    }`}
+                  >
+                    <Layers className="h-3 w-3" />
+                  </button>
+                </Tooltip>
+                {onRenameConversation && (
+                  <Tooltip content="Rename" placement="top">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startRenameConversation(conv.id, displayTitle);
+                      }}
+                      aria-label={`Rename ${displayTitle}`}
+                      className="p-1 rounded hover:bg-[#3D3830]/10 opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275] hover:text-[#3D3830] transition-opacity cursor-pointer"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  </Tooltip>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onToggleBookmark(conv)}
+                  aria-label={conv.is_bookmarked ? 'Remove bookmark' : 'Pin to top'}
+                  className={`p-1 rounded hover:bg-[#3D3830]/10 transition-opacity cursor-pointer ${
+                    conv.is_bookmarked
+                      ? 'opacity-100 text-[#8B7355]'
+                      : 'opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275]'
                   }`}
                 >
-                  <Layers className="h-3 w-3" />
+                  <Bookmark className={`h-3 w-3 ${conv.is_bookmarked ? 'fill-current' : ''}`} />
                 </button>
-              </Tooltip>
-              <button
-                type="button"
-                onClick={() => onToggleBookmark(conv)}
-                aria-label={conv.is_bookmarked ? 'Remove bookmark' : 'Pin to top'}
-                className={`p-1 rounded hover:bg-[#3D3830]/10 transition-opacity cursor-pointer ${
-                  conv.is_bookmarked
-                    ? 'opacity-100 text-[#8B7355]'
-                    : 'opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275]'
-                }`}
-              >
-                <Bookmark className={`h-3 w-3 ${conv.is_bookmarked ? 'fill-current' : ''}`} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteId(conv.id)}
-                aria-label="Delete chat"
-                className="p-1 rounded text-[#8B8275] hover:text-[#7A3E36] hover:bg-[#3D3830]/10 opacity-55 sm:opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </>
-          )}
-        </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteId(conv.id)}
+                  aria-label="Delete chat"
+                  className="p-1 rounded text-[#8B8275] hover:text-[#7A3E36] hover:bg-[#3D3830]/10 opacity-55 sm:opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     );
   };

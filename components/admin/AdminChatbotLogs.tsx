@@ -68,6 +68,8 @@ const AdminChatbotLogs: React.FC<AdminChatbotLogsProps> = ({ getAccessToken }) =
   const [logs, setLogs] = useState<PipelineLogEntry[]>([]);
   const [storage, setStorage] = useState<'supabase' | 'memory'>('supabase');
   const [tableMissing, setTableMissing] = useState(false);
+  const [schemaCacheStale, setSchemaCacheStale] = useState(false);
+  const [schemaErrorDetail, setSchemaErrorDetail] = useState<string | null>(null);
   const [actionFilter, setActionFilter] = useState('all');
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +96,12 @@ const AdminChatbotLogs: React.FC<AdminChatbotLogsProps> = ({ getAccessToken }) =
         setLogs(Array.isArray(data.logs) ? data.logs : []);
         setStorage(data.storage === 'memory' ? 'memory' : 'supabase');
         setTableMissing(Boolean(data.tableMissing));
+        setSchemaCacheStale(Boolean(data.schemaCacheStale));
+        setSchemaErrorDetail(
+          typeof data.schemaErrorDetail === 'string' && data.schemaErrorDetail.trim()
+            ? data.schemaErrorDetail.trim()
+            : null
+        );
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unable to load chatbot logs');
       } finally {
@@ -226,18 +234,47 @@ const AdminChatbotLogs: React.FC<AdminChatbotLogsProps> = ({ getAccessToken }) =
         </div>
       </section>
 
-      {tableMissing && (
+      {(tableMissing || schemaErrorDetail) && (
         <div className="rounded-2xl border border-[#B8965A]/45 bg-[#B8965A]/12 p-4 text-xs text-[#3D3830] flex items-start gap-3">
           <AlertTriangle className="h-4 w-4 text-[#8B7355] shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <p className="font-semibold">Migration 012 not yet applied in Supabase</p>
-            <p className="text-[#5C5449]">
-              Run{' '}
-              <code className="font-mono text-[11px] bg-[#FAF7F2] px-1.5 py-0.5 rounded">
-                supabase/migrations/012_pipeline_logs_and_stress_context.sql
-              </code>{' '}
-              in Supabase SQL Editor for persistent logs. Currently displaying the live server in-memory ring buffer.
+            <p className="font-semibold">
+              {schemaCacheStale
+                ? 'Supabase schema cache needs a refresh'
+                : tableMissing
+                ? 'Migration 012 not yet applied in Supabase'
+                : 'Supabase telemetry diagnostic notice'}
             </p>
+            <p className="text-[#5C5449]">
+              {schemaCacheStale ? (
+                <>
+                  Run{' '}
+                  <code className="font-mono text-[11px] bg-[#FAF7F2] px-1.5 py-0.5 rounded">
+                    NOTIFY pgrst, &apos;reload schema&apos;;
+                  </code>{' '}
+                  in Supabase SQL Editor so PostgREST sees{' '}
+                  <code className="font-mono text-[11px] bg-[#FAF7F2] px-1.5 py-0.5 rounded">
+                    public.chatbot_pipeline_logs
+                  </code>
+                  . Currently displaying the live server in-memory ring buffer.
+                </>
+              ) : tableMissing ? (
+                <>
+                  Run{' '}
+                  <code className="font-mono text-[11px] bg-[#FAF7F2] px-1.5 py-0.5 rounded">
+                    supabase/migrations/012_pipeline_logs_and_stress_context.sql
+                  </code>{' '}
+                  in Supabase SQL Editor for persistent logs. Currently displaying the live server in-memory ring buffer.
+                </>
+              ) : (
+                'Supabase returned an error when reading or writing pipeline telemetry.'
+              )}
+            </p>
+            {schemaErrorDetail && (
+              <p className="font-mono text-[11px] text-[#7A3E36] break-all">
+                Detail: {schemaErrorDetail}
+              </p>
+            )}
           </div>
         </div>
       )}

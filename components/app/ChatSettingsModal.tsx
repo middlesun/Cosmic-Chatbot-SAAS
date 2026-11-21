@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Brain, Check, Loader2, Lock, UserCheck, X } from 'lucide-react';
 import { useAuth, type AstrologyMode } from './AuthContext';
-import AstrologyModeToggle from './AstrologyModeToggle';
 import CustomSelect from './CustomSelect';
 import type {
   ChatCatalog,
@@ -32,6 +31,7 @@ interface ChatSettingsModalProps {
     defaultExpert: string;
     defaultLanguage: string;
     suggestionsAutoExpand: boolean;
+    defaultAstrologyMode: AstrologyMode;
   }) => void;
   onClose: () => void;
 }
@@ -64,11 +64,17 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
   onSaved,
   onClose,
 }) => {
-  const { appUser, setAstrologyMode, refreshUser } = useAuth();
+  const { appUser, astrologyMode, setAstrologyMode, refreshUser } = useAuth();
   const [fontSize, setFontSize] = useState<ChatFontSize>(initialFontSize);
-  const [defaultAstrologyMode, setDefaultAstrologyMode] = useState<AstrologyMode>(
-    appUser?.default_astrology_mode === 'western' ? 'western' : 'vedic'
-  );
+  const [defaultCouncilMode, setDefaultCouncilMode] = useState<AstrologyMode>(() => {
+    if (!isPreviewMode && appUser?.default_astrology_mode) {
+      return appUser.default_astrology_mode === 'western' ? 'western' : 'vedic';
+    }
+    if (!isPreviewMode && appUser?.default_expert === 'western_astrologer') {
+      return 'western';
+    }
+    return astrologyMode === 'western' ? 'western' : 'vedic';
+  });
   const [suggestionsAutoExpand, setSuggestionsAutoExpand] = useState<boolean>(
     initialSuggestionsAutoExpand
   );
@@ -78,13 +84,25 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setFontSize(initialFontSize);
-      setDefaultAstrologyMode(
-        appUser?.default_astrology_mode === 'western' ? 'western' : 'vedic'
-      );
+      const resolvedMode: AstrologyMode = isPreviewMode
+        ? astrologyMode
+        : appUser?.default_astrology_mode === 'western' ||
+          (!appUser?.default_astrology_mode && appUser?.default_expert === 'western_astrologer')
+        ? 'western'
+        : 'vedic';
+      setDefaultCouncilMode(resolvedMode);
       setSuggestionsAutoExpand(initialSuggestionsAutoExpand);
       setError(null);
     }
-  }, [isOpen, initialFontSize, initialSuggestionsAutoExpand, appUser?.default_astrology_mode]);
+  }, [
+    isOpen,
+    isPreviewMode,
+    initialFontSize,
+    initialSuggestionsAutoExpand,
+    appUser?.default_astrology_mode,
+    appUser?.default_expert,
+    astrologyMode,
+  ]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -108,13 +126,17 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
     e.preventDefault();
     setError(null);
 
+    const savedDefaultExpert =
+      defaultCouncilMode === 'western' ? 'western_astrologer' : 'council_synthesis';
+
     if (isPreviewMode) {
-      setAstrologyMode(defaultAstrologyMode);
+      setAstrologyMode(defaultCouncilMode);
       onSaved({
         chatFontSize: fontSize,
-        defaultExpert: expertSlug,
+        defaultExpert: savedDefaultExpert,
         defaultLanguage: languageSlug,
         suggestionsAutoExpand,
+        defaultAstrologyMode: defaultCouncilMode,
       });
       onClose();
       return;
@@ -133,8 +155,8 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
         },
         body: JSON.stringify({
           chat_font_size: fontSize,
-          default_astrology_mode: defaultAstrologyMode,
-          default_expert: expertSlug,
+          default_astrology_mode: defaultCouncilMode,
+          default_expert: savedDefaultExpert,
           default_language: languageSlug,
           suggestions_auto_expand: suggestionsAutoExpand,
         }),
@@ -145,13 +167,14 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
         throw new Error(data.error || 'Could not update chat settings');
       }
 
-      setAstrologyMode(defaultAstrologyMode);
+      setAstrologyMode(defaultCouncilMode);
       await refreshUser();
       onSaved({
         chatFontSize: fontSize,
-        defaultExpert: expertSlug,
+        defaultExpert: savedDefaultExpert,
         defaultLanguage: languageSlug,
         suggestionsAutoExpand,
+        defaultAstrologyMode: defaultCouncilMode,
       });
       onClose();
     } catch (err) {
@@ -283,28 +306,45 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
               </p>
             )}
 
-            {/* Default Astrology Mode */}
-            <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-2.5">
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-[#3D3830]">Default Astrology Mode</p>
-                <p className="text-[11px] text-[#8B8275]">
-                  Charts, apps &amp; default astrologer frame
-                </p>
+            {/* Default Council (Always Editable — sets default tradition & new + tab astrologer) */}
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <label className="text-xs font-medium text-[#5C5449]">
+                  Default Council
+                </label>
+                <span className="text-[11px] text-[#8B8275]">
+                  New chats &amp; + tabs
+                </span>
               </div>
-              <AstrologyModeToggle
-                value={defaultAstrologyMode}
-                onChange={(mode) => {
-                  setDefaultAstrologyMode(mode);
-                  if (!isThreadLocked) {
-                    if (mode === 'western' && expertSlug === 'council_synthesis') {
-                      onChangeExpert('western_astrologer');
-                    } else if (mode === 'vedic' && expertSlug === 'western_astrologer') {
-                      onChangeExpert('council_synthesis');
-                    }
-                  }
-                }}
-                size="xs"
-              />
+              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-[#F1ECE3] p-1 border border-[#3D3830]/10">
+                {(
+                  [
+                    { id: 'vedic', label: 'Vedic Astrologer', expert: 'council_synthesis' },
+                    { id: 'western', label: 'Western Astrologer', expert: 'western_astrologer' },
+                  ] as const
+                ).map((opt) => {
+                  const active = defaultCouncilMode === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setDefaultCouncilMode(opt.id);
+                        if (!isThreadLocked) {
+                          onChangeExpert(opt.expert);
+                        }
+                      }}
+                      className={`rounded-xl py-2 px-3 text-xs font-medium transition-colors cursor-pointer ${
+                        active
+                          ? 'bg-[#4A453D] text-[#FAF7F2] shadow-xs'
+                          : 'text-[#5C5449] hover:text-[#3D3830]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Reading Font Size */}

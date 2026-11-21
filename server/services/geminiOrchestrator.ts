@@ -1016,9 +1016,16 @@ User's specific question: ${finalUserText}`;
           let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
           if (safeEnd > flushedLength) {
             const tentative = rawAccumulated.slice(flushedLength, safeEnd);
-            const trailingMatch = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
-            if (trailingMatch) {
-              safeEnd -= trailingMatch[0].length;
+            const trailingNative = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
+            if (trailingNative) {
+              safeEnd -= trailingNative[0].length;
+            } else {
+              const trailingMarker = /(?:\r?\n[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*))$/i.exec(
+                tentative
+              );
+              if (trailingMarker) {
+                safeEnd -= trailingMarker[0].length;
+              }
             }
             if (safeEnd > flushedLength) {
               const toEmit = sanitizeSutraProse(rawAccumulated.slice(flushedLength, safeEnd));
@@ -1293,9 +1300,16 @@ User's specific question: ${finalUserText}`;
         let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
         if (safeEnd > flushedLength) {
           const tentative = rawAccumulated.slice(flushedLength, safeEnd);
-          const trailingMatch = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
-          if (trailingMatch) {
-            safeEnd -= trailingMatch[0].length;
+          const trailingNative = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
+          if (trailingNative) {
+            safeEnd -= trailingNative[0].length;
+          } else {
+            const trailingMarker = /(?:\r?\n[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*))$/i.exec(
+              tentative
+            );
+            if (trailingMarker) {
+              safeEnd -= trailingMarker[0].length;
+            }
           }
           if (safeEnd > flushedLength) {
             const toEmit = sanitizeSutraProse(rawAccumulated.slice(flushedLength, safeEnd));
@@ -1404,6 +1418,7 @@ export async function generateStructuredSuggestions(params: {
       model: runtime.utilityModel || getUtilityModel(),
       maxTokens: Math.max(600, runtime.tokenLimits.utility),
       jsonMode: true,
+      disableReasoning: true,
       temperature: 0.45,
       messages: [
         {
@@ -1493,8 +1508,9 @@ export async function generateMoreStructuredSuggestions(params: {
 
     const completion = await createOpenRouterCompletion({
       model: runtime.utilityModel || getUtilityModel(),
-      maxTokens: Math.max(950, runtime.tokenLimits.utility),
+      maxTokens: 640,
       jsonMode: true,
+      disableReasoning: true,
       temperature: 0.65,
       messages: [
         {
@@ -1574,52 +1590,19 @@ export async function generateFollowUpQuestions(params: {
 }
 
 export async function generateConversationTitle(
-  firstQuestion: string,
+  _firstQuestion: string,
   profileName?: string | null,
   pillar: ChatPillar = 'council',
-  companionName?: string | null
+  companionName?: string | null,
+  councilDisplayName?: string | null
 ): Promise<string> {
-  try {
-    const runtime = await getResolvedOpenRouterRuntime();
-    const subjectContext =
-      pillar === 'companion'
-        ? `this personal conversation${companionName ? ` with ${companionName}` : ''}`
-        : pillar === 'clarity'
-        ? 'this quick Clarity helper thread'
-        : `this consultation thread${profileName ? ` for ${profileName}` : ''}`;
-
-    const completion = await createOpenRouterCompletion({
-      model: runtime.utilityModel || getUtilityModel(),
-      maxTokens: Math.min(120, runtime.tokenLimits.utility),
-      temperature: 0.3,
-      messages: [
-        {
-          role: 'user',
-          content: `Generate a refined 3-to-5-word title for ${subjectContext}. No quotes, no punctuation at the end, Title Case.
-
-Message: ${firstQuestion.slice(0, 400)}`,
-        },
-      ],
-    });
-    const cleaned = completion.text.replace(/["'*#]/g, '').trim();
-    if (cleaned) {
-      return cleaned.slice(0, 70);
-    }
-    return pillar === 'companion'
-      ? companionName || 'Companion Chat'
-      : pillar === 'clarity'
-      ? 'Clarity'
-      : 'Consultation Insight';
-  } catch {
-    return (
-      firstQuestion.trim().slice(0, 48) ||
-      (pillar === 'companion'
-        ? companionName || 'Companion Chat'
-        : pillar === 'clarity'
-        ? 'Clarity'
-        : 'Consultation Insight')
-    );
+  if (pillar === 'clarity') return 'Clarity';
+  if (pillar === 'companion') {
+    return companionName?.trim() ? companionName.trim().slice(0, 80) : 'Companion Chat';
   }
+  const person = profileName?.trim() || 'General';
+  const council = councilDisplayName?.trim() || 'Vedic Astrologer';
+  return `${person} (${council})`.slice(0, 80);
 }
 
 export async function runQuickTool(params: {

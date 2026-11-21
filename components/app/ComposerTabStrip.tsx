@@ -24,6 +24,8 @@ interface ComposerTabStripProps {
   activeTabId: string;
   maxTabs?: number;
   catalog: ChatCatalog | null;
+  defaultAstrologyMode?: 'vedic' | 'western';
+  activeTabLocked?: boolean;
   pastCompanionConversations: ConversationRecord[];
   recentConversations: ConversationRecord[];
   isStreamingTabId?: string | null;
@@ -33,9 +35,14 @@ interface ComposerTabStripProps {
   onCloseTab: (tabId: string) => void;
   onReorderTabs: (orderedTabIds: string[]) => void;
   onRenameTab: (tabId: string, nextLabel: string) => void;
-  onAddCouncilTab: (expertSlug: string) => void;
-  onAddCompanionArchetypeTab: (archetype: CompanionArchetypeSlug) => void;
-  onOpenExistingConversationAsTab: (conv: ConversationRecord) => void;
+  onQuickAddTab: () => void;
+  onReplaceTabWithCouncil: (targetTabId: string, expertSlug: string) => void;
+  onReplaceTabWithCompanionArchetype: (
+    targetTabId: string,
+    archetype: CompanionArchetypeSlug
+  ) => void;
+  onReplaceTabWithConversation: (targetTabId: string, conv: ConversationRecord) => void;
+  onReplaceTabWithClarity: (targetTabId: string) => void;
 }
 
 interface PopoverCoords {
@@ -45,6 +52,14 @@ interface PopoverCoords {
 }
 
 const MOBILE_MAX_VISIBLE_TABS = 3;
+const TAB_LABEL_MAX_CHARS = 11;
+const FIXED_DESKTOP_TAB_WIDTH = 148;
+
+function formatFixedTabLabel(label: string): string {
+  const clean = label.trim();
+  if (clean.length <= TAB_LABEL_MAX_CHARS) return clean;
+  return `${clean.slice(0, TAB_LABEL_MAX_CHARS)}..`;
+}
 
 const COMPANION_QUICK_TYPES: Array<{
   slug: CompanionArchetypeSlug;
@@ -59,10 +74,8 @@ const COMPANION_QUICK_TYPES: Array<{
   { slug: 'spiritual_guide', label: 'Spiritual guide', note: 'Attuned to your beliefs & depth' },
 ];
 
-function estimateDesktopTabWidth(tab: ActiveChatTab): number {
-  const textPx = Math.min(108, Math.max(30, tab.label.length * 6.4));
-  const iconsAndPadding = tab.isCore ? 28 : 38;
-  return Math.min(156, Math.max(60, Math.round(textPx + iconsAndPadding)));
+function estimateDesktopTabWidth(_tab: ActiveChatTab): number {
+  return FIXED_DESKTOP_TAB_WIDTH;
 }
 
 const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
@@ -70,6 +83,8 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
   activeTabId,
   maxTabs = 10,
   catalog,
+  defaultAstrologyMode = 'vedic',
+  activeTabLocked = false,
   pastCompanionConversations,
   recentConversations,
   isStreamingTabId = null,
@@ -79,13 +94,16 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
   onCloseTab,
   onReorderTabs,
   onRenameTab,
-  onAddCouncilTab,
-  onAddCompanionArchetypeTab,
-  onOpenExistingConversationAsTab,
+  onQuickAddTab,
+  onReplaceTabWithCouncil,
+  onReplaceTabWithCompanionArchetype,
+  onReplaceTabWithConversation,
+  onReplaceTabWithClarity,
 }) => {
-  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [customizeTabId, setCustomizeTabId] = useState<string | null>(null);
+  const [customizeAnchorEl, setCustomizeAnchorEl] = useState<HTMLElement | null>(null);
   const [addMenuCoords, setAddMenuCoords] = useState<PopoverCoords | null>(null);
-  const [pickerTab, setPickerTab] = useState<'council' | 'companion' | 'recent'>('council');
+  const [pickerTab, setPickerTab] = useState<'chats' | 'council' | 'companions'>('council');
 
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [overflowCoords, setOverflowCoords] = useState<PopoverCoords | null>(null);
@@ -104,7 +122,6 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
   const [editingValue, setEditingValue] = useState<string>('');
 
   const trackRef = useRef<HTMLDivElement | null>(null);
-  const addButtonRef = useRef<HTMLButtonElement | null>(null);
   const addPortalRef = useRef<HTMLDivElement | null>(null);
   const overflowButtonRef = useRef<HTMLButtonElement | null>(null);
   const overflowPortalRef = useRef<HTMLDivElement | null>(null);
@@ -122,6 +139,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
   } | null>(null);
 
   const canAddMore = tabs.length < maxTabs;
+  const showAddMenu = Boolean(customizeTabId);
 
   // Responsive breakpoint listener
   useEffect(() => {
@@ -234,29 +252,40 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
     []
   );
 
-  // Sync Add Menu coordinates & outside click / Escape
+  // Sync Tab Customization Menu coordinates & outside click / Escape
   useEffect(() => {
-    if (!showAddMenu) return;
+    if (!customizeTabId) return;
     setAddMenuCoords(
-      computePopoverCoords(addButtonRef.current, isMobile ? 304 : 320)
+      computePopoverCoords(
+        customizeAnchorEl || trackRef.current,
+        isMobile ? 308 : 332
+      )
     );
 
     const handleOutside = (e: PointerEvent) => {
-      const target = e.target as Node;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
       if (
-        addButtonRef.current?.contains(target) ||
-        addPortalRef.current?.contains(target)
+        addPortalRef.current?.contains(target) ||
+        target.closest('[data-tab-customize-trigger="true"]')
       ) {
         return;
       }
-      setShowAddMenu(false);
+      setCustomizeTabId(null);
+      setCustomizeAnchorEl(null);
     };
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowAddMenu(false);
+      if (e.key === 'Escape') {
+        setCustomizeTabId(null);
+        setCustomizeAnchorEl(null);
+      }
     };
     const handleResize = () => {
       setAddMenuCoords(
-        computePopoverCoords(addButtonRef.current, isMobile ? 304 : 320)
+        computePopoverCoords(
+          customizeAnchorEl || trackRef.current,
+          isMobile ? 308 : 332
+        )
       );
     };
     document.addEventListener('pointerdown', handleOutside);
@@ -267,7 +296,21 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
       window.removeEventListener('keydown', handleKey);
       window.removeEventListener('resize', handleResize);
     };
-  }, [showAddMenu, computePopoverCoords, isMobile]);
+  }, [customizeTabId, customizeAnchorEl, computePopoverCoords, isMobile]);
+
+  // Close customization popup automatically if its target tab gets locked or removed
+  useEffect(() => {
+    if (!customizeTabId) return;
+    const target = tabs.find((t) => t.tabId === customizeTabId);
+    const locked =
+      !target ||
+      Boolean(target.conversationId) ||
+      (target.tabId === activeTabId && activeTabLocked);
+    if (locked) {
+      setCustomizeTabId(null);
+      setCustomizeAnchorEl(null);
+    }
+  }, [customizeTabId, tabs, activeTabId, activeTabLocked]);
 
   // Sync Overflow Menu coordinates & outside click / Escape
   useEffect(() => {
@@ -326,7 +369,8 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
 
   const openOverflowMenu = useCallback(() => {
     clearOverflowCloseTimer();
-    setShowAddMenu(false);
+    setCustomizeTabId(null);
+    setCustomizeAnchorEl(null);
     setOverflowCoords(computePopoverCoords(overflowButtonRef.current, 248));
     setShowOverflowMenu(true);
   }, [computePopoverCoords]);
@@ -379,7 +423,24 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
 
   const availableRecent = recentConversations
     .filter((c) => !openConversationIds.has(c.id))
-    .slice(0, 8);
+    .slice(0, 12);
+
+  const orderedCouncilExperts = useMemo(() => {
+    const experts = [...(catalog?.experts || [])];
+    const prioritySlug =
+      defaultAstrologyMode === 'western' ? 'western_astrologer' : 'council_synthesis';
+    experts.sort((a, b) => {
+      if (a.slug === prioritySlug && b.slug !== prioritySlug) return -1;
+      if (b.slug === prioritySlug && a.slug !== prioritySlug) return 1;
+      return 0;
+    });
+    return experts;
+  }, [catalog?.experts, defaultAstrologyMode]);
+
+  const closeCustomizeMenu = () => {
+    setCustomizeTabId(null);
+    setCustomizeAnchorEl(null);
+  };
 
   const renderPillarIcon = (pillar: ActiveChatTab['pillar'], active: boolean) => {
     const cls = `h-3 w-3 shrink-0 ${active ? 'text-[#B8965A]' : 'text-[#8B8275]'}`;
@@ -389,7 +450,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
   };
 
   const addMenuPortal =
-    showAddMenu && addMenuCoords && typeof document !== 'undefined'
+    showAddMenu && customizeTabId && addMenuCoords && typeof document !== 'undefined'
       ? createPortal(
           <div
             ref={addPortalRef}
@@ -402,8 +463,19 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
             }}
             className="animate-cc-dropdown-up rounded-2xl border border-[#3D3830]/[0.16] bg-[#FDFBF7] shadow-2xl overflow-hidden"
           >
-            {/* Segmented Pillar Switcher */}
+            {/* Segmented Switcher: Chats | Council | Companions */}
             <div className="flex items-center gap-1 p-1.5 bg-[#F1ECE3]/90 border-b border-[#3D3830]/10">
+              <button
+                type="button"
+                onClick={() => setPickerTab('chats')}
+                className={`flex-1 rounded-xl py-1.5 text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                  pickerTab === 'chats'
+                    ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs border border-[#3D3830]/10'
+                    : 'text-[#5C5449] hover:text-[#3D3830]'
+                }`}
+              >
+                Chats ({availableRecent.length})
+              </button>
               <button
                 type="button"
                 onClick={() => setPickerTab('council')}
@@ -417,123 +489,23 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setPickerTab('companion')}
+                onClick={() => setPickerTab('companions')}
                 className={`flex-1 rounded-xl py-1.5 text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                  pickerTab === 'companion'
+                  pickerTab === 'companions'
                     ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs border border-[#3D3830]/10'
                     : 'text-[#5C5449] hover:text-[#3D3830]'
                 }`}
               >
-                Companion
-              </button>
-              <button
-                type="button"
-                onClick={() => setPickerTab('recent')}
-                className={`flex-1 rounded-xl py-1.5 text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                  pickerTab === 'recent'
-                    ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs border border-[#3D3830]/10'
-                    : 'text-[#5C5449] hover:text-[#3D3830]'
-                }`}
-              >
-                Saved ({availableRecent.length})
+                Companions
               </button>
             </div>
 
             <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
-              {pickerTab === 'council' && (
-                <>
-                  <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
-                    Starts a fresh chat — attach a birth profile anytime
-                  </p>
-                  {(catalog?.experts || []).map((guide) => (
-                    <button
-                      key={guide.slug}
-                      type="button"
-                      onClick={() => {
-                        setShowAddMenu(false);
-                        onAddCouncilTab(guide.slug);
-                      }}
-                      className="w-full flex items-start gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                    >
-                      <Compass className="h-3.5 w-3.5 text-[#8B7355] mt-0.5 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-[#3D3830] truncate">
-                          {guide.displayName}
-                        </p>
-                        <p className="text-[11px] text-[#8B8275] line-clamp-1">
-                          {guide.subtitle}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </>
-              )}
-
-              {pickerTab === 'companion' && (
-                <>
-                  <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
-                    Match a new companion
-                  </p>
-                  {COMPANION_QUICK_TYPES.map((ct) => (
-                    <button
-                      key={ct.slug}
-                      type="button"
-                      onClick={() => {
-                        setShowAddMenu(false);
-                        onAddCompanionArchetypeTab(ct.slug);
-                      }}
-                      className="w-full flex items-start gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                    >
-                      <HeartHandshake className="h-3.5 w-3.5 text-[#8B7355] mt-0.5 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-[#3D3830] truncate">
-                          {ct.label}
-                        </p>
-                        <p className="text-[11px] text-[#8B8275] truncate">{ct.note}</p>
-                      </div>
-                    </button>
-                  ))}
-
-                  {pastCompanionConversations.length > 0 && (
-                    <div className="border-t border-[#3D3830]/10 mt-1.5 pt-1.5 space-y-0.5">
-                      <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
-                        Past companions
-                      </p>
-                      {pastCompanionConversations.slice(0, 5).map((conv) => {
-                        const name =
-                          conv.companion_persona_json?.name ||
-                          conv.title.split('·')[0].trim();
-                        return (
-                          <button
-                            key={conv.id}
-                            type="button"
-                            onClick={() => {
-                              setShowAddMenu(false);
-                              onOpenExistingConversationAsTab(conv);
-                            }}
-                            className="w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                          >
-                            <div className="min-w-0">
-                              <p className="text-xs font-medium text-[#3D3830] truncate">
-                                {name}
-                              </p>
-                              <p className="text-[10px] text-[#8B8275] truncate">
-                                {conv.companion_persona_json?.role_label || conv.title}
-                              </p>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
-
-              {pickerTab === 'recent' && (
+              {pickerTab === 'chats' && (
                 <>
                   {availableRecent.length === 0 ? (
                     <p className="px-3 py-4 text-center text-xs text-[#8B8275]">
-                      No other saved threads to pin right now.
+                      No other saved chats to open right now.
                     </p>
                   ) : (
                     availableRecent.map((conv) => (
@@ -541,8 +513,9 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                         key={conv.id}
                         type="button"
                         onClick={() => {
-                          setShowAddMenu(false);
-                          onOpenExistingConversationAsTab(conv);
+                          const targetId = customizeTabId;
+                          closeCustomizeMenu();
+                          if (targetId) onReplaceTabWithConversation(targetId, conv);
                         }}
                         className="w-full flex items-start gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
                       >
@@ -563,6 +536,124 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                       </button>
                     ))
                   )}
+                </>
+              )}
+
+              {pickerTab === 'council' && (
+                <>
+                  <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
+                    Switch this tab before sending your first message
+                  </p>
+                  {orderedCouncilExperts.map((guide) => (
+                    <button
+                      key={guide.slug}
+                      type="button"
+                      onClick={() => {
+                        const targetId = customizeTabId;
+                        closeCustomizeMenu();
+                        if (targetId) onReplaceTabWithCouncil(targetId, guide.slug);
+                      }}
+                      className="w-full flex items-start gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                    >
+                      <Compass className="h-3.5 w-3.5 text-[#8B7355] mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-[#3D3830] truncate">
+                          {guide.displayName}
+                        </p>
+                        <p className="text-[11px] text-[#8B8275] line-clamp-1">
+                          {guide.subtitle}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+
+                  <div className="border-t border-[#3D3830]/10 mt-1.5 pt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetId = customizeTabId;
+                        closeCustomizeMenu();
+                        if (targetId) onReplaceTabWithClarity(targetId);
+                      }}
+                      className="w-full flex items-start gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                    >
+                      <Lightbulb className="h-3.5 w-3.5 text-[#B8965A] mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-[#3D3830] truncate">
+                          Clarity
+                        </p>
+                        <p className="text-[11px] text-[#8B8275] line-clamp-1">
+                          Temporary off-record sidechat to clear doubts
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {pickerTab === 'companions' && (
+                <>
+                  {pastCompanionConversations.length > 0 && (
+                    <div className="pb-1.5 mb-1.5 border-b border-[#3D3830]/10 space-y-0.5">
+                      <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
+                        Past companions
+                      </p>
+                      {pastCompanionConversations.slice(0, 6).map((conv) => {
+                        const name =
+                          conv.companion_persona_json?.name ||
+                          conv.title.split('·')[0].trim();
+                        const previewSnippet =
+                          conv.last_message_preview?.trim() ||
+                          conv.companion_persona_json?.role_label ||
+                          conv.title;
+                        return (
+                          <button
+                            key={conv.id}
+                            type="button"
+                            onClick={() => {
+                              const targetId = customizeTabId;
+                              closeCustomizeMenu();
+                              if (targetId) onReplaceTabWithConversation(targetId, conv);
+                            }}
+                            className="w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-[#3D3830] truncate">
+                                {name}
+                              </p>
+                              <p className="text-[11px] text-[#8B8275] truncate">
+                                {previewSnippet}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
+                    Match a new companion
+                  </p>
+                  {COMPANION_QUICK_TYPES.map((ct) => (
+                    <button
+                      key={ct.slug}
+                      type="button"
+                      onClick={() => {
+                        const targetId = customizeTabId;
+                        closeCustomizeMenu();
+                        if (targetId) onReplaceTabWithCompanionArchetype(targetId, ct.slug);
+                      }}
+                      className="w-full flex items-start gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                    >
+                      <HeartHandshake className="h-3.5 w-3.5 text-[#8B7355] mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-[#3D3830] truncate">
+                          {ct.label}
+                        </p>
+                        <p className="text-[11px] text-[#8B8275] truncate">{ct.note}</p>
+                      </div>
+                    </button>
+                  ))}
                 </>
               )}
             </div>
@@ -603,7 +694,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
             <div className="max-h-64 overflow-y-auto p-1.5 space-y-0.5">
               {overflowTabs.map((tab) => {
                 const isActive = tab.tabId === activeTabId;
-                const isClosable = !tab.isCore && tabs.length > 1;
+                const isClosable = tabs.length > 1;
                 const isEditing = editingTabId === tab.tabId;
                 const isTabStreaming = isStreamingTabId === tab.tabId;
 
@@ -623,7 +714,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                           ref={renameInputRef}
                           type="text"
                           value={editingValue}
-                          maxLength={32}
+                          maxLength={80}
                           onChange={(e) => setEditingValue(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
@@ -741,7 +832,11 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
       >
         {visibleTabs.map((tab, idx) => {
           const isActive = tab.tabId === activeTabId;
-          const isClosable = !tab.isCore && tabs.length > 1;
+          const isClosable = tabs.length > 1;
+          const canCustomizeTab =
+            tab.pillar === 'council' &&
+            !tab.conversationId &&
+            !(isActive && activeTabLocked);
           const isTabStreaming = isStreamingTabId === tab.tabId;
           const isEditing = editingTabId === tab.tabId;
           const isBeingDragged = draggedTabId === tab.tabId;
@@ -864,7 +959,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                   }
                 }}
                 className={`group relative flex items-center gap-1 h-[31px] text-[11px] transition-colors duration-150 ${
-                  isMobile ? 'flex-1 min-w-0' : 'shrink-0 max-w-[156px]'
+                  isMobile ? 'flex-1 basis-0 min-w-0' : 'w-[148px] shrink-0'
                 } ${
                   isActive
                     ? `bg-[#FDFBF7] text-[#3D3830] font-semibold ${
@@ -882,7 +977,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                       ref={renameInputRef}
                       type="text"
                       value={editingValue}
-                      maxLength={32}
+                      maxLength={80}
                       onChange={(e) => setEditingValue(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -914,7 +1009,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                       className="inline-flex items-center gap-1 w-full min-w-0 cursor-pointer whitespace-nowrap"
                     >
                       {renderPillarIcon(tab.pillar, isActive)}
-                      <span className="truncate">{tab.label}</span>
+                      <span className="truncate">{formatFixedTabLabel(tab.label)}</span>
                       {isTabStreaming && (
                         <span
                           aria-label="Responding"
@@ -925,12 +1020,51 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                   </Tooltip>
                 )}
 
+                {!isEditing && canCustomizeTab && (
+                  <button
+                    type="button"
+                    data-tab-action="true"
+                    data-tab-customize-trigger="true"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowOverflowMenu(false);
+                      if (customizeTabId === tab.tabId) {
+                        closeCustomizeMenu();
+                        return;
+                      }
+                      const tabCard = (e.currentTarget.closest('[data-tab-id]') as HTMLElement) || e.currentTarget;
+                      if (tab.tabId !== activeTabId) {
+                        onSelectTab(tab.tabId);
+                      }
+                      setPickerTab('council');
+                      setCustomizeAnchorEl(tabCard);
+                      setCustomizeTabId(tab.tabId);
+                    }}
+                    aria-expanded={customizeTabId === tab.tabId}
+                    aria-label={`Customize ${tab.label} tab`}
+                    className={`inline-flex items-center justify-center p-0.5 rounded-md transition-colors cursor-pointer shrink-0 ${
+                      customizeTabId === tab.tabId
+                        ? 'bg-[#3D3830]/12 text-[#3D3830]'
+                        : 'text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/10'
+                    }`}
+                  >
+                    <ChevronDown
+                      className={`h-2.5 w-2.5 transition-transform duration-150 ${
+                        customizeTabId === tab.tabId ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                )}
+
                 {!isEditing && isClosable && (
                   <button
                     type="button"
                     data-tab-action="true"
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (customizeTabId === tab.tabId) {
+                        closeCustomizeMenu();
+                      }
                       onCloseTab(tab.tabId);
                     }}
                     aria-label={`Close ${tab.label} tab`}
@@ -991,39 +1125,32 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
           </>
         )}
 
-        {/* '+' Add Tab Trigger (up to 10 active tabs) */}
+        {/* '+' Instant New Tab Trigger (up to 10 active tabs) */}
         <div className="shrink-0 flex items-stretch">
           <Tooltip
             content={
               canAddMore
-                ? `Add chat tab (${tabs.length}/${maxTabs})`
+                ? `New consultation tab (${tabs.length}/${maxTabs})`
                 : `Maximum ${maxTabs} active tabs open`
             }
             placement="top"
           >
             <button
-              ref={addButtonRef}
               type="button"
               disabled={!canAddMore}
               onClick={() => {
                 setShowOverflowMenu(false);
-                setShowAddMenu((v) => !v);
+                closeCustomizeMenu();
+                onQuickAddTab();
               }}
-              aria-expanded={showAddMenu}
-              aria-label="Add a new chat tab"
+              aria-label="Open a new chat tab"
               className={`inline-flex h-[31px] w-7 items-center justify-center transition-colors duration-150 ${
-                showAddMenu
-                  ? 'bg-[#4A453D] text-[#FAF7F2] cursor-pointer'
-                  : canAddMore
+                canAddMore
                   ? 'text-[#5C5449] hover:bg-[#FDFBF7]/55 hover:text-[#3D3830] cursor-pointer'
                   : 'text-[#8B8275]/40 cursor-not-allowed'
               }`}
             >
-              <Plus
-                className={`h-3.5 w-3.5 transition-transform duration-150 ${
-                  showAddMenu ? 'rotate-45' : ''
-                }`}
-              />
+              <Plus className="h-3.5 w-3.5" />
             </button>
           </Tooltip>
         </div>

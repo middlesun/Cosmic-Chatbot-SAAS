@@ -154,6 +154,8 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
     useState<SuggestionsConfigState | null>(null);
   const [prompts, setPrompts] = useState<ChatbotPromptSummary[]>([]);
   const [recipes, setRecipes] = useState<PromptRecipeRecord[]>([]);
+  const [pipelineLoggingEnabled, setPipelineLoggingEnabled] = useState(false);
+  const [togglingPipelineLogging, setTogglingPipelineLogging] = useState(false);
 
   const [sectionTab, setSectionTab] = useState<
     'experience' | 'catalog' | 'rules' | 'suggestions'
@@ -174,6 +176,7 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
       if (!res.ok) throw new Error(data.error || 'Failed to load chatbot settings');
       setConfig(data.config);
       setDefaultRules(data.defaultConversationalRules || '');
+      setPipelineLoggingEnabled(Boolean(data.pipelineLoggingEnabled));
       if (data.suggestionsConfig) {
         setSuggestionsConfig(data.suggestionsConfig as SuggestionsConfigState);
       }
@@ -254,6 +257,35 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
     const [moved] = copy.splice(idx, 1);
     copy.splice(nextIdx, 0, moved);
     setConfig({ ...config, [listKey]: copy });
+  };
+
+  const handleTogglePipelineLogging = async () => {
+    setTogglingPipelineLogging(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      const token = await getAccessToken();
+      const nextEnabled = !pipelineLoggingEnabled;
+      const res = await fetch('/api/admin/chatbot-logs/toggle', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ enabled: nextEnabled }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not update pipeline logging setting');
+      const confirmed = Boolean(data.enabled);
+      setPipelineLoggingEnabled(confirmed);
+      setFeedback(
+        `Chatbot pipeline diagnostics logging is now ${confirmed ? 'ON' : 'OFF'}.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle pipeline logging');
+    } finally {
+      setTogglingPipelineLogging(false);
+    }
   };
 
   const handleTogglePromptActive = async (item: ChatbotPromptSummary) => {
@@ -632,6 +664,34 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                         </div>
                       );
                     })}
+
+                    <div className="flex items-center justify-between gap-4 py-3 last:pb-0">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[#3D3830]">
+                          Chatbot pipeline diagnostics logging
+                        </p>
+                        <p className="text-xs text-[#8B8275] mt-0.5">
+                          Records Stage 1–4 decisions, latency, and token telemetry in Chatbot Logs (updates immediately).
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        disabled={togglingPipelineLogging}
+                        aria-checked={pipelineLoggingEnabled}
+                        aria-label="Chatbot pipeline diagnostics logging"
+                        onClick={() => void handleTogglePipelineLogging()}
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors cursor-pointer disabled:opacity-50 ${
+                          pipelineLoggingEnabled ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                        }`}
+                      >
+                        <span
+                          className={`h-5 w-5 rounded-full bg-[#FDFBF7] shadow-xs transition-transform ${
+                            pipelineLoggingEnabled ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
                   </div>
                 </section>
               </div>

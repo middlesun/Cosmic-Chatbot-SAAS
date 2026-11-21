@@ -422,13 +422,21 @@ export function sanitizeSutraProse(text: string): string {
     .replace(/\b(?:the|a)\s+native\b/g, 'you')
     // Strip any accidental internal rule token leakage like [F_DASHA_LADDER] or (PRIO_CAREER)
     .replace(/\[(?:F|PRIO)_[A-Z0-9_]+\]\s*/g, '')
-    .replace(/\((?:F|PRIO)_[A-Z0-9_]+\)\s*/g, '');
+    .replace(/\((?:F|PRIO)_[A-Z0-9_]+\)\s*/g, '')
+    // Strip legacy prompt-structure markers (:::prediction, :::analysis, :::, [CONFIDENCE: ...], [FOLLOWUP])
+    .replace(/^[ \t]*:::[a-zA-Z0-9_-]*[ \t]*(?:\r?\n|$)/gm, '')
+    .replace(/:::(?:prediction|analysis)\b[ \t]*/gi, '')
+    .replace(/[ \t]*:::[ \t]*$/gm, '')
+    .replace(/\[CONFIDENCE\s*:[^\]]*\][ \t]*/gi, '')
+    .replace(/^[ \t]*\[FOLLOWUP\][^\n]*(?:\r?\n|$)/gim, '')
+    .replace(/\[FOLLOWUP\][ \t]*/gi, '')
+    .replace(/\n{3,}/g, '\n\n');
 
   if (codeBlocks.length > 0) {
     working = working.replace(/__CC_CODE_BLOCK_(\d+)__/g, (_, i) => codeBlocks[Number(i)] || '');
   }
 
-  return working;
+  return working.trimEnd();
 }
 
 export function sanitizeAssistantOutput(text: string): {

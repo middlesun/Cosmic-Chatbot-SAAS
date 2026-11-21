@@ -32,6 +32,7 @@ interface SuggestionsPanelProps {
     messageId: string
   ) => void;
   onLoadMoreSuggestions?: (messageId: string) => Promise<void> | void;
+  utilityBar?: React.ReactNode;
 }
 
 interface SelectedEntry {
@@ -57,6 +58,7 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
   onToggleAskLater,
   onBookmarkSuggestions,
   onLoadMoreSuggestions,
+  utilityBar,
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -95,7 +97,14 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
       ? suggestions!.followups.filter((i) => i && typeof i.text === 'string' && i.text.trim())
       : [];
     const rawDeeper = Array.isArray(suggestions?.deeper_analysis)
-      ? suggestions!.deeper_analysis.filter((i) => i && typeof i.text === 'string' && i.text.trim())
+      ? suggestions!.deeper_analysis.filter(
+          (i) =>
+            i &&
+            typeof i.text === 'string' &&
+            i.text.trim() &&
+            i.action !== 'deep_audit' &&
+            i.id !== 'da_deep_audit'
+        )
       : [];
 
     if (rawFollowups.length > 0 || rawDeeper.length > 0) {
@@ -131,7 +140,14 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
   );
 
   const totalCount = normalized.followups.length + normalized.deeper_analysis.length;
-  if (totalCount === 0) return null;
+  if (totalCount === 0) {
+    if (!utilityBar) return null;
+    return (
+      <div className="mt-2 border-t border-[#3D3830]/[0.08] pt-2.5 flex flex-wrap items-center justify-end gap-2">
+        {utilityBar}
+      </div>
+    );
+  }
 
   const hasFollowups = normalized.followups.length > 0;
   const hasDeeper = normalized.deeper_analysis.length > 0;
@@ -326,9 +342,7 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
             onClick={() => onSubmitSuggestion(item)}
             className="inline-flex items-center gap-1 text-[11px] font-medium text-[#8B8275] group-hover:text-[#3D3830] transition-colors disabled:opacity-40 cursor-pointer"
           >
-            <span className={item.action === 'deep_audit' ? 'text-[#B8965A] font-semibold' : ''}>
-              {item.action === 'deep_audit' ? 'Run Deep Audit' : 'Ask'}
-            </span>
+            <span>Ask</span>
             <ArrowUpRight className="h-3 w-3 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </button>
 
@@ -395,17 +409,20 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
   };
 
   return (
-    <section className="pt-4" aria-label="Suggestions">
-      {/* Collapsible Editorial Header */}
-      <div className="flex items-center justify-between gap-3">
+    <section
+      className="mt-2 border-t border-[#3D3830]/[0.08] pt-2.5"
+      aria-label="Suggestions and message actions"
+    >
+      {/* Unified Option-A Footer: Suggestions (Left) + Utility Icons (Right) */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <button
           type="button"
           onClick={toggleExpand}
           aria-expanded={isExpanded}
-          className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-left text-xs font-medium shadow-[0_1px_2px_rgba(61,56,48,0.06)] active:scale-[0.98] transition-all cursor-pointer ${
+          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-left text-xs font-medium active:scale-[0.98] transition-all cursor-pointer ${
             isExpanded
-              ? 'border-[#3D3830]/22 bg-[#DDD4C4] text-[#3D3830]'
-              : 'border-[#3D3830]/16 bg-[#E5DDD0] text-[#3D3830] hover:bg-[#DDD4C4] hover:border-[#3D3830]/22'
+              ? 'border-[#3D3830]/22 bg-[#F1ECE3] text-[#3D3830] shadow-xs'
+              : 'border-[#3D3830]/14 bg-[#FDFBF7] text-[#3D3830] hover:bg-[#F1ECE3] hover:border-[#3D3830]/22'
           }`}
         >
           <span>Suggestions</span>
@@ -416,27 +433,7 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
           />
         </button>
 
-        <div className="flex items-center gap-2">
-          {statusNotice && (
-            <span className="text-[11px] font-medium text-[#8B7355] animate-cc-message-in">
-              {statusNotice}
-            </span>
-          )}
-
-          {isExpanded && (
-            <button
-              type="button"
-              onClick={toggleSelectingMode}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
-                isSelecting
-                  ? 'bg-[#EAE3D7] text-[#3D3830]'
-                  : 'text-[#8B8275] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830]'
-              }`}
-            >
-              {isSelecting ? 'Done' : 'Select'}
-            </button>
-          )}
-        </div>
+        {utilityBar ? <div className="ml-auto">{utilityBar}</div> : null}
       </div>
 
       {/* Smoothly Animated Expandable Suggestions Body */}
@@ -444,11 +441,31 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
         aria-hidden={!isExpanded}
         className={`grid transition-[grid-template-rows,opacity,transform] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
           isExpanded
-            ? 'grid-rows-[1fr] opacity-100 translate-y-0 mt-2.5'
+            ? 'grid-rows-[1fr] opacity-100 translate-y-0 mt-3'
             : 'grid-rows-[0fr] opacity-0 -translate-y-1 pointer-events-none mt-0'
         }`}
       >
         <div className="min-h-0 overflow-hidden">
+          {/* Quiet Drawer Control Strip: Status Notice + Multiple Select */}
+          <div className="mb-2.5 flex items-center justify-between gap-2 px-0.5">
+            <span className="text-[11px] font-medium text-[#8B7355] min-h-[16px]">
+              {statusNotice || ''}
+            </span>
+
+            <button
+              type="button"
+              tabIndex={isExpanded ? 0 : -1}
+              onClick={toggleSelectingMode}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                isSelecting
+                  ? 'bg-[#EAE3D7] text-[#3D3830]'
+                  : 'text-[#8B8275] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830]'
+              }`}
+            >
+              {isSelecting ? 'Done' : 'Multiple select'}
+            </button>
+          </div>
+
           {/* Subtle Bulk Selection Action Bar */}
           <div
             aria-hidden={!isSelecting}

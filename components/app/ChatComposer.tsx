@@ -48,6 +48,7 @@ interface ChatComposerProps {
   maxActiveTabs?: number;
   pastCompanionConversations: ConversationRecord[];
   recentConversations: ConversationRecord[];
+  defaultAstrologyMode?: 'vedic' | 'western';
   isStreamingTabId?: string | null;
   composerDisabled?: boolean;
   composerDisabledHint?: string;
@@ -55,9 +56,14 @@ interface ChatComposerProps {
   onCloseTab: (tabId: string) => void;
   onReorderTabs: (orderedTabIds: string[]) => void;
   onRenameTab: (tabId: string, nextLabel: string) => void;
-  onAddCouncilTab: (expertSlug: string) => void;
-  onAddCompanionArchetypeTab: (archetype: CompanionArchetypeSlug) => void;
-  onOpenExistingConversationAsTab: (conv: ConversationRecord) => void;
+  onQuickAddTab: () => void;
+  onReplaceTabWithCouncil: (targetTabId: string, expertSlug: string) => void;
+  onReplaceTabWithCompanionArchetype: (
+    targetTabId: string,
+    archetype: CompanionArchetypeSlug
+  ) => void;
+  onReplaceTabWithConversation: (targetTabId: string, conv: ConversationRecord) => void;
+  onReplaceTabWithClarity: (targetTabId: string) => void;
   onResetClarity?: () => void;
   onStartNewCompanion?: () => void;
   draftText: string;
@@ -224,6 +230,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   maxActiveTabs = 10,
   pastCompanionConversations,
   recentConversations,
+  defaultAstrologyMode = 'vedic',
   isStreamingTabId = null,
   composerDisabled = false,
   composerDisabledHint,
@@ -231,9 +238,11 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   onCloseTab,
   onReorderTabs,
   onRenameTab,
-  onAddCouncilTab,
-  onAddCompanionArchetypeTab,
-  onOpenExistingConversationAsTab,
+  onQuickAddTab,
+  onReplaceTabWithCouncil,
+  onReplaceTabWithCompanionArchetype,
+  onReplaceTabWithConversation,
+  onReplaceTabWithClarity,
   onResetClarity,
   onStartNewCompanion,
   draftText,
@@ -958,6 +967,8 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
             activeTabId={activeTabId}
             maxTabs={maxActiveTabs}
             catalog={catalog}
+            defaultAstrologyMode={defaultAstrologyMode}
+            activeTabLocked={isThreadLocked}
             pastCompanionConversations={pastCompanionConversations}
             recentConversations={recentConversations}
             isStreamingTabId={isStreamingTabId}
@@ -976,9 +987,11 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
             onCloseTab={onCloseTab}
             onReorderTabs={onReorderTabs}
             onRenameTab={onRenameTab}
-            onAddCouncilTab={onAddCouncilTab}
-            onAddCompanionArchetypeTab={onAddCompanionArchetypeTab}
-            onOpenExistingConversationAsTab={onOpenExistingConversationAsTab}
+            onQuickAddTab={onQuickAddTab}
+            onReplaceTabWithCouncil={onReplaceTabWithCouncil}
+            onReplaceTabWithCompanionArchetype={onReplaceTabWithCompanionArchetype}
+            onReplaceTabWithConversation={onReplaceTabWithConversation}
+            onReplaceTabWithClarity={onReplaceTabWithClarity}
           />
 
           {/* Main Input Body */}
@@ -1089,7 +1102,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                           className="inline-flex items-center rounded-full border border-[#3D3830]/12 bg-[#F1ECE3] p-0.5"
                         >
                           <Tooltip
-                            content="Crisp, everyday-friendly reading with expandable astrological breakdown"
+                            content="Easy to understand"
                             placement="top"
                           >
                             <button
@@ -1106,7 +1119,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                             </button>
                           </Tooltip>
                           <Tooltip
-                            content="Comprehensive reading free to explain technical astrology inline"
+                            content="With technical explanations"
                             placement="top"
                           >
                             <button

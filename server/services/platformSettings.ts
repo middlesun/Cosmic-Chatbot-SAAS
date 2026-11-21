@@ -382,8 +382,10 @@ export function maskSecretKey(rawKey?: string | null, last4Override?: string | n
 // ---------------- In-Memory Caching Layer ----------------
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const PIPELINE_FLAG_TTL_MS = 5 * 1000;
 
 let aiSettingsCache: { value: AiSettingsConfig; expiresAt: number } | null = null;
+let pipelineFlagCache: { value: boolean; expiresAt: number } | null = null;
 let chatbotConfigCache: { value: ChatbotConfig; expiresAt: number } | null = null;
 let suggestionsConfigCache: { value: SuggestionsConfig; expiresAt: number } | null = null;
 let miniAppsConfigCache: { value: MiniAppsGovernanceConfig; expiresAt: number } | null = null;
@@ -392,6 +394,7 @@ let promptRecipesCache: { value: PromptRecipeRecord[]; expiresAt: number } | nul
 
 export function invalidateAllPlatformCaches(): void {
   aiSettingsCache = null;
+  pipelineFlagCache = null;
   chatbotConfigCache = null;
   suggestionsConfigCache = null;
   miniAppsConfigCache = null;
@@ -456,12 +459,29 @@ export async function savePlatformSetting(
     return { ok: false, error: msg };
   }
 
-  if (key === 'ai_config') aiSettingsCache = null;
+  if (key === 'ai_config') {
+    aiSettingsCache = null;
+    pipelineFlagCache = null;
+  }
   if (key === 'chatbot_config') chatbotConfigCache = null;
   if (key === 'suggestions_config') suggestionsConfigCache = null;
   if (key === 'mini_apps_config') miniAppsConfigCache = null;
   if (key === 'pricing_config') pricingConfigCache = null;
   return { ok: true };
+}
+
+export async function getPipelineLoggingEnabledFast(): Promise<boolean> {
+  const now = Date.now();
+  if (pipelineFlagCache && pipelineFlagCache.expiresAt > now) {
+    return pipelineFlagCache.value;
+  }
+  const stored = await readSettingRow<AiSettingsConfig>('ai_config');
+  const enabled =
+    typeof stored?.chatbot_pipeline_logging_enabled === 'boolean'
+      ? stored.chatbot_pipeline_logging_enabled
+      : DEFAULT_AI_SETTINGS.chatbot_pipeline_logging_enabled;
+  pipelineFlagCache = { value: enabled, expiresAt: now + PIPELINE_FLAG_TTL_MS };
+  return enabled;
 }
 
 // ---------------- Typed Loaders ----------------

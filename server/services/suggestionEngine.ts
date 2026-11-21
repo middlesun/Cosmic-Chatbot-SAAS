@@ -294,10 +294,7 @@ function sanitizeSuggestionItem(
       text: rawText,
     };
     if (includeDirective && typeof rec.technical_directive === 'string' && rec.technical_directive.trim()) {
-      item.technical_directive = rec.technical_directive.trim().slice(0, 600);
-    }
-    if (rec.action === 'deep_audit') {
-      item.action = 'deep_audit';
+      item.technical_directive = rec.technical_directive.trim().slice(0, 240);
     }
     if (typeof rec.playbook_id === 'string' && rec.playbook_id.trim()) {
       item.playbook_id = rec.playbook_id.trim();
@@ -360,22 +357,6 @@ export function buildDeterministicFallbackSuggestions(
 
   const deeper: SuggestionItem[] = [];
 
-  // Escalation chip first when convergence is split or high-severity cancellation exists
-  if (seeds.needsDeepAuditEscalation && maxD > 0) {
-    const deepText = 'Run a 4-Lens Deep Council Audit on these conflicting factors';
-    const key = deepText.toLowerCase();
-    if (!seenKeys.has(key)) {
-      seenKeys.add(key);
-      deeper.push({
-        id: 'da_deep_audit',
-        text: deepText,
-        action: 'deep_audit',
-        playbook_id: seeds.playbookId,
-        technical_directive: `Run full 4-lens cross-verification (${seeds.escalationReason || 'split convergence'}) applying the 5-Tier Truth Gate (KP CSL -> D9 -> PHI/Shadbala -> SAV -> D1) and weigh opposing outcomes transparently.`,
-      });
-    }
-  }
-
   for (let i = 0; i < seeds.unusedContradictions.length && deeper.length < maxD; i++) {
     const c = seeds.unusedContradictions[i];
     const text =
@@ -395,7 +376,7 @@ export function buildDeterministicFallbackSuggestions(
       id: `da_s4_${i + 1}`,
       text,
       playbook_id: seeds.playbookId,
-      technical_directive: `Target fluency=${seeds.deeperTargetFluency}. Audit "${c.title}": ${c.mechanism}. Cross-verify with KP Cuspal Sub-Lord, D9 Navamsa endurance, Bhava-Chalit placement, and active Vimshottari MD/AD/PD timing.`,
+      technical_directive: `Audit ${c.title} (${seeds.deeperTargetFluency}): verify KP Cuspal Sub-Lord, D9 endurance, Bhava-Chalit placement, and active MD/AD timing.`,
     });
   }
 
@@ -507,25 +488,19 @@ export async function generateAlignedStage4Suggestions(
           .join('\n')}\n`
       : '';
 
-  const escalationInstruction = seeds.needsDeepAuditEscalation
-    ? `\n3. CANCELLATION / LOW-CONVERGENCE ESCALATION TRIGGERED (${seeds.escalationReason}):
-Include ONE "deeper_analysis" item with "action": "deep_audit" offering a thorough 4-Lens Deep Council Audit of the conflicting factors (written naturally in ${params.languageSlug}, e.g., "Run a 4-Lens Deep Council Audit on these conflicting signals").`
-    : '';
-
   const prompt = `You are Stage 4 of the Sutradhara Vedic Consultation Engine generating Chart-Aligned Follow-Up & Deeper Analysis suggestions.
 
-STRICT 4-SOURCE SEEDING CONTRACT (Eliminate generic filler like "Tell me more about my chart"):
+STRICT SEEDING CONTRACT (Eliminate generic filler like "Tell me more about my chart"):
 1. PLAYBOOK NEXT-HOP GRAPH (Seed "followups" primarily from these natural next questions in ${params.languageSlug}):
 ${nextHopsText}
 
 2. UNUSED CHART CONTRADICTIONS, CHALIT SHIFTS, YOGAS & DOSHAS NOT YET COVERED (Seed "deeper_analysis" directly from these real chart features):
 ${contradictionsText}
-${escalationInstruction}
 
-4. +1 FLUENCY LADDER RULE:
+3. +1 FLUENCY LADDER RULE:
 ${seeds.fluencyBridgeDirective}
 - Write all user-facing "text" strings in ${params.languageSlug}.
-- Write every "technical_directive" in crisp English naming exact houses, Vargas (D9/D10/D7/D2/D4), KP CSL, SAV bindus, or cancellations to verify if clicked.
+- Keep each "technical_directive" to ONE concise English sentence (under 25 words) naming the exact house, Varga, KP CSL, or Dasha check to run if clicked.
 ${followupsRules ? `\nADMIN FOLLOWUP STYLE:\n${followupsRules}` : ''}
 ${deeperRules ? `\nADMIN DEEPER ANALYSIS STYLE:\n${deeperRules}` : ''}
 ${dedupBlock}
@@ -537,14 +512,15 @@ Answer Summary: ${params.assistantAnswer.slice(0, 1200)}
 Return STRICTLY JSON:
 {
   "followups": ${maxF > 0 ? `[{ "text": "...", "playbook_id": "OPTIONAL_ID" }] (up to ${maxF} items)` : '[]'},
-  "deeper_analysis": ${maxD > 0 ? `[{ "text": "...", "technical_directive": "...", "action": "deep_audit (ONLY on the 1 escalation item if triggered)" }] (up to ${maxD} items)` : '[]'}
+  "deeper_analysis": ${maxD > 0 ? `[{ "text": "...", "technical_directive": "..." }] (up to ${maxD} items)` : '[]'}
 }`;
 
   try {
     const completion = await createOpenRouterCompletion({
       model: utilityModel,
-      maxTokens: utilityMaxTokens,
+      maxTokens: Math.min(utilityMaxTokens, 680),
       jsonMode: true,
+      disableReasoning: true,
       temperature: params.existingTexts?.length ? 0.6 : 0.4,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -564,28 +540,8 @@ Return STRICTLY JSON:
 
     const followups =
       maxF > 0 ? deduplicateList(parsedFu, existingSeen, maxF) : [];
-    let deeper =
+    const deeper =
       maxD > 0 ? deduplicateList(parsedDa, existingSeen, maxD) : [];
-
-    // Guarantee Deep Audit escalation chip appears when triggered & room remains
-    if (
-      seeds.needsDeepAuditEscalation &&
-      maxD > 0 &&
-      !deeper.some((d) => d.action === 'deep_audit')
-    ) {
-      const escalationFallback = buildDeterministicFallbackSuggestions(
-        seeds,
-        0,
-        1,
-        existingSeen
-      );
-      if (escalationFallback.deeper_analysis.length > 0) {
-        deeper = [
-          escalationFallback.deeper_analysis[0],
-          ...deeper.slice(0, Math.max(0, maxD - 1)),
-        ];
-      }
-    }
 
     // Backfill cleanly from deterministic seeds if LLM returned fewer items
     if (followups.length === 0 || deeper.length === 0) {
@@ -621,4 +577,190 @@ export async function generateMoreAlignedStage4Suggestions(
     maxFollowupsOverride: countF,
     maxDeeperOverride: countD,
   });
+}
+
+/**
+ * Lightweight fast-path for "Load more" (POST /suggestions/more):
+ * Avoids downloading heavy chart_json / natal_truth_dossier_json or recompiling Stage 2.
+ * Uses saved Playbook next-hops + message context with reasoning disabled for rapid JSON output.
+ */
+export async function generateFastMoreStage4Suggestions(params: {
+  playbookId: string;
+  domain: string;
+  convergenceBandLabel?: string;
+  userFluency: UserFluencyTier;
+  userQuestion: string;
+  assistantAnswer: string;
+  languageSlug: string;
+  existingTexts: string[];
+  count?: number;
+}): Promise<MessageSuggestions> {
+  const playbook = getPlaybookById(params.playbookId);
+  const nextHops: Stage4NextHopSeed[] = [];
+  for (const hopId of playbook?.nextHops || []) {
+    const hop = getPlaybookById(hopId);
+    if (!hop || hop.id === playbook.id) continue;
+    nextHops.push({
+      playbookId: hop.id,
+      shortLabel: hop.shortLabel,
+      title: hop.title,
+      domain: hop.domain,
+    });
+  }
+
+  const totalTarget = Math.max(2, Math.min(12, params.count || 8));
+  let countF = Math.ceil(totalTarget / 2);
+  let countD = Math.floor(totalTarget / 2);
+  let followupsRules = '';
+  let deeperRules = '';
+  let utilityModel = getUtilityModel();
+
+  try {
+    const [chatbotConfig, suggestionsConfig, runtime] = await Promise.all([
+      getChatbotConfig(),
+      getSuggestionsConfig(),
+      getResolvedOpenRouterRuntime(),
+    ]);
+    if (
+      chatbotConfig.features.followups === false ||
+      (!suggestionsConfig.followups_enabled && !suggestionsConfig.deeper_analysis_enabled)
+    ) {
+      return { followups: [], deeper_analysis: [] };
+    }
+    const bothEnabled =
+      suggestionsConfig.followups_enabled && suggestionsConfig.deeper_analysis_enabled;
+    countF = bothEnabled
+      ? Math.ceil(totalTarget / 2)
+      : suggestionsConfig.followups_enabled
+      ? totalTarget
+      : 0;
+    countD = bothEnabled
+      ? Math.floor(totalTarget / 2)
+      : suggestionsConfig.deeper_analysis_enabled
+      ? totalTarget
+      : 0;
+    followupsRules = suggestionsConfig.followups_rules || '';
+    deeperRules = suggestionsConfig.deeper_analysis_rules || '';
+    utilityModel = runtime.utilityModel || utilityModel;
+  } catch {
+    // Proceed with sensible defaults
+  }
+
+  const existingSeen = new Set<string>(
+    params.existingTexts.map((t) => t.trim().toLowerCase()).filter(Boolean)
+  );
+
+  const deeperTargetFluency = nextFluencyRung(params.userFluency);
+  const fluencyDirective = buildFluencyBridgeDirective(params.userFluency, deeperTargetFluency);
+
+  const openRouterReady = await isOpenRouterConfiguredAsync().catch(() =>
+    isOpenRouterConfigured()
+  );
+  if (!openRouterReady) {
+    const fallbackFollowups: SuggestionItem[] = [];
+    for (let i = 0; i < nextHops.length && fallbackFollowups.length < countF; i++) {
+      const text = buildHumanQuestionForHop(nextHops[i]);
+      const key = text.toLowerCase();
+      if (existingSeen.has(key)) continue;
+      existingSeen.add(key);
+      fallbackFollowups.push({
+        id: `fu_s4m_${i + 1}`,
+        text,
+        playbook_id: nextHops[i].playbookId,
+      });
+    }
+    return { followups: fallbackFollowups, deeper_analysis: [] };
+  }
+
+  const nextHopsText =
+    nextHops.length > 0
+      ? nextHops
+          .slice(0, 6)
+          .map((h) => `- [${h.playbookId}] ${h.shortLabel}`)
+          .join('\n')
+      : `- [${playbook.id}] Explore ${params.domain} timing and practical next steps`;
+
+  const dedupBlock =
+    existingSeen.size > 0
+      ? `\nDO NOT repeat or reword:\n${Array.from(existingSeen)
+          .slice(0, 20)
+          .map((t, i) => `${i + 1}. ${t}`)
+          .join('\n')}\n`
+      : '';
+
+  const prompt = `Generate ${totalTarget} NEW chart-aligned suggestions in ${params.languageSlug}.
+
+NEXT-HOP TOPICS:
+${nextHopsText}
+
+FLUENCY:
+${fluencyDirective}
+- Keep every "technical_directive" to ONE crisp English sentence (under 22 words).
+${followupsRules ? `\nFOLLOWUP STYLE:\n${followupsRules.slice(0, 500)}` : ''}
+${deeperRules ? `\nDEEPER STYLE:\n${deeperRules.slice(0, 500)}` : ''}
+${dedupBlock}
+CONTEXT: ${playbook.id} (${params.domain})
+Q: ${params.userQuestion.slice(0, 320)}
+A EXCERPT: ${params.assistantAnswer.slice(0, 900)}
+
+Return STRICTLY JSON:
+{
+  "followups": ${countF > 0 ? `[{ "text": "...", "playbook_id": "OPTIONAL_ID" }] (up to ${countF})` : '[]'},
+  "deeper_analysis": ${countD > 0 ? `[{ "text": "...", "technical_directive": "..." }] (up to ${countD})` : '[]'}
+}`;
+
+  try {
+    const completion = await createOpenRouterCompletion({
+      model: utilityModel,
+      maxTokens: 560,
+      jsonMode: true,
+      disableReasoning: true,
+      temperature: 0.6,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const parsed = safeExtractJsonObject(completion.text);
+    const rawFu = Array.isArray(parsed.followups) ? parsed.followups : [];
+    const rawDa = Array.isArray(parsed.deeper_analysis) ? parsed.deeper_analysis : [];
+
+    const parsedFu = rawFu
+      .map((item, idx) => sanitizeSuggestionItem(item, 'fu', idx, false))
+      .filter((x): x is SuggestionItem => Boolean(x));
+    const parsedDa = rawDa
+      .map((item, idx) => sanitizeSuggestionItem(item, 'da', idx, true))
+      .filter((x): x is SuggestionItem => Boolean(x));
+
+    const followups = countF > 0 ? deduplicateList(parsedFu, existingSeen, countF) : [];
+    const deeper = countD > 0 ? deduplicateList(parsedDa, existingSeen, countD) : [];
+
+    if (followups.length < countF && nextHops.length > 0) {
+      for (let i = 0; i < nextHops.length && followups.length < countF; i++) {
+        const text = buildHumanQuestionForHop(nextHops[i]);
+        const key = text.toLowerCase();
+        if (existingSeen.has(key)) continue;
+        existingSeen.add(key);
+        followups.push({
+          id: `fu_s4m_fb_${i + 1}`,
+          text,
+          playbook_id: nextHops[i].playbookId,
+        });
+      }
+    }
+
+    return { followups, deeper_analysis: deeper };
+  } catch {
+    const fallbackFollowups: SuggestionItem[] = [];
+    for (let i = 0; i < nextHops.length && fallbackFollowups.length < countF; i++) {
+      const text = buildHumanQuestionForHop(nextHops[i]);
+      const key = text.toLowerCase();
+      if (existingSeen.has(key)) continue;
+      existingSeen.add(key);
+      fallbackFollowups.push({
+        id: `fu_s4m_err_${i + 1}`,
+        text,
+        playbook_id: nextHops[i].playbookId,
+      });
+    }
+    return { followups: fallbackFollowups, deeper_analysis: [] };
+  }
 }

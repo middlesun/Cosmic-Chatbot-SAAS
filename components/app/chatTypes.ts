@@ -150,6 +150,7 @@ export interface ConversationRecord {
   total_word_count: number;
   use_full_profile_memory: boolean;
   ask_later_json?: AskLaterItem[];
+  last_message_preview?: string | null;
   updated_at: string;
   created_at: string;
 }

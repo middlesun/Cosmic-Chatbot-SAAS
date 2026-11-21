@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
-import { getAiSettings } from './platformSettings';
+import { getPipelineLoggingEnabledFast } from './platformSettings';
 
 export interface ChatbotPipelineLogEntry {
   id: string;
@@ -40,6 +40,7 @@ export interface RecordChatbotPipelineLogInput {
 
 const MAX_MEMORY_LOGS = 120;
 const memoryLogBuffer: ChatbotPipelineLogEntry[] = [];
+let lastWriteError: string | null = null;
 
 function pushToMemoryBuffer(entry: ChatbotPipelineLogEntry): void {
   memoryLogBuffer.unshift(entry);
@@ -50,8 +51,7 @@ function pushToMemoryBuffer(entry: ChatbotPipelineLogEntry): void {
 
 export async function isPipelineLoggingEnabled(): Promise<boolean> {
   try {
-    const ai = await getAiSettings();
-    return Boolean(ai.chatbot_pipeline_logging_enabled);
+    return await getPipelineLoggingEnabledFast();
   } catch {
     return false;
   }
@@ -127,11 +127,16 @@ export async function recordChatbotPipelineLog(
       error_message: entry.error_message,
     });
 
-    if (error && error.code !== '42P01') {
-      console.warn('[pipelineLogger] Supabase insert warning:', error.message);
+    if (error) {
+      lastWriteError = `${error.code ? `[${error.code}] ` : ''}${error.message || 'Insert failed'}`;
+      if (error.code !== '42P01') {
+        console.warn('[pipelineLogger] Supabase insert warning:', error.message);
+      }
+    } else {
+      lastWriteError = null;
     }
-  } catch {
-    // Non-fatal telemetry guard
+  } catch (err) {
+    lastWriteError = err instanceof Error ? err.message : 'Unexpected telemetry write failure';
   }
 }
 
@@ -142,6 +147,8 @@ export async function getChatbotPipelineLogs(options?: {
   logs: ChatbotPipelineLogEntry[];
   storage: 'supabase' | 'memory';
   tableMissing: boolean;
+  schemaCacheStale: boolean;
+  schemaErrorDetail: string | null;
 }> {
   const limit = Math.max(1, Math.min(200, options?.limit || 60));
   const actionFilter = options?.actionFilter?.trim() || '';
@@ -167,12 +174,19 @@ export async function getChatbotPipelineLogs(options?: {
           logs: data as ChatbotPipelineLogEntry[],
           storage: 'supabase',
           tableMissing: false,
+          schemaCacheStale: false,
+          schemaErrorDetail: data.length === 0 ? lastWriteError : null,
         };
       }
 
+      const errCode = error?.code || '';
+      const errMsg = error?.message || '';
+      const schemaCacheStale =
+        errCode === 'PGRST205' || /schema cache/i.test(errMsg);
       const isMissing =
-        error?.code === '42P01' ||
-        Boolean(error?.message?.toLowerCase().includes('chatbot_pipeline_logs'));
+        errCode === '42P01' ||
+        schemaCacheStale ||
+        /relation .*chatbot_pipeline_logs.* does not exist/i.test(errMsg);
       const filteredMem = memoryLogBuffer
         .filter((l) => !actionFilter || actionFilter === 'all' || l.action_taken === actionFilter)
         .slice(0, limit);
@@ -180,9 +194,23 @@ export async function getChatbotPipelineLogs(options?: {
         logs: filteredMem,
         storage: 'memory',
         tableMissing: isMissing,
+        schemaCacheStale,
+        schemaErrorDetail:
+          errMsg || lastWriteError
+            ? `${errCode ? `[${errCode}] ` : ''}${errMsg || lastWriteError}`.trim()
+            : null,
       };
-    } catch {
-      // Fallback to in-memory ring buffer
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Query exception';
+      return {
+        logs: memoryLogBuffer
+          .filter((l) => !actionFilter || actionFilter === 'all' || l.action_taken === actionFilter)
+          .slice(0, limit),
+        storage: 'memory',
+        tableMissing: false,
+        schemaCacheStale: false,
+        schemaErrorDetail: msg,
+      };
     }
   }
 
@@ -194,11 +222,14 @@ export async function getChatbotPipelineLogs(options?: {
     logs: filteredMem,
     storage: 'memory',
     tableMissing: false,
+    schemaCacheStale: false,
+    schemaErrorDetail: 'Supabase admin client is unavailable.',
   };
 }
 
 export async function clearChatbotPipelineLogs(): Promise<{ clearedDb: boolean }> {
   memoryLogBuffer.length = 0;
+  lastWriteError = null;
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin) return { clearedDb: false };
   try {
