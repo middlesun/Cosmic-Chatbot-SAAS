@@ -326,7 +326,9 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
             onClick={() => onSubmitSuggestion(item)}
             className="inline-flex items-center gap-1 text-[11px] font-medium text-[#8B8275] group-hover:text-[#3D3830] transition-colors disabled:opacity-40 cursor-pointer"
           >
-            <span>Ask</span>
+            <span className={item.action === 'deep_audit' ? 'text-[#B8965A] font-semibold' : ''}>
+              {item.action === 'deep_audit' ? 'Run Deep Audit' : 'Ask'}
+            </span>
             <ArrowUpRight className="h-3 w-3 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </button>
 

@@ -407,6 +407,91 @@ ${getCompactPlaybookMenu()}`;
   }
 }
 
+function heuristicRuleGuardResult(
+  input: IntentClassificationInput,
+  started: number
+): Stage1RouterResult {
+  const q = (input.userPrompt || '').toLowerCase();
+  let playbookId = 'OPEN_ENDED_SYNTHESIS';
+  let intent: SutraIntentArchetype = 'CONVERSATIONAL';
+  let requiresSynastry = false;
+  let requestsRemedy = /\b(?:remedy|remedies|upay|mantra|gemstone|donate)\b/i.test(q);
+
+  if (/\b(?:compare|synastry|kundli\s*milan|ashtakoot|compatibility\s+with|partner'?s?\s+chart)\b/i.test(q)) {
+    playbookId = 'MAR_21';
+    intent = 'HARD_DECISION';
+    requiresSynastry = true;
+  } else if (/\b(?:love\s+(?:or|vs\.?)\s+arranged|arranged\s+(?:or|vs\.?)\s+love)\b/i.test(q)) {
+    playbookId = 'MAR_04';
+    intent = 'HARD_DECISION';
+  } else if (/\b(?:when\s+will\s+i\s+get\s+married|when\s+is\s+my\s+marriage|marriage\s+timing)\b/i.test(q)) {
+    playbookId = 'MAR_02';
+    intent = 'TIMING';
+  } else if (/\b(?:will\s+i\s+(?:ever\s+)?get\s+married|support\s+marriage)\b/i.test(q)) {
+    playbookId = 'MAR_01';
+    intent = 'HARD_DECISION';
+  } else if (/\b(?:married\s+life|marriage\s+quality|divorce|separation)\b/i.test(q)) {
+    playbookId = /\b(?:divorce|separation)\b/i.test(q) ? 'MAR_14' : 'MAR_03';
+    intent = /\b(?:divorce|separation)\b/i.test(q) ? 'HARD_DECISION' : 'SOFT_HORIZON';
+  } else if (/\b(?:will\s+i\s+have\s+(?:a\s+)?(?:child|children|kids)|progeny|fertility)\b/i.test(q)) {
+    playbookId = 'PRO_01';
+    intent = 'HARD_DECISION';
+  } else if (/\b(?:job\s+(?:or|vs\.?)\s+business|business\s+(?:or|vs\.?)\s+job)\b/i.test(q)) {
+    playbookId = 'CAR_02';
+    intent = 'HARD_DECISION';
+  } else if (/\b(?:promotion|switch\s+job|job\s+change|new\s+job)\b/i.test(q)) {
+    playbookId = 'CAR_03';
+    intent = 'TIMING';
+  } else if (/\b(?:career|profession|vocation|work\s+life)\b/i.test(q) || input.modeSlug === 'career') {
+    playbookId = 'CAR_01';
+    intent = 'SOFT_HORIZON';
+  } else if (/\b(?:debt|loan|financial\s+loss|bankrupt)\b/i.test(q)) {
+    playbookId = 'WLT_11';
+    intent = 'HARD_DECISION';
+  } else if (/\b(?:wealth|money|income|financial|rich|prosperity)\b/i.test(q) || input.modeSlug === 'wealth') {
+    playbookId = 'WLT_01';
+    intent = 'SOFT_HORIZON';
+  } else if (/\b(?:abroad|foreign|relocat|visa|immigrat)\b/i.test(q)) {
+    playbookId = 'FOR_01';
+    intent = 'HARD_DECISION';
+  } else if (/\b(?:anxiety|depress|mental|overthink|stress|peace\s+of\s+mind)\b/i.test(q)) {
+    playbookId = 'HLT_14';
+    intent = 'CONVERSATIONAL';
+  } else if (/\b(?:health|illness|vitality|disease|surgery)\b/i.test(q) || input.modeSlug === 'health') {
+    playbookId = 'HLT_01';
+    intent = 'SOFT_HORIZON';
+  } else if (/\b(?:next\s+12\s+months|upcoming\s+year|mahadasha|antardasha|dasha|transit|gochar)\b/i.test(q)) {
+    playbookId = 'TIM_02';
+    intent = 'TIMING';
+  }
+
+  const pb = PLAYBOOKS_BY_ID[playbookId];
+  const fluency: UserFluencyTier =
+    /\b(?:navamsa|d9|d10|sub[- ]?lord|ashtakavarga|shadbala|atmakaraka|kp\s+cusp|bindu)\b/i.test(q)
+      ? 'practitioner'
+      : /\b(?:dasha|transit|lagna|nakshatra|ascendant|saturn|jupiter)\b/i.test(q)
+      ? 'guided_bridge'
+      : 'beginner';
+
+  return {
+    playbook_id: pb ? pb.id : 'OPEN_ENDED_SYNTHESIS',
+    playbook_confidence: playbookId === 'OPEN_ENDED_SYNTHESIS' ? 0.65 : 0.78,
+    intent: pb ? pb.defaultIntent : intent,
+    intent_confidence: 0.72,
+    detected_user_fluency: fluency,
+    is_prompt_extraction: false,
+    prompt_extraction_prob: 0.01,
+    needs_clarification: false,
+    needs_clarification_prob: 0.1,
+    requires_synastry_partner: requiresSynastry,
+    synastry_prob: requiresSynastry ? 0.85 : 0.05,
+    requests_remedy_or_guidance: requestsRemedy,
+    complexity_intensity: 5,
+    provider_used: 'rule_guard',
+    latency_ms: Date.now() - started,
+  };
+}
+
 export async function classifyStage1Intent(
   input: IntentClassificationInput,
   customClassifier?: IntentClassifier
@@ -454,23 +539,7 @@ export async function classifyStage1Intent(
     }
   }
 
-  return {
-    playbook_id: 'OPEN_ENDED_SYNTHESIS',
-    playbook_confidence: 0.65,
-    intent: 'CONVERSATIONAL',
-    intent_confidence: 0.65,
-    detected_user_fluency: 'beginner',
-    is_prompt_extraction: false,
-    prompt_extraction_prob: 0.01,
-    needs_clarification: false,
-    needs_clarification_prob: 0.1,
-    requires_synastry_partner: false,
-    synastry_prob: 0.05,
-    requests_remedy_or_guidance: false,
-    complexity_intensity: 5,
-    provider_used: 'rule_guard',
-    latency_ms: Date.now() - started,
-  };
+  return heuristicRuleGuardResult(input, started);
 }
 
 function buildAmbiguousIntentClarification(

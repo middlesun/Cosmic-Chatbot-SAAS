@@ -43,6 +43,19 @@ import {
   mergeLifeContextPatch,
   type LifeContextData,
 } from '../services/lifeContextGuard';
+import type { NatalTruthDossierV1 } from '../services/natalDossier';
+import { getPlaybookById } from '../services/canonicalPlaybooks';
+import { compileStage2ContextPackage } from '../services/contextSlicer';
+import {
+  generateAlignedStage4Suggestions,
+  generateMoreAlignedStage4Suggestions,
+} from '../services/suggestionEngine';
+import { USE_DECOUPLED_STAGE4_SUGGESTIONS } from '../services/sutraSynthesizer';
+import type {
+  Stage1RouterResult,
+  SutraSynthesisMeta,
+  UserFluencyTier,
+} from '../../lib/sutraTypes';
 
 const router = Router();
 
@@ -1025,6 +1038,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     bypassClarification,
     clarifiedPlaybookId,
     clarifiedContextPatch,
+    deepAudit,
   } = req.body || {};
 
   const safeTechnicalDirective =
@@ -1123,10 +1137,22 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       return;
     }
 
-    const minCredits = pricingConfig.min_credits_to_chat;
+    const useDeepAuditRequested =
+      Boolean(deepAudit) &&
+      activePillar === 'council' &&
+      Boolean(convRecord.profile_id) &&
+      expert !== 'western_astrologer' &&
+      expert !== 'modern_astrologer' &&
+      expert !== 'tarot_reader' &&
+      expert !== 'numerologist';
+    const minCredits = useDeepAuditRequested
+      ? Math.max(pricingConfig.min_credits_to_chat * 3, 75)
+      : pricingConfig.min_credits_to_chat;
     if (req.appUser.credits_balance < minCredits) {
       res.status(402).json({
-        error: `Minimum ${minCredits} credits required to start a consultation. Please top up credits.`,
+        error: useDeepAuditRequested
+          ? `Deep Council Audit requires at least ${minCredits} credits. Please top up credits or turn off Deep Audit.`
+          : `Minimum ${minCredits} credits required to start a consultation. Please top up credits.`,
         code: 'INSUFFICIENT_CREDITS',
       });
       return;
@@ -1171,10 +1197,29 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   const normalizedToneMode = toneMode === 'friendly' ? 'friendly' : 'technical';
   const normalizedResponseLength = responseLength === 'short' ? 'short' : 'detailed';
 
-  // Fetch heavy chart_json ONLY when Tropical Western/Modern calculation needs raw sidereal degrees
+  const isVedicCouncilTurn =
+    activePillar === 'council' &&
+    expertSlug !== 'western_astrologer' &&
+    expertSlug !== 'modern_astrologer' &&
+    expertSlug !== 'tarot_reader' &&
+    expertSlug !== 'numerologist';
+  const isVedicReadingTurn =
+    isVedicCouncilTurn &&
+    modeSlug !== 'learn_astrology' &&
+    conversation.mode_type !== 'learn_astrology' &&
+    conversation.mode_type !== 'report_followup';
+  const useDeepAudit =
+    Boolean(deepAudit) &&
+    isVedicReadingTurn &&
+    Boolean(conversation.profile_id) &&
+    validAttachments.length === 0;
+
+  // Fetch heavy chart_json ONLY inside single-turn message POST for Western/Modern or Vedic Reading Stage 2/3 turns
   const needsChartJson =
     activePillar === 'council' &&
-    (expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer');
+    (expertSlug === 'western_astrologer' ||
+      expertSlug === 'modern_astrologer' ||
+      isVedicReadingTurn);
 
   let profileData: {
     id: string;
@@ -1182,6 +1227,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     is_activated: boolean;
     chart_text_context: string | null;
     chart_json?: CompiledChartData | null;
+    natal_truth_dossier_json?: NatalTruthDossierV1 | null;
     profile_memory_summary: string | null;
     life_context_json?: LifeContextData | null;
     life_context_completeness?: number | null;
@@ -1204,7 +1250,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       'id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_state, birth_country, gender, relationship, latitude, longitude, timezone_offset';
     const fullCols = `${baseCols}, current_city, current_state, current_country, life_context_json, life_context_completeness${
       needsChartJson ? ', chart_json' : ''
-    }`;
+    }${isVedicReadingTurn ? ', natal_truth_dossier_json' : ''}`;
     const fallbackCols = `${baseCols}${needsChartJson ? ', chart_json' : ''}`;
 
     const profPrimary = await supabaseAdmin
@@ -1339,6 +1385,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     is_activated: boolean;
     chart_text_context: string | null;
     chart_json?: CompiledChartData | null;
+    natal_truth_dossier_json?: NatalTruthDossierV1 | null;
     profile_memory_summary: string | null;
     birth_date: string;
     birth_time: string;
@@ -1347,15 +1394,25 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   }> = [];
 
   if (extraIdsFiltered.length > 0) {
-    const extraCols = `id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_country${
+    const extraBaseCols = `id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_country${
       needsChartJson ? ', chart_json' : ''
     }`;
-    const { data: extraProfs } = await supabaseAdmin
+    const extraFullCols = `${extraBaseCols}${isVedicReadingTurn ? ', natal_truth_dossier_json' : ''}`;
+    const extraPrimary = await supabaseAdmin
       .from('profiles')
-      .select(extraCols)
+      .select(extraFullCols)
       .in('id', extraIdsFiltered)
       .eq('user_id', req.appUser.id);
-    extraProfilesData = (extraProfs || []) as unknown as typeof extraProfilesData;
+    if (!extraPrimary.error && extraPrimary.data) {
+      extraProfilesData = extraPrimary.data as unknown as typeof extraProfilesData;
+    } else {
+      const { data: extraFallback } = await supabaseAdmin
+        .from('profiles')
+        .select(extraBaseCols)
+        .in('id', extraIdsFiltered)
+        .eq('user_id', req.appUser.id);
+      extraProfilesData = (extraFallback || []) as unknown as typeof extraProfilesData;
+    }
   }
 
   const contextTags: string[] = [];
@@ -1471,13 +1528,6 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     res.end();
     return;
   }
-
-  const isVedicCouncilTurn =
-    activePillar === 'council' &&
-    expertSlug !== 'western_astrologer' &&
-    expertSlug !== 'modern_astrologer' &&
-    expertSlug !== 'tarot_reader' &&
-    expertSlug !== 'numerologist';
 
   // Apply explicit clarification chip patch if sent inline alongside the follow-up message
   if (
@@ -1720,6 +1770,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       toneMode: normalizedToneMode,
       responseLength: normalizedResponseLength,
       preferredCallName: req.appUser.preferred_call_name || req.appUser.full_name || null,
+      stage1Decision,
+      userPriorFluency: req.appUser.sutra_user_profile_json?.inferred_fluency || null,
+      deepAudit: useDeepAudit,
       abortSignal: abortController.signal,
       onChunk: (chunkText) => {
         sendEvent({ type: 'chunk', text: chunkText });
@@ -1760,6 +1813,8 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
             ? `Companion (${activeCompanionPersona?.name || 'Chat'})`
             : activePillar === 'clarity'
             ? 'Clarity Sidekick'
+            : useDeepAudit
+            ? `Deep Council Audit (${expertSlug} · ${modeSlug})`
             : `Consultation (${expertSlug} · ${modeSlug})`,
       });
       if (!creditErr && typeof newBal === 'number') {
@@ -1785,6 +1840,12 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
           streamResult.suggestions.deeper_analysis.length > 0)
     );
 
+    const useStage4AlignedSuggestions =
+      activePillar === 'council' &&
+      USE_DECOUPLED_STAGE4_SUGGESTIONS &&
+      Boolean(streamResult.stage2Pkg) &&
+      Boolean(streamResult.sutraMeta);
+
     const [structuredSuggestions, generatedTitle] = await Promise.all([
       activePillar !== 'council' ||
       streamResult.aborted ||
@@ -1793,6 +1854,17 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         ? Promise.resolve<MessageSuggestions>({ followups: [], deeper_analysis: [] })
         : hasInlineSuggestions && streamResult.suggestions
         ? Promise.resolve<MessageSuggestions>(streamResult.suggestions)
+        : useStage4AlignedSuggestions && streamResult.stage2Pkg && streamResult.sutraMeta
+        ? generateAlignedStage4Suggestions({
+            stage2Pkg: streamResult.stage2Pkg,
+            dossier: profileData?.natal_truth_dossier_json || null,
+            routerResult: stage1Decision?.routerResult || null,
+            sutraMeta: streamResult.sutraMeta,
+            userQuestion: promptText,
+            assistantAnswer: finalAssistantText,
+            languageSlug,
+            userFluency: streamResult.sutraMeta.effectiveFluency,
+          })
         : generateStructuredSuggestions({
             userQuestion: promptText,
             assistantAnswer: finalAssistantText,
@@ -1815,18 +1887,15 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     const hasAnyStructured =
       structuredSuggestions.followups.length > 0 ||
       structuredSuggestions.deeper_analysis.length > 0;
-    const persistedSuggestionsPayload = hasAnyStructured
-      ? {
-          ...structuredSuggestions,
-          ...(stage1Decision?.routerResult ? { sutra_stage1: stage1Decision.routerResult } : {}),
-        }
-      : stage1Decision?.routerResult
-      ? {
-          followups: [],
-          deeper_analysis: [],
-          sutra_stage1: stage1Decision.routerResult,
-        }
-      : null;
+    const hasSutraMetadata = Boolean(stage1Decision?.routerResult || streamResult.sutraMeta);
+    const persistedSuggestionsPayload =
+      hasAnyStructured || hasSutraMetadata
+        ? {
+            ...structuredSuggestions,
+            ...(stage1Decision?.routerResult ? { sutra_stage1: stage1Decision.routerResult } : {}),
+            ...(streamResult.sutraMeta ? { sutra_meta: streamResult.sutraMeta } : {}),
+          }
+        : null;
 
     const baseAssistantRow = {
       conversation_id: conversation.id,
@@ -1884,14 +1953,25 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       .select('*')
       .single();
 
-    // Async non-blocking Profile Memory update — STRICTLY Council profile threads only (never Clarity or Companion)
+    // Async non-blocking Profile Memory v2 update — STRICTLY Council profile threads only (never Clarity or Companion)
     if (
       activePillar === 'council' &&
       conversation.profile_id &&
       !streamResult.aborted &&
       !wasLeakIntercepted
     ) {
-      void updateProfileMemoryAfterTurn(conversation.profile_id, req.appUser.id);
+      const archivistTradition: 'vedic' | 'western' =
+        expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer'
+          ? 'western'
+          : 'vedic';
+      void updateProfileMemoryAfterTurn(conversation.profile_id, req.appUser.id, {
+        routerResult: stage1Decision?.routerResult || null,
+        domain: streamResult.sutraMeta?.domain || modeSlug,
+        effectiveFluency: streamResult.sutraMeta?.effectiveFluency || null,
+        hasTechnicalDirective: Boolean(safeTechnicalDirective),
+        isDeepAudit: useDeepAudit,
+        tradition: archivistTradition,
+      });
     }
 
     const enrichedConversation = normalizeConversationDefaults({
@@ -1905,6 +1985,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       assistantMessage,
       followups,
       suggestions: persistedSuggestionsPayload,
+      sutraMeta: streamResult.sutraMeta || null,
       pendingProfile,
       conversation: enrichedConversation,
       creditsBalance: updatedBalance,
@@ -2067,16 +2148,69 @@ router.post('/messages/:id/suggestions/more', requireAuth, async (req: Authentic
   }
 
   let hasProfile = false;
+  let moreProfileData: {
+    chart_json?: CompiledChartData | null;
+    natal_truth_dossier_json?: NatalTruthDossierV1 | null;
+    life_context_json?: LifeContextData | null;
+    chart_text_context?: string | null;
+    is_activated?: boolean;
+  } | null = null;
+
+  const rawExisting = (msgRow.suggestions_json || null) as
+    | (MessageSuggestions & {
+        sutra_stage1?: Stage1RouterResult | null;
+        sutra_meta?: SutraSynthesisMeta | null;
+      })
+    | null;
+
+  const msgExpert =
+    typeof msgRow.expert_used === 'string' && msgRow.expert_used
+      ? msgRow.expert_used
+      : 'council_synthesis';
+  const msgMode =
+    typeof msgRow.mode_used === 'string' && msgRow.mode_used ? msgRow.mode_used : 'general';
+  const msgLang =
+    typeof msgRow.language_used === 'string' && msgRow.language_used
+      ? msgRow.language_used
+      : req.appUser.default_language || 'English';
+
+  const isEligibleForStage4More =
+    Boolean(conv.profile_id) &&
+    USE_DECOUPLED_STAGE4_SUGGESTIONS &&
+    msgExpert !== 'western_astrologer' &&
+    msgExpert !== 'modern_astrologer' &&
+    msgExpert !== 'tarot_reader' &&
+    msgExpert !== 'numerologist' &&
+    msgMode !== 'learn_astrology';
+
   if (conv.profile_id) {
-    const { data: prof } = await supabaseAdmin
-      .from('profiles')
-      .select('is_activated, chart_text_context')
-      .eq('id', conv.profile_id)
-      .maybeSingle();
-    hasProfile = Boolean(prof?.chart_text_context || prof?.is_activated);
+    if (isEligibleForStage4More) {
+      const profRes = await supabaseAdmin
+        .from('profiles')
+        .select('is_activated, chart_text_context, chart_json, natal_truth_dossier_json, life_context_json')
+        .eq('id', conv.profile_id)
+        .maybeSingle();
+      if (!profRes.error && profRes.data) {
+        moreProfileData = profRes.data as unknown as typeof moreProfileData;
+      } else {
+        const profFallback = await supabaseAdmin
+          .from('profiles')
+          .select('is_activated, chart_text_context, chart_json')
+          .eq('id', conv.profile_id)
+          .maybeSingle();
+        moreProfileData = (profFallback.data || null) as unknown as typeof moreProfileData;
+      }
+    } else {
+      const { data: prof } = await supabaseAdmin
+        .from('profiles')
+        .select('is_activated, chart_text_context')
+        .eq('id', conv.profile_id)
+        .maybeSingle();
+      moreProfileData = (prof || null) as unknown as typeof moreProfileData;
+    }
+    hasProfile = Boolean(moreProfileData?.chart_text_context || moreProfileData?.is_activated);
   }
 
-  const rawExisting = (msgRow.suggestions_json || null) as MessageSuggestions | null;
   const legacyFollowups = Array.isArray(msgRow.followups_json)
     ? (msgRow.followups_json as unknown[])
         .filter((q): q is string => typeof q === 'string' && Boolean(q.trim()))
@@ -2096,25 +2230,78 @@ router.post('/messages/:id/suggestions/more', requireAuth, async (req: Authentic
     ...existingDeeper.map((item) => item.text),
   ].filter(Boolean);
 
-  const generated = await generateMoreStructuredSuggestions({
-    userQuestion: userQuestion || 'Follow-up reading insight',
-    assistantAnswer: String(msgRow.content || ''),
-    expertSlug:
-      typeof msgRow.expert_used === 'string' && msgRow.expert_used
-        ? msgRow.expert_used
-        : 'council_synthesis',
-    modeSlug:
-      typeof msgRow.mode_used === 'string' && msgRow.mode_used ? msgRow.mode_used : 'general',
-    languageSlug:
-      typeof msgRow.language_used === 'string' && msgRow.language_used
-        ? msgRow.language_used
-        : req.appUser.default_language || 'English',
-    hasProfile,
-    existingTexts,
-    count: 8,
-  });
+  let generated: MessageSuggestions;
+  if (isEligibleForStage4More && moreProfileData?.chart_json && (rawExisting?.sutra_meta || rawExisting?.sutra_stage1)) {
+    const savedPlaybookId =
+      rawExisting?.sutra_meta?.playbookId ||
+      rawExisting?.sutra_stage1?.playbook_id ||
+      'OPEN_ENDED_SYNTHESIS';
+    const savedPlaybook = getPlaybookById(savedPlaybookId);
+    const fallbackRouter: Stage1RouterResult = rawExisting?.sutra_stage1 || {
+      playbook_id: savedPlaybook.id,
+      playbook_confidence: 0.9,
+      intent: rawExisting?.sutra_meta?.intent || savedPlaybook.defaultIntent,
+      intent_confidence: 0.9,
+      detected_user_fluency:
+        (rawExisting?.sutra_meta?.effectiveFluency as UserFluencyTier) ||
+        req.appUser.sutra_user_profile_json?.inferred_fluency ||
+        'beginner',
+      is_prompt_extraction: false,
+      needs_clarification: false,
+      requires_synastry_partner: savedPlaybook.requiresSynastry,
+      requests_remedy_or_guidance: false,
+      complexity_intensity: 6,
+      provider_used: 'rule_guard',
+      latency_ms: 0,
+    };
+    const stage2ForMore = await compileStage2ContextPackage({
+      routerResult: fallbackRouter,
+      playbook: savedPlaybook,
+      chart: moreProfileData.chart_json,
+      dossier: moreProfileData.natal_truth_dossier_json || null,
+      lifeContext: moreProfileData.life_context_json || null,
+    });
+    const metaForMore: SutraSynthesisMeta = rawExisting?.sutra_meta || {
+      intent: fallbackRouter.intent,
+      playbookId: savedPlaybook.id,
+      domain: savedPlaybook.domain,
+      convergencePillarsAligned: 3,
+      convergenceBandLabel: '3/5 Pillars Aligned',
+      effectiveFluency: fallbackRouter.detected_user_fluency,
+      isDeepAudit: false,
+      cancellationsCount: stage2ForMore.triggeredCancellations.length,
+    };
+    generated = await generateMoreAlignedStage4Suggestions({
+      stage2Pkg: stage2ForMore,
+      dossier: moreProfileData.natal_truth_dossier_json || null,
+      routerResult: fallbackRouter,
+      sutraMeta: metaForMore,
+      userQuestion: userQuestion || 'Follow-up reading insight',
+      assistantAnswer: String(msgRow.content || ''),
+      languageSlug: msgLang,
+      userFluency: metaForMore.effectiveFluency,
+      existingTexts,
+      count: 8,
+    });
+  } else {
+    generated = await generateMoreStructuredSuggestions({
+      userQuestion: userQuestion || 'Follow-up reading insight',
+      assistantAnswer: String(msgRow.content || ''),
+      expertSlug: msgExpert,
+      modeSlug: msgMode,
+      languageSlug: msgLang,
+      hasProfile,
+      existingTexts,
+      count: 8,
+    });
+  }
 
-  const merged: MessageSuggestions = {
+  const merged: MessageSuggestions & {
+    sutra_stage1?: Stage1RouterResult | null;
+    sutra_meta?: SutraSynthesisMeta | null;
+  } = {
+    ...(rawExisting?.sutra_stage1 ? { sutra_stage1: rawExisting.sutra_stage1 } : {}),
+    ...(rawExisting?.sutra_meta ? { sutra_meta: rawExisting.sutra_meta } : {}),
     followups: [...existingFollowups, ...generated.followups],
     deeper_analysis: [...existingDeeper, ...generated.deeper_analysis],
   };

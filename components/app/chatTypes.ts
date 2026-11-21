@@ -7,6 +7,7 @@ import type {
   ClarificationChip,
   ClarificationPayload,
   Stage1RouterResult,
+  SutraSynthesisMeta,
 } from '../../lib/sutraTypes';
 
 export type {
@@ -16,6 +17,7 @@ export type {
   ClarificationChip,
   ClarificationPayload,
   Stage1RouterResult,
+  SutraSynthesisMeta,
 };
 
 export interface ChatCatalogOption {
@@ -37,6 +39,8 @@ export interface SuggestionItem {
   id: string;
   text: string;
   technical_directive?: string;
+  action?: 'deep_audit';
+  playbook_id?: string;
 }
 
 export interface MessageSuggestions {
@@ -44,6 +48,7 @@ export interface MessageSuggestions {
   deeper_analysis: SuggestionItem[];
   clarification?: ClarificationPayload | null;
   sutra_stage1?: Stage1RouterResult | null;
+  sutra_meta?: SutraSynthesisMeta | null;
 }
 
 export interface AskLaterItem {

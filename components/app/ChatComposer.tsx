@@ -115,6 +115,9 @@ interface ChatComposerProps {
   enableVoiceInput?: boolean;
   enableAttachments?: boolean;
   enableQuickTools?: boolean;
+  deepAudit?: boolean;
+  canUseDeepAudit?: boolean;
+  onToggleDeepAudit?: () => void;
 }
 
 interface SpeechRecognitionAlternativeLike {
@@ -298,6 +301,9 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   enableVoiceInput = true,
   enableAttachments = true,
   enableQuickTools = true,
+  deepAudit = false,
+  canUseDeepAudit = false,
+  onToggleDeepAudit,
 }) => {
   const [isListening, setIsListening] = useState(false);
   const [composerNotice, setComposerNotice] = useState<string | null>(null);
@@ -2080,8 +2086,40 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                 )}
               </div>
 
-              {/* Bottom-Right: Icon-Only Voice + Send/Stop */}
+              {/* Bottom-Right: Optional Deep Audit Toggle + Voice + Send/Stop */}
               <div className="flex items-center gap-1.5 shrink-0">
+                {canUseDeepAudit && onToggleDeepAudit && (
+                  <Tooltip
+                    content={
+                      deepAudit
+                        ? 'Deep Council Audit active: runs 4 parallel system checks (Parashari, KP/Nadi, Multi-Clock Timing, Contrarian Audit) before synthesis.'
+                        : 'Enable Deep Council Audit: 4 parallel system checks (Parashari, KP, Timing, Contrarian) + Truth Gate adjudication.'
+                    }
+                    placement="top"
+                  >
+                    <button
+                      type="button"
+                      disabled={composerDisabled || isStreaming}
+                      onClick={onToggleDeepAudit}
+                      aria-pressed={deepAudit}
+                      aria-label={deepAudit ? 'Disable Deep Council Audit' : 'Enable Deep Council Audit'}
+                      className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium whitespace-nowrap transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${
+                        deepAudit
+                          ? 'border-[#B8965A]/70 bg-[#292D36] text-[#F4EFE6] shadow-xs'
+                          : 'border-[#3D3830]/12 bg-[#F1ECE3] text-[#5C5449] hover:bg-[#EAE3D7] hover:text-[#3D3830]'
+                      }`}
+                    >
+                      <Sparkles
+                        className={`h-3 w-3 shrink-0 ${
+                          deepAudit ? 'text-[#B8965A]' : 'text-[#8B7355]'
+                        }`}
+                      />
+                      <span className="hidden sm:inline">Deep Audit</span>
+                      <span className="sm:hidden">Deep</span>
+                    </button>
+                  </Tooltip>
+                )}
+
                 {enableVoiceInput && (
                   <Tooltip
                     content={isListening ? 'Stop voice dictation' : 'Voice dictation'}

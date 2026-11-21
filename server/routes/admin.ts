@@ -76,36 +76,127 @@ async function ensureDefaultPromptsSeeded(): Promise<void> {
       .from('system_prompts')
       .select('slug');
 
-    const existingSlugs = new Set((existing || []).map((r) => r.slug));
-    const missing = ALL_DEFAULT_PROMPTS.filter((p) => !existingSlugs.has(p.slug));
+    const existingSlugs = new Set(
+      (existing || []).map((r) => String(r.slug || '').trim().toLowerCase())
+    );
+    const missing = ALL_DEFAULT_PROMPTS.filter(
+      (p) => !existingSlugs.has(p.slug.trim().toLowerCase())
+    );
 
     if (missing.length > 0) {
-      const withSubRes = await supabaseAdmin.from('system_prompts').insert(
-        missing.map((p) => ({
-          slug: p.slug,
-          category: p.category,
-          display_name: p.display_name,
-          subtitle: p.subtitle,
-          prompt_body: p.prompt_body,
-          version: 1,
-          previous_versions: [],
-          is_active: true,
-        }))
-      );
+      const insertBatch = async (
+        items: typeof missing,
+        overrideCategory?: string
+      ) => {
+        const extRes = await supabaseAdmin
+          .from('system_prompts')
+          .insert(
+            items.map((p) => ({
+              slug: p.slug,
+              category: overrideCategory || p.category,
+              display_name: p.display_name,
+              subtitle: p.subtitle,
+              description: p.description ?? null,
+              tags: Array.isArray(p.tags) ? p.tags : [],
+              sort_order: typeof p.sort_order === 'number' ? p.sort_order : 100,
+              prompt_body: p.prompt_body,
+              version: 1,
+              previous_versions: [],
+              is_active: true,
+            }))
+          )
+          .select('id, slug');
 
-      if (withSubRes.error && isMissingColumnError(withSubRes.error)) {
-        await supabaseAdmin.from('system_prompts').insert(
-          missing.map((p) => ({
-            slug: p.slug,
-            category: p.category,
-            display_name: p.display_name,
-            prompt_body: p.prompt_body,
-            version: 1,
-            previous_versions: [],
-            is_active: true,
-          }))
+        if (!extRes.error) return extRes;
+
+        if (isMissingColumnError(extRes.error)) {
+          const withSubRes = await supabaseAdmin
+            .from('system_prompts')
+            .insert(
+              items.map((p) => ({
+                slug: p.slug,
+                category: overrideCategory || p.category,
+                display_name: p.display_name,
+                subtitle: p.subtitle,
+                prompt_body: p.prompt_body,
+                version: 1,
+                previous_versions: [],
+                is_active: true,
+              }))
+            )
+            .select('id, slug');
+
+          if (!withSubRes.error) return withSubRes;
+
+          if (isMissingColumnError(withSubRes.error)) {
+            return supabaseAdmin
+              .from('system_prompts')
+              .insert(
+                items.map((p) => ({
+                  slug: p.slug,
+                  category: overrideCategory || p.category,
+                  display_name: p.display_name,
+                  prompt_body: p.prompt_body,
+                  version: 1,
+                  previous_versions: [],
+                  is_active: true,
+                }))
+              )
+              .select('id, slug');
+          }
+          return withSubRes;
+        }
+
+        return extRes;
+      };
+
+      const fullAttempt = await insertBatch(missing);
+      if (fullAttempt.error && isCategoryCheckConstraintError(fullAttempt.error)) {
+        const standardMissing = missing.filter(
+          (p) => !FALLBACK_OVERRIDE_CATEGORIES.has(p.category)
         );
+        const overrideMissing = missing.filter((p) =>
+          FALLBACK_OVERRIDE_CATEGORIES.has(p.category)
+        );
+
+        if (standardMissing.length > 0) {
+          await insertBatch(standardMissing);
+        }
+
+        if (overrideMissing.length > 0) {
+          const fallbackInsert = await insertBatch(overrideMissing, 'system');
+          if (!fallbackInsert.error && Array.isArray(fallbackInsert.data)) {
+            const catBySlug = new Map(
+              overrideMissing.map((p) => [p.slug.toLowerCase(), p.category])
+            );
+            const currentOverrides = await readPromptCategoryOverrides(supabaseAdmin);
+            let changed = false;
+            for (const row of fallbackInsert.data as Array<{ id: string; slug: string }>) {
+              const targetCat = catBySlug.get(String(row.slug || '').toLowerCase());
+              if (targetCat) {
+                currentOverrides[row.id] = targetCat;
+                promptCategoryOverridesMemory.set(row.id, targetCat);
+                changed = true;
+              }
+            }
+            if (changed) {
+              try {
+                await supabaseAdmin.from('platform_settings').upsert(
+                  {
+                    key: PROMPT_CATEGORY_OVERRIDES_KEY,
+                    value_json: currentOverrides,
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: 'key' }
+                );
+              } catch {
+                // In-memory map preserves state
+              }
+            }
+          }
+        }
       }
+      invalidatePromptCache();
     }
     defaultPromptsSeeded = true;
   } catch (err) {

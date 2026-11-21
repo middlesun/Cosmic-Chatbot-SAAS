@@ -357,6 +357,80 @@ export function containsInternalPromptLeak(text: string): boolean {
   return INTERNAL_LEAK_SIGNATURES.some((sig) => sig.test(text));
 }
 
+/**
+ * Light, non-destructive Sutradhara prose sanitizer:
+ * - Replaces archaic third-person chart tells ("the native", "the native's") with second-person ("you", "your")
+ * - Strips accidental internal cartridge/priority debug tags ([F_...], [PRIO_...])
+ * - Preserves markdown structure, tables, code fences, and inline Sanskrit/Jyotish terms
+ */
+export function sanitizeSutraProse(text: string): string {
+  if (!text) return text;
+
+  // Preserve fenced code blocks untouched
+  const codeBlocks: string[] = [];
+  let working = text.replace(/```[\s\S]*?```/g, (match) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(match);
+    return `__CC_CODE_BLOCK_${idx}__`;
+  });
+
+  working = working
+    // Possessive forms first: "The native's" / "the native's" / "a native's"
+    .replace(/\b(?:The|A)\s+native['’]s\b/g, (match, offset, fullStr) => {
+      const before = fullStr.slice(Math.max(0, offset - 3), offset);
+      return offset === 0 || /(?:^|[.!?]\s+|\n|:\s+)$/.test(before) ? 'Your' : 'your';
+    })
+    .replace(/\b(?:the|a)\s+native['’]s\b/g, 'your')
+    .replace(/\bnative['’]s\b(?=\s+(?:chart|birth|life|career|marriage|partner|spouse|mind|health|wealth|dasha|house|lagna|moon|horoscope|family|income))/gi, (m) =>
+      m[0] === 'N' ? 'Your' : 'your'
+    )
+    // Subject/object forms with immediate 3rd-person verb agreement: "The native has/is/was/does" -> "You have/are/were/do"
+    .replace(
+      /\b(?:The|the|A|a)\s+native\s+(is|was|has|does|faces|carries|holds|shows|experiences|tends|needs|gains|receives|enters|benefits)\b/g,
+      (match, verb: string, offset: number, fullStr: string) => {
+        const before = fullStr.slice(Math.max(0, offset - 3), offset);
+        const cap =
+          (match[0] === 'T' || match[0] === 'A') &&
+          (offset === 0 || /(?:^|[.!?]\s+|\n|:\s+)$/.test(before));
+        const subj = cap ? 'You' : 'you';
+        const vLower = verb.toLowerCase();
+        const verbMap: Record<string, string> = {
+          is: 'are',
+          was: 'were',
+          has: 'have',
+          does: 'do',
+          faces: 'face',
+          carries: 'carry',
+          holds: 'hold',
+          shows: 'show',
+          experiences: 'experience',
+          tends: 'tend',
+          needs: 'need',
+          gains: 'gain',
+          receives: 'receive',
+          enters: 'enter',
+          benefits: 'benefit',
+        };
+        return `${subj} ${verbMap[vLower] || vLower}`;
+      }
+    )
+    // General subject/object forms: "The native" / "the native"
+    .replace(/\b(?:The|A)\s+native\b/g, (match, offset, fullStr) => {
+      const before = fullStr.slice(Math.max(0, offset - 3), offset);
+      return offset === 0 || /(?:^|[.!?]\s+|\n|:\s+)$/.test(before) ? 'You' : 'you';
+    })
+    .replace(/\b(?:the|a)\s+native\b/g, 'you')
+    // Strip any accidental internal rule token leakage like [F_DASHA_LADDER] or (PRIO_CAREER)
+    .replace(/\[(?:F|PRIO)_[A-Z0-9_]+\]\s*/g, '')
+    .replace(/\((?:F|PRIO)_[A-Z0-9_]+\)\s*/g, '');
+
+  if (codeBlocks.length > 0) {
+    working = working.replace(/__CC_CODE_BLOCK_(\d+)__/g, (_, i) => codeBlocks[Number(i)] || '');
+  }
+
+  return working;
+}
+
 export function sanitizeAssistantOutput(text: string): {
   text: string;
   leaked: boolean;
@@ -364,5 +438,5 @@ export function sanitizeAssistantOutput(text: string): {
   if (containsInternalPromptLeak(text)) {
     return { text: PROMPT_EXTRACTION_REFUSAL, leaked: true };
   }
-  return { text, leaked: false };
+  return { text: sanitizeSutraProse(text), leaked: false };
 }

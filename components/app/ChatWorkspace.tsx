@@ -311,6 +311,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const [showAskLaterDrawer, setShowAskLaterDrawer] = useState(false);
   const [extraProfileIds, setExtraProfileIds] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<ChatAttachmentInput[]>([]);
+  const [deepAudit, setDeepAudit] = useState<boolean>(false);
   const [replyTarget, setReplyTarget] = useState<ChatMessageRecord | null>(null);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingEarlierMessages, setLoadingEarlierMessages] = useState(false);
@@ -1808,6 +1809,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       clarifiedPlaybookId?: string;
       clarifiedContextPatch?: Partial<LifeContextData>;
       overrideExtraProfileIds?: string[];
+      overrideDeepAudit?: boolean;
     }
   ) => {
     const promptToSend = (overrideText ?? draftText).trim();
@@ -1905,6 +1907,20 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           toneMode,
           responseLength,
           extraProfileIds: currentExtraProfiles,
+          deepAudit:
+            sendPillar === 'council' &&
+            Boolean(targetConversation.profile_id) &&
+            expertSlug !== 'western_astrologer' &&
+            expertSlug !== 'modern_astrologer' &&
+            expertSlug !== 'tarot_reader' &&
+            expertSlug !== 'numerologist' &&
+            modeSlug !== 'learn_astrology' &&
+            targetConversation.mode_type !== 'learn_astrology' &&
+            targetConversation.mode_type !== 'report_followup' &&
+            pendingAttachments.length === 0 &&
+            (sutraOptions?.overrideDeepAudit || deepAudit)
+              ? true
+              : undefined,
           bypassClarification: sutraOptions?.bypassClarification || undefined,
           clarifiedPlaybookId: sutraOptions?.clarifiedPlaybookId || undefined,
           clarifiedContextPatch: sutraOptions?.clarifiedContextPatch || undefined,
@@ -2417,7 +2433,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   };
 
   const handleSubmitSuggestion = (item: SuggestionItem) => {
-    void handleSendMessage(item.text, undefined, item.technical_directive);
+    void handleSendMessage(item.text, undefined, item.technical_directive, {
+      bypassClarification: Boolean(
+        item.technical_directive || item.action === 'deep_audit' || item.playbook_id
+      ),
+      clarifiedPlaybookId: item.playbook_id,
+      overrideDeepAudit: item.action === 'deep_audit',
+    });
   };
 
   const handleInsertSuggestion = (item: SuggestionItem) => {
@@ -3439,6 +3461,20 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           enableVoiceInput={chatbotConfig?.features?.voice_input ?? true}
           enableAttachments={chatbotConfig?.features?.attachments ?? true}
           enableQuickTools={chatbotConfig?.features?.quick_tools ?? true}
+          deepAudit={deepAudit}
+          canUseDeepAudit={
+            activePillar === 'council' &&
+            Boolean(effectiveProfileId) &&
+            expertSlug !== 'western_astrologer' &&
+            expertSlug !== 'modern_astrologer' &&
+            expertSlug !== 'tarot_reader' &&
+            expertSlug !== 'numerologist' &&
+            modeSlug !== 'learn_astrology' &&
+            activeConversation?.mode_type !== 'learn_astrology' &&
+            activeConversation?.mode_type !== 'report_followup' &&
+            attachments.length === 0
+          }
+          onToggleDeepAudit={() => setDeepAudit((prev) => !prev)}
         />
       </div>
 

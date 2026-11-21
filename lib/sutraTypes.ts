@@ -44,3 +44,25 @@ export interface ClarificationPayload {
   message: string;
   chips: ClarificationChip[];
 }
+
+export interface SutraSynthesisMeta {
+  intent: SutraIntentArchetype;
+  playbookId: string;
+  domain: string;
+  convergencePillarsAligned: number;
+  convergenceBandLabel: string;
+  effectiveFluency: UserFluencyTier;
+  isDeepAudit: boolean;
+  lensesSucceeded?: number;
+  cancellationsCount: number;
+  reductionPct?: number;
+}
+
+export interface SutraUserProfile {
+  inferred_fluency: UserFluencyTier;
+  recurring_domains: string[];
+  domain_weights?: Record<string, number>;
+  preferred_tradition?: 'vedic' | 'western' | 'dual';
+  last_updated_at: string;
+}
+

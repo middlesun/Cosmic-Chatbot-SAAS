@@ -46,7 +46,26 @@ import {
   containsInternalPromptLeak,
   detectPromptExtractionAttempt,
   sanitizeAssistantOutput,
+  sanitizeSutraProse,
 } from './abuseGuard';
+import type { LifeContextData } from '../../lib/lifeContextSchema';
+import type { SutraSynthesisMeta, UserFluencyTier } from '../../lib/sutraTypes';
+import {
+  compileStage2ContextPackage,
+  type DailyTransitSliceInput,
+  type ExtraProfileSliceInput,
+  type Stage2ContextPackage,
+} from './contextSlicer';
+import { runDeepCouncilAudit } from './deepCouncilAudit';
+import {
+  evaluateStage1Routing,
+  type Stage1RoutingDecision,
+} from './intentRouter';
+import type { NatalTruthDossierV1 } from './natalDossier';
+import {
+  buildSutraPathAPrompt,
+  type SutraVoicePreset,
+} from './sutraSynthesizer';
 
 export {
   getConsultationModel,
@@ -105,6 +124,9 @@ export interface ConsultationProfileRecord {
   chart_text_context: string | null;
   chart_json?: CompiledChartData | null;
   profile_memory_summary: string | null;
+  life_context_json?: LifeContextData | null;
+  life_context_completeness?: number | null;
+  natal_truth_dossier_json?: NatalTruthDossierV1 | null;
   birth_date: string;
   birth_time: string;
   birth_city: string;
@@ -151,6 +173,11 @@ export interface StreamConsultationParams {
   toneMode?: 'friendly' | 'technical';
   responseLength?: 'short' | 'detailed';
   preferredCallName?: string | null;
+  stage1Decision?: Stage1RoutingDecision | null;
+  userPriorFluency?: UserFluencyTier | null;
+  deepAudit?: boolean;
+  voicePreset?: SutraVoicePreset;
+  dailyTransitsOverride?: DailyTransitSliceInput | null;
   abortSignal: AbortSignal;
   onChunk: (chunkText: string) => void;
 }
@@ -178,6 +205,8 @@ export interface StreamConsultationResult {
   leakIntercepted?: boolean;
   pendingProfile?: PendingBirthProfileDraft | null;
   suggestions?: MessageSuggestions | null;
+  sutraMeta?: SutraSynthesisMeta | null;
+  stage2Pkg?: Stage2ContextPackage | null;
 }
 
 function normalizeDraftBirthTime(raw: string): string | null {
@@ -692,6 +721,336 @@ export async function streamConsultationResponse(
   const toneMode = params.toneMode === 'friendly' ? 'friendly' : 'technical';
   const responseLength = params.responseLength === 'short' ? 'short' : 'detailed';
   const activeHistory = params.historyMessages.filter((m) => !m.excluded_from_context);
+  const maxHistoryTurns = runtime.tokenLimits.max_history_turns || 24;
+
+  const historyOpenRouterMessages: OpenRouterMessage[] = activeHistory
+    .slice(-maxHistoryTurns)
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: m.content,
+    }));
+
+  let finalUserText = params.userPrompt.trim();
+  if (params.parentQuoteMessage) {
+    const snippet = params.parentQuoteMessage.content.slice(0, 900);
+    finalUserText = `[Replying directly to this earlier insight from the Council:]
+"""
+${snippet}
+"""
+
+User's specific question: ${finalUserText}`;
+  }
+
+  // =========================================================================
+  // SUTRADHARA STAGE 2 -> STAGE 3 DUAL SYNTHESIS (Vedic Council Reading Path)
+  // Keeps Companion, Clarity, Tarot, Numerology, Western/Modern,
+  // learn_astrology, report_followup, attachments, & birth intake isolated.
+  // =========================================================================
+  const isVedicCouncilSutradharaTurn =
+    activePillar === 'council' &&
+    params.expertSlug !== 'western_astrologer' &&
+    params.expertSlug !== 'modern_astrologer' &&
+    params.expertSlug !== 'tarot_reader' &&
+    params.expertSlug !== 'numerologist' &&
+    params.modeSlug !== 'learn_astrology' &&
+    params.conversation.mode_type !== 'learn_astrology' &&
+    params.conversation.mode_type !== 'report_followup' &&
+    (!params.attachments || params.attachments.length === 0) &&
+    Boolean(params.profile?.chart_json);
+
+  if (isVedicCouncilSutradharaTurn && params.profile?.chart_json) {
+    const [chatbotConfig, activeModeRecipe] = await Promise.all([
+      getChatbotConfig(),
+      getActiveRecipeForTarget('mode', params.modeSlug),
+    ]);
+
+    const recipeSteps = activeModeRecipe
+      ? (activeModeRecipe.steps_json || []).filter((s) => s && s.enabled !== false && s.prompt_slug)
+      : [];
+    const slugsToResolve = Array.from(
+      new Set([params.expertSlug, ...recipeSteps.map((s) => s.prompt_slug)])
+    );
+
+    const [{ bodies: promptBodies, models: promptModels }, dailyTransitData, resolvedDecision] =
+      await Promise.all([
+        resolvePromptModules(slugsToResolve),
+        (async (): Promise<{ slice: DailyTransitSliceInput | null; feedText: string | null }> => {
+          if (params.dailyTransitsOverride) {
+            return { slice: params.dailyTransitsOverride, feedText: null };
+          }
+          if (!isAstrologyApiConfigured()) {
+            return { slice: null, feedText: null };
+          }
+          try {
+            const daily = await getOrFetchDailyTransits();
+            return {
+              slice: {
+                transitDate: daily.transitDate,
+                planets: daily.planets,
+                slowTransitPairs: daily.slowTransitPairs,
+              },
+              feedText: daily.transitsText,
+            };
+          } catch {
+            return { slice: null, feedText: null };
+          }
+        })(),
+        params.stage1Decision
+          ? Promise.resolve(params.stage1Decision)
+          : evaluateStage1Routing({
+              userPrompt: params.userPrompt,
+              lifeContext: params.profile.life_context_json || null,
+              profileName: params.profile.name,
+              hasPrimaryProfile: true,
+              extraProfilesCount: params.extraProfiles?.length || 0,
+              modeSlug: params.modeSlug,
+              isFollowUpTurn: activeHistory.some((m) => m.role === 'user'),
+              bypassClarification: true,
+              technicalDirective: params.technicalDirective,
+            }),
+      ]);
+
+    const sutraModelOverride =
+      activeModeRecipe?.model_id || promptModels[params.expertSlug] || null;
+    const sutraModel = sutraModelOverride || runtime.consultationModel || getConsultationModel();
+
+    const modeRecipeBlocks: string[] = [];
+    for (const step of recipeSteps) {
+      const body =
+        typeof step.inline_override === 'string' && step.inline_override.trim()
+          ? step.inline_override.trim()
+          : promptBodies[step.prompt_slug];
+      if (body) modeRecipeBlocks.push(body);
+    }
+
+    const extraSlices: ExtraProfileSliceInput[] = (params.extraProfiles || [])
+      .filter((ep): ep is ConsultationProfileRecord & { chart_json: CompiledChartData } =>
+        Boolean(ep.chart_json)
+      )
+      .map((ep) => ({
+        label: ep.name,
+        chart: ep.chart_json,
+        dossier: ep.natal_truth_dossier_json || null,
+      }));
+
+    const stage2Pkg = await compileStage2ContextPackage({
+      routerResult: resolvedDecision.routerResult,
+      playbook: resolvedDecision.playbook,
+      chart: params.profile.chart_json,
+      dossier: params.profile.natal_truth_dossier_json || null,
+      lifeContext: params.profile.life_context_json || null,
+      dailyTransits: dailyTransitData.slice,
+      extraProfiles: extraSlices,
+      contextTrapPromptNote: resolvedDecision.contextTrapPromptNote || null,
+    });
+
+    const sutraBaseTokens =
+      responseLength === 'short'
+        ? runtime.tokenLimits.chat_short
+        : runtime.tokenLimits.chat_detailed;
+
+    const currentLocationLabel = [
+      params.profile.current_city,
+      params.profile.current_state,
+      params.profile.current_country,
+    ]
+      .filter((s) => typeof s === 'string' && s.trim().length > 0)
+      .join(', ');
+    const gocharWithLocation = [
+      dailyTransitData.feedText || '',
+      currentLocationLabel
+        ? `CURRENT RESIDENCE / LOCATION: ${currentLocationLabel} (Note for relocation and local timing context).`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    const memoryText =
+      params.conversation.use_full_profile_memory && params.profile.profile_memory_summary
+        ? params.profile.profile_memory_summary
+        : null;
+
+    // Path B: Explicit 4-Lens Parallel Deep Council Audit + Adjudicator
+    if (params.deepAudit) {
+      const deepRes = await runDeepCouncilAudit({
+        model: sutraModel,
+        constitutionPrompt: CORE_COUNCIL_CONSTITUTION,
+        conversationalRules: chatbotConfig.conversational_rules,
+        expertDirective: promptBodies[params.expertSlug] || '',
+        modeRecipeBlocks,
+        pkg: stage2Pkg,
+        chart: params.profile.chart_json,
+        routerFluency: resolvedDecision.routerResult.detected_user_fluency,
+        toneMode,
+        responseLength,
+        outputSlug: params.outputSlug,
+        languageSlug: params.languageSlug,
+        voicePreset: params.voicePreset,
+        gocharFeedText: gocharWithLocation || null,
+        profileMemorySummary: memoryText,
+        preferredCallName: params.preferredCallName,
+        turnCount: activeHistory.length,
+        historyMessages: historyOpenRouterMessages,
+        finalUserText,
+        technicalDirective: params.technicalDirective,
+        priorInferredFluency: params.userPriorFluency,
+        maxOutputTokens: sutraBaseTokens,
+        abortSignal: params.abortSignal,
+        onChunk: params.onChunk,
+      });
+
+      const deepCreditsCharged = deepRes.leakIntercepted
+        ? 0
+        : calculateCreditsFromUsage(deepRes.tokensIn, deepRes.tokensOut, deepRes.fullText, {
+            ...pricingConfig.chat_billing,
+            min_credits_per_reply: Math.max(
+              pricingConfig.chat_billing.min_credits_per_reply * 2,
+              50
+            ),
+            max_credits_per_reply: pricingConfig.chat_billing.max_credits_per_reply * 2,
+          });
+
+      return {
+        fullText: deepRes.fullText,
+        tokensIn: deepRes.tokensIn,
+        tokensOut: deepRes.tokensOut,
+        creditsCharged: deepCreditsCharged,
+        aborted: deepRes.aborted,
+        leakIntercepted: deepRes.leakIntercepted,
+        pendingProfile: null,
+        suggestions: null,
+        sutraMeta: deepRes.meta,
+        stage2Pkg,
+      };
+    }
+
+    // Path A: Fast Focused Stage 3 Synthesis
+    const pathAPrompt = buildSutraPathAPrompt({
+      constitutionPrompt: CORE_COUNCIL_CONSTITUTION,
+      conversationalRules: chatbotConfig.conversational_rules,
+      expertDirective: promptBodies[params.expertSlug] || '',
+      modeRecipeBlocks,
+      pkg: stage2Pkg,
+      chart: params.profile.chart_json,
+      routerFluency: resolvedDecision.routerResult.detected_user_fluency,
+      toneMode,
+      responseLength,
+      outputSlug: params.outputSlug,
+      languageSlug: params.languageSlug,
+      voicePreset: params.voicePreset,
+      gocharFeedText: gocharWithLocation || null,
+      profileMemorySummary: memoryText,
+      preferredCallName: params.preferredCallName,
+      turnCount: activeHistory.length,
+      technicalDirective: params.technicalDirective,
+      priorInferredFluency: params.userPriorFluency,
+    });
+
+    const pathAAbortController = new AbortController();
+    const forwardPathAAbort = () => pathAAbortController.abort();
+    if (params.abortSignal.aborted) {
+      pathAAbortController.abort();
+    } else {
+      params.abortSignal.addEventListener('abort', forwardPathAAbort, { once: true });
+    }
+
+    let rawAccumulated = '';
+    let flushedLength = 0;
+    let leakIntercepted = false;
+    const HOLD_BACK_CHARS = 72;
+
+    try {
+      const streamResult = await streamOpenRouterCompletion({
+        model: sutraModel,
+        system: pathAPrompt.systemInstruction,
+        messages: [
+          ...historyOpenRouterMessages,
+          { role: 'user', content: finalUserText },
+        ],
+        maxTokens: sutraBaseTokens,
+        abortSignal: pathAAbortController.signal,
+        onChunk: (chunkText) => {
+          if (leakIntercepted) return;
+          rawAccumulated += chunkText;
+          if (containsInternalPromptLeak(rawAccumulated)) {
+            leakIntercepted = true;
+            pathAAbortController.abort();
+            return;
+          }
+          let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
+          if (safeEnd > flushedLength) {
+            const tentative = rawAccumulated.slice(flushedLength, safeEnd);
+            const trailingMatch = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
+            if (trailingMatch) {
+              safeEnd -= trailingMatch[0].length;
+            }
+            if (safeEnd > flushedLength) {
+              const toEmit = sanitizeSutraProse(rawAccumulated.slice(flushedLength, safeEnd));
+              flushedLength = safeEnd;
+              if (toEmit) params.onChunk(toEmit);
+            }
+          }
+        },
+      });
+
+      if (leakIntercepted || containsInternalPromptLeak(streamResult.fullText)) {
+        return {
+          fullText: PROMPT_EXTRACTION_REFUSAL,
+          tokensIn: streamResult.tokensIn,
+          tokensOut: streamResult.tokensOut,
+          creditsCharged: 0,
+          aborted: false,
+          leakIntercepted: true,
+          pendingProfile: null,
+          suggestions: null,
+          sutraMeta: pathAPrompt.meta,
+        };
+      }
+
+      if (rawAccumulated.length > flushedLength) {
+        const remaining = sanitizeSutraProse(rawAccumulated.slice(flushedLength));
+        flushedLength = rawAccumulated.length;
+        if (remaining) params.onChunk(remaining);
+      }
+
+      const sanitized = sanitizeAssistantOutput(streamResult.fullText.trim());
+      if (sanitized.leaked) {
+        return {
+          fullText: sanitized.text,
+          tokensIn: streamResult.tokensIn,
+          tokensOut: streamResult.tokensOut,
+          creditsCharged: 0,
+          aborted: false,
+          leakIntercepted: true,
+          pendingProfile: null,
+          suggestions: null,
+          sutraMeta: pathAPrompt.meta,
+        };
+      }
+
+      const creditsCharged = calculateCreditsFromUsage(
+        streamResult.tokensIn,
+        streamResult.tokensOut,
+        sanitized.text,
+        pricingConfig.chat_billing
+      );
+
+      return {
+        fullText: sanitized.text,
+        tokensIn: streamResult.tokensIn,
+        tokensOut: streamResult.tokensOut,
+        creditsCharged,
+        aborted: streamResult.aborted && !leakIntercepted,
+        leakIntercepted: false,
+        pendingProfile: null,
+        suggestions: null,
+        sutraMeta: pathAPrompt.meta,
+        stage2Pkg,
+      };
+    } finally {
+      params.abortSignal.removeEventListener('abort', forwardPathAAbort);
+    }
+  }
 
   let systemInstructionWithDynamic = '';
   let modelOverride: string | null = null;
@@ -792,24 +1151,9 @@ export async function streamConsultationResponse(
       : runtime.tokenLimits.chat_detailed;
   // Reserve headroom for compact single-turn suggestions JSON so prose is never clipped
   const maxOutputTokens = wantsSuggestions ? baseOutputTokens + 420 : baseOutputTokens;
-  const maxHistoryTurns = runtime.tokenLimits.max_history_turns || 24;
 
   // Filter out messages excluded from context (already filtered above)
-  const messages: OpenRouterMessage[] = activeHistory.slice(-maxHistoryTurns).map((m) => ({
-    role: m.role === 'assistant' ? 'assistant' : 'user',
-    content: m.content,
-  }));
-
-  let finalUserText = params.userPrompt.trim();
-  if (params.parentQuoteMessage) {
-    const snippet = params.parentQuoteMessage.content.slice(0, 900);
-    finalUserText = `[Replying directly to this earlier insight from the Council:]
-"""
-${snippet}
-"""
-
-User's specific question: ${finalUserText}`;
-  }
+  const messages: OpenRouterMessage[] = [...historyOpenRouterMessages];
 
   if (params.attachments && params.attachments.length > 0) {
     const contentParts: OpenRouterContentPart[] = [
@@ -884,7 +1228,9 @@ User's specific question: ${finalUserText}`;
         const tagIndex = findEarliestHiddenTagIndex(rawAccumulated);
         if (tagIndex !== -1) {
           if (tagIndex > flushedLength) {
-            const beforeTag = rawAccumulated.slice(flushedLength, tagIndex).replace(/\s+$/, '');
+            const beforeTag = sanitizeSutraProse(
+              rawAccumulated.slice(flushedLength, tagIndex).replace(/\s+$/, '')
+            );
             if (beforeTag) {
               params.onChunk(beforeTag);
             }
@@ -894,11 +1240,18 @@ User's specific question: ${finalUserText}`;
           return;
         }
 
-        const safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
+        let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
         if (safeEnd > flushedLength) {
-          const toEmit = rawAccumulated.slice(flushedLength, safeEnd);
-          flushedLength = safeEnd;
-          params.onChunk(toEmit);
+          const tentative = rawAccumulated.slice(flushedLength, safeEnd);
+          const trailingMatch = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
+          if (trailingMatch) {
+            safeEnd -= trailingMatch[0].length;
+          }
+          if (safeEnd > flushedLength) {
+            const toEmit = sanitizeSutraProse(rawAccumulated.slice(flushedLength, safeEnd));
+            flushedLength = safeEnd;
+            if (toEmit) params.onChunk(toEmit);
+          }
         }
       },
     });
@@ -918,7 +1271,7 @@ User's specific question: ${finalUserText}`;
 
     const extractedFromAccumulated = extractHiddenDirectives(rawAccumulated, suggestionsConfig);
     if (!hiddenBlockHoldStarted && extractedFromAccumulated.cleanText.length > flushedLength) {
-      params.onChunk(extractedFromAccumulated.cleanText.slice(flushedLength));
+      params.onChunk(sanitizeSutraProse(extractedFromAccumulated.cleanText.slice(flushedLength)));
       flushedLength = extractedFromAccumulated.cleanText.length;
     }
 

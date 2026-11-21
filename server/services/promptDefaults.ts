@@ -1,4 +1,8 @@
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
+import {
+  FORMULA_CARTRIDGES_SEED,
+  PRIORITY_RULES_SEED,
+} from './formulaCartridgesSeed';
 import { getChatbotConfig } from './platformSettings';
 
 export type PromptCategory =
@@ -34,6 +38,9 @@ export interface DefaultPromptSeed {
   category: PromptCategory;
   display_name: string;
   subtitle: string;
+  description?: string;
+  tags?: string[];
+  sort_order?: number;
   prompt_body: string;
 }
 
@@ -310,6 +317,8 @@ export const ALL_DEFAULT_PROMPTS: DefaultPromptSeed[] = [
   ...OUTPUT_OPTIONS,
   ...LANGUAGE_OPTIONS,
   ...TOOL_PROMPTS,
+  ...FORMULA_CARTRIDGES_SEED,
+  ...PRIORITY_RULES_SEED,
 ];
 
 const PROMPT_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -320,6 +329,19 @@ interface CachedPromptBodyEntry {
   expiresAt: number;
 }
 
+export interface ResolvedInternalRuleRecord {
+  slug: string;
+  category: 'formula_cartridge' | 'priority_rule';
+  display_name: string;
+  subtitle: string;
+  prompt_body: string;
+  model_id: string | null;
+  tags: string[];
+  sort_order: number;
+  is_active: boolean;
+  source: 'default' | 'db';
+}
+
 const promptBodyCache = new Map<string, CachedPromptBodyEntry>();
 
 let publicCatalogCache: {
@@ -327,9 +349,21 @@ let publicCatalogCache: {
   expiresAt: number;
 } | null = null;
 
+let formulaCartridgesCache: {
+  data: Record<string, ResolvedInternalRuleRecord>;
+  expiresAt: number;
+} | null = null;
+
+let priorityRulesCache: {
+  data: Record<string, ResolvedInternalRuleRecord>;
+  expiresAt: number;
+} | null = null;
+
 export function invalidatePromptCache(): void {
   promptBodyCache.clear();
   publicCatalogCache = null;
+  formulaCartridgesCache = null;
+  priorityRulesCache = null;
 }
 
 export function getPublicChatCatalog() {
@@ -549,20 +583,32 @@ export async function resolvePromptModules(slugs: string[]): Promise<ResolvedPro
   const now = Date.now();
   const missingFromCache: string[] = [];
 
+  const seedByLowerSlug = new Map<string, DefaultPromptSeed>();
   for (const seed of ALL_DEFAULT_PROMPTS) {
-    if (slugs.includes(seed.slug)) {
-      bodies[seed.slug] = seed.prompt_body;
-      models[seed.slug] = null;
+    seedByLowerSlug.set(seed.slug.toLowerCase(), seed);
+  }
+
+  for (const requestedSlug of slugs) {
+    const seed = seedByLowerSlug.get(requestedSlug.trim().toLowerCase());
+    if (seed) {
+      bodies[requestedSlug] = seed.prompt_body;
+      models[requestedSlug] = null;
     }
   }
 
+  const normalizedToRequested = new Map<string, string[]>();
   for (const slug of slugs) {
-    const cached = promptBodyCache.get(slug);
+    const cacheKey = slug.trim().toLowerCase();
+    const cached = promptBodyCache.get(cacheKey);
     if (cached && cached.expiresAt > now) {
       bodies[slug] = cached.body;
       models[slug] = cached.modelId;
     } else {
       missingFromCache.push(slug);
+      const lower = cacheKey;
+      const list = normalizedToRequested.get(lower) || [];
+      list.push(slug);
+      normalizedToRequested.set(lower, list);
     }
   }
 
@@ -571,11 +617,20 @@ export async function resolvePromptModules(slugs: string[]): Promise<ResolvedPro
     return { bodies, models };
   }
 
+  const querySlugs = Array.from(
+    new Set(
+      missingFromCache.flatMap((s) => {
+        const lower = s.trim().toLowerCase();
+        return s === lower ? [s] : [s, lower];
+      })
+    )
+  );
+
   let rows: Array<{ slug: string; prompt_body: string; model_id?: string | null }> | null = null;
   const primaryRes = await supabaseAdmin
     .from('system_prompts')
     .select('slug, prompt_body, model_id')
-    .in('slug', missingFromCache)
+    .in('slug', querySlugs)
     .eq('is_active', true);
 
   if (!primaryRes.error && primaryRes.data) {
@@ -585,7 +640,7 @@ export async function resolvePromptModules(slugs: string[]): Promise<ResolvedPro
     const fallbackRes = await supabaseAdmin
       .from('system_prompts')
       .select('slug, prompt_body')
-      .in('slug', missingFromCache)
+      .in('slug', querySlugs)
       .eq('is_active', true);
     if (!fallbackRes.error && fallbackRes.data) {
       rows = fallbackRes.data;
@@ -596,11 +651,15 @@ export async function resolvePromptModules(slugs: string[]): Promise<ResolvedPro
   if (rows) {
     for (const row of rows) {
       if (row.prompt_body && typeof row.prompt_body === 'string') {
+        const lowerSlug = String(row.slug || '').trim().toLowerCase();
         const modelOverride =
           typeof row.model_id === 'string' && row.model_id.trim() ? row.model_id.trim() : null;
-        bodies[row.slug] = row.prompt_body;
-        models[row.slug] = modelOverride;
-        promptBodyCache.set(row.slug, {
+        const targets = normalizedToRequested.get(lowerSlug) || [row.slug];
+        for (const reqSlug of targets) {
+          bodies[reqSlug] = row.prompt_body;
+          models[reqSlug] = modelOverride;
+        }
+        promptBodyCache.set(lowerSlug, {
           body: row.prompt_body,
           modelId: modelOverride,
           expiresAt,
@@ -611,8 +670,9 @@ export async function resolvePromptModules(slugs: string[]): Promise<ResolvedPro
 
   // Cache fallback bodies for slugs not yet in DB so we don't repeatedly query for them
   for (const slug of missingFromCache) {
-    if (!promptBodyCache.has(slug) && bodies[slug]) {
-      promptBodyCache.set(slug, { body: bodies[slug], modelId: null, expiresAt });
+    const lowerSlug = slug.trim().toLowerCase();
+    if (!promptBodyCache.has(lowerSlug) && bodies[slug]) {
+      promptBodyCache.set(lowerSlug, { body: bodies[slug], modelId: null, expiresAt });
     }
   }
 
@@ -626,4 +686,138 @@ export async function resolvePromptModules(slugs: string[]): Promise<ResolvedPro
 export async function resolvePromptBodies(slugs: string[]): Promise<Record<string, string>> {
   const { bodies } = await resolvePromptModules(slugs);
   return bodies;
+}
+
+async function resolveInternalRulesByCategory(
+  targetCategory: 'formula_cartridge' | 'priority_rule',
+  seeds: DefaultPromptSeed[]
+): Promise<Record<string, ResolvedInternalRuleRecord>> {
+  const result: Record<string, ResolvedInternalRuleRecord> = {};
+  for (const seed of seeds) {
+    const slug = seed.slug.toLowerCase();
+    result[slug] = {
+      slug,
+      category: targetCategory,
+      display_name: seed.display_name,
+      subtitle: seed.subtitle,
+      prompt_body: seed.prompt_body,
+      model_id: null,
+      tags: Array.isArray(seed.tags) ? [...seed.tags] : [],
+      sort_order: typeof seed.sort_order === 'number' ? seed.sort_order : 100,
+      is_active: true,
+      source: 'default',
+    };
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    return result;
+  }
+
+  try {
+    const targetSlugs = Object.keys(result);
+    const [overridesRes, promptsRes] = await Promise.all([
+      supabaseAdmin
+        .from('platform_settings')
+        .select('value_json')
+        .eq('key', 'prompt_category_overrides')
+        .maybeSingle(),
+      (async () => {
+        const full = await supabaseAdmin
+          .from('system_prompts')
+          .select('id, slug, category, display_name, subtitle, prompt_body, model_id, tags, sort_order, is_active')
+          .or(`category.eq.${targetCategory},slug.in.(${targetSlugs.join(',')})`);
+        if (!full.error && full.data) return full.data;
+
+        const mid = await supabaseAdmin
+          .from('system_prompts')
+          .select('id, slug, category, display_name, subtitle, prompt_body, model_id, is_active')
+          .or(`category.eq.${targetCategory},slug.in.(${targetSlugs.join(',')})`);
+        if (!mid.error && mid.data) return mid.data;
+
+        const base = await supabaseAdmin
+          .from('system_prompts')
+          .select('id, slug, category, display_name, prompt_body, is_active')
+          .or(`category.eq.${targetCategory},slug.in.(${targetSlugs.join(',')})`);
+        return base.data || [];
+      })(),
+    ]);
+
+    const overrides =
+      !overridesRes.error &&
+      overridesRes.data?.value_json &&
+      typeof overridesRes.data.value_json === 'object' &&
+      !Array.isArray(overridesRes.data.value_json)
+        ? (overridesRes.data.value_json as Record<string, string>)
+        : {};
+
+    for (const row of promptsRes as Array<{
+      id: string;
+      slug: string;
+      category: string;
+      display_name?: string | null;
+      subtitle?: string | null;
+      prompt_body?: string | null;
+      model_id?: string | null;
+      tags?: string[] | null;
+      sort_order?: number | null;
+      is_active?: boolean | null;
+    }>) {
+      const effectiveCategory = overrides[row.id] || row.category;
+      const slug = String(row.slug || '').trim().toLowerCase();
+      if (!slug) continue;
+      if (effectiveCategory !== targetCategory && !result[slug]) continue;
+      if (effectiveCategory !== targetCategory && row.category !== 'system') continue;
+
+      const existing = result[slug];
+      result[slug] = {
+        slug,
+        category: targetCategory,
+        display_name: row.display_name?.trim() || existing?.display_name || slug,
+        subtitle: row.subtitle?.trim() || existing?.subtitle || '',
+        prompt_body: row.prompt_body?.trim() || existing?.prompt_body || '',
+        model_id: typeof row.model_id === 'string' && row.model_id.trim() ? row.model_id.trim() : null,
+        tags: Array.isArray(row.tags) ? row.tags : existing?.tags || [],
+        sort_order: typeof row.sort_order === 'number' ? row.sort_order : existing?.sort_order ?? 100,
+        is_active: row.is_active !== false,
+        source: 'db',
+      };
+    }
+  } catch {
+    // Non-fatal: seed defaults remain intact
+  }
+
+  return result;
+}
+
+/**
+ * Server-only cached lookup for all Sutradhara Vedic Formula Cartridges (`formula_cartridge`).
+ * Reflects live Admin edits and active toggles; NEVER exposed to public `/api/chat/config`.
+ */
+export async function getFormulaCartridgesCached(): Promise<
+  Record<string, ResolvedInternalRuleRecord>
+> {
+  const now = Date.now();
+  if (formulaCartridgesCache && formulaCartridgesCache.expiresAt > now) {
+    return formulaCartridgesCache.data;
+  }
+  const data = await resolveInternalRulesByCategory('formula_cartridge', FORMULA_CARTRIDGES_SEED);
+  formulaCartridgesCache = { data, expiresAt: now + PROMPT_CACHE_TTL_MS };
+  return data;
+}
+
+/**
+ * Server-only cached lookup for all 14 Sutradhara Context Priority Rules (`priority_rule`).
+ * Reflects live Admin edits and active toggles; NEVER exposed to public `/api/chat/config`.
+ */
+export async function getPriorityRulesCached(): Promise<
+  Record<string, ResolvedInternalRuleRecord>
+> {
+  const now = Date.now();
+  if (priorityRulesCache && priorityRulesCache.expiresAt > now) {
+    return priorityRulesCache.data;
+  }
+  const data = await resolveInternalRulesByCategory('priority_rule', PRIORITY_RULES_SEED);
+  priorityRulesCache = { data, expiresAt: now + PROMPT_CACHE_TTL_MS };
+  return data;
 }

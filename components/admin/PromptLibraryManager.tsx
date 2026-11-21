@@ -38,7 +38,9 @@ export interface SystemPromptRecord {
     | 'language'
     | 'tool'
     | 'report_step'
-    | 'learn';
+    | 'learn'
+    | 'formula_cartridge'
+    | 'priority_rule';
   display_name: string;
   subtitle?: string | null;
   description?: string | null;
@@ -104,6 +106,8 @@ const PROMPT_CATEGORIES: Array<{ value: SystemPromptRecord['category']; label: s
   { value: 'tool', label: 'Tool' },
   { value: 'report_step', label: 'Report Step' },
   { value: 'learn', label: 'Learn' },
+  { value: 'formula_cartridge', label: 'Formula Cartridge' },
+  { value: 'priority_rule', label: 'Priority Rule' },
 ];
 
 const CATEGORY_LABEL_MAP: Record<string, string> = Object.fromEntries(

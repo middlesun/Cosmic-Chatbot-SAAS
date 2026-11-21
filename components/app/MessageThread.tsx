@@ -1079,19 +1079,66 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 {activePillar === 'clarity' && (
                   <p className="text-[11px] font-medium text-[#8B8275]">Clarity</p>
                 )}
-                {activePillar === 'council' && msg.expert_used && (
-                  <p className="text-[11px] font-medium text-[#8B8275]">
-                    {msg.expert_used === 'western_astrologer'
-                      ? 'Western Astrologer (Western)'
-                      : msg.expert_used === 'modern_astrologer'
-                      ? 'Modern Astrologer (Western)'
-                      : msg.expert_used === 'tarot_reader'
-                      ? 'Tarot'
-                      : msg.expert_used === 'numerologist'
-                      ? 'Numerology'
-                      : 'Vedic Astrologer (Vedic)'}
-                  </p>
-                )}
+                {activePillar === 'council' && msg.expert_used && (() => {
+                  const sutraMeta = msg.suggestions_json?.sutra_meta;
+                  const showBadge =
+                    Boolean(sutraMeta) &&
+                    (sutraMeta!.isDeepAudit ||
+                      sutraMeta!.intent === 'HARD_DECISION' ||
+                      sutraMeta!.intent === 'TIMING' ||
+                      sutraMeta!.intent === 'SOFT_HORIZON' ||
+                      sutraMeta!.intent === 'PEER_AUDIT');
+                  return (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-[11px] font-medium text-[#8B8275]">
+                        {msg.expert_used === 'western_astrologer'
+                          ? 'Western Astrologer (Western)'
+                          : msg.expert_used === 'modern_astrologer'
+                          ? 'Modern Astrologer (Western)'
+                          : msg.expert_used === 'tarot_reader'
+                          ? 'Tarot'
+                          : msg.expert_used === 'numerologist'
+                          ? 'Numerology'
+                          : 'Vedic Astrologer (Vedic)'}
+                      </p>
+                      {showBadge && sutraMeta && (
+                        <Tooltip
+                          content={
+                            sutraMeta.isDeepAudit
+                              ? `Deep Council Audit (${sutraMeta.lensesSucceeded ?? 4}/4 specialist checks adjudicated across ${sutraMeta.convergenceBandLabel})`
+                              : `Multi-system Observatory check (${sutraMeta.convergenceBandLabel}${
+                                  sutraMeta.cancellationsCount > 0
+                                    ? ` · ${sutraMeta.cancellationsCount} cancellation${
+                                        sutraMeta.cancellationsCount === 1 ? '' : 's'
+                                      } checked`
+                                    : ''
+                                })`
+                          }
+                          placement="top"
+                        >
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide ${
+                              sutraMeta.isDeepAudit
+                                ? 'border-[#B8965A]/45 bg-[#292D36] text-[#F4EFE6]'
+                                : 'border-[#3D3830]/12 bg-[#F1ECE3] text-[#5C5449]'
+                            }`}
+                          >
+                            <Sparkles
+                              className={`h-2.5 w-2.5 ${
+                                sutraMeta.isDeepAudit ? 'text-[#B8965A]' : 'text-[#8B7355]'
+                              }`}
+                            />
+                            <span>
+                              {sutraMeta.isDeepAudit
+                                ? `Deep Council Audit · ${sutraMeta.convergenceBandLabel}`
+                                : sutraMeta.convergenceBandLabel}
+                            </span>
+                          </span>
+                        </Tooltip>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className={`space-y-3 ${sizeTokens.body} text-[#3D3830]`}>
                   <ReactMarkdown

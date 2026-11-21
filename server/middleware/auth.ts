@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { getClientIpHash } from '../services/abuseGuard';
+import type { SutraUserProfile } from '../../lib/sutraTypes';
 
 export const PRIMARY_ADMIN_EMAIL = 'fintasticapps@gmail.com';
 
@@ -25,6 +26,7 @@ export interface AppUserRecord {
   preferred_call_name?: string | null;
   chat_font_size?: 'sm' | 'base' | 'lg' | null;
   suggestions_auto_expand?: boolean | null;
+  sutra_user_profile_json?: SutraUserProfile | null;
   signup_ip_hash?: string | null;
   last_ip_hash?: string | null;
   referral_code: string;
