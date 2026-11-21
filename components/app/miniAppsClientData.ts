@@ -733,6 +733,17 @@ export const PREVIEW_HOME_SUMMARY: HomeSummaryResponse = {
     { app_slug: 'daily-horoscope', updated_at: '2026-11-17T08:15:00.000Z' },
     { app_slug: 'current-transits', updated_at: '2026-11-16T19:00:00.000Z' },
   ],
+  primaryProfile: {
+    id: 'preview-prof-1',
+    name: 'Aarav Mehta (Sample)',
+    short_name: 'Aarav',
+    is_default: true,
+    life_context_json: {
+      birth_time_accuracy: 'hospital_exact',
+      relationship_status: 'single',
+    },
+    life_context_completeness: 60,
+  },
 };
 
 export function buildPreviewAppResult(

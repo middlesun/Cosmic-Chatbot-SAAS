@@ -1,3 +1,5 @@
+import type { LifeContextData } from '../../lib/lifeContextSchema';
+
 export type MiniAppTemplate = 'auto_brief' | 'domain_explorer' | 'form_reading' | 'guided_quiz';
 
 export type MiniAppCategory =
@@ -111,6 +113,14 @@ export interface HomeSummaryResponse {
     app_slug: string;
     updated_at: string;
   }>;
+  primaryProfile?: {
+    id: string;
+    name: string;
+    short_name?: string | null;
+    is_default?: boolean;
+    life_context_json?: LifeContextData | null;
+    life_context_completeness?: number;
+  } | null;
 }
 
 export const MINI_APP_CATEGORIES: Array<{ id: 'all' | 'popular' | MiniAppCategory | 'favorites'; label: string }> = [

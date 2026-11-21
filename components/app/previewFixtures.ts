@@ -191,6 +191,12 @@ export const PREVIEW_PROFILES: ChatProfile[] = [
     is_activated: true,
     profile_memory_summary:
       'Virgo Lagna (Hasta Moon). Prior readings explored Saturn Mahadasha career pivot into advisory leadership and 10th-house D10 alignment.',
+    life_context_json: {
+      birth_time_accuracy: 'hospital_exact',
+      relationship_status: 'single',
+    },
+    life_context_completeness: 60,
+    natal_dossier_version: 1,
   },
 ];
 

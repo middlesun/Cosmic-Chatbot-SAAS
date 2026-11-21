@@ -490,9 +490,16 @@ const VALID_PROMPT_CATEGORIES = [
   'tool',
   'report_step',
   'learn',
+  'formula_cartridge',
+  'priority_rule',
 ];
 
-const FALLBACK_OVERRIDE_CATEGORIES = new Set(['master_prompts', 'tone']);
+const FALLBACK_OVERRIDE_CATEGORIES = new Set([
+  'master_prompts',
+  'tone',
+  'formula_cartridge',
+  'priority_rule',
+]);
 
 const PROMPT_CATEGORY_OVERRIDES_KEY = 'prompt_category_overrides';
 const promptCategoryOverridesMemory = new Map<string, string>();

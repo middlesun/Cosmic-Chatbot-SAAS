@@ -14,6 +14,16 @@ import {
   computeChartFingerprint,
 } from '../services/abuseGuard';
 import { getPricingConfig } from '../services/platformSettings';
+import {
+  mergeLifeContextPatch,
+  sanitizeLifeContext,
+  type LifeContextData,
+} from '../services/lifeContextGuard';
+import {
+  buildNatalTruthDossierLayerA,
+  compileNatalTruthDossier,
+  CURRENT_NATAL_DOSSIER_VERSION,
+} from '../services/natalDossier';
 
 const router = Router();
 
@@ -42,7 +52,12 @@ const V3_PROFILE_SUMMARY_COLUMNS =
 const PROFILE_SUMMARY_COLUMNS =
   'id, user_id, name, short_name, is_default, is_starred, tags, birth_date, birth_time, birth_city, birth_state, birth_country, current_city, current_state, current_country, current_timezone_offset, latitude, longitude, timezone_offset, gender, relationship, birth_chart_pdf_url, is_activated, activated_at, created_at, updated_at';
 
+// CRITICAL EGRESS GUARD: Summary columns NEVER select chart_json, chart_text_context, or natal_truth_dossier_json
+const SUTRA_PROFILE_SUMMARY_COLUMNS =
+  `${PROFILE_SUMMARY_COLUMNS}, life_context_json, life_context_completeness, natal_dossier_version`;
+
 const PROFILE_DETAIL_COLUMNS = `${PROFILE_SUMMARY_COLUMNS}, chart_json`;
+const SUTRA_PROFILE_DETAIL_COLUMNS = `${SUTRA_PROFILE_SUMMARY_COLUMNS}, chart_json, natal_truth_dossier_json`;
 
 function withEmptyCurrentLocation<T extends Record<string, unknown>>(row: T): T & {
   current_city: null;
@@ -62,11 +77,24 @@ function withEmptyCurrentLocation<T extends Record<string, unknown>>(row: T): T 
 function withDefaultMetaFields<T extends Record<string, unknown>>(row: T): T & {
   is_starred: boolean;
   tags: string[];
+  life_context_json: Record<string, unknown>;
+  life_context_completeness: number;
+  natal_dossier_version: number;
 } {
+  const rawCtx = row.life_context_json;
+  const safeCtx =
+    rawCtx && typeof rawCtx === 'object' && !Array.isArray(rawCtx)
+      ? (rawCtx as Record<string, unknown>)
+      : {};
   return {
     ...row,
     is_starred: typeof row.is_starred === 'boolean' ? row.is_starred : false,
     tags: Array.isArray(row.tags) ? row.tags.map(String) : [],
+    life_context_json: safeCtx,
+    life_context_completeness:
+      typeof row.life_context_completeness === 'number' ? row.life_context_completeness : 0,
+    natal_dossier_version:
+      typeof row.natal_dossier_version === 'number' ? row.natal_dossier_version : 0,
   };
 }
 
@@ -95,58 +123,70 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
   let rows: Array<Record<string, unknown>> = [];
 
-  const primaryRes = await supabaseAdmin
+  const sutraPrimaryRes = await supabaseAdmin
     .from('profiles')
-    .select(PROFILE_SUMMARY_COLUMNS)
+    .select(SUTRA_PROFILE_SUMMARY_COLUMNS)
     .eq('user_id', req.appUser.id)
     .order('created_at', { ascending: false });
 
-  if (primaryRes.error) {
-    const v3Res = await supabaseAdmin
+  if (!sutraPrimaryRes.error && sutraPrimaryRes.data) {
+    rows = (sutraPrimaryRes.data || []).map((r) =>
+      withDefaultMetaFields(r as unknown as Record<string, unknown>)
+    );
+  } else {
+    const primaryRes = await supabaseAdmin
       .from('profiles')
-      .select(V3_PROFILE_SUMMARY_COLUMNS)
+      .select(PROFILE_SUMMARY_COLUMNS)
       .eq('user_id', req.appUser.id)
       .order('created_at', { ascending: false });
 
-    if (!v3Res.error && v3Res.data) {
-      rows = (v3Res.data as Array<Record<string, unknown>>).map((r) => withDefaultMetaFields(r));
-    } else {
-      const v2Res = await supabaseAdmin
+    if (primaryRes.error) {
+      const v3Res = await supabaseAdmin
         .from('profiles')
-        .select(V2_PROFILE_SUMMARY_COLUMNS)
+        .select(V3_PROFILE_SUMMARY_COLUMNS)
         .eq('user_id', req.appUser.id)
         .order('created_at', { ascending: false });
 
-      if (!v2Res.error && v2Res.data) {
-        rows = (v2Res.data as Array<Record<string, unknown>>).map((r) =>
-          withDefaultMetaFields(withEmptyCurrentLocation(r))
-        );
+      if (!v3Res.error && v3Res.data) {
+        rows = (v3Res.data as Array<Record<string, unknown>>).map((r) => withDefaultMetaFields(r));
       } else {
-        const fallbackRes = await supabaseAdmin
+        const v2Res = await supabaseAdmin
           .from('profiles')
-          .select(BASE_PROFILE_SUMMARY_COLUMNS)
+          .select(V2_PROFILE_SUMMARY_COLUMNS)
           .eq('user_id', req.appUser.id)
           .order('created_at', { ascending: false });
 
-        if (fallbackRes.error) {
-          res.status(500).json({ error: 'Failed to load profiles' });
-          return;
+        if (!v2Res.error && v2Res.data) {
+          rows = (v2Res.data as Array<Record<string, unknown>>).map((r) =>
+            withDefaultMetaFields(withEmptyCurrentLocation(r))
+          );
+        } else {
+          const fallbackRes = await supabaseAdmin
+            .from('profiles')
+            .select(BASE_PROFILE_SUMMARY_COLUMNS)
+            .eq('user_id', req.appUser.id)
+            .order('created_at', { ascending: false });
+
+          if (fallbackRes.error) {
+            res.status(500).json({ error: 'Failed to load profiles' });
+            return;
+          }
+          rows = (fallbackRes.data || []).map((r) =>
+            withDefaultMetaFields(
+              withEmptyCurrentLocation({
+                ...r,
+                short_name: null,
+                is_default: false,
+              })
+            )
+          );
         }
-        rows = (fallbackRes.data || []).map((r) =>
-          withDefaultMetaFields(
-            withEmptyCurrentLocation({
-              ...r,
-              short_name: null,
-              is_default: false,
-            })
-          )
-        );
       }
+    } else {
+      rows = (primaryRes.data || []).map((r) =>
+        withDefaultMetaFields(r as unknown as Record<string, unknown>)
+      );
     }
-  } else {
-    rows = (primaryRes.data || []).map((r) =>
-      withDefaultMetaFields(r as unknown as Record<string, unknown>)
-    );
   }
 
   // Attach Council-only conversation metadata per profile (zero heavy columns)
@@ -295,19 +335,34 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 
   const includeChart = req.query.includeChart !== '0';
-  const selectColumns = includeChart ? PROFILE_DETAIL_COLUMNS : PROFILE_SUMMARY_COLUMNS;
+  const sutraSelectColumns = includeChart ? SUTRA_PROFILE_DETAIL_COLUMNS : SUTRA_PROFILE_SUMMARY_COLUMNS;
+  const legacySelectColumns = includeChart ? PROFILE_DETAIL_COLUMNS : PROFILE_SUMMARY_COLUMNS;
 
-  const initialQuery = await supabaseAdmin
+  const sutraQuery = await supabaseAdmin
     .from('profiles')
-    .select(selectColumns)
+    .select(sutraSelectColumns)
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
 
-  let rawProfile: Record<string, unknown> | null = initialQuery.data
-    ? (initialQuery.data as unknown as Record<string, unknown>)
+  let rawProfile: Record<string, unknown> | null = sutraQuery.data
+    ? withDefaultMetaFields(sutraQuery.data as unknown as Record<string, unknown>)
     : null;
-  let queryError = initialQuery.error;
+  let queryError = sutraQuery.error;
+
+  if (queryError) {
+    const initialQuery = await supabaseAdmin
+      .from('profiles')
+      .select(legacySelectColumns)
+      .eq('id', req.params.id)
+      .eq('user_id', req.appUser.id)
+      .maybeSingle();
+
+    rawProfile = initialQuery.data
+      ? withDefaultMetaFields(initialQuery.data as unknown as Record<string, unknown>)
+      : null;
+    queryError = initialQuery.error;
+  }
 
   if (queryError) {
     const v3Cols = includeChart
@@ -384,24 +439,52 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         timezoneOffset: typeof profilePayload.timezone_offset === 'number' ? profilePayload.timezone_offset : null,
       });
 
-      const { data: updated } = await supabaseAdmin
+      const dossier = await compileNatalTruthDossier(compiled.chartJson, {
+        lifeContext: profilePayload.life_context_json as LifeContextData,
+        includeNarrativeKernel: true,
+      }).catch(() => null);
+
+      const baseUpdatePayload = {
+        latitude: compiled.location.latitude,
+        longitude: compiled.location.longitude,
+        timezone_offset: compiled.location.timezoneOffset,
+        chart_json: compiled.chartJson,
+        chart_text_context: compiled.chartTextContext,
+        is_activated: true,
+        activated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const sutraRes = await supabaseAdmin
         .from('profiles')
         .update({
-          latitude: compiled.location.latitude,
-          longitude: compiled.location.longitude,
-          timezone_offset: compiled.location.timezoneOffset,
-          chart_json: compiled.chartJson,
-          chart_text_context: compiled.chartTextContext,
-          is_activated: true,
-          activated_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          ...baseUpdatePayload,
+          ...(dossier
+            ? {
+                natal_truth_dossier_json: dossier,
+                natal_dossier_version: CURRENT_NATAL_DOSSIER_VERSION,
+              }
+            : {}),
         })
         .eq('id', String(profilePayload.id))
-        .select(PROFILE_DETAIL_COLUMNS)
+        .select(SUTRA_PROFILE_DETAIL_COLUMNS)
         .single();
 
-      if (updated) {
-        profilePayload = updated as unknown as Record<string, unknown>;
+      if (!sutraRes.error && sutraRes.data) {
+        profilePayload = withDefaultMetaFields(
+          sutraRes.data as unknown as Record<string, unknown>
+        );
+      } else {
+        const { data: updated } = await supabaseAdmin
+          .from('profiles')
+          .update(baseUpdatePayload)
+          .eq('id', String(profilePayload.id))
+          .select(PROFILE_DETAIL_COLUMNS)
+          .single();
+
+        if (updated) {
+          profilePayload = withDefaultMetaFields(updated as unknown as Record<string, unknown>);
+        }
       }
     } catch {
       // Return existing record gracefully if ephemeris call temporarily fails
@@ -409,19 +492,62 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   } else if (includeChart && profilePayload.chart_json) {
     try {
       const enriched = enrichCompiledChart(profilePayload.chart_json as CompiledChartData);
-      if (enriched.wasEnriched) {
+      const needsDossier =
+        !profilePayload.natal_truth_dossier_json ||
+        Number(profilePayload.natal_dossier_version || 0) < CURRENT_NATAL_DOSSIER_VERSION;
+
+      let compiledDossier: Record<string, unknown> | null = null;
+      if (needsDossier) {
+        const layerA = buildNatalTruthDossierLayerA(
+          enriched.chartJson,
+          profilePayload.life_context_json as LifeContextData
+        );
+        compiledDossier = {
+          version: CURRENT_NATAL_DOSSIER_VERSION,
+          generated_at: new Date().toISOString(),
+          layer_a: layerA,
+          layer_b: null,
+        };
+        profilePayload = {
+          ...profilePayload,
+          natal_truth_dossier_json: compiledDossier,
+          natal_dossier_version: CURRENT_NATAL_DOSSIER_VERSION,
+        };
+      }
+
+      if (enriched.wasEnriched || compiledDossier) {
         profilePayload = {
           ...profilePayload,
           chart_json: enriched.chartJson,
         };
+        const patch: Record<string, unknown> = {
+          updated_at: new Date().toISOString(),
+        };
+        if (enriched.wasEnriched) {
+          patch.chart_json = enriched.chartJson;
+          patch.chart_text_context = enriched.chartTextContext;
+        }
+        if (compiledDossier) {
+          patch.natal_truth_dossier_json = compiledDossier;
+          patch.natal_dossier_version = CURRENT_NATAL_DOSSIER_VERSION;
+        }
         void supabaseAdmin
           .from('profiles')
-          .update({
-            chart_json: enriched.chartJson,
-            chart_text_context: enriched.chartTextContext,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', String(profilePayload.id));
+          .update(patch)
+          .eq('id', String(profilePayload.id))
+          .then(({ error: bgErr }) => {
+            // If migration 011 columns don't exist yet, retry without dossier columns
+            if (bgErr && enriched.wasEnriched) {
+              void supabaseAdmin
+                .from('profiles')
+                .update({
+                  chart_json: enriched.chartJson,
+                  chart_text_context: enriched.chartTextContext,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', String(profilePayload.id));
+            }
+          });
       }
     } catch {
       // Keep original chart_json if enrichment skips cleanly
@@ -668,47 +794,80 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     current_timezone_offset: parsedCurrentTz,
   };
 
+  // Compile 1-time NatalTruthDossierV1 cleanly alongside birth chart creation
+  const initialDossier = await compileNatalTruthDossier(compiled.chartJson, {
+    includeNarrativeKernel: true,
+  }).catch(() => null);
+
+  const sutraInsertFields = initialDossier
+    ? {
+        natal_truth_dossier_json: initialDossier,
+        natal_dossier_version: CURRENT_NATAL_DOSSIER_VERSION,
+      }
+    : {};
+
   let { data, error } = await supabaseAdmin
     .from('profiles')
     .insert({
       ...basePayload,
       ...v2ExtraPayload,
       ...currentLocPayload,
+      ...sutraInsertFields,
     })
-    .select(PROFILE_SUMMARY_COLUMNS)
+    .select(SUTRA_PROFILE_SUMMARY_COLUMNS)
     .single();
 
   if (error) {
-    // Fallback if migration 005 (current_*) hasn't been executed yet
-    const v2Retry = await supabaseAdmin
+    // Fallback if migration 011 (Sutradhara columns) hasn't been executed yet
+    const legacyPrimary = await supabaseAdmin
       .from('profiles')
       .insert({
         ...basePayload,
         ...v2ExtraPayload,
+        ...currentLocPayload,
       })
-      .select(V2_PROFILE_SUMMARY_COLUMNS)
+      .select(PROFILE_SUMMARY_COLUMNS)
       .single();
 
-    if (!v2Retry.error && v2Retry.data) {
-      data = withEmptyCurrentLocation(
-        v2Retry.data as unknown as Record<string, unknown>
+    if (!legacyPrimary.error && legacyPrimary.data) {
+      data = withDefaultMetaFields(
+        legacyPrimary.data as unknown as Record<string, unknown>
       ) as typeof data;
       error = null;
     } else {
-      const fallback = await supabaseAdmin
+      // Fallback if migration 005 (current_*) hasn't been executed yet
+      const v2Retry = await supabaseAdmin
         .from('profiles')
-        .insert(basePayload)
-        .select(BASE_PROFILE_SUMMARY_COLUMNS)
+        .insert({
+          ...basePayload,
+          ...v2ExtraPayload,
+        })
+        .select(V2_PROFILE_SUMMARY_COLUMNS)
         .single();
-      if (fallback.error || !fallback.data) {
-        res.status(500).json({ error: 'Failed to save birth chart profile.' });
-        return;
+
+      if (!v2Retry.error && v2Retry.data) {
+        data = withDefaultMetaFields(
+          withEmptyCurrentLocation(v2Retry.data as unknown as Record<string, unknown>)
+        ) as typeof data;
+        error = null;
+      } else {
+        const fallback = await supabaseAdmin
+          .from('profiles')
+          .insert(basePayload)
+          .select(BASE_PROFILE_SUMMARY_COLUMNS)
+          .single();
+        if (fallback.error || !fallback.data) {
+          res.status(500).json({ error: 'Failed to save birth chart profile.' });
+          return;
+        }
+        data = withDefaultMetaFields(
+          withEmptyCurrentLocation({
+            ...fallback.data,
+            short_name: null,
+            is_default: false,
+          })
+        ) as typeof data;
       }
-      data = withEmptyCurrentLocation({
-        ...fallback.data,
-        short_name: null,
-        is_default: false,
-      }) as typeof data;
     }
   }
 
@@ -856,7 +1015,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     if (!v3Retry.error && v3Retry.data) {
       data = withDefaultMetaFields(
         v3Retry.data as unknown as Record<string, unknown>
-      ) as typeof data;
+      ) as unknown as typeof data;
       error = null;
     } else {
       const v2Updates = { ...v3Updates };
@@ -875,7 +1034,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       if (!v2Retry.error && v2Retry.data) {
         data = withDefaultMetaFields(
           withEmptyCurrentLocation(v2Retry.data as unknown as Record<string, unknown>)
-        ) as typeof data;
+        ) as unknown as typeof data;
         error = null;
       } else {
         const baseUpdates = { ...v2Updates };
@@ -898,7 +1057,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
             short_name: null,
             is_default: false,
           })
-        ) as typeof data;
+        ) as unknown as typeof data;
       }
     }
   }
@@ -1066,6 +1225,10 @@ router.post('/:id/activate', requireAuth, async (req: AuthenticatedRequest, res)
       longitude: compiled.location.longitude,
     });
 
+    const activationDossier = await compileNatalTruthDossier(compiled.chartJson, {
+      includeNarrativeKernel: true,
+    }).catch(() => null);
+
     const activationPayload = {
       latitude: compiled.location.latitude,
       longitude: compiled.location.longitude,
@@ -1077,15 +1240,37 @@ router.post('/:id/activate', requireAuth, async (req: AuthenticatedRequest, res)
       updated_at: new Date().toISOString(),
     };
 
+    const sutraActivationFields = activationDossier
+      ? {
+          natal_truth_dossier_json: activationDossier,
+          natal_dossier_version: CURRENT_NATAL_DOSSIER_VERSION,
+        }
+      : {};
+
     let { data: updated, error: updateErr } = await supabaseAdmin
       .from('profiles')
       .update({
         ...activationPayload,
+        ...sutraActivationFields,
         ...(geoFingerprint ? { chart_fingerprint: geoFingerprint } : {}),
       })
       .eq('id', profile.id)
-      .select(PROFILE_DETAIL_COLUMNS)
+      .select(SUTRA_PROFILE_DETAIL_COLUMNS)
       .single();
+
+    if (updateErr) {
+      const legacyRetry = await supabaseAdmin
+        .from('profiles')
+        .update({
+          ...activationPayload,
+          ...(geoFingerprint ? { chart_fingerprint: geoFingerprint } : {}),
+        })
+        .eq('id', profile.id)
+        .select(PROFILE_DETAIL_COLUMNS)
+        .single();
+      updated = legacyRetry.data as typeof updated;
+      updateErr = legacyRetry.error;
+    }
 
     if (updateErr && geoFingerprint) {
       const retry = await supabaseAdmin
@@ -1094,7 +1279,7 @@ router.post('/:id/activate', requireAuth, async (req: AuthenticatedRequest, res)
         .eq('id', profile.id)
         .select(PROFILE_DETAIL_COLUMNS)
         .single();
-      updated = retry.data;
+      updated = retry.data as typeof updated;
       updateErr = retry.error;
     }
 
@@ -1125,6 +1310,187 @@ router.post('/:id/activate', requireAuth, async (req: AuthenticatedRequest, res)
 
     const message = err instanceof Error ? err.message : 'Chart compilation failed';
     res.status(500).json({ error: message });
+  }
+});
+
+// Desh-Kaal-Patra: Save sanitized Life Context & compute deterministic 0-100% completeness
+router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  if (!req.appUser.is_admin) {
+    const rate = checkRateLimit(`life_context:${req.appUser.id}`, 40, 10 * 60 * 1000);
+    if (!rate.allowed) {
+      res.status(429).json({ error: 'Too many context updates recently. Please pause briefly.' });
+      return;
+    }
+  }
+
+  const isPatchRequest =
+    Boolean(req.body) &&
+    typeof req.body === 'object' &&
+    !Array.isArray(req.body) &&
+    Boolean((req.body as Record<string, unknown>).patch) &&
+    typeof (req.body as Record<string, unknown>).patch === 'object';
+
+  const selectCols = isPatchRequest ? 'id, life_context_json' : 'id';
+  const primaryFetch = await supabaseAdmin
+    .from('profiles')
+    .select(selectCols)
+    .eq('id', req.params.id)
+    .eq('user_id', req.appUser.id)
+    .maybeSingle();
+
+  let existing = primaryFetch.data as unknown as {
+    id: string;
+    life_context_json?: unknown;
+  } | null;
+  if (primaryFetch.error && isPatchRequest) {
+    const fallbackFetch = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('user_id', req.appUser.id)
+      .maybeSingle();
+    existing = fallbackFetch.data as unknown as { id: string } | null;
+  }
+
+  if (!existing) {
+    res.status(404).json({ error: 'Profile not found' });
+    return;
+  }
+
+  const { sanitized, completeness } = isPatchRequest
+    ? mergeLifeContextPatch(
+        existing.life_context_json || {},
+        (req.body as { patch: Partial<LifeContextData> }).patch
+      )
+    : sanitizeLifeContext(req.body);
+  const { data: updated, error } = await supabaseAdmin
+    .from('profiles')
+    .update({
+      life_context_json: sanitized,
+      life_context_completeness: completeness,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', existing.id)
+    .eq('user_id', req.appUser.id)
+    .select(SUTRA_PROFILE_SUMMARY_COLUMNS)
+    .single();
+
+  if (error || !updated) {
+    const msg = String(error?.message || '');
+    if (msg.toLowerCase().includes('life_context')) {
+      res.status(503).json({
+        error: 'Database migration 011 is required before saving Life Context details.',
+        code: 'MIGRATION_011_REQUIRED',
+      });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to save life context.' });
+    return;
+  }
+
+  res.json({
+    profile: withDefaultMetaFields(updated as unknown as Record<string, unknown>),
+    life_context_json: sanitized,
+    completeness,
+  });
+});
+
+// Explicit Sutradhara NatalTruthDossierV1 recomputation (Layer A + Layer B)
+router.post('/:id/recompute-dossier', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  if (!req.appUser.is_admin) {
+    const rate = checkRateLimit(`recompute_dossier:${req.appUser.id}`, 8, 10 * 60 * 1000);
+    if (!rate.allowed) {
+      res.status(429).json({ error: 'Please wait a few minutes before refreshing another dossier.' });
+      return;
+    }
+  }
+
+  const { data: profile, error: fetchErr } = await supabaseAdmin
+    .from('profiles')
+    .select('id, chart_json, life_context_json')
+    .eq('id', req.params.id)
+    .eq('user_id', req.appUser.id)
+    .maybeSingle();
+
+  if (fetchErr || !profile) {
+    // Fallback query if migration 011 column life_context_json doesn't exist yet
+    const fallbackProfile = await supabaseAdmin
+      .from('profiles')
+      .select('id, chart_json')
+      .eq('id', req.params.id)
+      .eq('user_id', req.appUser.id)
+      .maybeSingle();
+
+    if (fallbackProfile.error || !fallbackProfile.data) {
+      res.status(404).json({ error: 'Profile not found' });
+      return;
+    }
+
+    if (!fallbackProfile.data.chart_json) {
+      res.status(400).json({ error: 'Birth chart must be compiled before computing dossier.' });
+      return;
+    }
+
+    const enrichedFallback = enrichCompiledChart(fallbackProfile.data.chart_json as CompiledChartData);
+    const dossierFallback = await compileNatalTruthDossier(enrichedFallback.chartJson, {
+      includeNarrativeKernel: true,
+    });
+    res.json({
+      natal_truth_dossier_json: dossierFallback,
+      natal_dossier_version: CURRENT_NATAL_DOSSIER_VERSION,
+      persisted: false,
+    });
+    return;
+  }
+
+  if (!profile.chart_json) {
+    res.status(400).json({ error: 'Birth chart must be compiled before computing dossier.' });
+    return;
+  }
+
+  try {
+    const enriched = enrichCompiledChart(profile.chart_json as CompiledChartData);
+    const dossier = await compileNatalTruthDossier(enriched.chartJson, {
+      lifeContext: profile.life_context_json as LifeContextData,
+      includeNarrativeKernel: true,
+    });
+
+    const patch: Record<string, unknown> = {
+      natal_truth_dossier_json: dossier,
+      natal_dossier_version: CURRENT_NATAL_DOSSIER_VERSION,
+      updated_at: new Date().toISOString(),
+    };
+    if (enriched.wasEnriched) {
+      patch.chart_json = enriched.chartJson;
+      patch.chart_text_context = enriched.chartTextContext;
+    }
+
+    const { error: saveErr } = await supabaseAdmin
+      .from('profiles')
+      .update(patch)
+      .eq('id', profile.id)
+      .eq('user_id', req.appUser.id);
+
+    res.json({
+      natal_truth_dossier_json: dossier,
+      natal_dossier_version: CURRENT_NATAL_DOSSIER_VERSION,
+      persisted: !saveErr,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to recompute dossier';
+    res.status(500).json({ error: msg });
   }
 });
 

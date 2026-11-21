@@ -3,6 +3,7 @@
 
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import {
+  computeSlowPlanetTransitPairs,
   computeWesternDailyTransits,
   formatDMS,
   getDignity,
@@ -10,6 +11,7 @@ import {
   normalizeDeg,
   SIGNS,
   type PlanetPosition,
+  type SlowPlanetTransitPair,
   type WesternPlanetPosition,
 } from './jyotishMath';
 
@@ -492,9 +494,21 @@ let dailyTransitsMemoryCache: {
   transitDate: string;
   planets: PlanetPosition[];
   transitsText: string;
+  slowTransitPairs: SlowPlanetTransitPair[];
+  upcomingTransitionsText: string;
   westernPlanets: WesternPlanetPosition[];
   westernTransitsText: string;
 } | null = null;
+
+function buildUpcomingTransitionsText(pairs: SlowPlanetTransitPair[]): string {
+  return [
+    'UPCOMING SLOW-PLANET SIGN CHANGES (Estimated Sidereal Lahiri):',
+    ...pairs.map(
+      (p) =>
+        `- ${p.planet}: currently ${p.currentSign} (${p.currentDegreeInSign.toFixed(1)}°${p.isRetrograde ? ' Rx' : ''}) -> next enters ${p.nextSign} (${p.direction}) around ${p.nextIngressApproxDate} (~${p.daysUntilIngress}d)`
+    ),
+  ].join('\n');
+}
 
 function buildWesternTransitsText(westernPlanets: WesternPlanetPosition[], dateISO: string): string {
   return [
@@ -510,6 +524,8 @@ export async function getOrFetchDailyTransits(): Promise<{
   transitDate: string;
   planets: PlanetPosition[];
   transitsText: string;
+  slowTransitPairs: SlowPlanetTransitPair[];
+  upcomingTransitionsText: string;
   westernPlanets: WesternPlanetPosition[];
   westernTransitsText: string;
 }> {
@@ -530,11 +546,15 @@ export async function getOrFetchDailyTransits(): Promise<{
 
     if (cached) {
       const planets = cached.transits_json as PlanetPosition[];
+      const slowTransitPairs = computeSlowPlanetTransitPairs(planets, todayISO);
+      const upcomingTransitionsText = buildUpcomingTransitionsText(slowTransitPairs);
       const westernPlanets = computeWesternDailyTransits(planets, todayISO);
       dailyTransitsMemoryCache = {
         transitDate: todayISO,
         planets,
         transitsText: cached.transits_text as string,
+        slowTransitPairs,
+        upcomingTransitionsText,
         westernPlanets,
         westernTransitsText: buildWesternTransitsText(westernPlanets, todayISO),
       };
@@ -546,12 +566,17 @@ export async function getOrFetchDailyTransits(): Promise<{
   const raw = await postAstrologyEndpoint('/planets/extended', payload as unknown as Record<string, unknown>);
   const planets = normalizeExtendedPlanets(raw).filter((p) => p.name !== 'Ascendant');
 
+  const slowTransitPairs = computeSlowPlanetTransitPairs(planets, todayISO);
+  const upcomingTransitionsText = buildUpcomingTransitionsText(slowTransitPairs);
+
   const transitsText = [
     `GLOBAL GOCHAR (TRANSITS) FOR ${todayISO} (Sidereal Lahiri):`,
     ...planets.map(
       (p) =>
         `- ${p.name}: ${p.sign} ${p.dms} | ${p.nakshatra} (Pada ${p.pada})${p.isRetrograde ? ' [Retrograde]' : ''}`
     ),
+    '',
+    upcomingTransitionsText,
   ].join('\n');
 
   const westernPlanets = computeWesternDailyTransits(planets, todayISO);
@@ -574,6 +599,8 @@ export async function getOrFetchDailyTransits(): Promise<{
     transitDate: todayISO,
     planets,
     transitsText,
+    slowTransitPairs,
+    upcomingTransitionsText,
     westernPlanets,
     westernTransitsText,
   };

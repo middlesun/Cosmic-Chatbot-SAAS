@@ -18,11 +18,16 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import ChartViewer, { type CompiledChartJson, type DailyTransitsPayload } from './ChartViewer';
+import ChartViewer, {
+  type CompiledChartJson,
+  type DailyTransitsPayload,
+  type NatalTruthDossierClient,
+} from './ChartViewer';
 import { BirthChartForm } from './BirthChartModal';
 import CustomSelect from './CustomSelect';
+import LifeContextModal from './LifeContextModal';
 import Tooltip from './Tooltip';
-import type { PlaceSuggestion } from './chatTypes';
+import type { LifeContextData, PlaceSuggestion } from './chatTypes';
 import { PREVIEW_PROFILES } from './previewFixtures';
 
 interface ProfileSummary {
@@ -50,6 +55,10 @@ interface ProfileSummary {
   council_thread_count?: number;
   latest_council_conv_id?: string | null;
   chart_json?: CompiledChartJson | null;
+  life_context_json?: LifeContextData | null;
+  life_context_completeness?: number;
+  natal_dossier_version?: number;
+  natal_truth_dossier_json?: NatalTruthDossierClient | null;
 }
 
 type SortMode = 'newest' | 'oldest' | 'favourites' | 'tags';
@@ -97,6 +106,7 @@ const ProfileManager: React.FC = () => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [starringId, setStarringId] = useState<string | null>(null);
+  const [lifeContextTarget, setLifeContextTarget] = useState<ProfileSummary | null>(null);
 
   const loadProfiles = useCallback(async () => {
     if (isPreviewMode) {
@@ -124,6 +134,9 @@ const ProfileManager: React.FC = () => {
           created_at: '2026-11-01T08:00:00.000Z',
           council_thread_count: 1,
           latest_council_conv_id: 'preview-conv-1',
+          life_context_json: p.life_context_json ?? {},
+          life_context_completeness: p.life_context_completeness ?? 0,
+          natal_dossier_version: p.natal_dossier_version ?? 1,
         }))
       );
       setTierLimit(100);
@@ -516,7 +529,7 @@ const ProfileManager: React.FC = () => {
   if (selectedProfile?.chart_json) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <button
             type="button"
             onClick={() => {
@@ -528,12 +541,76 @@ const ProfileManager: React.FC = () => {
             <ArrowLeft className="h-4 w-4" />
             <span>Back to Profiles</span>
           </button>
-          <span className="text-xs text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
-            {selectedProfile.birth_date} · {selectedProfile.birth_time} · {selectedProfile.birth_city}
-          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setLifeContextTarget(selectedProfile)}
+              className="inline-flex items-center gap-2 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+            >
+              <span>Life Context</span>
+              <span
+                className={`font-['JetBrains_Mono',monospace] tabular-nums ${
+                  (selectedProfile.life_context_completeness ?? 0) >= 80
+                    ? 'text-[#2D6A4F]'
+                    : 'text-[#8B7355]'
+                }`}
+              >
+                {selectedProfile.life_context_completeness ?? 0}%
+              </span>
+            </button>
+            <span className="text-xs text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
+              {selectedProfile.birth_date} · {selectedProfile.birth_time} · {selectedProfile.birth_city}
+            </span>
+          </div>
         </div>
 
-        <ChartViewer chart={selectedProfile.chart_json} dailyTransits={selectedDailyTransits} />
+        <ChartViewer
+          chart={selectedProfile.chart_json}
+          dailyTransits={selectedDailyTransits}
+          profileId={selectedProfile.id}
+          dossier={selectedProfile.natal_truth_dossier_json ?? null}
+          lifeContextCompleteness={selectedProfile.life_context_completeness ?? 0}
+          onOpenLifeContext={() => setLifeContextTarget(selectedProfile)}
+          onDossierRefreshed={(nextDossier) => {
+            setSelectedProfile((prev) =>
+              prev ? { ...prev, natal_truth_dossier_json: nextDossier } : prev
+            );
+          }}
+        />
+
+        {lifeContextTarget && (
+          <LifeContextModal
+            isOpen={Boolean(lifeContextTarget)}
+            profileId={lifeContextTarget.id}
+            profileName={lifeContextTarget.short_name || lifeContextTarget.name}
+            initialContext={lifeContextTarget.life_context_json}
+            getAccessToken={getAccessToken}
+            isPreviewMode={isPreviewMode}
+            onClose={() => setLifeContextTarget(null)}
+            onSaved={(updatedCtx, completeness) => {
+              setProfiles((prev) =>
+                prev.map((p) =>
+                  p.id === lifeContextTarget.id
+                    ? {
+                        ...p,
+                        life_context_json: updatedCtx,
+                        life_context_completeness: completeness,
+                      }
+                    : p
+                )
+              );
+              setSelectedProfile((prev) =>
+                prev && prev.id === lifeContextTarget.id
+                  ? {
+                      ...prev,
+                      life_context_json: updatedCtx,
+                      life_context_completeness: completeness,
+                    }
+                  : prev
+              );
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -786,6 +863,44 @@ const ProfileManager: React.FC = () => {
                       {profile.tags.join(' · ')}
                     </p>
                   )}
+
+                  {/* Context Calibration Indicator (0-100%) */}
+                  <div className="mt-3.5 pt-3 border-t border-[#3D3830]/8">
+                    <div className="flex items-center justify-between gap-2 text-[11px]">
+                      <span className="text-[#8B8275]">
+                        Context Calibration{' '}
+                        <span
+                          className={`font-['JetBrains_Mono',monospace] tabular-nums font-medium ${
+                            (profile.life_context_completeness ?? 0) >= 80
+                              ? 'text-[#2D6A4F]'
+                              : 'text-[#3D3830]'
+                          }`}
+                        >
+                          {profile.life_context_completeness ?? 0}%
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLifeContextTarget(profile);
+                        }}
+                        className="font-medium text-[#8B7355] hover:text-[#3D3830] underline underline-offset-2 cursor-pointer"
+                      >
+                        {(profile.life_context_completeness ?? 0) >= 80 ? 'Update Context' : 'Calibrate'}
+                      </button>
+                    </div>
+                    <div className="mt-1.5 h-1 w-full rounded-full bg-[#3D3830]/10 overflow-hidden">
+                      <div
+                        style={{ width: `${profile.life_context_completeness ?? 0}%` }}
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          (profile.life_context_completeness ?? 0) >= 80
+                            ? 'bg-[#2D6A4F]'
+                            : 'bg-[#8B7355]'
+                        }`}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-[#3D3830]/10">
@@ -1109,6 +1224,40 @@ const ProfileManager: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {lifeContextTarget && (
+        <LifeContextModal
+          isOpen={Boolean(lifeContextTarget)}
+          profileId={lifeContextTarget.id}
+          profileName={lifeContextTarget.short_name || lifeContextTarget.name}
+          initialContext={lifeContextTarget.life_context_json}
+          getAccessToken={getAccessToken}
+          isPreviewMode={isPreviewMode}
+          onClose={() => setLifeContextTarget(null)}
+          onSaved={(updatedCtx, completeness) => {
+            setProfiles((prev) =>
+              prev.map((p) =>
+                p.id === lifeContextTarget.id
+                  ? {
+                      ...p,
+                      life_context_json: updatedCtx,
+                      life_context_completeness: completeness,
+                    }
+                  : p
+              )
+            );
+            setSelectedProfile((prev) =>
+              prev && prev.id === lifeContextTarget.id
+                ? {
+                    ...prev,
+                    life_context_json: updatedCtx,
+                    life_context_completeness: completeness,
+                  }
+                : prev
+            );
+          }}
+        />
       )}
     </div>
   );

@@ -1,0 +1,100 @@
+# Sutradhara Engine (`SUTRA`) — Development Changelog & Pinpoint Registry
+
+> **Engine Name:** **Sutradhara Engine** (`SUTRA`) — *"Thread-holder / Master Architect"*  
+> **Scope:** Tracks every rule, mathematical formula, schema change, routing threshold, voice constraint, and behavioral adjustment across planning and phased implementation so any issue found during live chart QA can be pinpointed and modified cleanly.  
+> **Companion Doc:** `/docs/SUTRADHARA_ENGINE_DEVELOPMENT_PLAN.md`
+
+---
+
+## How to Use This File (Pinpoint & Adjust Protocol)
+
+When testing a real birth chart in Chat and something feels off—for instance, a Yoga cancellation didn't trigger, a clarifying question fired too aggressively, a suggestion felt generic, or tone slipped into clinical jargon—use the **Pinpoint Map** below to jump straight to the exact module, Admin record, or threshold ID without hunting through code.
+
+### Subsystem Pinpoint Map
+
+| Pinpoint Code | Layer / Concern | Source of Truth (Code / Admin / DB) | What Adjusting It Changes |
+| :--- | :--- | :--- | :--- |
+| **`SUTRA-MATH-*`** | Deterministic calculations (`Indu/Shri Lagna`, `64th D9 / 22nd D3`, `Bhava-Chalit diff`, `Dasha Sandhi 10%`, `Double Transit`, `YSI`, `Punarphoo/Angarak/Shrapit/Badhaka/Kendradhipati`) | `server/services/jyotishMath.ts` | Raw astronomical/Jyotish flags & numeric scores |
+| **`SUTRA-DOSSIER-*`** | `NatalTruthDossierV1` (Layer A Structural Dossier + Layer B Narrative Kernel) | `server/services/natalDossier.ts` + `profiles.natal_truth_dossier_json` | Pre-computed Lagnesh health, active vs. latent Yogas, Dosha offsets, House KP verdicts |
+| **`SUTRA-DKP-*`** | Desh-Kaal-Patra form weights, trap detection, `life_context_json` schema | `server/services/lifeContextGuard.ts` + `components/app/LifeContextModal.tsx` | Missing-context traps (`MAR_02` while married, children array, career mode, birth-time honesty) |
+| **`SUTRA-ROUTER-*`** | Stage 1 Hybrid Classifier (`Jev` + OpenRouter fallback) & confidence gates | `server/services/intentRouter.ts` + `server/services/canonicalPlaybooks.ts` | Playbook matching (~158 IDs), clarification trigger thresholds (`0.72`/`0.50`), complexity score (`2–10`) |
+| **`SUTRA-SLICE-*`** | Stage 2 Context Slicer, Truth Gate Hierarchy, & Cancellation Resolver | `server/services/contextSlicer.ts` | Which Houses/Vargas/Dashas enter the prompt + `KP CSL → D9 → Shadbala → SAV → D1` conflict priority |
+| **`SUTRA-CART-*`** | Formula Cartridges (`33` Vedic formulas) & Context Priority Rules (`14` domains) | `system_prompts` (`category IN ('formula_cartridge','priority_rule')`) + `PromptLibraryManager.tsx` | Domain rules & interpretive ordering (live-editable in `/app/admin` without redeploy!) |
+| **`SUTRA-SYNTH-*`** | Stage 3 Path A Synthesis, 5 Intent Output Contracts, Convergence Score, Fluency & Voice Presets | `server/services/sutraSynthesizer.ts` + `server/services/geminiOrchestrator.ts` | Response format (`SOFT_HORIZON` vs `HARD_DECISION` vs `TIMING`), `X/5 Pillars`, banned clichés |
+| **`SUTRA-DEEP-*`** | Stage 3 Path B Parallel 4-Lens Deep Council Audit + Master Adjudicator | `server/services/deepCouncilAudit.ts` | Isolated Parashari / KP / Timing / Contrarian lenses & consensus synthesis |
+| **`SUTRA-SUGG-*`** | Stage 4 Chart-Aligned Suggestions (`followups` / `deeper_analysis`) + Silent User Memory | `server/services/suggestionEngine.ts` + `server/services/memoryArchivist.ts` | Contradiction-seeded deeper chips, playbook next-hops, `+1` fluency ladder, inferred user profile |
+
+---
+
+## Release & Phase History
+
+### `[v0.1.0-spec]` — Brainstorming, Exhaustive Source Audit & Architecture Lock (Completed)
+**Status:** Specification Frozen (Zero Application Code Modified)
+
+#### Sources Audited & Deduplicated (`100%` Scanned)
+- **`SUTRA-SPEC-01`**: Merged **5 prompt/library dumps** with zero loss of domain nuance:
+  - `astro prompt dump.json` (`94` prompts, `15` campaigns — `Jyotish AI 2.7`, `Astro Universal Pro`, `Ultimate Astrologer`, `Astro Brutal #1`, `Refiner + Output $$$`, `Yogas Pro $$$`, `Wealth:`, `Jupiter Transit`, `Ascendant analysis`, `Casual X`, `Reluctant Genius`, `Output style and delivery`).
+  - `cosmic-council-prompts-2026-11-21__1__.json` (`24` prompts — `Vedic Advanced (OJSE)`, `Marriage Master` 13-pillar + `Write-Up → Tech Breakdown`, `Finance & Debt`, `Wealth after marriage`, `Divorce risk` 6-pillar, `Couple separation Risk`, `Saturn & Jupiter Double Transit`, `Single planet`, `Personality`, `Dasha`).
+  - `Astrology_Prompts_-_Compiler.json` (`26` prompts) & `cosmic-council-prompts-2026-11-21.json` (`9` prompts).
+  - `astro prompt dump 2.json` (`94` prompts / `17` folders; captured `Narration` / Editor Reflective cadence & `Output Rule XX Edit` direct-answer structure).
+  - `astro prompt dump 3.json` (`270` prompts; filtered `176` non-astrology templates, merged `Transits $$$` **Current + Upcoming Next Sign-Change Transit** pairing).
+
+#### Locked Architectural Specifications Created
+- **`SUTRA-SPEC-02`** (`/docs/UPCOMING_ENGINE_ARCHITECTURE.md`):
+  - Locked 4-stage pipeline (`Stage 1 Jev System-1 Router` → `Stage 2 Context Slicer + Formula & Cancellation Engine` → `Stage 3 Path A Fast / Path B 4-Lens Deep Council Audit` → `Stage 4 Decoupled Chart-Aligned Suggestions & Silent Memory`).
+  - Locked **Vedic-Exhaustive-First** execution order (benchmark & optimize Vedic end-to-end on real charts before plugging Western into Stage 2).
+- **`SUTRA-SPEC-03`** (`/docs/VEDIC_FORMULA_AND_PRIORITY_LIBRARY.md` — `v4`):
+  - **Tier 1:** `11` Universal Adjudication Principles (`7-Layer Forensic Reasoning Engine`, `8 Final Judgment Classifications`, `Independent Evidence Rule`, `Signal-to-Noise Activation Gate`, `Counterfactual Check`, `Outcome vs. Experience`, `Bhava-Chalit Shift Awareness`, `D1 vs. D9 Boundary`, `Desh-Kaal-Patra`, `Multi-Lens Consensus Trap`, `Truth Gate Conflict Hierarchy`: `KP CSL → D9 → Shadbala/Bhavbala → Ashtakavarga → D1 Yogas`).
+  - **Tier 2:** Deterministic code specs (`Planetary Health Index 0–100`, `Ascendant Degree Maturity`, `Indu/Shri Lagna`, `64th Navamsa / 22nd Drekkana`, `Yoga Strength Index 0–110`, `Dosha Scanner`, `House/KP Matrix`).
+  - **Tier 3:** `33` Conditional Formula Cartridges across Groups A–F (Universal/Cancellations incl. `Kendradhipati Dosha`, `Badhaka`, `Maraka Activation`; Timing incl. `Dasha Sandhi 10%` & Double Transit + SAV `<20 / 20–27 / >=28`; Marriage/Synastry; Career/Wealth/Debt/Foreign; Health/Mental; Progeny/D7, Education/D24, Property/D4, Litigation/6-8-12, Spirituality/D20, Varshaphala/Panchanga).
+  - **Tier 4:** Full `14`-Domain Context Priority Matrix.
+  - **Tier 5:** Voice Registers (`Observatory Calm`, `Editor Reflective / Narration`, `Casual Confidant`, `Reluctant Genius`) + strict anti-cliché ban (`"the native"`, em-dashes `—`, scare quotes).
+- **`SUTRA-SPEC-04`** (`/docs/CANONICAL_QUESTION_LIBRARY.md` — `v1`):
+  - Mapped `~158` repeatable user questions across all domains (`MAR_*`, `CAR_*`, `WLT_*`, `TIM_*`, `HLT_*`, `TRN_*`, `FOR_*`, `REL_*`, `LRN_*`) plus `OPEN_ENDED_SYNTHESIS`.
+- **`SUTRA-SPEC-05`** (`/docs/BIRTH_CHART_JSON_BREAKDOWN_PROMPT.md`):
+  - Specified `NatalTruthDossierV1` Layer A (deterministic code) + Layer B (1-time narrative kernel ~500–700 tokens) incl. `ascendant_degree_maturity`, `bhava_chalit_shifts`, `d2_hora_and_al_note`, `indu_shri_lagna_note`.
+- **`SUTRA-SPEC-06`** (`/docs/DESH_KAAL_PATRA_AND_JEV_SCHEMA.md`):
+  - Locked `profiles.life_context_json` with weighted `0–100%` progress bar (`birth_time_accuracy 20%`, `relationship_status 25%` incl. `married_with_children`, conditional `children_details 15%` with `gender + birth_year + optional_birth_date/time/place`, `career_mode 20%`, `location_status 10%`, `past_anchors 10%`).
+  - Locked `Stage1RouterResult` (`Jev` `choice / bool / score` primitives + confidence gates + 0-credit clarifying chip turns).
+
+---
+
+## Upcoming Phase Entries (Template for Coding Agent Updates)
+
+> **Rule for Every Implementing Agent:** Whenever a Phase finishes (or a tuning tweak is made during QA), append an entry directly below using the Change IDs above before wrapping the turn.
+
+### `[v0.2.0-phase1]` — Deterministic Math & Verified Chart Upgrades *(Completed)*
+- `SUTRA-MATH-01` — Added `computeSpecialVedicPoints()` in `jyotishMath.ts`: Kalidasa `Indu Lagna` (9L-from-Lagna + 9L-from-Moon Kala sum, occupants & Graha Drishti) and BPHS/Jaimini `Shri Lagna`.
+- `SUTRA-MATH-02` — Added `64th Navamsa` (`From Moon` & `From Lagna`, Khara D9) and `22nd Drekkana` (`From Lagna`, Khara D3) with D1 & Varga occupant checks.
+- `SUTRA-MATH-03` — Added `computeBhavaChalitShifts()` diffing Whole-Sign Rashi house against KP Placidus Chalit house (`forward | backward | none`).
+- `SUTRA-MATH-04` — Extended `computeVimshottariTimeline()` with `mdStart/adStart/pdStart`, `mdProgressPct/adProgressPct`, and `mdSandhiWarning/adSandhiWarning` (final 10% / initial 5% transition window). Added zero-API-cost `computeSlowPlanetTransitPairs()` in `jyotishMath.ts` & wired `slowTransitPairs` + `upcomingTransitionsText` into `getOrFetchDailyTransits()` (`astrologyApi.ts`).
+- `SUTRA-MATH-05` — Added `computeDoubleTransitMatrix()` combining current Jupiter, Saturn & Mars transit Drishti with natal SAV bindu volume bands (`Low <20 | Standard 20-27 | High >=28`) & BAV scores.
+- `SUTRA-MATH-06` — Added `computeAscendantMaturity()` (`<5° / 5-25° / >25°` + Sandhi/Gandanta warning), `computePlanetaryHealthIndex()` (`0–100` across D1 + D9 + Multi-Varga), `computeScoredYogaRegistry()` (`YSI 0–110` + Neecha Bhanga & Parivartana), `computeStructuralFlagsAndDoshas()` (`Punarphoo`, `Angarak`, `Shrapit`, `Grahan`, `Kemadruma` w/ cancel, `Papakartari`, `Kendradhipati Dosha`, `Badhaka`, `Maraka`, `2L-12H`, `Daridra`), & `computeDispositorChain()`.
+- **Integration (`chartCompiler.ts`):** Added all Phase 1 reports to `CompiledChartData`, computed in `compileBirthChart()`, automatically backfilled on legacy saved `chart_json` in `enrichCompiledChart()`, and surfaced in concise `sutradharaPrecision` block in `formatChartForLLM()`.
+
+### `[v0.3.0-phase2]` — Database Migration `011`, `NatalTruthDossierV1` & Desh-Kaal-Patra UI *(Completed)*
+- `SUTRA-DOSSIER-01` — Created idempotent `supabase/migrations/011_sutradhara_foundation.sql` adding `profiles.natal_truth_dossier_json`, `profiles.natal_dossier_version`, `profiles.life_context_json`, `profiles.life_context_completeness`, `users.sutra_user_profile_json`, and extending `system_prompts_category_check` for `'formula_cartridge'` & `'priority_rule'` while preserving RLS (`ENABLE ROW LEVEL SECURITY`). Added graceful pre-migration query fallbacks across `server/routes/profiles.ts` and `server/routes/apps.ts`, and excluded internal formula/priority categories from public `/api/chat/config` (`promptDefaults.ts`, `admin.ts`).
+- `SUTRA-DOSSIER-02` — Created `server/services/natalDossier.ts` (`NatalTruthDossierV1` Layer A deterministic `$0` structural compiler + Layer B narrative kernel via `getUtilityModelAsync()` with deterministic fallback). Wired dossier compilation into profile creation/activation, lazy `$0` Layer A backfill on `GET /api/profiles/:id`, `POST /api/profiles/:id/recompute-dossier`, and the `"Structural Chart DNA"` card in `ChartViewer.tsx`.
+- `SUTRA-DKP-01` — Created isomorphic `lib/lifeContextSchema.ts` (`0–100%` weighted completeness: birth time accuracy `20%`, relationship status `25%`, conditional children `15%`, career mode `20%`, location status `10%`, past anchors `10%`), `server/services/lifeContextGuard.ts` (strict enum/year/length sanitization + Phase 3 context trap hooks), `PATCH /api/profiles/:id/life-context`, mobile-first `LifeContextModal.tsx` (custom `CustomSelect` + `CustomDatePicker` + conditional child/milestone repeaters), and calibration indicators in `ProfileManager.tsx`, `AppDashboardHome.tsx`, and `ChartViewer.tsx`.
+
+### `[v0.4.0-phase3]` — Stage 1 Hybrid Router (`Jev` + Fallback), ~186 Playbooks & 0-Credit Clarification *(Completed)*
+- `SUTRA-ROUTER-01` — Added shared `/lib/sutraTypes.ts` and `/server/services/canonicalPlaybooks.ts` encoding all **186 Vedic Canonical Playbooks** (`MAR_01..34`, `CAR_01..28`, `WLT_01..26`, `HLT_01..26`, `TIM_01..16`, `FOR_01..08`, `EDU_01..06`, `REM_01..05`, `LRN_01..12`, `PRO_01..06`, `PRP_01..04`, `LIT_01..04`, `SPR_01..04`, `REL_01..06`, `OPEN_ENDED_SYNTHESIS`) strictly within Jev's 255-option `choice` cap, plus `getJevPlaybookCriteria()` and `getJevPlaybookChoices()`.
+- `SUTRA-ROUTER-02` — Added `/server/services/intentRouter.ts` (`IntentClassifier` interface, `JevClassifier` primary via `@google/genai` `decisions.create` / `gemini-decision-1` using `TYPESAFE_API_KEY` or `GEMINI_API_KEY` under a strict `1200ms` timeout, `OpenRouterStructuredClassifier` fallback via `getUtilityModelAsync()`, and deterministic `evaluateStage1Routing()`). Updated `.env.example` with `GEMINI_API_KEY=`, `TYPESAFE_API_KEY=`, and `TYPESAFE_JEV_MODEL=`.
+- `SUTRA-DKP-02` — Added `detectContextTrapMismatch()` in `/server/services/lifeContextGuard.ts` (catching married-vs-first-marriage, existing-children, missing relationship/career context, and precision cautions) and zero-data-loss `{ patch }` merging in `PATCH /api/profiles/:id/life-context` (`server/routes/profiles.ts`). Wired Stage 1 routing into `POST /api/chat/conversations/:id/messages` (`server/routes/chat.ts`) with `0` credit deduction on `refuse_extraction`, `clarify`, and `prompt_partner_chart`, plus warm interactive Clarification Chip cards & 1-tap partner selection in `MessageThread.tsx` and `ChatWorkspace.tsx`.
+
+### `[v0.5.0-phase4]` — Stage 2 Context Slicer, Admin Cartridges & Cancellation Resolver *(Planned)*
+- `SUTRA-SLICE-01` — `contextSlicer.ts` (playbook-driven domain slicing, zero `250-coord` dumps)
+- `SUTRA-CART-01` — Seed `33` Formula Cartridges + `14` Domain Priority Rules into `system_prompts` & expose cleanly in `PromptLibraryManager.tsx`
+- `SUTRA-SLICE-02` — Deterministic Cancellation Resolver + `Truth Gate Conflict Hierarchy` assembly
+
+### `[v0.6.0-phase5]` — Stage 3 Dual Synthesis (Fast Path A + 4-Lens Deep Council Audit Path B) *(Planned)*
+- `SUTRA-SYNTH-01` — 5-Intent Output Contracts + `X/5 Pillars` Convergence Scoring + Fluency Adapter + Voice Register rules + Banned-cliché filter
+- `SUTRA-DEEP-01` — `deepCouncilAudit.ts` (4 isolated specialist lenses + 1 Master Adjudicator) + composer toggle & credit handling
+
+### `[v0.7.0-phase6]` — Stage 4 Aligned Suggestions, `memoryArchivist` v2 & Vedic Benchmark QA *(Planned)*
+- `SUTRA-SUGG-01` — Decoupled Stage 4 suggestion generator (`contradictions + playbook next-hop + escalation + +1 fluency ladder`)
+- `SUTRA-SUGG-02` — `memoryArchivist.ts` v2 silent user intelligence (`inferred_fluency`, `recurring_domains`, confirmed reality merge)
+- `SUTRA-QA-01` — Vedic benchmark script / verification suite across test charts (`ts-node` / `tsx`) before Phase 7 Western Parity
+
+### `[v0.8.0-phase7]` — Western Astrology Parity Plug-In *(Planned Post-Vedic Sign-Off)*
+- Plugs Western Stage 2 calculators (Outer Planets, Sect, Mutual Reception, Annual Profections, Secondary Progressions, Solar Return) & Western Formula Cartridges into the verified Stages 1, 3, and 4 pipeline.

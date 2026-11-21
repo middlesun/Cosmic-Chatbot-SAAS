@@ -1,3 +1,23 @@
+import type {
+  LifeContextAnchor,
+  LifeContextChild,
+  LifeContextData,
+} from '../../lib/lifeContextSchema';
+import type {
+  ClarificationChip,
+  ClarificationPayload,
+  Stage1RouterResult,
+} from '../../lib/sutraTypes';
+
+export type {
+  LifeContextAnchor,
+  LifeContextChild,
+  LifeContextData,
+  ClarificationChip,
+  ClarificationPayload,
+  Stage1RouterResult,
+};
+
 export interface ChatCatalogOption {
   slug: string;
   category: string;
@@ -22,6 +42,8 @@ export interface SuggestionItem {
 export interface MessageSuggestions {
   followups: SuggestionItem[];
   deeper_analysis: SuggestionItem[];
+  clarification?: ClarificationPayload | null;
+  sutra_stage1?: Stage1RouterResult | null;
 }
 
 export interface AskLaterItem {
@@ -57,6 +79,9 @@ export interface ChatProfile {
   relationship: string | null;
   is_activated: boolean;
   profile_memory_summary?: string | null;
+  life_context_json?: LifeContextData | null;
+  life_context_completeness?: number;
+  natal_dossier_version?: number;
 }
 
 export type ChatPillar = 'council' | 'companion' | 'clarity';

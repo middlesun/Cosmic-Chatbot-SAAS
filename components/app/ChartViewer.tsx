@@ -11,6 +11,7 @@ import {
   BookOpen,
   Flame,
   Orbit,
+  RefreshCw,
 } from 'lucide-react';
 import CustomSelect from './CustomSelect';
 import AstrologyModeToggle from './AstrologyModeToggle';
@@ -368,10 +369,56 @@ const ALL_VARGAS: Array<{ code: string; label: string }> = [
   { code: 'D60', label: 'D60 (Shashtiamsa · Karma)' },
 ];
 
+export interface NatalTruthDossierClient {
+  version: number;
+  generated_at: string;
+  layer_a?: {
+    birth_time_sensitivity?: {
+      caution_note?: string | null;
+    };
+    snapshot_scores?: {
+      overall_natal_power_0_100: number;
+      stability_index_0_10: number;
+      career_potential_0_10: number;
+      wealth_potential_0_10: number;
+      marriage_support_0_10: number;
+      health_resilience_0_10: number;
+      d9_amplification_0_10: number;
+      chart_archetype_label: string;
+    };
+    lagnesh_profile?: {
+      ascendant_sign: string;
+      ascendant_degree_maturity: string;
+      lagnesh: string;
+      health_score_0_100: number;
+      d1_state: string;
+      d9_state: string;
+      core_implication: string;
+    };
+    command_hierarchy?: {
+      top_powerhouse_planets?: Array<{
+        planet: string;
+        composite_health_0_100: number;
+        why_dominant: string;
+      }>;
+    };
+    unresolved_contradictions?: string[];
+  };
+  layer_b?: {
+    narrative_kernel?: string;
+    generated_by?: string;
+  } | null;
+}
+
 interface ChartViewerProps {
   chart: CompiledChartJson;
   dailyTransits?: DailyTransitsPayload | null;
   initialMode?: AstrologyMode;
+  profileId?: string;
+  dossier?: NatalTruthDossierClient | null;
+  lifeContextCompleteness?: number;
+  onOpenLifeContext?: () => void;
+  onDossierRefreshed?: (nextDossier: NatalTruthDossierClient) => void;
 }
 
 type VedicTabId = 'overview' | 'planets' | 'kp' | 'dasha' | 'jaimini' | 'shadbala' | 'lalkitab';
@@ -385,9 +432,19 @@ function polarToXY(cx: number, cy: number, r: number, angleDeg: number): { x: nu
   };
 }
 
-const ChartViewer: React.FC<ChartViewerProps> = ({ chart, dailyTransits: propTransits, initialMode }) => {
+const ChartViewer: React.FC<ChartViewerProps> = ({
+  chart,
+  dailyTransits: propTransits,
+  initialMode,
+  profileId,
+  dossier,
+  lifeContextCompleteness,
+  onOpenLifeContext,
+  onDossierRefreshed,
+}) => {
   const { astrologyMode: sessionMode, getAccessToken, isPreviewMode } = useAuth();
   const [viewMode, setViewMode] = useState<AstrologyMode>(initialMode || sessionMode || 'vedic');
+  const [refreshingDossier, setRefreshingDossier] = useState(false);
 
   useEffect(() => {
     if (!initialMode) {
@@ -411,6 +468,25 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart, dailyTransits: propTra
   );
 
   const [liveTransits, setLiveTransits] = useState<DailyTransitsPayload | null>(propTransits ?? null);
+
+  const handleRefreshDossier = async () => {
+    if (!profileId || isPreviewMode || refreshingDossier) return;
+    const token = await getAccessToken();
+    if (!token) return;
+    setRefreshingDossier(true);
+    try {
+      const res = await fetch(`/api/profiles/${profileId}/recompute-dossier`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.natal_truth_dossier_json && onDossierRefreshed) {
+        onDossierRefreshed(data.natal_truth_dossier_json as NatalTruthDossierClient);
+      }
+    } finally {
+      setRefreshingDossier(false);
+    }
+  };
 
   useEffect(() => {
     if (propTransits) {
@@ -1005,6 +1081,89 @@ const ChartViewer: React.FC<ChartViewerProps> = ({ chart, dailyTransits: propTra
           {/* VEDIC: OVERVIEW */}
           {vedicTab === 'overview' && (
             <div className="space-y-6">
+              {/* Sutradhara Structural Chart DNA Card */}
+              {dossier?.layer_a?.snapshot_scores && (
+                <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 sm:p-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#8B7355]">
+                        Structural Chart DNA
+                      </p>
+                      <h3 className="font-serif text-xl sm:text-2xl font-medium text-[#3D3830] mt-0.5">
+                        {dossier.layer_a.snapshot_scores.chart_archetype_label}
+                      </h3>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {onOpenLifeContext && typeof lifeContextCompleteness === 'number' && (
+                        <button
+                          type="button"
+                          onClick={onOpenLifeContext}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-1.5 text-[11px] font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                        >
+                          <span>Context {lifeContextCompleteness}%</span>
+                        </button>
+                      )}
+                      {profileId && !isPreviewMode && (
+                        <button
+                          type="button"
+                          disabled={refreshingDossier}
+                          onClick={() => void handleRefreshDossier()}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          <RefreshCw
+                            className={`h-3 w-3 ${refreshingDossier ? 'animate-spin' : ''}`}
+                          />
+                          <span>{refreshingDossier ? 'Refreshing...' : 'Refresh Breakdown'}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
+                    {[
+                      ['Natal Power', `${dossier.layer_a.snapshot_scores.overall_natal_power_0_100}/100`],
+                      ['Career', `${dossier.layer_a.snapshot_scores.career_potential_0_10}/10`],
+                      ['Wealth', `${dossier.layer_a.snapshot_scores.wealth_potential_0_10}/10`],
+                      ['Marriage', `${dossier.layer_a.snapshot_scores.marriage_support_0_10}/10`],
+                      ['Health', `${dossier.layer_a.snapshot_scores.health_resilience_0_10}/10`],
+                      ['D9 Lift', `${dossier.layer_a.snapshot_scores.d9_amplification_0_10}/10`],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-2.5"
+                      >
+                        <p className="text-[10px] text-[#8B8275]">{label}</p>
+                        <p className="font-['JetBrains_Mono',monospace] tabular-nums font-semibold text-sm text-[#3D3830] mt-0.5">
+                          {value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {dossier.layer_a.lagnesh_profile && (
+                    <p className="text-xs text-[#5C5449] leading-relaxed">
+                      <span className="font-semibold text-[#3D3830]">
+                        Ascendant &amp; Lagnesh ({dossier.layer_a.lagnesh_profile.lagnesh}):
+                      </span>{' '}
+                      {dossier.layer_a.lagnesh_profile.ascendant_degree_maturity}.{' '}
+                      {dossier.layer_a.lagnesh_profile.core_implication}
+                    </p>
+                  )}
+
+                  {dossier.layer_b?.narrative_kernel && (
+                    <p className="rounded-2xl bg-[#F1ECE3]/75 border border-[#3D3830]/8 px-4 py-3 text-xs text-[#3D3830] leading-relaxed">
+                      {dossier.layer_b.narrative_kernel}
+                    </p>
+                  )}
+
+                  {dossier.layer_a.birth_time_sensitivity?.caution_note && (
+                    <p className="text-[11px] text-[#7A3E36]">
+                      {dossier.layer_a.birth_time_sensitivity.caution_note}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Panchang & Avakhada Chakra */}
               {chart.panchang && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

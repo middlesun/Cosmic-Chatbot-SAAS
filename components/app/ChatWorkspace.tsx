@@ -40,11 +40,13 @@ import type {
   ChatProfile,
   ChatResponseLength,
   ChatToneMode,
+  ClarificationChip,
   CompanionArchetypeSlug,
   CompanionPersona,
   ConversationRecord,
   CustomPromptRecord,
   FavoriteMessageRecord,
+  LifeContextData,
   MessageSuggestions,
   PendingBirthProfileDraft,
   PublicChatbotUiConfig,
@@ -1795,10 +1797,18 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     setComposerFocusTrigger((n) => n + 1);
   };
 
+  const pendingPartnerPromptRef = useRef<string | null>(null);
+
   const handleSendMessage = async (
     overrideText?: string,
     overrideConversation?: ConversationRecord,
-    overrideTechnicalDirective?: string
+    overrideTechnicalDirective?: string,
+    sutraOptions?: {
+      bypassClarification?: boolean;
+      clarifiedPlaybookId?: string;
+      clarifiedContextPatch?: Partial<LifeContextData>;
+      overrideExtraProfileIds?: string[];
+    }
   ) => {
     const promptToSend = (overrideText ?? draftText).trim();
     const pendingAttachments = overrideText ? [] : attachments;
@@ -1849,7 +1859,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     }
 
     const currentReplyTarget = replyTarget;
-    const currentExtraProfiles = sendPillar === 'council' ? extraProfileIds : [];
+    const currentExtraProfiles =
+      sendPillar === 'council'
+        ? sutraOptions?.overrideExtraProfileIds ?? extraProfileIds
+        : [];
     const directiveToSend =
       sendPillar === 'council'
         ? overrideTechnicalDirective ??
@@ -1892,6 +1905,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           toneMode,
           responseLength,
           extraProfileIds: currentExtraProfiles,
+          bypassClarification: sutraOptions?.bypassClarification || undefined,
+          clarifiedPlaybookId: sutraOptions?.clarifiedPlaybookId || undefined,
+          clarifiedContextPatch: sutraOptions?.clarifiedContextPatch || undefined,
           attachments: pendingAttachments.map((a) => ({
             kind: a.kind,
             name: a.name,
@@ -2011,6 +2027,89 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       setStreamingText('');
       abortControllerRef.current = null;
     }
+  };
+
+  const handleSelectClarificationChip = async (chip: ClarificationChip) => {
+    if (isStreaming) return;
+    if (chip.action === 'open_partner_picker') {
+      pendingPartnerPromptRef.current =
+        chip.clarifiedQuestion || 'Please evaluate our synastry compatibility and timing.';
+      handleOpenAddChartModal();
+      return;
+    }
+
+    if (chip.contextPatch && activeProfile) {
+      const patch = chip.contextPatch;
+      // Optimistically reflect patch locally and update Desh-Kaal-Patra completeness in background
+      setProfiles((prev) =>
+        prev.map((p) =>
+          p.id === activeProfile.id
+            ? {
+                ...p,
+                life_context_json: {
+                  ...(p.life_context_json || {}),
+                  ...patch,
+                },
+              }
+            : p
+        )
+      );
+      void (async () => {
+        try {
+          const token = await getAccessToken();
+          if (!token) return;
+          const patchRes = await fetch(`/api/profiles/${activeProfile.id}/life-context`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ patch }),
+          });
+          if (patchRes.ok) {
+            const data = await patchRes.json();
+            if (data.profile) {
+              const updatedProf = data.profile as ChatProfile;
+              setProfiles((prev) =>
+                prev.map((p) => (p.id === updatedProf.id ? { ...p, ...updatedProf } : p))
+              );
+            }
+          }
+        } catch {
+          // Chat route also persists clarifiedContextPatch cleanly as backup
+        }
+      })();
+    }
+
+    await handleSendMessage(chip.clarifiedQuestion, undefined, undefined, {
+      bypassClarification: true,
+      clarifiedPlaybookId: chip.playbookId,
+      clarifiedContextPatch: chip.contextPatch,
+    });
+  };
+
+  const handleSelectPartnerProfileForClarification = (
+    partnerProfileId: string,
+    originalQuestion: string
+  ) => {
+    if (isStreaming) return;
+    const nextExtra = Array.from(
+      new Set([
+        ...extraProfileIds.filter((id) => id !== partnerProfileId && id !== activeProfile?.id),
+        partnerProfileId,
+      ])
+    ).slice(0, 3);
+    setExtraProfileIds(nextExtra);
+
+    const partnerObj = profiles.find((p) => p.id === partnerProfileId);
+    const questionText =
+      originalQuestion.trim() ||
+      `Compare compatibility between my chart and ${partnerObj?.name || 'the attached chart'}.`;
+
+    void handleSendMessage(questionText, undefined, undefined, {
+      bypassClarification: true,
+      overrideExtraProfileIds: nextExtra,
+    });
   };
 
   const attachCreatedProfileAndResumeReading = async (
@@ -2146,6 +2245,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
     const originalQuestion = addChartInitialValues?.original_question;
     const wasEditingChatDraft = editingPendingChatDraft;
+    const pendingPartnerPrompt = pendingPartnerPromptRef.current;
+    pendingPartnerPromptRef.current = null;
     setEditingPendingChatDraft(false);
     setAddChartInitialValues(undefined);
 
@@ -2153,6 +2254,21 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       setPendingProfileConfirm(null);
       setInlineChartCreation(null);
       void attachCreatedProfileAndResumeReading(createdProfile, originalQuestion);
+      return;
+    }
+
+    if (pendingPartnerPrompt && activeConversation) {
+      const nextExtra = Array.from(
+        new Set([
+          ...extraProfileIds.filter((id) => id !== createdProfile.id && id !== activeProfile?.id),
+          createdProfile.id,
+        ])
+      ).slice(0, 3);
+      setExtraProfileIds(nextExtra);
+      void handleSendMessage(pendingPartnerPrompt, undefined, undefined, {
+        bypassClarification: true,
+        overrideExtraProfileIds: nextExtra,
+      });
       return;
     }
 
@@ -3208,6 +3324,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             }
             astrologyMode={astrologyMode}
             expertSlug={expertSlug}
+            onSelectClarificationChip={(chip) => void handleSelectClarificationChip(chip)}
+            onSelectPartnerProfileForClarification={(partnerId, originalQ) =>
+              handleSelectPartnerProfileForClarification(partnerId, originalQ)
+            }
             onSaveToNotes={(msg) => void handleSaveMessageToNotes(msg)}
             savedNoteMsgIds={savedNoteMsgIds}
             savingNoteMsgId={savingNoteMsgId}

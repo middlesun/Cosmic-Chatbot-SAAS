@@ -6,7 +6,10 @@ import {
   type BirthLocationResolved,
 } from './astrologyApi';
 import {
+  computeAscendantMaturity,
   computeAshtakavarga,
+  computeBhavaChalitShifts,
+  computeDispositorChain,
   computeDivisionalCharts,
   computeExtendedJaimini,
   computeJaiminiKarakas,
@@ -17,12 +20,19 @@ import {
   computeMajorYogas,
   computePanchangAndAvakhada,
   computePlanetaryConditions,
+  computePlanetaryHealthIndex,
+  computeScoredYogaRegistry,
   computeShadbala,
+  computeSpecialVedicPoints,
+  computeStructuralFlagsAndDoshas,
   computeVimshottariTimeline,
   computeWesternChart,
   SIGNS,
+  type AscendantMaturityReport,
   type AshtakavargaTable,
+  type BhavaChalitReport,
   type DashaNode,
+  type DispositorChainReport,
   type ExtendedJaiminiData,
   type JaiminiKaraka,
   type KPCusp,
@@ -31,8 +41,12 @@ import {
   type LalKitabData,
   type PanchangAvakhada,
   type PlanetaryConditionRow,
+  type PlanetaryHealthRow,
   type PlanetPosition,
+  type ScoredYogaItem,
   type ShadbalaReport,
+  type SpecialVedicPointsReport,
+  type StructuralFlagsReport,
   type VedicYogaItem,
   type WesternChartData,
 } from './jyotishMath';
@@ -73,9 +87,16 @@ export interface CompiledChartData {
       mahadasha: string;
       antardasha: string;
       pratyantardasha: string;
+      mdStart?: string;
       mdEnd: string;
+      adStart?: string;
       adEnd: string;
+      pdStart?: string;
       pdEnd: string;
+      mdProgressPct?: number;
+      adProgressPct?: number;
+      mdSandhiWarning?: boolean;
+      adSandhiWarning?: boolean;
     } | null;
   };
   shadbala?: ShadbalaReport;
@@ -85,6 +106,14 @@ export interface CompiledChartData {
   lalKitab?: LalKitabData;
   western?: WesternChartData;
   shadBalaSummary?: unknown;
+  // Sutradhara Phase 1 Precision Additions
+  specialPoints?: SpecialVedicPointsReport;
+  bhavaChalit?: BhavaChalitReport;
+  ascendantMaturity?: AscendantMaturityReport;
+  planetaryHealth?: PlanetaryHealthRow[];
+  scoredYogas?: ScoredYogaItem[];
+  structuralFlags?: StructuralFlagsReport;
+  dispositorChain?: DispositorChainReport;
 }
 
 export interface CompileProfileInput {
@@ -181,6 +210,27 @@ export async function compileBirthChart(input: CompileProfileInput): Promise<{
     apiWesternPlanets: apiData.apiWesternPlanets,
   });
 
+  const specialPoints = computeSpecialVedicPoints(planets, vargas);
+  const bhavaChalit = computeBhavaChalitShifts(planets, kpCusps);
+  const ascendantMaturity = computeAscendantMaturity(planets, vargas);
+  const structuralFlags = computeStructuralFlagsAndDoshas(planets, vargas, conditions, ashtakavarga);
+  const planetaryHealth = computePlanetaryHealthIndex({
+    planets,
+    vargas,
+    shadbala,
+    conditions,
+    structuralFlags,
+    bhavaChalit,
+  });
+  const scoredYogas = computeScoredYogaRegistry({
+    planets,
+    vargas,
+    conditions,
+    planetaryHealth,
+    structuralFlags,
+  });
+  const dispositorChain = computeDispositorChain(planets);
+
   const chartJson: CompiledChartData = {
     meta: {
       name: input.name,
@@ -210,6 +260,13 @@ export async function compileBirthChart(input: CompileProfileInput): Promise<{
     lalKitab,
     western,
     shadBalaSummary: apiData.apiShadBala ?? null,
+    specialPoints,
+    bhavaChalit,
+    ascendantMaturity,
+    planetaryHealth,
+    scoredYogas,
+    structuralFlags,
+    dispositorChain,
   };
 
   const chartTextContext = formatChartForLLM(chartJson, 'vedic');
@@ -248,7 +305,14 @@ export function enrichCompiledChart(rawChart: CompiledChartData): {
     !rawChart.western ||
     !rawChart.kp?.rulingPlanets ||
     !rawChart.jaimini?.arudhaPadas ||
-    !rawChart.jaimini?.charaDasha;
+    !rawChart.jaimini?.charaDasha ||
+    !rawChart.specialPoints ||
+    !rawChart.bhavaChalit ||
+    !rawChart.ascendantMaturity ||
+    !rawChart.planetaryHealth ||
+    !rawChart.scoredYogas ||
+    !rawChart.structuralFlags ||
+    !rawChart.dispositorChain;
 
   if (!missingProFields) {
     return {
@@ -310,6 +374,33 @@ export function enrichCompiledChart(rawChart: CompiledChartData): {
       timezoneOffsetHours: tz,
     });
 
+  const specialPoints = rawChart.specialPoints || computeSpecialVedicPoints(rawChart.planets, vargas);
+  const bhavaChalit = rawChart.bhavaChalit || computeBhavaChalitShifts(rawChart.planets, kpCusps);
+  const ascendantMaturity = rawChart.ascendantMaturity || computeAscendantMaturity(rawChart.planets, vargas);
+  const structuralFlags =
+    rawChart.structuralFlags ||
+    computeStructuralFlagsAndDoshas(rawChart.planets, vargas, conditions, ashtakavarga);
+  const planetaryHealth =
+    rawChart.planetaryHealth ||
+    computePlanetaryHealthIndex({
+      planets: rawChart.planets,
+      vargas,
+      shadbala,
+      conditions,
+      structuralFlags,
+      bhavaChalit,
+    });
+  const scoredYogas =
+    rawChart.scoredYogas ||
+    computeScoredYogaRegistry({
+      planets: rawChart.planets,
+      vargas,
+      conditions,
+      planetaryHealth,
+      structuralFlags,
+    });
+  const dispositorChain = rawChart.dispositorChain || computeDispositorChain(rawChart.planets);
+
   const enriched: CompiledChartData = {
     ...rawChart,
     vargas,
@@ -330,6 +421,13 @@ export function enrichCompiledChart(rawChart: CompiledChartData): {
     yogas,
     lalKitab,
     western,
+    specialPoints,
+    bhavaChalit,
+    ascendantMaturity,
+    planetaryHealth,
+    scoredYogas,
+    structuralFlags,
+    dispositorChain,
   };
 
   return {
@@ -344,7 +442,13 @@ export function formatChartForLLM(
   mode: 'vedic' | 'western' = 'vedic'
 ): string {
   const enriched =
-    !chart.shadbala || !chart.western || !chart.lalKitab || !chart.panchang || !chart.vargas?.D27
+    !chart.shadbala ||
+    !chart.western ||
+    !chart.lalKitab ||
+    !chart.panchang ||
+    !chart.vargas?.D27 ||
+    !chart.specialPoints ||
+    !chart.planetaryHealth
       ? enrichCompiledChart(chart).chartJson
       : chart;
 
@@ -522,7 +626,40 @@ export function formatChartForLLM(
           varshaphalCycle: enriched.lalKitab.varshaphal.cycleYear,
         }
       : undefined,
-    yogas: enriched.yogas?.map((y) => `${y.name} [${y.planets.join('+')}]`),
+    yogas: enriched.scoredYogas
+      ? enriched.scoredYogas.map((y) => `${y.name} [${y.status}, YSI:${y.ysiTotal}/110]`)
+      : enriched.yogas?.map((y) => `${y.name} [${y.planets.join('+')}]`),
+    sutradharaPrecision: {
+      ascMaturity: enriched.ascendantMaturity
+        ? `${enriched.ascendantMaturity.sign} ${enriched.ascendantMaturity.degreeInSign}° (${enriched.ascendantMaturity.maturityBand}${enriched.ascendantMaturity.birthTimeSensitivityWarning ? ', SANDHI/SENSITIVE' : ''})`
+        : undefined,
+      induLagna: enriched.specialPoints
+        ? `${enriched.specialPoints.induLagna.sign}(H${enriched.specialPoints.induLagna.houseFromLagna}, L:${enriched.specialPoints.induLagna.lord})`
+        : undefined,
+      shriLagna: enriched.specialPoints
+        ? `${enriched.specialPoints.shriLagna.sign}(H${enriched.specialPoints.shriLagna.houseFromLagna})`
+        : undefined,
+      kharaPoints: enriched.specialPoints
+        ? {
+            nav64Moon: `${enriched.specialPoints.khara64NavamsaMoon.sign}(L:${enriched.specialPoints.khara64NavamsaMoon.lord})`,
+            drekk22Lagna: `${enriched.specialPoints.khara22DrekkanaLagna.sign}(L:${enriched.specialPoints.khara22DrekkanaLagna.lord})`,
+          }
+        : undefined,
+      chalitShifts: enriched.bhavaChalit?.shifts
+        .filter((s) => s.shifted)
+        .map((s) => `${s.planet}:R${s.rashiHouse}->C${s.chalitHouse}`),
+      planetaryHealth: enriched.planetaryHealth?.map((h) => `${h.planet}:${h.totalScore}(${h.tier})`),
+      badhaka: enriched.structuralFlags
+        ? `H${enriched.structuralFlags.badhaka.badhakaHouse} (${enriched.structuralFlags.badhaka.badhakesh} in H${enriched.structuralFlags.badhaka.badhakeshHouse})`
+        : undefined,
+      kendradhipati: enriched.structuralFlags?.kendradhipati
+        .filter((k) => k.isActive)
+        .map((k) => `${k.planet}(H${k.kendraHousesOwned.join('/')}${k.mitigated ? ',mitigated' : ''})`),
+      activeDoshas: enriched.structuralFlags?.doshas
+        .filter((d) => d.active)
+        .map((d) => `${d.name}(sev:${d.severity}${d.cancelledOrMitigated ? ',mitigated' : ''})`),
+      finalDispositors: enriched.dispositorChain?.finalDispositors,
+    },
     vimshottari: vimCompact,
   };
 

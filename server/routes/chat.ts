@@ -35,6 +35,14 @@ import {
   type CompanionArchetypeSlug,
   type CompanionPersona,
 } from '../services/companionEngine';
+import {
+  evaluateStage1Routing,
+  type Stage1RoutingDecision,
+} from '../services/intentRouter';
+import {
+  mergeLifeContextPatch,
+  type LifeContextData,
+} from '../services/lifeContextGuard';
 
 const router = Router();
 
@@ -1014,6 +1022,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     extraProfileIds,
     attachments,
     parentMessageId,
+    bypassClarification,
+    clarifiedPlaybookId,
+    clarifiedContextPatch,
   } = req.body || {};
 
   const safeTechnicalDirective =
@@ -1172,6 +1183,8 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     chart_text_context: string | null;
     chart_json?: CompiledChartData | null;
     profile_memory_summary: string | null;
+    life_context_json?: LifeContextData | null;
+    life_context_completeness?: number | null;
     birth_date: string;
     birth_time: string;
     birth_city: string;
@@ -1189,7 +1202,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   if (activePillar === 'council' && conversation.profile_id) {
     const baseCols =
       'id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_state, birth_country, gender, relationship, latitude, longitude, timezone_offset';
-    const fullCols = `${baseCols}, current_city, current_state, current_country${
+    const fullCols = `${baseCols}, current_city, current_state, current_country, life_context_json, life_context_completeness${
       needsChartJson ? ', chart_json' : ''
     }`;
     const fallbackCols = `${baseCols}${needsChartJson ? ', chart_json' : ''}`;
@@ -1459,6 +1472,218 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     return;
   }
 
+  const isVedicCouncilTurn =
+    activePillar === 'council' &&
+    expertSlug !== 'western_astrologer' &&
+    expertSlug !== 'modern_astrologer' &&
+    expertSlug !== 'tarot_reader' &&
+    expertSlug !== 'numerologist';
+
+  // Apply explicit clarification chip patch if sent inline alongside the follow-up message
+  if (
+    isVedicCouncilTurn &&
+    profileData &&
+    clarifiedContextPatch &&
+    typeof clarifiedContextPatch === 'object' &&
+    !Array.isArray(clarifiedContextPatch)
+  ) {
+    try {
+      const merged = mergeLifeContextPatch(
+        profileData.life_context_json || {},
+        clarifiedContextPatch as Partial<LifeContextData>
+      );
+      profileData.life_context_json = merged.sanitized;
+      profileData.life_context_completeness = merged.completeness;
+      await supabaseAdmin
+        .from('profiles')
+        .update({
+          life_context_json: merged.sanitized,
+          life_context_completeness: merged.completeness,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', profileData.id)
+        .eq('user_id', req.appUser.id);
+    } catch {
+      // Non-fatal pre-migration or transient update failure
+    }
+  }
+
+  let stage1Decision: Stage1RoutingDecision | null = null;
+  if (isVedicCouncilTurn && validAttachments.length === 0) {
+    const isBirthDetailsIntake =
+      !profileData &&
+      /\b(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2})\b/i.test(
+        promptText
+      );
+    const isFollowUpTurn = (historyRows || []).some((m) => m.role === 'user');
+    const historySummary = (historyRows || [])
+      .slice(-4)
+      .map((m) => `${m.role}: ${String(m.content || '').slice(0, 140)}`)
+      .join('\n');
+
+    try {
+      stage1Decision = await evaluateStage1Routing({
+        userPrompt: promptText,
+        historySummary,
+        lifeContext: profileData?.life_context_json || null,
+        profileName: profileData?.name || null,
+        hasPrimaryProfile: Boolean(profileData),
+        extraProfilesCount: extraProfilesData.length,
+        modeSlug,
+        isFollowUpTurn,
+        bypassClarification: Boolean(bypassClarification),
+        explicitPlaybookId:
+          typeof clarifiedPlaybookId === 'string' ? clarifiedPlaybookId : null,
+        technicalDirective: safeTechnicalDirective,
+        isBirthDetailsIntake,
+      });
+    } catch {
+      stage1Decision = null;
+    }
+  }
+
+  if (stage1Decision?.action === 'refuse_extraction') {
+    const refusalText = stage1Decision.refusalText || PROMPT_EXTRACTION_REFUSAL;
+    const refusalWordCount = countWords(refusalText);
+    sendEvent({ type: 'chunk', text: refusalText });
+
+    const { data: assistantMessage } = await supabaseAdmin
+      .from('messages')
+      .insert({
+        conversation_id: conversation.id,
+        parent_message_id: userMessage.id,
+        role: 'assistant',
+        content: refusalText,
+        word_count: refusalWordCount,
+        expert_used: expertSlug,
+        mode_used: modeSlug,
+        output_format_used: outputSlug,
+        language_used: languageSlug,
+        followups_json: [],
+        tokens_in: 0,
+        tokens_out: 0,
+        credits_charged: 0,
+      })
+      .select('*')
+      .single();
+
+    const nextTotalWords =
+      (conversation.total_word_count || 0) + userWordCount + refusalWordCount;
+    const { data: updatedConversation } = await supabaseAdmin
+      .from('conversations')
+      .update({
+        total_word_count: nextTotalWords,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', conversation.id)
+      .select('*')
+      .single();
+
+    sendEvent({
+      type: 'done',
+      assistantMessage,
+      followups: [],
+      conversation: updatedConversation || conversation,
+      creditsBalance: req.appUser.credits_balance,
+      creditsCharged: 0,
+      aborted: false,
+    });
+    res.end();
+    return;
+  }
+
+  if (
+    stage1Decision &&
+    (stage1Decision.action === 'clarify' || stage1Decision.action === 'prompt_partner_chart') &&
+    stage1Decision.clarification
+  ) {
+    const clarificationText = stage1Decision.clarification.message;
+    const clarificationWordCount = countWords(clarificationText);
+    sendEvent({ type: 'chunk', text: clarificationText });
+
+    const clarifySuggestionsPayload = {
+      followups: [],
+      deeper_analysis: [],
+      clarification: stage1Decision.clarification,
+      sutra_stage1: stage1Decision.routerResult,
+    };
+
+    const baseClarifyRow = {
+      conversation_id: conversation.id,
+      parent_message_id: userMessage.id,
+      role: 'assistant',
+      content: clarificationText,
+      word_count: clarificationWordCount,
+      expert_used: expertSlug,
+      mode_used: modeSlug,
+      output_format_used: outputSlug,
+      language_used: languageSlug,
+      followups_json: [],
+      tokens_in: 0,
+      tokens_out: 0,
+      credits_charged: 0,
+    };
+
+    let assistantMessage: Record<string, unknown> | null = null;
+    const insertClarify = await supabaseAdmin
+      .from('messages')
+      .insert({
+        ...baseClarifyRow,
+        suggestions_json: clarifySuggestionsPayload,
+      })
+      .select('*')
+      .single();
+
+    if (insertClarify.error) {
+      const insertFallback = await supabaseAdmin
+        .from('messages')
+        .insert(baseClarifyRow)
+        .select('*')
+        .single();
+      assistantMessage = insertFallback.data
+        ? {
+            ...(insertFallback.data as unknown as Record<string, unknown>),
+            suggestions_json: clarifySuggestionsPayload,
+          }
+        : null;
+    } else {
+      assistantMessage = insertClarify.data as unknown as Record<string, unknown>;
+    }
+
+    const nextTotalWords =
+      (conversation.total_word_count || 0) + userWordCount + clarificationWordCount;
+    const { data: updatedConversation } = await supabaseAdmin
+      .from('conversations')
+      .update({
+        total_word_count: nextTotalWords,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', conversation.id)
+      .select('*')
+      .single();
+
+    const enrichedConversation = normalizeConversationDefaults({
+      ...((updatedConversation || conversation) as Record<string, unknown>),
+      pillar: activePillar,
+      companion_persona_json: activeCompanionPersona,
+    });
+
+    sendEvent({
+      type: 'done',
+      assistantMessage,
+      followups: [],
+      suggestions: clarifySuggestionsPayload,
+      clarification: stage1Decision.clarification,
+      pendingProfile: null,
+      conversation: enrichedConversation,
+      creditsBalance: req.appUser.credits_balance,
+      creditsCharged: 0,
+      aborted: false,
+    });
+    res.end();
+    return;
+  }
+
   const abortController = new AbortController();
   const handleDisconnect = () => {
     abortController.abort();
@@ -1590,7 +1815,18 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     const hasAnyStructured =
       structuredSuggestions.followups.length > 0 ||
       structuredSuggestions.deeper_analysis.length > 0;
-    const persistedSuggestionsPayload = hasAnyStructured ? structuredSuggestions : null;
+    const persistedSuggestionsPayload = hasAnyStructured
+      ? {
+          ...structuredSuggestions,
+          ...(stage1Decision?.routerResult ? { sutra_stage1: stage1Decision.routerResult } : {}),
+        }
+      : stage1Decision?.routerResult
+      ? {
+          followups: [],
+          deeper_analysis: [],
+          sutra_stage1: stage1Decision.routerResult,
+        }
+      : null;
 
     const baseAssistantRow = {
       conversation_id: conversation.id,

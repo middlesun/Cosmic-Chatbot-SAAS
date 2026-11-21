@@ -27,6 +27,7 @@ import type {
   ChatMessageRecord,
   ChatPillar,
   ChatProfile,
+  ClarificationChip,
   CompanionPersona,
   ConversationRecord,
   PendingBirthProfileDraft,
@@ -104,6 +105,8 @@ interface MessageThreadProps {
   enableFollowups?: boolean;
   astrologyMode?: 'vedic' | 'western';
   expertSlug?: string;
+  onSelectClarificationChip?: (chip: ClarificationChip, messageId: string) => void;
+  onSelectPartnerProfileForClarification?: (partnerId: string, originalQuestion: string) => void;
   onSaveToNotes?: (message: ChatMessageRecord) => void;
   savedNoteMsgIds?: Set<string>;
   savingNoteMsgId?: string | null;
@@ -289,6 +292,8 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   enableFollowups = true,
   astrologyMode = 'vedic',
   expertSlug = 'council_synthesis',
+  onSelectClarificationChip,
+  onSelectPartnerProfileForClarification,
   onSaveToNotes,
   savedNoteMsgIds,
   savingNoteMsgId = null,
@@ -1043,6 +1048,16 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               activePillar === 'council' &&
               pendingProfileConfirm?.messageId === msg.id &&
               !inlineChartCreation;
+            const clarificationData =
+              activePillar === 'council' ? msg.suggestions_json?.clarification || null : null;
+            const isActiveClarificationCard =
+              Boolean(clarificationData && clarificationData.chips?.length) &&
+              idx === messages.length - 1 &&
+              !isStreaming;
+            const availablePartnerProfiles =
+              clarificationData?.kind === 'partner_required'
+                ? profiles.filter((p) => p.id !== profile?.id).slice(0, 3)
+                : [];
 
             return (
               <article
@@ -1151,6 +1166,71 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                       >
                         <span>Edit Details</span>
                       </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sutradhara Stage 1 Interactive Clarification Chips */}
+                {clarificationData && clarificationData.chips?.length > 0 && (
+                  <div
+                    className={`mt-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] p-3.5 sm:p-4 space-y-2.5 transition-opacity ${
+                      isActiveClarificationCard ? 'opacity-100' : 'opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8B8275]">
+                        {clarificationData.kind === 'partner_required'
+                          ? 'Partner Chart Needed'
+                          : 'Quick Context Check'}
+                      </span>
+                      {!isActiveClarificationCard && (
+                        <span className="text-[11px] text-[#8B8275]">Answered</span>
+                      )}
+                    </div>
+
+                    {isActiveClarificationCard && availablePartnerProfiles.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {availablePartnerProfiles.map((partner) => (
+                          <button
+                            key={partner.id}
+                            type="button"
+                            onClick={() =>
+                              onSelectPartnerProfileForClarification?.(
+                                partner.id,
+                                clarificationData.chips[0]?.clarifiedQuestion || ''
+                              )
+                            }
+                            className="min-h-[40px] inline-flex items-center gap-1.5 rounded-full border border-[#B8965A]/45 bg-[#FAF7F2] px-3.5 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                          >
+                            <UserCheck className="h-3.5 w-3.5 text-[#8B7355]" />
+                            <span>Compare with {partner.short_name || partner.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2">
+                      {clarificationData.chips.map((chip) => {
+                        const isPrimaryAction = chip.action === 'open_partner_picker';
+                        return (
+                          <button
+                            key={chip.id}
+                            type="button"
+                            disabled={!isActiveClarificationCard || !onSelectClarificationChip}
+                            onClick={() => onSelectClarificationChip?.(chip, msg.id)}
+                            className={`min-h-[40px] inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-colors ${
+                              isPrimaryAction
+                                ? 'bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E]'
+                                : 'border border-[#3D3830]/18 bg-[#FAF7F2] text-[#3D3830] hover:bg-[#F1ECE3]'
+                            } disabled:opacity-60 disabled:cursor-default cursor-pointer`}
+                          >
+                            <span>{chip.label}</span>
+                            {isActiveClarificationCard && (
+                              <ArrowRight className="h-3 w-3 opacity-70" />
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

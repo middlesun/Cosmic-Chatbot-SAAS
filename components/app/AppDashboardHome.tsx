@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import AstrologyModeToggle from './AstrologyModeToggle';
+import LifeContextModal from './LifeContextModal';
 import TimingRadarDashboard from './TimingRadarDashboard';
 import { getUserProfileDisplayLabel } from './chatUtilities';
 import {
@@ -52,6 +53,7 @@ const AppDashboardHome: React.FC = () => {
   );
   const [catalogApps, setCatalogApps] = useState<MiniAppDefinition[]>(CLIENT_MINI_APPS);
   const [summaryLoading, setSummaryLoading] = useState<boolean>(!isPreviewMode);
+  const [calibrationOpen, setCalibrationOpen] = useState(false);
   const [activeAppCategory, setActiveAppCategory] = useState<
     'all' | 'popular' | MiniAppCategory | 'favorites'
   >('popular');
@@ -475,6 +477,40 @@ const AppDashboardHome: React.FC = () => {
         </div>
       </section>
 
+      {/* Gentle Desh-Kaal-Patra Context Calibration Prompt (when primary profile < 80%) */}
+      {summary?.primaryProfile &&
+        (summary.primaryProfile.life_context_completeness ?? 0) < 80 && (
+          <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/15 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-2 min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#8B7355]">
+                  Life Context Calibration · {summary.primaryProfile.short_name || summary.primaryProfile.name}
+                </p>
+                <span className="font-['JetBrains_Mono',monospace] tabular-nums text-xs font-medium text-[#3D3830]">
+                  {summary.primaryProfile.life_context_completeness ?? 0}%
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-[#5C5449] leading-relaxed">
+                Add birth time accuracy, relationship status, work mode, and 1–2 past milestones so readings stay grounded in your actual life.
+              </p>
+              <div className="h-1.5 w-full max-w-md rounded-full bg-[#3D3830]/10 overflow-hidden">
+                <div
+                  style={{ width: `${summary.primaryProfile.life_context_completeness ?? 0}%` }}
+                  className="h-full rounded-full bg-[#8B7355] transition-all duration-300"
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCalibrationOpen(true)}
+              className="min-h-[42px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <span>Complete Context</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </section>
+        )}
+
       {/* SECTION 3: PERSONAL TIMING OVERVIEW CARD */}
       <TimingRadarDashboard />
 
@@ -625,6 +661,32 @@ const AppDashboardHome: React.FC = () => {
           </div>
         </div>
       </section>
+
+      {summary?.primaryProfile && (
+        <LifeContextModal
+          isOpen={calibrationOpen}
+          profileId={summary.primaryProfile.id}
+          profileName={summary.primaryProfile.short_name || summary.primaryProfile.name}
+          initialContext={summary.primaryProfile.life_context_json}
+          getAccessToken={getAccessToken}
+          isPreviewMode={isPreviewMode}
+          onClose={() => setCalibrationOpen(false)}
+          onSaved={(updatedCtx, nextScore) => {
+            setSummary((prev) =>
+              prev && prev.primaryProfile
+                ? {
+                    ...prev,
+                    primaryProfile: {
+                      ...prev.primaryProfile,
+                      life_context_json: updatedCtx,
+                      life_context_completeness: nextScore,
+                    },
+                  }
+                : prev
+            );
+          }}
+        />
+      )}
     </div>
   );
 };

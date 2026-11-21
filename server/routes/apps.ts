@@ -412,28 +412,92 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     return;
   }
 
-  // 1. Minimal profile map (never select chart_json / chart_text_context)
+  // 1. Minimal profile map (never select chart_json / chart_text_context / natal_truth_dossier_json)
   const profileMap = new Map<string, string>();
-  const profRes = await supabaseAdmin
+  let primaryProfile: {
+    id: string;
+    name: string;
+    short_name: string | null;
+    is_default: boolean;
+    life_context_json: Record<string, unknown>;
+    life_context_completeness: number;
+  } | null = null;
+
+  const sutraProfRes = await supabaseAdmin
     .from('profiles')
-    .select('id, name, short_name, is_default')
-    .eq('user_id', req.appUser.id);
-  if (!profRes.error && profRes.data) {
-    for (const p of profRes.data) {
+    .select('id, name, short_name, is_default, life_context_json, life_context_completeness')
+    .eq('user_id', req.appUser.id)
+    .order('created_at', { ascending: false });
+
+  if (!sutraProfRes.error && sutraProfRes.data) {
+    for (const p of sutraProfRes.data) {
       const label = p.is_default
         ? p.short_name
           ? `You (${p.short_name})`
           : 'You'
         : String(p.short_name || p.name);
       profileMap.set(String(p.id), label);
+
+      const candidate = {
+        id: String(p.id),
+        name: String(p.name),
+        short_name: p.short_name ? String(p.short_name) : null,
+        is_default: Boolean(p.is_default),
+        life_context_json:
+          p.life_context_json && typeof p.life_context_json === 'object' && !Array.isArray(p.life_context_json)
+            ? (p.life_context_json as Record<string, unknown>)
+            : {},
+        life_context_completeness:
+          typeof p.life_context_completeness === 'number' ? p.life_context_completeness : 0,
+      };
+      if (!primaryProfile || (candidate.is_default && !primaryProfile.is_default)) {
+        primaryProfile = candidate;
+      }
     }
   } else {
-    const profFallback = await supabaseAdmin
+    const profRes = await supabaseAdmin
       .from('profiles')
-      .select('id, name')
+      .select('id, name, short_name, is_default')
       .eq('user_id', req.appUser.id);
-    for (const p of profFallback.data || []) {
-      profileMap.set(String(p.id), String(p.name));
+    if (!profRes.error && profRes.data) {
+      for (const p of profRes.data) {
+        const label = p.is_default
+          ? p.short_name
+            ? `You (${p.short_name})`
+            : 'You'
+          : String(p.short_name || p.name);
+        profileMap.set(String(p.id), label);
+
+        const candidate = {
+          id: String(p.id),
+          name: String(p.name),
+          short_name: p.short_name ? String(p.short_name) : null,
+          is_default: Boolean(p.is_default),
+          life_context_json: {},
+          life_context_completeness: 0,
+        };
+        if (!primaryProfile || (candidate.is_default && !primaryProfile.is_default)) {
+          primaryProfile = candidate;
+        }
+      }
+    } else {
+      const profFallback = await supabaseAdmin
+        .from('profiles')
+        .select('id, name')
+        .eq('user_id', req.appUser.id);
+      for (const p of profFallback.data || []) {
+        profileMap.set(String(p.id), String(p.name));
+        if (!primaryProfile) {
+          primaryProfile = {
+            id: String(p.id),
+            name: String(p.name),
+            short_name: null,
+            is_default: true,
+            life_context_json: {},
+            life_context_completeness: 0,
+          };
+        }
+      }
     }
   }
 
@@ -617,6 +681,7 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     recentGuides: recentGuides.slice(0, 6),
     favoriteAppSlugs,
     recentAppRuns,
+    primaryProfile,
   });
 });
 

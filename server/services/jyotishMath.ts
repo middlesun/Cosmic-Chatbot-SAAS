@@ -724,9 +724,16 @@ export function computeVimshottariTimeline(
     mahadasha: string;
     antardasha: string;
     pratyantardasha: string;
+    mdStart?: string;
     mdEnd: string;
+    adStart?: string;
     adEnd: string;
+    pdStart?: string;
     pdEnd: string;
+    mdProgressPct?: number;
+    adProgressPct?: number;
+    mdSandhiWarning?: boolean;
+    adSandhiWarning?: boolean;
   } | null;
 } {
   const lon = normalizeDeg(moonSiderealLongitude);
@@ -816,14 +823,29 @@ export function computeVimshottariTimeline(
   // Silence unused variable warning cleanly while keeping calculation explicit
   void remainingFraction;
 
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const nowMs = Date.now();
+  const todayISO = new Date(nowMs).toISOString().slice(0, 10);
+  const calcProgressPct = (startISO: string, endISO: string): number => {
+    const sMs = Date.parse(`${startISO}T00:00:00Z`);
+    const eMs = Date.parse(`${endISO}T23:59:59Z`);
+    if (Number.isNaN(sMs) || Number.isNaN(eMs) || eMs <= sMs) return 50;
+    return Number(Math.max(0, Math.min(100, ((nowMs - sMs) / (eMs - sMs)) * 100)).toFixed(1));
+  };
+
   let currentStack: {
     mahadasha: string;
     antardasha: string;
     pratyantardasha: string;
+    mdStart?: string;
     mdEnd: string;
+    adStart?: string;
     adEnd: string;
+    pdStart?: string;
     pdEnd: string;
+    mdProgressPct?: number;
+    adProgressPct?: number;
+    mdSandhiWarning?: boolean;
+    adSandhiWarning?: boolean;
   } | null = null;
 
   for (const md of timeline) {
@@ -832,13 +854,22 @@ export function computeVimshottariTimeline(
         if (todayISO >= ad.startDate && todayISO <= ad.endDate) {
           for (const pd of ad.children || []) {
             if (todayISO >= pd.startDate && todayISO <= pd.endDate) {
+              const mdProgressPct = calcProgressPct(md.startDate, md.endDate);
+              const adProgressPct = calcProgressPct(ad.startDate, ad.endDate);
               currentStack = {
                 mahadasha: md.lord,
                 antardasha: ad.lord,
                 pratyantardasha: pd.lord,
+                mdStart: md.startDate,
                 mdEnd: md.endDate,
+                adStart: ad.startDate,
                 adEnd: ad.endDate,
+                pdStart: pd.startDate,
                 pdEnd: pd.endDate,
+                mdProgressPct,
+                adProgressPct,
+                mdSandhiWarning: mdProgressPct >= 90 || mdProgressPct <= 5,
+                adSandhiWarning: adProgressPct >= 90 || adProgressPct <= 5,
               };
               break;
             }
@@ -2457,4 +2488,1277 @@ export function computeWesternDailyTransits(
     };
   });
 }
+
+// =============================================================================
+// SUTRADHARA ENGINE (PHASE 1) — DETERMINISTIC VEDIC PRECISION CALCULATORS
+// =============================================================================
+
+export interface InduLagnaInfo {
+  signIndex: number;
+  sign: string;
+  houseFromLagna: number;
+  lord: string;
+  ninthFromLagnaLord: string;
+  ninthFromMoonLord: string;
+  totalKalas: number;
+  occupants: string[];
+  aspectingPlanets: string[];
+}
+
+export interface ShriLagnaInfo {
+  longitude: number;
+  signIndex: number;
+  sign: string;
+  degreeInSign: number;
+  dms: string;
+  houseFromLagna: number;
+  lord: string;
+  nakshatra: string;
+  occupants: string[];
+}
+
+export interface KharaPointInfo {
+  pointName: '64th Navamsa (From Moon)' | '64th Navamsa (From Lagna)' | '22nd Drekkana (From Lagna)';
+  signIndex: number;
+  sign: string;
+  lord: string;
+  houseFromLagna: number;
+  vargaOccupants: string[];
+  d1Occupants: string[];
+}
+
+export interface SpecialVedicPointsReport {
+  induLagna: InduLagnaInfo;
+  shriLagna: ShriLagnaInfo;
+  khara64NavamsaMoon: KharaPointInfo;
+  khara64NavamsaLagna: KharaPointInfo;
+  khara22DrekkanaLagna: KharaPointInfo;
+}
+
+export interface BhavaChalitShiftRow {
+  planet: string;
+  sign: string;
+  degreeInSign: number;
+  rashiHouse: number;
+  chalitHouse: number;
+  shifted: boolean;
+  direction: 'forward' | 'backward' | 'none';
+}
+
+export interface BhavaChalitReport {
+  shifts: BhavaChalitShiftRow[];
+  shiftedPlanets: string[];
+}
+
+export interface AscendantMaturityReport {
+  sign: string;
+  degreeInSign: number;
+  dms: string;
+  nakshatra: string;
+  pada: number;
+  nakshatraLord: string;
+  maturityBand: 'early_immature' | 'stable' | 'late_mature';
+  isSandhi: boolean;
+  isGandanta: boolean;
+  birthTimeSensitivityWarning: boolean;
+  d9AscSign: string;
+  lagnesh: string;
+  lagneshD1House: number;
+  lagneshD9Sign: string;
+  lagneshD9Dignity: string;
+  lagneshD1D9Aligned: boolean;
+}
+
+export interface PlanetaryHealthRow {
+  planet: string;
+  d1Score: number; // 0..70
+  d9Modifier: number; // -15..+15
+  multiVargaBonus: number; // -15..+15
+  totalScore: number; // 0..100
+  tier: 'Elite' | 'Strong' | 'Moderate' | 'Weak' | 'Compromised';
+  isNeechaBhanga: boolean;
+  isPapakartari: boolean;
+  factors: string[];
+}
+
+export interface ScoredYogaItem extends VedicYogaItem {
+  ysiTotal: number; // 0..110
+  status: 'Foundational' | 'Active' | 'Conditional' | 'Latent' | 'Blocked';
+  breakdown: {
+    structuralValidity: number; // 0..25
+    planetaryStrength: number; // 0..25
+    d1DegreePrecision: number; // 0..25
+    d9Reinforcement: number; // 0..25
+    classicalBias: number; // 0..10
+  };
+}
+
+export interface StructuralDoshaItem {
+  slug: string;
+  name: string;
+  active: boolean;
+  severity: number; // 0..10
+  planets: string[];
+  cancelledOrMitigated: boolean;
+  notes: string;
+}
+
+export interface NeechaBhangaReport {
+  planet: string;
+  sign: string;
+  house: number;
+  isCancelled: boolean;
+  conditionsMet: string[];
+}
+
+export interface KendradhipatiReport {
+  planet: string;
+  kendraHousesOwned: number[];
+  hasTrikonaLordship: boolean;
+  isActive: boolean;
+  mitigated: boolean;
+  notes: string;
+}
+
+export interface BadhakaReport {
+  lagnaModality: 'Movable' | 'Fixed' | 'Dual';
+  badhakaHouse: number;
+  badhakesh: string;
+  badhakeshHouse: number;
+  badhakeshSign: string;
+  occupantsInBadhaka: string[];
+  conjunctBadhakesh: string[];
+}
+
+export interface DispositorChainReport {
+  links: Array<{ planet: string; sign: string; dispositor: string }>;
+  finalDispositors: string[];
+  mutualReceptions: Array<[string, string]>;
+}
+
+export interface StructuralFlagsReport {
+  badhaka: BadhakaReport;
+  marakaPlanets: Array<{ planet: string; houseOwned: number; currentHouse: number; dignity: string }>;
+  kendradhipati: KendradhipatiReport[];
+  neechaBhanga: NeechaBhangaReport[];
+  doshas: StructuralDoshaItem[];
+}
+
+export interface DoubleTransitHouseRow {
+  house: number;
+  houseFromMoon: number;
+  signIndex: number;
+  sign: string;
+  jupiterActivated: boolean;
+  saturnActivated: boolean;
+  doubleTransitActive: boolean;
+  marsTriggered: boolean;
+  savBindus: number;
+  savVolumeBand: 'High (>=28)' | 'Standard (20-27)' | 'Low (<20)';
+  jupiterBav: number;
+  saturnBav: number;
+}
+
+export interface DoubleTransitReport {
+  transitDate: string;
+  jupiterSign: string;
+  saturnSign: string;
+  marsSign: string;
+  doubleTransitHouses: number[];
+  houses: DoubleTransitHouseRow[];
+}
+
+export interface SlowPlanetTransitPair {
+  planet: 'Jupiter' | 'Saturn' | 'Rahu' | 'Ketu';
+  currentSignIndex: number;
+  currentSign: string;
+  currentDegreeInSign: number;
+  isRetrograde: boolean;
+  nextSignIndex: number;
+  nextSign: string;
+  nextIngressApproxDate: string;
+  daysUntilIngress: number;
+  direction: 'forward' | 'backward';
+}
+
+const INDU_KALAS: Record<string, number> = {
+  Sun: 30,
+  Moon: 16,
+  Mars: 6,
+  Mercury: 8,
+  Jupiter: 10,
+  Venus: 12,
+  Saturn: 1,
+};
+
+const NATURAL_MALEFICS = new Set(['Sun', 'Mars', 'Saturn', 'Rahu', 'Ketu']);
+
+function getMoonWaxingStatus(planets: PlanetPosition[]): boolean {
+  const sun = planets.find((p) => p.name === 'Sun');
+  const moon = planets.find((p) => p.name === 'Moon');
+  if (!sun || !moon) return true;
+  const phaseAngle = normalizeDeg(moon.longitude - sun.longitude);
+  return phaseAngle >= 60 && phaseAngle <= 300;
+}
+
+function doesPlanetAspectSign(planet: PlanetPosition, targetSignIdx: number): boolean {
+  if (planet.name === 'Ascendant') return false;
+  const diff = (targetSignIdx - planet.signIndex + 12) % 12; // 0 = conjunction, 6 = 7th
+  if (diff === 0 || diff === 6) return true;
+  if (planet.name === 'Mars' && (diff === 3 || diff === 7)) return true;
+  if ((planet.name === 'Jupiter' || planet.name === 'Rahu' || planet.name === 'Ketu') && (diff === 4 || diff === 8)) {
+    return true;
+  }
+  if (planet.name === 'Saturn' && (diff === 2 || diff === 9)) return true;
+  return false;
+}
+
+// 1 & 2. Indu Lagna, Shri Lagna, 64th Navamsa & 22nd Drekkana
+export function computeSpecialVedicPoints(
+  planets: PlanetPosition[],
+  vargas: Record<string, { ascendantSignIndex: number; placements: Array<{ name: string; signIndex: number; sign: string; house: number }> }>
+): SpecialVedicPointsReport {
+  const asc = planets.find((p) => p.name === 'Ascendant');
+  const moon = planets.find((p) => p.name === 'Moon');
+  const ascSign = asc?.signIndex ?? 0;
+  const moonSign = moon?.signIndex ?? 0;
+
+  // Indu Lagna
+  const ninthLagnaSign = (ascSign + 8) % 12;
+  const ninthMoonSign = (moonSign + 8) % 12;
+  const ninthFromLagnaLord = SIGN_LORDS[ninthLagnaSign];
+  const ninthFromMoonLord = SIGN_LORDS[ninthMoonSign];
+  const totalKalas = (INDU_KALAS[ninthFromLagnaLord] || 0) + (INDU_KALAS[ninthFromMoonLord] || 0);
+  const rem = totalKalas % 12 === 0 ? 12 : totalKalas % 12;
+  const induSignIdx = (moonSign + rem - 1) % 12;
+  const induHouse = ((induSignIdx - ascSign + 12) % 12) + 1;
+  const realPlanets = planets.filter((p) => p.name !== 'Ascendant');
+  const induOccupants = realPlanets.filter((p) => p.signIndex === induSignIdx).map((p) => p.name);
+  const induAspecting = realPlanets
+    .filter((p) => p.signIndex !== induSignIdx && doesPlanetAspectSign(p, induSignIdx))
+    .map((p) => p.name);
+
+  // Shri Lagna
+  const nakSpan = 360 / 27;
+  const moonLon = moon?.longitude ?? 0;
+  const nakFraction = ((moonLon % nakSpan) + nakSpan) % nakSpan / nakSpan;
+  const shriLon = normalizeDeg((asc?.longitude ?? 0) + nakFraction * 360);
+  const shriSignIdx = Math.floor(shriLon / 30) % 12;
+  const shriDeg = shriLon % 30;
+  const shriNak = getNakshatraAndSubs(shriLon);
+  const shriOccupants = realPlanets.filter((p) => p.signIndex === shriSignIdx).map((p) => p.name);
+
+  // 64th Navamsa & 22nd Drekkana
+  const d9 = vargas.D9;
+  const d3 = vargas.D3;
+  const moonD9Sign = d9?.placements.find((p) => p.name === 'Moon')?.signIndex ?? getVargaSignIndex(moonLon, 9);
+  const lagnaD9Sign = d9?.ascendantSignIndex ?? getVargaSignIndex(asc?.longitude ?? 0, 9);
+  const lagnaD3Sign = d3?.ascendantSignIndex ?? getVargaSignIndex(asc?.longitude ?? 0, 3);
+
+  const khara64MoonSign = (moonD9Sign + 3) % 12;
+  const khara64LagnaSign = (lagnaD9Sign + 3) % 12;
+  const khara22LagnaSign = (lagnaD3Sign + 7) % 12;
+
+  const buildKhara = (
+    pointName: KharaPointInfo['pointName'],
+    targetSignIdx: number,
+    vargaTable?: { placements: Array<{ name: string; signIndex: number }> }
+  ): KharaPointInfo => ({
+    pointName,
+    signIndex: targetSignIdx,
+    sign: SIGNS[targetSignIdx],
+    lord: SIGN_LORDS[targetSignIdx],
+    houseFromLagna: ((targetSignIdx - ascSign + 12) % 12) + 1,
+    vargaOccupants: (vargaTable?.placements || [])
+      .filter((pl) => pl.name !== 'Ascendant' && pl.signIndex === targetSignIdx)
+      .map((pl) => pl.name),
+    d1Occupants: realPlanets.filter((p) => p.signIndex === targetSignIdx).map((p) => p.name),
+  });
+
+  return {
+    induLagna: {
+      signIndex: induSignIdx,
+      sign: SIGNS[induSignIdx],
+      houseFromLagna: induHouse,
+      lord: SIGN_LORDS[induSignIdx],
+      ninthFromLagnaLord,
+      ninthFromMoonLord,
+      totalKalas,
+      occupants: induOccupants,
+      aspectingPlanets: induAspecting,
+    },
+    shriLagna: {
+      longitude: Number(shriLon.toFixed(4)),
+      signIndex: shriSignIdx,
+      sign: SIGNS[shriSignIdx],
+      degreeInSign: Number(shriDeg.toFixed(4)),
+      dms: formatDMS(shriDeg),
+      houseFromLagna: ((shriSignIdx - ascSign + 12) % 12) + 1,
+      lord: SIGN_LORDS[shriSignIdx],
+      nakshatra: shriNak.nakshatra,
+      occupants: shriOccupants,
+    },
+    khara64NavamsaMoon: buildKhara('64th Navamsa (From Moon)', khara64MoonSign, d9),
+    khara64NavamsaLagna: buildKhara('64th Navamsa (From Lagna)', khara64LagnaSign, d9),
+    khara22DrekkanaLagna: buildKhara('22nd Drekkana (From Lagna)', khara22LagnaSign, d3),
+  };
+}
+
+// 3. Bhava-Chalit Shift Diff (D1 Whole Sign House vs KP Placidus Chalit House)
+export function computeBhavaChalitShifts(
+  planets: PlanetPosition[],
+  cusps: KPCusp[]
+): BhavaChalitReport {
+  if (!cusps || cusps.length !== 12) {
+    return { shifts: [], shiftedPlanets: [] };
+  }
+
+  const shifts: BhavaChalitShiftRow[] = planets
+    .filter((p) => p.name !== 'Ascendant')
+    .map((p) => {
+      const chalitHouse = getKPHouseForLongitude(p.longitude, cusps);
+      const diff = (chalitHouse - p.house + 12) % 12;
+      const shifted = diff !== 0;
+      const direction: BhavaChalitShiftRow['direction'] = !shifted
+        ? 'none'
+        : diff <= 6
+        ? 'forward'
+        : 'backward';
+
+      return {
+        planet: p.name,
+        sign: p.sign,
+        degreeInSign: Number(p.degreeInSign.toFixed(2)),
+        rashiHouse: p.house,
+        chalitHouse,
+        shifted,
+        direction,
+      };
+    });
+
+  return {
+    shifts,
+    shiftedPlanets: shifts.filter((s) => s.shifted).map((s) => s.planet),
+  };
+}
+
+// 4. Ascendant Degree Maturity & D1↔D9 Alignment
+export function computeAscendantMaturity(
+  planets: PlanetPosition[],
+  vargas: Record<string, { ascendantSignIndex: number; placements: Array<{ name: string; signIndex: number; sign: string; house: number }> }>
+): AscendantMaturityReport {
+  const asc = planets.find((p) => p.name === 'Ascendant');
+  const deg = asc?.degreeInSign ?? 15;
+  const signIdx = asc?.signIndex ?? 0;
+  const lagnesh = SIGN_LORDS[signIdx];
+  const lagneshPos = planets.find((p) => p.name === lagnesh);
+
+  const d9 = vargas.D9;
+  const d9AscSignIdx = d9?.ascendantSignIndex ?? getVargaSignIndex(asc?.longitude ?? 0, 9);
+  const lagneshD9 = d9?.placements.find((p) => p.name === lagnesh);
+  const lagneshD9SignIdx = lagneshD9?.signIndex ?? signIdx;
+  const lagneshD9Dignity = getDignity(lagnesh, lagneshD9SignIdx);
+
+  const maturityBand: AscendantMaturityReport['maturityBand'] =
+    deg < 5 ? 'early_immature' : deg > 25 ? 'late_mature' : 'stable';
+
+  const isSandhi = deg < 1.0 || deg > 29.0;
+  // Gandanta junctions: Water->Fire boundaries (Can->Leo, Sco->Sag, Pis->Ari) within 3.33 deg
+  const isWaterEnd = (signIdx === 3 || signIdx === 7 || signIdx === 11) && deg >= 26.67;
+  const isFireStart = (signIdx === 4 || signIdx === 8 || signIdx === 0) && deg <= 3.33;
+  const isGandanta = isWaterEnd || isFireStart;
+
+  const isStrongDig = (dig: string) => dig === 'Exalted' || dig === 'Own Sign';
+  const lagneshD1D9Aligned =
+    Boolean(lagneshPos && lagneshD9SignIdx === lagneshPos.signIndex) ||
+    Boolean(lagneshPos && isStrongDig(lagneshPos.dignity) && isStrongDig(lagneshD9Dignity)) ||
+    d9AscSignIdx === signIdx;
+
+  return {
+    sign: asc?.sign || 'Aries',
+    degreeInSign: Number(deg.toFixed(2)),
+    dms: asc?.dms || formatDMS(deg),
+    nakshatra: asc?.nakshatra || 'Ashwini',
+    pada: asc?.pada || 1,
+    nakshatraLord: asc?.nakshatraLord || 'Ketu',
+    maturityBand,
+    isSandhi,
+    isGandanta,
+    birthTimeSensitivityWarning: isSandhi || isGandanta || deg < 1.5 || deg > 28.5,
+    d9AscSign: SIGNS[d9AscSignIdx],
+    lagnesh,
+    lagneshD1House: lagneshPos?.house ?? 1,
+    lagneshD9Sign: SIGNS[lagneshD9SignIdx],
+    lagneshD9Dignity,
+    lagneshD1D9Aligned,
+  };
+}
+
+// 5. Neecha Bhanga, Badhaka, Kendradhipati, Maraka & Dosha Scanner
+export function computeStructuralFlagsAndDoshas(
+  planets: PlanetPosition[],
+  vargas: Record<string, { ascendantSignIndex: number; placements: Array<{ name: string; signIndex: number; sign: string; house: number }> }>,
+  conditions: PlanetaryConditionRow[],
+  ashtakavarga?: AshtakavargaTable
+): StructuralFlagsReport {
+  const asc = planets.find((p) => p.name === 'Ascendant');
+  const moon = planets.find((p) => p.name === 'Moon');
+  const ascSign = asc?.signIndex ?? 0;
+  const moonSign = moon?.signIndex ?? 0;
+  const findP = (name: string) => planets.find((p) => p.name === name);
+  const houseLord = (h: number) => SIGN_LORDS[(ascSign + h - 1) % 12];
+  const isInKendraFrom = (p: PlanetPosition | undefined, refSignIdx: number) =>
+    Boolean(p && [0, 3, 6, 9].includes((p.signIndex - refSignIdx + 12) % 12));
+
+  const d9 = vargas.D9;
+  const realPlanets = planets.filter((p) => p.name !== 'Ascendant');
+  const isMoonWaxing = getMoonWaxingStatus(planets);
+
+  // A. Badhaka
+  const modalityIdx = ascSign % 3;
+  const lagnaModality: BadhakaReport['lagnaModality'] =
+    modalityIdx === 0 ? 'Movable' : modalityIdx === 1 ? 'Fixed' : 'Dual';
+  const badhakaHouse = lagnaModality === 'Movable' ? 11 : lagnaModality === 'Fixed' ? 9 : 7;
+  const badhakesh = houseLord(badhakaHouse);
+  const badhakeshPos = findP(badhakesh);
+
+  const badhaka: BadhakaReport = {
+    lagnaModality,
+    badhakaHouse,
+    badhakesh,
+    badhakeshHouse: badhakeshPos?.house ?? badhakaHouse,
+    badhakeshSign: badhakeshPos?.sign ?? SIGNS[(ascSign + badhakaHouse - 1) % 12],
+    occupantsInBadhaka: realPlanets.filter((p) => p.house === badhakaHouse).map((p) => p.name),
+    conjunctBadhakesh: badhakeshPos
+      ? realPlanets.filter((p) => p.name !== badhakesh && p.signIndex === badhakeshPos.signIndex).map((p) => p.name)
+      : [],
+  };
+
+  // B. Maraka Planets (2nd & 7th lords)
+  const marakaPlanets = [2, 7].map((h) => {
+    const pName = houseLord(h);
+    const pos = findP(pName);
+    return {
+      planet: pName,
+      houseOwned: h,
+      currentHouse: pos?.house ?? h,
+      dignity: pos?.dignity ?? 'Neutral',
+    };
+  });
+
+  // C. Kendradhipati Dosha (Natural benefics owning Kendras 4/7/10 without owning Trikona 1/5/9)
+  const ownedHousesByPlanet: Record<string, number[]> = {};
+  for (let h = 1; h <= 12; h++) {
+    const lord = houseLord(h);
+    if (!ownedHousesByPlanet[lord]) ownedHousesByPlanet[lord] = [];
+    ownedHousesByPlanet[lord].push(h);
+  }
+  const natBeneficCandidates = isMoonWaxing
+    ? ['Jupiter', 'Venus', 'Mercury', 'Moon']
+    : ['Jupiter', 'Venus', 'Mercury'];
+  const kendradhipati: KendradhipatiReport[] = [];
+  for (const bName of natBeneficCandidates) {
+    const owned = ownedHousesByPlanet[bName] || [];
+    const kendras = owned.filter((h) => h === 4 || h === 7 || h === 10);
+    const hasTrikona = owned.some((h) => h === 1 || h === 5 || h === 9);
+    if (kendras.length >= 1 && !hasTrikona && (kendras.length === 2 || bName === 'Jupiter' || bName === 'Venus')) {
+      const pos = findP(bName);
+      const d9Pos = d9?.placements.find((pl) => pl.name === bName);
+      const d9Dig = d9Pos ? getDignity(bName, d9Pos.signIndex) : 'Neutral';
+      const trikonaLords: string[] = [houseLord(5), houseLord(9)];
+      const withTrikonaLord = Boolean(
+        pos && realPlanets.some((o) => trikonaLords.includes(o.name) && o.signIndex === pos.signIndex)
+      );
+      const mitigated =
+        Boolean(pos && (pos.dignity === 'Own Sign' || pos.dignity === 'Exalted' || [6, 8, 12].includes(pos.house))) ||
+        withTrikonaLord ||
+        d9Dig === 'Exalted' ||
+        d9Dig === 'Own Sign';
+      kendradhipati.push({
+        planet: bName,
+        kendraHousesOwned: kendras,
+        hasTrikonaLordship: hasTrikona,
+        isActive: kendras.length >= 2 || (bName === 'Jupiter' && kendras.length >= 1),
+        mitigated,
+        notes: mitigated
+          ? `${bName} owns Kendra(s) ${kendras.join('/')} without 5/9, mitigated by ${pos?.dignity || 'D9/placement'}.`
+          : `${bName} owns Kendra(s) ${kendras.join('/')} without Trikona lordship, making expression procedural or conditional.`,
+      });
+    }
+  }
+
+  // D. Neecha Bhanga Scanner (7 classical planets Sun..Saturn)
+  const exaltLordOfSign = (signIdx: number): string | undefined =>
+    Object.entries(EXALT_SIGNS).find(([, s]) => s === signIdx)?.[0];
+  const SEVEN_CLASSICAL = new Set(['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn']);
+
+  const neechaBhanga: NeechaBhangaReport[] = [];
+  for (const p of realPlanets) {
+    if (!SEVEN_CLASSICAL.has(p.name) || p.dignity !== 'Debilitated') continue;
+    const conditionsMet: string[] = [];
+    const signLord = findP(SIGN_LORDS[p.signIndex]);
+    if (isInKendraFrom(signLord, ascSign) || isInKendraFrom(signLord, moonSign)) {
+      conditionsMet.push(`Dispositor ${SIGN_LORDS[p.signIndex]} in Kendra from Lagna/Moon`);
+    }
+    const exaltLordName = SIGN_LORDS[EXALT_SIGNS[p.name] ?? 0];
+    const exaltSignLord = findP(exaltLordName);
+    if (isInKendraFrom(exaltSignLord, ascSign) || isInKendraFrom(exaltSignLord, moonSign)) {
+      conditionsMet.push(`Exaltation sign lord ${exaltLordName} in Kendra from Lagna/Moon`);
+    }
+    const exaltsHere = exaltLordOfSign(p.signIndex);
+    const exaltsHerePos = exaltsHere ? findP(exaltsHere) : undefined;
+    if (isInKendraFrom(exaltsHerePos, ascSign) || isInKendraFrom(exaltsHerePos, moonSign)) {
+      conditionsMet.push(`${exaltsHere} (which exalts in ${p.sign}) sits in Kendra`);
+    }
+    if (signLord && doesPlanetAspectSign(signLord, p.signIndex)) {
+      conditionsMet.push(`Aspected by sign dispositor ${signLord.name}`);
+    }
+    const d9Pos = d9?.placements.find((pl) => pl.name === p.name);
+    const d9Dig = d9Pos ? getDignity(p.name, d9Pos.signIndex) : 'Neutral';
+    if (d9Dig === 'Exalted' || d9Dig === 'Own Sign') {
+      conditionsMet.push(`Uplifted in D9 Navamsa (${d9Dig} in ${SIGNS[d9Pos?.signIndex ?? 0]})`);
+    }
+    neechaBhanga.push({
+      planet: p.name,
+      sign: p.sign,
+      house: p.house,
+      isCancelled: conditionsMet.length > 0,
+      conditionsMet,
+    });
+  }
+
+  // E. Dosha Scanner
+  const doshas: StructuralDoshaItem[] = [];
+  const saturn = findP('Saturn');
+  const mars = findP('Mars');
+  const rahu = findP('Rahu');
+  const ketu = findP('Ketu');
+  const sun = findP('Sun');
+  const jupiter = findP('Jupiter');
+  const venus = findP('Venus');
+
+  // 1. Punarphoo (Saturn–Moon mutual/same-sign/aspect link)
+  if (saturn && moon) {
+    const linked =
+      saturn.signIndex === moon.signIndex ||
+      doesPlanetAspectSign(saturn, moon.signIndex) ||
+      moon.nakshatraLord === 'Saturn' ||
+      (moon.signIndex === 9 || moon.signIndex === 10) && saturn.house === moon.house;
+    if (linked) {
+      const jupMitigates = Boolean(jupiter && doesPlanetAspectSign(jupiter, moon.signIndex));
+      doshas.push({
+        slug: 'punarphoo',
+        name: 'Punarphoo (Saturn-Moon Link)',
+        active: true,
+        severity: saturn.signIndex === moon.signIndex ? 7 : jupMitigates ? 4 : 6,
+        planets: ['Saturn', 'Moon'],
+        cancelledOrMitigated: jupMitigates,
+        notes: jupMitigates
+          ? 'Saturn links with Moon creating emotional caution/delays, moderated by Jupiter aspect.'
+          : 'Saturn aspects/conjoins Moon; suggests emotional restraint, over-thinking, or delayed commitment milestones.',
+      });
+    }
+  }
+
+  // 2. Angarak (Mars + Rahu)
+  if (mars && rahu && mars.signIndex === rahu.signIndex) {
+    const orb = circularDist(mars.longitude, rahu.longitude);
+    const jupAspect = Boolean(jupiter && doesPlanetAspectSign(jupiter, mars.signIndex));
+    doshas.push({
+      slug: 'angarak',
+      name: 'Angarak Yoga (Mars + Rahu)',
+      active: true,
+      severity: orb <= 8 ? (jupAspect ? 6 : 8) : 5,
+      planets: ['Mars', 'Rahu'],
+      cancelledOrMitigated: jupAspect,
+      notes: `Mars & Rahu conjunct in ${mars.sign} (orb ${orb.toFixed(1)}°)${jupAspect ? ', tempered by Jupiter aspect' : ''}.`,
+    });
+  }
+
+  // 3. Shrapit (Saturn + Rahu)
+  if (saturn && rahu && saturn.signIndex === rahu.signIndex) {
+    const jupAspect = Boolean(jupiter && doesPlanetAspectSign(jupiter, saturn.signIndex));
+    doshas.push({
+      slug: 'shrapit',
+      name: 'Shrapit Yoga (Saturn + Rahu)',
+      active: true,
+      severity: jupAspect ? 5 : 7,
+      planets: ['Saturn', 'Rahu'],
+      cancelledOrMitigated: jupAspect,
+      notes: `Saturn & Rahu in ${saturn.sign}${jupAspect ? ' with Jupiter mitigation' : ''}.`,
+    });
+  }
+
+  // 4. Grahan (Sun/Moon conjunct Nodes within 12 deg)
+  for (const lum of [sun, moon]) {
+    if (!lum) continue;
+    for (const node of [rahu, ketu]) {
+      if (!node) continue;
+      if (lum.signIndex === node.signIndex && circularDist(lum.longitude, node.longitude) <= 12) {
+        const jupAspect = Boolean(jupiter && doesPlanetAspectSign(jupiter, lum.signIndex));
+        doshas.push({
+          slug: `grahan_${lum.name.toLowerCase()}`,
+          name: `Grahan (${lum.name} + ${node.name})`,
+          active: true,
+          severity: jupAspect ? 4 : 7,
+          planets: [lum.name, node.name],
+          cancelledOrMitigated: jupAspect,
+          notes: `${lum.name} within ${circularDist(lum.longitude, node.longitude).toFixed(1)}° of ${node.name} in ${lum.sign}.`,
+        });
+      }
+    }
+  }
+
+  // 5. Kemadruma with cancellation test
+  if (moon) {
+    const nextFromMoon = (moon.signIndex + 1) % 12;
+    const prevFromMoon = (moon.signIndex + 11) % 12;
+    const realFive = ['Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
+    const flanking = realPlanets.filter(
+      (p) => realFive.includes(p.name) && (p.signIndex === nextFromMoon || p.signIndex === prevFromMoon)
+    );
+    if (flanking.length === 0) {
+      const hasKendraFromMoon = realPlanets.some(
+        (p) => realFive.includes(p.name) && [0, 3, 6, 9].includes((p.signIndex - moon.signIndex + 12) % 12)
+      );
+      const jupAspectsMoon = Boolean(jupiter && doesPlanetAspectSign(jupiter, moon.signIndex));
+      const cancelled = hasKendraFromMoon || jupAspectsMoon;
+      doshas.push({
+        slug: 'kemadruma',
+        name: cancelled ? 'Kemadruma Bhanga (Cancelled)' : 'Kemadruma Yoga',
+        active: !cancelled,
+        severity: cancelled ? 2 : 6,
+        planets: ['Moon'],
+        cancelledOrMitigated: cancelled,
+        notes: cancelled
+          ? 'Empty 2nd/12th from Moon is cancelled by Kendra planetary support or Jupiter aspect.'
+          : 'No planets flanking 2nd/12th from Moon; favors deliberate emotional anchors.',
+      });
+    }
+  }
+
+  // 6. Papakartari on Lagna (1H) or 7H
+  const isNaturalMalefic = (name: string) =>
+    NATURAL_MALEFICS.has(name) || (name === 'Moon' && !isMoonWaxing);
+  for (const targetH of [1, 7, 10]) {
+    const prevH = targetH === 1 ? 12 : targetH - 1;
+    const nextH = targetH === 12 ? 1 : targetH + 1;
+    const prevMal = realPlanets.filter((p) => p.house === prevH && isNaturalMalefic(p.name)).map((p) => p.name);
+    const nextMal = realPlanets.filter((p) => p.house === nextH && isNaturalMalefic(p.name)).map((p) => p.name);
+    const prevBen = realPlanets.some((p) => p.house === prevH && !isNaturalMalefic(p.name));
+    const nextBen = realPlanets.some((p) => p.house === nextH && !isNaturalMalefic(p.name));
+    if (prevMal.length > 0 && nextMal.length > 0 && !prevBen && !nextBen) {
+      doshas.push({
+        slug: `papakartari_h${targetH}`,
+        name: `Papakartari on House ${targetH}`,
+        active: true,
+        severity: 6,
+        planets: [...prevMal, ...nextMal],
+        cancelledOrMitigated: false,
+        notes: `House ${targetH} is hemmed between malefics (${prevMal.join(',')} in H${prevH}, ${nextMal.join(',')} in H${nextH}).`,
+      });
+    }
+  }
+
+  // 7. Financial & Structural Checks (2L in 12H, Daridra, 10L combust, 7L in 6/8/12)
+  const l2 = findP(houseLord(2));
+  const l7 = findP(houseLord(7));
+  const l10 = findP(houseLord(10));
+  const l11 = findP(houseLord(11));
+
+  if (l2 && l2.house === 12) {
+    doshas.push({
+      slug: '2l_in_12h',
+      name: '2nd Lord in 12th House (Outflow Leakage)',
+      active: true,
+      severity: l2.dignity === 'Exalted' || l2.dignity === 'Own Sign' ? 3 : 5,
+      planets: [l2.name],
+      cancelledOrMitigated: l2.dignity === 'Exalted' || l2.dignity === 'Own Sign',
+      notes: `2nd lord ${l2.name} in 12th indicates high expenses or foreign/investment outflow unless structured.`,
+    });
+  }
+
+  if (l11 && [6, 8, 12].includes(l11.house)) {
+    const jupRescue = Boolean(jupiter && doesPlanetAspectSign(jupiter, l11.signIndex));
+    const sav11 = ashtakavarga?.sarva[(ascSign + 10) % 12] ?? 25;
+    doshas.push({
+      slug: 'daridra_11l',
+      name: 'Daridra / 11th Lord in Dusthana',
+      active: !jupRescue && sav11 < 25,
+      severity: jupRescue || sav11 >= 28 ? 3 : 6,
+      planets: [l11.name],
+      cancelledOrMitigated: jupRescue || sav11 >= 28,
+      notes: `11th lord ${l11.name} in H${l11.house} (11H SAV=${sav11})${jupRescue ? ', Jupiter aspect supports recovery' : ''}.`,
+    });
+  }
+
+  if (l10 && conditions.find((c) => c.planet === l10.name)?.isCombust) {
+    doshas.push({
+      slug: '10l_combust',
+      name: '10th Lord Combust',
+      active: true,
+      severity: 5,
+      planets: [l10.name],
+      cancelledOrMitigated: Boolean(conditions.find((c) => c.planet === l10.name)?.isVargottama),
+      notes: `Career lord ${l10.name} is combust near Sun; public recognition may require behind-the-scenes leadership.`,
+    });
+  }
+
+  if (l7 && [6, 8, 12].includes(l7.house)) {
+    const venD9 = d9?.placements.find((pl) => pl.name === 'Venus');
+    const venD9Dig = venD9 ? getDignity('Venus', venD9.signIndex) : 'Neutral';
+    const rescued = venD9Dig === 'Exalted' || venD9Dig === 'Own Sign' || Boolean(venus && venus.house !== 6 && venus.house !== 8);
+    doshas.push({
+      slug: '7l_dusthana',
+      name: `7th Lord in ${l7.house}th House`,
+      active: true,
+      severity: rescued ? 4 : 6,
+      planets: [l7.name],
+      cancelledOrMitigated: rescued,
+      notes: `7th lord ${l7.name} sits in H${l7.house} (${l7.sign}); interpret via D9 Venus & KP 7th CSL before assuming difficulty.`,
+    });
+  }
+
+  return {
+    badhaka,
+    marakaPlanets,
+    kendradhipati,
+    neechaBhanga,
+    doshas,
+  };
+}
+
+// 6. Dispositor Chain & Final Dispositors
+export function computeDispositorChain(planets: PlanetPosition[]): DispositorChainReport {
+  const seven = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
+  const links: Array<{ planet: string; sign: string; dispositor: string }> = [];
+  const finalDispositors: string[] = [];
+  const mutualReceptions: Array<[string, string]> = [];
+
+  for (const name of seven) {
+    const p = planets.find((x) => x.name === name);
+    if (!p) continue;
+    const disp = SIGN_LORDS[p.signIndex];
+    links.push({ planet: name, sign: p.sign, dispositor: disp });
+    if (disp === name) {
+      finalDispositors.push(name);
+    }
+  }
+
+  const seenPairs = new Set<string>();
+  for (const a of links) {
+    if (a.planet === a.dispositor) continue;
+    const b = links.find((l) => l.planet === a.dispositor);
+    if (b && b.dispositor === a.planet) {
+      const pairKey = [a.planet, b.planet].sort().join('-');
+      if (!seenPairs.has(pairKey)) {
+        seenPairs.add(pairKey);
+        mutualReceptions.push([a.planet, b.planet]);
+      }
+    }
+  }
+
+  return { links, finalDispositors, mutualReceptions };
+}
+
+// 7. Planetary Health Index (0–100)
+export function computePlanetaryHealthIndex(params: {
+  planets: PlanetPosition[];
+  vargas: Record<string, { ascendantSignIndex: number; placements: Array<{ name: string; signIndex: number; sign: string; house: number }> }>;
+  shadbala: ShadbalaReport;
+  conditions: PlanetaryConditionRow[];
+  structuralFlags: StructuralFlagsReport;
+  bhavaChalit?: BhavaChalitReport;
+}): PlanetaryHealthRow[] {
+  const { planets, vargas, shadbala, conditions, structuralFlags, bhavaChalit } = params;
+  const realPlanets = planets.filter((p) => p.name !== 'Ascendant');
+  const isMoonWaxing = getMoonWaxingStatus(planets);
+  const d9 = vargas.D9;
+  const multiDivs = ['D10', 'D2', 'D4', 'D7', 'D60'];
+
+  return realPlanets.map((p) => {
+    const factors: string[] = [];
+    let d1Score = 36;
+
+    // Dignity
+    if (p.dignity === 'Exalted') {
+      d1Score += 18;
+      factors.push('Exalted D1 (+18)');
+    } else if (p.dignity === 'Own Sign') {
+      d1Score += 14;
+      factors.push('Own Sign D1 (+14)');
+    } else if (p.dignity === 'Debilitated') {
+      d1Score -= 16;
+      factors.push('Debilitated D1 (-16)');
+    } else {
+      const signLord = SIGN_LORDS[p.signIndex];
+      const rel = NATURAL_FRIENDS[p.name];
+      if (rel?.friends.includes(signLord)) d1Score += 6;
+      else if (rel?.enemies.includes(signLord)) d1Score -= 5;
+    }
+
+    // Neecha Bhanga rescue
+    const nb = structuralFlags.neechaBhanga.find((n) => n.planet === p.name && n.isCancelled);
+    if (nb) {
+      d1Score += 12;
+      factors.push('Neecha Bhanga (+12)');
+    }
+
+    // House placement
+    if ([1, 4, 5, 7, 9, 10].includes(p.house)) {
+      d1Score += 7;
+    } else if ([3, 11].includes(p.house)) {
+      d1Score += 4;
+    } else if ([6, 8, 12].includes(p.house)) {
+      d1Score -= 7;
+      factors.push(`Dusthana H${p.house} (-7)`);
+    }
+
+    // Shadbala ratio
+    const sb = shadbala.planets.find((r) => r.planet === p.name);
+    if (sb) {
+      if (sb.ratio >= 1.25) {
+        d1Score += 10;
+        factors.push(`Shadbala ${sb.ratio}x (+10)`);
+      } else if (sb.ratio >= 1.0) {
+        d1Score += 6;
+      } else if (sb.ratio < 0.75) {
+        d1Score -= 8;
+        factors.push(`Low Shadbala ${sb.ratio}x (-8)`);
+      }
+    }
+
+    // Condition (Combustion, Retrograde, Nakshatra Lord)
+    const cond = conditions.find((c) => c.planet === p.name);
+    if (cond?.isCombust) {
+      const pen = p.isRetrograde || cond.isVargottama ? -6 : -12;
+      d1Score += pen;
+      factors.push(`Combust (${pen})`);
+    }
+    if (p.isRetrograde && p.name !== 'Rahu' && p.name !== 'Ketu') {
+      d1Score += 4;
+      factors.push('Retrograde Cheshta (+4)');
+    }
+
+    // Papakartari on planet sign
+    const prevS = (p.signIndex + 11) % 12;
+    const nextS = (p.signIndex + 1) % 12;
+    const isMal = (name: string) => NATURAL_MALEFICS.has(name) || (name === 'Moon' && !isMoonWaxing);
+    const hasPrevMal = realPlanets.some((o) => o.signIndex === prevS && isMal(o.name));
+    const hasNextMal = realPlanets.some((o) => o.signIndex === nextS && isMal(o.name));
+    const hasSideBen = realPlanets.some(
+      (o) => (o.signIndex === prevS || o.signIndex === nextS) && !isMal(o.name)
+    );
+    const isPapakartari = hasPrevMal && hasNextMal && !hasSideBen;
+    if (isPapakartari) {
+      d1Score -= 7;
+      factors.push('Papakartari (-7)');
+    }
+
+    // Bhava Chalit shift note
+    const shift = bhavaChalit?.shifts.find((s) => s.planet === p.name && s.shifted);
+    if (shift) {
+      factors.push(`Chalit H${shift.rashiHouse}->H${shift.chalitHouse}`);
+    }
+
+    d1Score = Math.max(0, Math.min(70, Math.round(d1Score)));
+
+    // D9 Modifier (-15..+15)
+    let d9Modifier = 0;
+    const d9Pos = d9?.placements.find((pl) => pl.name === p.name);
+    if (d9Pos) {
+      const d9Dig = getDignity(p.name, d9Pos.signIndex);
+      if (d9Dig === 'Exalted') {
+        d9Modifier += 13;
+        factors.push('D9 Exalted (+13)');
+      } else if (d9Dig === 'Own Sign') {
+        d9Modifier += 10;
+        factors.push('D9 Own (+10)');
+      } else if (d9Dig === 'Debilitated') {
+        d9Modifier -= cond?.isVargottama ? 4 : 12;
+        factors.push('D9 Debilitated (-12)');
+      }
+      if ([1, 4, 5, 7, 9, 10].includes(d9Pos.house)) d9Modifier += 2;
+      else if ([6, 8, 12].includes(d9Pos.house)) d9Modifier -= 3;
+    }
+    d9Modifier = Math.max(-15, Math.min(15, d9Modifier));
+
+    // Multi-Varga Bonus (-15..+15)
+    let multiVargaBonus = 0;
+    if (cond?.isVargottama) {
+      multiVargaBonus += 8;
+      factors.push('Vargottama (+8)');
+    }
+    for (const divKey of multiDivs) {
+      const vp = vargas[divKey]?.placements.find((pl) => pl.name === p.name);
+      if (!vp) continue;
+      const vDig = getDignity(p.name, vp.signIndex);
+      if (vDig === 'Exalted' || vDig === 'Own Sign') multiVargaBonus += 2;
+      else if (vDig === 'Debilitated') multiVargaBonus -= 2;
+    }
+    multiVargaBonus = Math.max(-15, Math.min(15, multiVargaBonus));
+
+    const totalScore = Math.max(0, Math.min(100, d1Score + d9Modifier + multiVargaBonus));
+    const tier: PlanetaryHealthRow['tier'] =
+      totalScore >= 85
+        ? 'Elite'
+        : totalScore >= 70
+        ? 'Strong'
+        : totalScore >= 55
+        ? 'Moderate'
+        : totalScore >= 40
+        ? 'Weak'
+        : 'Compromised';
+
+    return {
+      planet: p.name,
+      d1Score,
+      d9Modifier,
+      multiVargaBonus,
+      totalScore,
+      tier,
+      isNeechaBhanga: Boolean(nb),
+      isPapakartari,
+      factors,
+    };
+  });
+}
+
+// 8. Scored Yoga Registry (Yoga Strength Index 0–110)
+export function computeScoredYogaRegistry(params: {
+  planets: PlanetPosition[];
+  vargas: Record<string, { ascendantSignIndex: number; placements: Array<{ name: string; signIndex: number; sign: string; house: number }> }>;
+  conditions: PlanetaryConditionRow[];
+  planetaryHealth: PlanetaryHealthRow[];
+  structuralFlags: StructuralFlagsReport;
+}): ScoredYogaItem[] {
+  const { planets, vargas, conditions, planetaryHealth, structuralFlags } = params;
+  const baseYogas = [...computeMajorYogas(planets)];
+
+  // Append active Neecha Bhanga Raja Yogas & Parivartana Yogas
+  for (const nb of structuralFlags.neechaBhanga) {
+    if (nb.isCancelled) {
+      baseYogas.push({
+        name: `Neecha Bhanga Raja Yoga (${nb.planet})`,
+        category: 'Raja Yoga',
+        planets: [nb.planet],
+        summary: `${nb.planet} debilitation cancelled (${nb.conditionsMet[0] || 'classical cancel'}), converting early friction into mature authority.`,
+      });
+    }
+  }
+
+  // Parivartana checks (mutual sign exchange among 7 core planets)
+  const ascSign = planets.find((p) => p.name === 'Ascendant')?.signIndex ?? 0;
+  const houseLord = (h: number) => SIGN_LORDS[(ascSign + h - 1) % 12];
+  const seven = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
+  const seenExch = new Set<string>();
+  for (const aName of seven) {
+    const a = planets.find((p) => p.name === aName);
+    if (!a) continue;
+    const bName = SIGN_LORDS[a.signIndex];
+    if (bName === aName) continue;
+    const b = planets.find((p) => p.name === bName);
+    if (b && SIGN_LORDS[b.signIndex] === aName) {
+      const key = [aName, bName].sort().join('-');
+      if (!seenExch.has(key)) {
+        seenExch.add(key);
+        const dusthanaInvolvement = [6, 8, 12].includes(a.house) || [6, 8, 12].includes(b.house);
+        const typeLabel = dusthanaInvolvement ? 'Dainya Parivartana' : 'Maha Parivartana';
+        baseYogas.push({
+          name: `${typeLabel} Yoga (${aName} ↔ ${bName})`,
+          category: dusthanaInvolvement ? 'Special' : 'Raja Yoga',
+          planets: [aName, bName],
+          summary: `Mutual sign exchange between ${aName} (H${a.house}) and ${bName} (H${b.house}); creates a closed reinforcement loop.`,
+        });
+      }
+    }
+  }
+  void houseLord;
+
+  const d9 = vargas.D9;
+  const scored: ScoredYogaItem[] = baseYogas.map((y) => {
+    const involved = y.planets
+      .map((name) => planets.find((p) => p.name === name))
+      .filter((p): p is PlanetPosition => Boolean(p));
+
+    // 1. Structural Validity (0..25)
+    let structuralValidity = y.category === 'Challenging' ? 14 : 20;
+    if (y.category === 'Mahapurusha' || y.category === 'Raja Yoga') structuralValidity = 23;
+    if (y.name.includes('Cancelled') || y.name.includes('Bhanga')) structuralValidity = 21;
+
+    // 2. Planetary Strength (0..25) from average PHI
+    const avgPhi =
+      involved.length > 0
+        ? involved.reduce((acc, p) => acc + (planetaryHealth.find((h) => h.planet === p.name)?.totalScore ?? 55), 0) /
+          involved.length
+        : 55;
+    const planetaryStrength = Math.max(0, Math.min(25, Math.round((avgPhi / 100) * 25)));
+
+    // 3. D1 Degree Precision (0..25)
+    let d1DegreePrecision = 17;
+    if (involved.length >= 2) {
+      const orb = circularDist(involved[0].longitude, involved[1].longitude);
+      const minAngle = Math.min(orb, Math.abs(orb - 180), Math.abs(orb - 90));
+      d1DegreePrecision = minAngle <= 3 ? 25 : minAngle <= 8 ? 21 : minAngle <= 15 ? 16 : 12;
+    } else if (involved.length === 1) {
+      const deg = involved[0].degreeInSign;
+      d1DegreePrecision = deg >= 5 && deg <= 25 ? 22 : deg >= 1 && deg <= 29 ? 16 : 10;
+    }
+
+    // 4. D9 Reinforcement (0..25)
+    let d9Score = 14;
+    for (const p of involved) {
+      const d9Pl = d9?.placements.find((pl) => pl.name === p.name);
+      const cond = conditions.find((c) => c.planet === p.name);
+      if (cond?.isVargottama) d9Score += 6;
+      if (d9Pl) {
+        const d9Dig = getDignity(p.name, d9Pl.signIndex);
+        if (d9Dig === 'Exalted' || d9Dig === 'Own Sign') d9Score += 5;
+        else if (d9Dig === 'Debilitated') d9Score -= 6;
+      }
+    }
+    const d9Reinforcement = Math.max(0, Math.min(25, d9Score));
+
+    // 5. Classical Bias (+5..+10 only when clean)
+    const hasCombustOrUncancelledDeb = involved.some((p) => {
+      const c = conditions.find((row) => row.planet === p.name);
+      const isUncancelledDeb =
+        p.dignity === 'Debilitated' &&
+        !structuralFlags.neechaBhanga.some((n) => n.planet === p.name && n.isCancelled);
+      return Boolean(c?.isCombust) || isUncancelledDeb;
+    });
+    const classicalBias =
+      !hasCombustOrUncancelledDeb && (y.category === 'Raja Yoga' || y.category === 'Mahapurusha' || y.category === 'Dhana Yoga')
+        ? 8
+        : 0;
+
+    const ysiTotal = Math.max(
+      0,
+      Math.min(110, structuralValidity + planetaryStrength + d1DegreePrecision + d9Reinforcement + classicalBias)
+    );
+
+    const status: ScoredYogaItem['status'] =
+      hasCombustOrUncancelledDeb && ysiTotal < 60
+        ? 'Blocked'
+        : ysiTotal >= 75
+        ? 'Foundational'
+        : ysiTotal >= 62
+        ? 'Active'
+        : ysiTotal >= 48
+        ? 'Conditional'
+        : 'Latent';
+
+    return {
+      ...y,
+      ysiTotal,
+      status,
+      breakdown: {
+        structuralValidity,
+        planetaryStrength,
+        d1DegreePrecision,
+        d9Reinforcement,
+        classicalBias,
+      },
+    };
+  });
+
+  return scored.sort((a, b) => b.ysiTotal - a.ysiTotal);
+}
+
+// 9. Double Transit Overlap Matrix (Jupiter + Saturn + Mars + SAV Volume Knob)
+export function computeDoubleTransitMatrix(params: {
+  natalPlanets: PlanetPosition[];
+  ashtakavarga: AshtakavargaTable;
+  transitPlanets: PlanetPosition[];
+  transitDateISO?: string;
+}): DoubleTransitReport {
+  const { natalPlanets, ashtakavarga, transitPlanets } = params;
+  const ascSign = natalPlanets.find((p) => p.name === 'Ascendant')?.signIndex ?? 0;
+  const moonSign = natalPlanets.find((p) => p.name === 'Moon')?.signIndex ?? ascSign;
+
+  const tJup = transitPlanets.find((p) => p.name === 'Jupiter');
+  const tSat = transitPlanets.find((p) => p.name === 'Saturn');
+  const tMars = transitPlanets.find((p) => p.name === 'Mars');
+
+  const jupSign = tJup?.signIndex ?? 0;
+  const satSign = tSat?.signIndex ?? 0;
+  const marsSign = tMars?.signIndex ?? 0;
+
+  const jupTargets = new Set([0, 4, 6, 8].map((o) => (jupSign + o) % 12));
+  const satTargets = new Set([0, 2, 6, 9].map((o) => (satSign + o) % 12));
+  const marsTargets = new Set([0, 3, 6, 7].map((o) => (marsSign + o) % 12));
+
+  const houses: DoubleTransitHouseRow[] = [];
+  const doubleTransitHouses: number[] = [];
+
+  for (let h = 1; h <= 12; h++) {
+    const signIndex = (ascSign + h - 1) % 12;
+    const houseFromMoon = ((signIndex - moonSign + 12) % 12) + 1;
+    const jupiterActivated = Boolean(tJup && jupTargets.has(signIndex));
+    const saturnActivated = Boolean(tSat && satTargets.has(signIndex));
+    const doubleTransitActive = jupiterActivated && saturnActivated;
+    const marsTriggered = Boolean(tMars && marsTargets.has(signIndex));
+    if (doubleTransitActive) doubleTransitHouses.push(h);
+
+    const savBindus = ashtakavarga.sarva[signIndex] ?? 25;
+    const savVolumeBand: DoubleTransitHouseRow['savVolumeBand'] =
+      savBindus >= 28 ? 'High (>=28)' : savBindus >= 20 ? 'Standard (20-27)' : 'Low (<20)';
+
+    houses.push({
+      house: h,
+      houseFromMoon,
+      signIndex,
+      sign: SIGNS[signIndex],
+      jupiterActivated,
+      saturnActivated,
+      doubleTransitActive,
+      marsTriggered,
+      savBindus,
+      savVolumeBand,
+      jupiterBav: ashtakavarga.bhinna.Jupiter?.[signIndex] ?? 4,
+      saturnBav: ashtakavarga.bhinna.Saturn?.[signIndex] ?? 4,
+    });
+  }
+
+  return {
+    transitDate: params.transitDateISO || new Date().toISOString().slice(0, 10),
+    jupiterSign: tJup?.sign || 'Unknown',
+    saturnSign: tSat?.sign || 'Unknown',
+    marsSign: tMars?.sign || 'Unknown',
+    doubleTransitHouses,
+    houses,
+  };
+}
+
+// 10. Current + Upcoming Next Sign-Change Transit Pairs (Zero External API Cost)
+function computeSiderealSlowLongitudesAtJD(jd: number): {
+  Jupiter: number;
+  Saturn: number;
+  Rahu: number;
+  Ketu: number;
+} {
+  const d = jd - 2451543.5;
+  const toRad = Math.PI / 180;
+  const toDeg = 180 / Math.PI;
+  const lahiri = getLahiriAyanamsaApprox(jd);
+  const precession = 1.39697 * ((jd - 2451545.0) / 36525.0);
+
+  const solveKepler = (Mdeg: number, e: number): number => {
+    const M = normalizeDeg(Mdeg) * toRad;
+    let E = M + e * Math.sin(M) * (1 + e * Math.cos(M));
+    for (let k = 0; k < 6; k++) {
+      E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    }
+    return E;
+  };
+
+  const helioXY = (N: number, i: number, w: number, a: number, e: number, M: number) => {
+    const E = solveKepler(M, e);
+    const xv = a * (Math.cos(E) - e);
+    const yv = a * Math.sqrt(1 - e * e) * Math.sin(E);
+    const v = Math.atan2(yv, xv);
+    const r = Math.hypot(xv, yv);
+    const Nrad = N * toRad;
+    const irad = i * toRad;
+    const vw = v + w * toRad;
+    const xh = r * (Math.cos(Nrad) * Math.cos(vw) - Math.sin(Nrad) * Math.sin(vw) * Math.cos(irad));
+    const yh = r * (Math.sin(Nrad) * Math.cos(vw) + Math.cos(Nrad) * Math.sin(vw) * Math.cos(irad));
+    return { xh, yh };
+  };
+
+  // Earth
+  const wSun = 282.9404 + 4.70935e-5 * d;
+  const eSun = 0.016709 - 1.151e-9 * d;
+  const MSun = 356.047 + 0.9856002585 * d;
+  const ESun = solveKepler(MSun, eSun);
+  const xvS = Math.cos(ESun) - eSun;
+  const yvS = Math.sqrt(1 - eSun * eSun) * Math.sin(ESun);
+  const lSun = Math.atan2(yvS, xvS) + wSun * toRad;
+  const rSun = Math.hypot(xvS, yvS);
+  const xe = -rSun * Math.cos(lSun);
+  const ye = -rSun * Math.sin(lSun);
+
+  const siderealGeo = (xh: number, yh: number) =>
+    normalizeDeg(Math.atan2(yh - ye, xh - xe) * toDeg + precession - lahiri);
+
+  // Jupiter & Saturn (Schlyter/Meeus elements)
+  const ju = helioXY(100.4542 + 2.76854e-5 * d, 1.303 - 1.557e-7 * d, 273.8777 + 1.64505e-5 * d, 5.20256, 0.048498 + 4.469e-9 * d, 19.895 + 0.0830853001 * d);
+  const sa = helioXY(113.6634 + 2.3898e-5 * d, 2.4886 - 1.081e-7 * d, 339.3939 + 2.97661e-5 * d, 9.55475, 0.055546 - 9.499e-9 * d, 316.967 + 0.0334442282 * d);
+
+  // Mean Lunar Node (Rahu)
+  const T = (jd - 2451545.0) / 36525.0;
+  const rahuTrop = normalizeDeg(125.04452 - 1934.136261 * T + 0.0020708 * T * T);
+  const rahuSid = normalizeDeg(rahuTrop - lahiri);
+
+  return {
+    Jupiter: siderealGeo(ju.xh, ju.yh),
+    Saturn: siderealGeo(sa.xh, sa.yh),
+    Rahu: rahuSid,
+    Ketu: normalizeDeg(rahuSid + 180),
+  };
+}
+
+export function computeSlowPlanetTransitPairs(
+  siderealTransitPlanets: PlanetPosition[],
+  transitDateISO: string
+): SlowPlanetTransitPair[] {
+  const [y, m, d] = (transitDateISO || new Date().toISOString().slice(0, 10)).split('-').map(Number);
+  const baseJd = toJulianDay(y || 2026, m || 1, d || 1, 12);
+  const targetNames: Array<'Jupiter' | 'Saturn' | 'Rahu' | 'Ketu'> = ['Jupiter', 'Saturn', 'Rahu', 'Ketu'];
+  const maxDays = 1150; // ~3.15 years lookahead covers Saturn & Rahu/Ketu ingresses cleanly
+
+  return targetNames.map((pName) => {
+    const apiPos = siderealTransitPlanets.find((p) => p.name === pName);
+    const baseMath = computeSiderealSlowLongitudesAtJD(baseJd);
+    const currentSignIndex = apiPos?.signIndex ?? Math.floor(baseMath[pName] / 30) % 12;
+    const currentDegreeInSign = apiPos?.degreeInSign ?? Number((baseMath[pName] % 30).toFixed(2));
+    const isRetrograde = apiPos?.isRetrograde ?? (pName === 'Rahu' || pName === 'Ketu');
+
+    let daysUntilIngress = 365;
+    let nextSignIndex = (currentSignIndex + (pName === 'Rahu' || pName === 'Ketu' ? 11 : 1)) % 12;
+    let direction: 'forward' | 'backward' = pName === 'Rahu' || pName === 'Ketu' ? 'backward' : 'forward';
+
+    // Step weekly first, then refine by single day around sign boundary
+    let foundDay = -1;
+    for (let day = 7; day <= maxDays; day += 7) {
+      const lon = computeSiderealSlowLongitudesAtJD(baseJd + day)[pName];
+      const sIdx = Math.floor(lon / 30) % 12;
+      if (sIdx !== currentSignIndex) {
+        for (let fine = Math.max(1, day - 7); fine <= day; fine++) {
+          const fineLon = computeSiderealSlowLongitudesAtJD(baseJd + fine)[pName];
+          const fineSign = Math.floor(fineLon / 30) % 12;
+          if (fineSign !== currentSignIndex) {
+            foundDay = fine;
+            nextSignIndex = fineSign;
+            const forwardDiff = (fineSign - currentSignIndex + 12) % 12;
+            direction = forwardDiff === 1 ? 'forward' : 'backward';
+            break;
+          }
+        }
+        break;
+      }
+    }
+
+    if (foundDay > 0) {
+      daysUntilIngress = foundDay;
+    }
+
+    const baseMs = Date.parse(`${transitDateISO}T12:00:00Z`) || Date.now();
+    const ingressDate = new Date(baseMs + daysUntilIngress * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    return {
+      planet: pName,
+      currentSignIndex,
+      currentSign: SIGNS[currentSignIndex],
+      currentDegreeInSign: Number(currentDegreeInSign.toFixed(2)),
+      isRetrograde,
+      nextSignIndex,
+      nextSign: SIGNS[nextSignIndex],
+      nextIngressApproxDate: ingressDate,
+      daysUntilIngress,
+      direction,
+    };
+  });
+}
+
 

@@ -13,7 +13,14 @@ export type PromptCategory =
   | 'language'
   | 'tool'
   | 'learn'
-  | 'report_step';
+  | 'report_step'
+  | 'formula_cartridge'
+  | 'priority_rule';
+
+export const INTERNAL_ONLY_PROMPT_CATEGORIES = new Set<PromptCategory>([
+  'formula_cartridge',
+  'priority_rule',
+]);
 
 export interface PromptCatalogOption {
   slug: string;
@@ -430,6 +437,7 @@ export async function getPublicChatCatalogCached() {
 
     for (const row of rows) {
       if (row.is_active === false) continue;
+      if (INTERNAL_ONLY_PROMPT_CATEGORIES.has(row.category as PromptCategory)) continue;
       const def = defaultMetaBySlug.get(row.slug);
       if (typeof row.sort_order === 'number') {
         sortOrderBySlug.set(row.slug, row.sort_order);
