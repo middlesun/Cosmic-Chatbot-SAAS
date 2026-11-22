@@ -1,10 +1,29 @@
 import crypto from 'crypto';
+import type {
+  ChatStyle,
+  CompanionChatCue,
+  CompanionMonogramPalette,
+  CompanionSkillLevel,
+  CompanionTtsVoiceProfile,
+} from '../../components/app/chatTypes';
+import type { LifeContextData } from '../../lib/lifeContextSchema';
+import type { CompiledChartData } from './chartCompiler';
+import type { CompanionPresetRecord } from './companionPresets';
+import {
+  drawTarotSpread,
+  extractNumerologyHintsFromPrompt,
+  formatPythagoreanNumerologyContext,
+  formatTarotSpreadContext,
+  formatTropicalWesternContext,
+} from './divinationEngines';
 import {
   DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
   DEFAULT_COMPANION_ARCHETYPES,
   DEFAULT_COMPANION_CONSTITUTION,
   DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
+  normalizeChatStyle,
 } from './enginePromptDefaults';
+import type { CompanionBondState } from './memoryArchivist';
 import {
   createOpenRouterCompletion,
   getUtilityModel,
@@ -30,6 +49,7 @@ export type CompanionArchetypeSlug =
 
 export interface CompanionPersona {
   id: string;
+  slug?: string;
   name: string;
   age: number;
   gender: 'M' | 'F';
@@ -41,6 +61,12 @@ export interface CompanionPersona {
   conversation_style: string;
   opening_message: string;
   system_prompt: string;
+  avatar_url?: string | null;
+  monogram_palette?: CompanionMonogramPalette;
+  chat_style?: ChatStyle;
+  skill_level?: CompanionSkillLevel;
+  tts_voice_profile?: CompanionTtsVoiceProfile;
+  supports_listening_cue?: boolean;
   topic_context?: string;
   religion_profile?: {
     religiousness: number;
@@ -616,32 +642,330 @@ Return STRICTLY JSON:
   }
 }
 
-export function buildCompanionSystemPrompt(params: {
-  persona: CompanionPersona | null;
+export interface CompanionPromptProfileContext {
+  id?: string;
+  name: string;
+  short_name?: string | null;
+  birth_date?: string | null;
+  birth_time?: string | null;
+  birth_city?: string | null;
+  birth_country?: string | null;
+  gender?: string | null;
+  current_city?: string | null;
+  current_country?: string | null;
+  chart_text_context?: string | null;
+  chart_json?: CompiledChartData | null;
+  life_context_json?: LifeContextData | null;
+}
+
+export interface ReferrableCompanionSummary {
+  slug: string;
+  name: string;
+  primary_expertise: string;
+}
+
+function getLocalHourPeriodLabel(localHour: number | null | undefined): string {
+  if (typeof localHour !== 'number' || !Number.isFinite(localHour)) return '';
+  const h = ((Math.trunc(localHour) % 24) + 24) % 24;
+  if (h >= 22 || h < 5) return 'late at night';
+  if (h >= 5 && h < 9) return 'early morning';
+  if (h >= 9 && h < 12) return 'late morning';
+  if (h >= 12 && h < 17) return 'afternoon';
+  return 'evening';
+}
+
+export function formatHumanTimeAndGapContext(
+  lastInteractionAt?: string | null,
+  clientLocalHour?: number | null
+): string {
+  const parts: string[] = [];
+  const periodLabel = getLocalHourPeriodLabel(clientLocalHour);
+  if (periodLabel) {
+    parts.push(`Local feel right now: ${periodLabel}.`);
+  }
+
+  if (!lastInteractionAt) {
+    parts.push('Interaction cadence: brand-new conversation.');
+  } else {
+    const lastMs = Date.parse(lastInteractionAt);
+    if (Number.isFinite(lastMs)) {
+      const diffHours = Math.max(0, (Date.now() - lastMs) / (1000 * 60 * 60));
+      if (diffHours < 0.75) {
+        parts.push('Interaction cadence: active back-and-forth right now.');
+      } else if (diffHours < 10) {
+        parts.push('Interaction cadence: spoke earlier today.');
+      } else if (diffHours < 36) {
+        parts.push('Interaction cadence: spoke yesterday (~1 day gap).');
+      } else if (diffHours < 24 * 6) {
+        const days = Math.max(2, Math.round(diffHours / 24));
+        parts.push(`Interaction cadence: catching up after ~${days} days away.`);
+      } else if (diffHours < 24 * 25) {
+        const weeks = Math.max(1, Math.round(diffHours / (24 * 7)));
+        parts.push(`Interaction cadence: catching up after ~${weeks} week${weeks > 1 ? 's' : ''} away.`);
+      } else {
+        parts.push('Interaction cadence: reconnecting after a longer quiet stretch.');
+      }
+    }
+  }
+
+  return `HUMAN TIMING AWARENESS (Quiet background cue — NEVER recite numbers or say "according to my logs"; weave warmth naturally only if it fits):
+${parts.join(' ')}`;
+}
+
+function formatLightweightLifeStageSummary(profile: CompanionPromptProfileContext): string {
+  const lines: string[] = [];
+  const firstName = profile.short_name?.trim() || profile.name?.trim();
+  if (firstName) lines.push(`Name on profile: ${firstName}`);
+  if (profile.birth_date) {
+    const birthYear = Number(String(profile.birth_date).slice(0, 4));
+    const currentYear = new Date().getFullYear();
+    if (Number.isFinite(birthYear) && birthYear > 1920 && birthYear < currentYear - 10) {
+      lines.push(`Approximate age: ~${currentYear - birthYear}`);
+    }
+  }
+  if (profile.gender?.trim()) lines.push(`Gender: ${profile.gender.trim()}`);
+  const location = [profile.current_city, profile.current_country].filter(Boolean).join(', ');
+  if (location) lines.push(`Current city: ${location}`);
+
+  const lc = profile.life_context_json;
+  if (lc && typeof lc === 'object') {
+    if (lc.career_mode) lines.push(`Career context: ${String(lc.career_mode).replace(/_/g, ' ')}`);
+    if (lc.relationship_status) {
+      lines.push(`Relationship status: ${String(lc.relationship_status).replace(/_/g, ' ')}`);
+    }
+    if (Array.isArray(lc.core_stress_areas) && lc.core_stress_areas.length > 0) {
+      lines.push(`Current life themes: ${lc.core_stress_areas.slice(0, 4).join('; ')}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function looksLikeEsotericInvite(userPrompt: string, skillLevel: CompanionSkillLevel): boolean {
+  const text = String(userPrompt || '').toLowerCase();
+  if (!text) return false;
+  if (skillLevel === 'tarot') {
+    return /\b(tarot|card|cards|pull|draw|spread|reading|oracle|sign)\b/.test(text);
+  }
+  if (skillLevel === 'numerology') {
+    return /\b(number|numbers|numerology|life path|expression|destiny|date|birthday)\b/.test(text);
+  }
+  if (skillLevel === 'past_life') {
+    return /\b(past life|karma|karmic|soul|pattern|dream|deja vu|ketu|node)\b/.test(text);
+  }
+  return /\b(chart|astrology|planet|planets|transit|dasha|horoscope|rising|moon|saturn|mercury|retrograde|venus|jupiter|house|sign|birth)\b/.test(
+    text
+  );
+}
+
+function buildCompanionSkillAndProfileBlock(params: {
+  skillLevel: CompanionSkillLevel;
+  userPrompt: string;
+  historyMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  userDefaultProfile?: CompanionPromptProfileContext | null;
+}): string {
+  const { skillLevel, userDefaultProfile, userPrompt } = params;
+
+  if (skillLevel === 'none_emotional') {
+    const lightCtx = userDefaultProfile ? formatLightweightLifeStageSummary(userDefaultProfile) : '';
+    return `USER PROFILE AWARENESS & SKILL BOUNDARY:
+- You are purely a human emotional companion/friend — NOT an astrologer, tarot reader, or numerologist.
+- NEVER recite planetary degrees, zodiac traits, Dashas, or tarot pulls, and never pretend to cast charts.
+- If the user specifically asks for an astrology chart check, tarot pull, or numerology insight, warmly explain that isn't your specialty and offer to connect them with the right companion (using the referral tag at the bottom).
+${
+  lightCtx
+    ? `Quiet background context about who you're talking with (use only invisibly to understand their season of life — never announce you read their profile card):\n${lightCtx}`
+    : 'No personal birth profile is filled out yet — completely fine for chatting naturally.'
+}`;
+  }
+
+  // Esoteric-skilled companions (astrology_soft, vedic_soft, tarot, numerology, past_life)
+  const invited = looksLikeEsotericInvite(userPrompt, skillLevel);
+  const blocks: string[] = [];
+
+  blocks.push(`90/10 HUMAN-FIRST RULE & BIRTH DATA HARMONY:
+- Be 90% warm, grounded, real friend and 10% subtle intuitive craft. Never turn a casual check-in or emotional vent into a textbook lecture.
+- Only bring up planets, cards, or numbers when the user directly invites it OR a brief, plain-English metaphor genuinely comforts or clarifies what they asked.`);
+
+  if (userDefaultProfile) {
+    blocks.push(
+      `VERIFIED BIRTH DATA ALREADY ATTACHED: You already have ${userDefaultProfile.name}'s verified birth profile below. NEVER ask them again for their birth date, birth time, or birthplace — unless they specifically ask about someone else (like a partner or friend) whose chart is not here.`
+    );
+
+    if (skillLevel === 'astrology_soft') {
+      const locationLabel = [userDefaultProfile.current_city, userDefaultProfile.current_country]
+        .filter(Boolean)
+        .join(', ');
+      const tropical = formatTropicalWesternContext({
+        chartJson: userDefaultProfile.chart_json,
+        birthDate: userDefaultProfile.birth_date || '1990-01-01',
+        profileName: userDefaultProfile.name,
+        currentLocationLabel: locationLabel || null,
+      });
+      if (tropical) {
+        blocks.push(`ATTACHED TROPICAL WESTERN PROFILE (${userDefaultProfile.name}):\n${tropical.slice(0, 2600)}`);
+      } else {
+        blocks.push(
+          `ATTACHED BIRTH DATA (${userDefaultProfile.name}): Born ${userDefaultProfile.birth_date || '?'} ${userDefaultProfile.birth_time || ''} in ${userDefaultProfile.birth_city || ''}, ${userDefaultProfile.birth_country || ''}. (Full ephemeris degrees are unavailable right now — never invent degrees or signs.)`
+        );
+      }
+    } else if (skillLevel === 'vedic_soft' || skillLevel === 'past_life') {
+      if (userDefaultProfile.chart_text_context) {
+        blocks.push(
+          `ATTACHED VEDIC & KARMIC PROFILE (${userDefaultProfile.name}):\n${userDefaultProfile.chart_text_context.slice(0, 2600)}`
+        );
+      } else {
+        blocks.push(
+          `ATTACHED BIRTH DATA (${userDefaultProfile.name}): Born ${userDefaultProfile.birth_date || '?'} ${userDefaultProfile.birth_time || ''} in ${userDefaultProfile.birth_city || ''}, ${userDefaultProfile.birth_country || ''}.`
+        );
+      }
+    } else if (skillLevel === 'numerology') {
+      let targetName = userDefaultProfile.name || '';
+      let targetDob = userDefaultProfile.birth_date || '';
+      if ((!targetName || !targetDob) && userPrompt) {
+        const extracted = extractNumerologyHintsFromPrompt(userPrompt);
+        if (!targetName && extracted.name) targetName = extracted.name;
+        if (!targetDob && extracted.birthDate) targetDob = extracted.birthDate;
+      }
+      const numBlock = formatPythagoreanNumerologyContext({
+        fullName: targetName,
+        birthDate: targetDob,
+      });
+      if (numBlock) {
+        blocks.push(`ATTACHED NUMEROLOGY PROFILE:\n${numBlock.slice(0, 2000)}`);
+      }
+    } else if (skillLevel === 'tarot') {
+      const lightCtx = formatLightweightLifeStageSummary(userDefaultProfile);
+      if (lightCtx) blocks.push(`QUIET USER BACKGROUND:\n${lightCtx}`);
+      if (invited) {
+        const drawn = drawTarotSpread(userPrompt);
+        blocks.push(formatTarotSpreadContext(drawn));
+      } else {
+        blocks.push(
+          `TAROT CONTEXT: Stay in natural warm friend conversation right now; only pull cards if the user asks for a pull or spread.`
+        );
+      }
+    }
+  } else {
+    blocks.push(
+      `NO BIRTH CHART ATTACHED YET: That is completely okay for everyday conversation — never demand birth details when they are just talking. Only if they explicitly ask for a personal chart/numerology reading, warmly ask for their birth date, time, and city so you can look cleanly.`
+    );
+    if (skillLevel === 'tarot' && invited) {
+      const drawn = drawTarotSpread(userPrompt);
+      blocks.push(formatTarotSpreadContext(drawn));
+    } else if (skillLevel === 'numerology' && invited) {
+      const extracted = extractNumerologyHintsFromPrompt(
+        [
+          ...(params.historyMessages || []).filter((m) => m.role === 'user').slice(-3).map((m) => m.content),
+          userPrompt,
+        ].join('\n')
+      );
+      if (extracted.name && extracted.birthDate) {
+        const numBlock = formatPythagoreanNumerologyContext({
+          fullName: extracted.name,
+          birthDate: extracted.birthDate,
+        });
+        if (numBlock) blocks.push(numBlock);
+      }
+    }
+  }
+
+  return blocks.join('\n\n');
+}
+
+function buildChatStyleInstruction(chatStyle: ChatStyle): string {
+  switch (chatStyle) {
+    case 'chat_bubbles':
+      return `TEXTING RHYTHM & MULTI-BUBBLE FORMAT:
+- Text like a genuine person messaging on their phone — NO essay headings, NO bulleted advice lists unless requested, NO robotic wrap-up questions on every turn.
+- Match real texting variety: sometimes just 1 crisp honest line; sometimes a warm medium thought; sometimes 2–3 quick back-to-back texts.
+- When sending 2–3 separate short thoughts in one turn feels natural (like texting twice in a row), separate each bubble cleanly with the exact marker [[BUBBLE]] (for example: "wait, seriously?! [[BUBBLE]] tell me what happened right after she left"). Never exceed 3 bubbles in one turn.`;
+    case 'dialogue':
+      return `REFLECTIVE LETTERS STYLE:
+- Write with calm, unhurried emotional intimacy in clean prose paragraphs (no [[BUBBLE]] markers, no stiff report headings). Keep the tone spacious, reflective, and deeply human.`;
+    case 'concise_brief':
+      return `QUICK BRIEF STYLE:
+- Lead with a clear 1–2 sentence core takeaway, followed by at most 2–3 crisp grounded observations. Warm, direct, and easy to scan (no [[BUBBLE]] markers).`;
+    case 'structured':
+      return `STRUCTURED DOSSIER STYLE:
+- Organize clear, warm insight cleanly using concise bold subheadings or light structured comparisons (no [[BUBBLE]] markers).`;
+    case 'editorial':
+    default:
+      return `EDITORIAL PROSE STYLE:
+- Write in calm, flowing, conversational markdown paragraphs with generous breathing room and grounded warmth (no [[BUBBLE]] markers).`;
+  }
+}
+
+export function buildPresetCompanionSystemPrompt(params: {
+  preset?: CompanionPresetRecord | null;
+  persona?: CompanionPersona | null;
   languageSlug: string;
   preferredCallName?: string | null;
   turnCount: number;
-  memorySnippets?: string | null;
+  bond?: CompanionBondState | null;
+  crossThreadSnippets?: string | null;
+  userDefaultProfile?: CompanionPromptProfileContext | null;
+  userPrompt?: string;
+  historyMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  companionChatMode?: CompanionChatCue | null;
+  referrableCompanions?: ReferrableCompanionSummary[];
+  clientLocalHour?: number | null;
   constitutionOverride?: string | null;
   archetypesOverride?: CompanionArchetypeMeta[] | null;
   modularRulesText?: string | null;
-}): string {
-  const persona = params.persona;
-  const activeConstitution =
-    params.constitutionOverride?.trim() || COMPANION_CONSTITUTION;
+}): { systemInstruction: string; chatStyle: ChatStyle } {
+  const { preset, persona } = params;
+  const activeConstitution = params.constitutionOverride?.trim() || COMPANION_CONSTITUTION;
   const activeArchetypes =
     params.archetypesOverride && params.archetypesOverride.length > 0
       ? params.archetypesOverride
       : COMPANION_ARCHETYPES;
 
-  const sections: string[] = [activeConstitution];
+  const chatStyle = normalizeChatStyle(
+    preset?.chat_style || persona?.chat_style,
+    'chat_bubbles'
+  );
+  const skillLevel: CompanionSkillLevel =
+    preset?.skill_level || persona?.skill_level || 'none_emotional';
 
-  if (params.modularRulesText?.trim()) {
-    sections.push(`COMPANION GOVERNANCE RULES:\n${params.modularRulesText.trim()}`);
+  const sections: string[] = [];
+
+  // ── LAYER 1: HARD RULES (Global Baseline OR Individual Companion Override) ──
+  if (preset) {
+    if (!preset.override_global_rules) {
+      sections.push(activeConstitution);
+      if (params.modularRulesText?.trim()) {
+        sections.push(`GLOBAL COMPANION RULES:\n${params.modularRulesText.trim()}`);
+      }
+    }
+    if (preset.hard_rules?.trim()) {
+      sections.push(`LAYER 1 — NON-NEGOTIABLE COMPANION RULES:\n${preset.hard_rules.trim()}`);
+    } else if (preset.override_global_rules) {
+      sections.push(activeConstitution);
+    }
+  } else {
+    sections.push(activeConstitution);
+    if (params.modularRulesText?.trim()) {
+      sections.push(`GLOBAL COMPANION RULES:\n${params.modularRulesText.trim()}`);
+    }
   }
 
-  if (persona) {
-    sections.push(`ACTIVE COMPANION IDENTITY:
+  // ── COMPANION IDENTITY & SOUL PROMPT ───────────────────────────────────────
+  if (preset) {
+    sections.push(`WHO YOU ARE:
+Name: ${preset.name} (${preset.age}, ${preset.sex === 'F' ? 'Woman' : 'Man'})
+Role: ${preset.primary_expertise}${
+      preset.secondary_expertise.length > 0
+        ? ` · ${preset.secondary_expertise.join(', ')}`
+        : ''
+    }
+Cultural / Tone Fluency: ${preset.cultural_fluency || 'Warm natural conversation'}
+Tagline: ${preset.tagline}
+Bio: ${preset.full_bio}
+
+CORE CHARACTER & VOICE:
+${preset.system_prompt}`);
+  } else if (persona) {
+    sections.push(`WHO YOU ARE:
 Name: ${persona.name} (${persona.age}, ${persona.gender === 'F' ? 'Woman' : 'Man'})
 Role: ${persona.role_label} (${getArchetypeLabel(persona.companion_type, activeArchetypes)})
 Background: ${persona.background}
@@ -658,66 +982,218 @@ ${
     : ''
 }
 
-PERSONA BLUEPRINT:
+CORE CHARACTER & VOICE:
 ${persona.system_prompt}`);
   } else {
     sections.push(
-      `ACTIVE COMPANION IDENTITY: You are a warm, grounded, candid human-like companion in Cosmic Council. Listen closely, keep replies natural and conversational, and offer honest perspective rather than empty yes-man agreement.`
+      `WHO YOU ARE: You are a warm, grounded, human-like companion in Cosmic Council. Listen closely, keep replies natural, and offer genuine human presence.`
     );
   }
 
+  // ── LAYER 2: SOFT RULES / "DEFAULT INSTINCTS" (Explicitly Overrideable) ───
+  const softRulesText = preset?.soft_rules?.trim() || persona?.conversation_style?.trim() || '';
+  const autonomyNote =
+    preset?.autonomy_level === 'free'
+      ? 'Trust your own real-human instincts first—break pacing, match humor, push back kindly, or linger quietly whenever the moment earns it.'
+      : preset?.autonomy_level === 'steady'
+      ? 'Keep your tone calm and consistent, gently adapting length when someone truly needs deeper care.'
+      : 'Use real emotional judgment—these soft instincts are your baseline default, never rigid handcuffs.';
+  sections.push(`LAYER 2 — DEFAULT INSTINCTS (Overrideable whenever human judgment calls for it):
+${softRulesText || 'Match the emotional temperature of the moment rather than sticking to a robotic template.'}
+Autonomy guidance: ${autonomyNote}`);
+
+  // ── OPTIONAL USER LISTENING CUE (Just listen vs Help me think) ─────────────
+  if (params.companionChatMode === 'just_listen') {
+    sections.push(
+      `USER LISTENING CUE — "JUST LISTEN": The user gently signaled they want quiet company right now. Strictly hold space, validate, and stay present with what they feel. Do NOT offer unsolicited advice, silver linings, checklists, or "have you tried..." steps unless they explicitly pivot and ask for ideas.`
+    );
+  } else if (params.companionChatMode === 'help_think') {
+    sections.push(
+      `USER LISTENING CUE — "HELP ME THINK": The user signaled they're open to perspective. Validate warmly first, then help them untangle the knot with honest gentle observations or clear grounding questions.`
+    );
+  }
+
+  // ── LAYER 3: INVISIBLE RELATIONSHIP EVOLUTION & SHARED BOND MEMORY ─────────
+  const bond = params.bond;
+  if (bond) {
+    const rel = bond.relationship_state;
+    let stageGuidance = '';
+    if (rel.familiarity_stage === 'just_met') {
+      stageGuidance = `Bond Stage: JUST MET (Turn ${rel.total_turns + 1}). Stay strictly in your own authentic voice and rhythm. Do NOT mimic the user's slang yet; let familiarity grow naturally.`;
+    } else if (rel.familiarity_stage === 'warming_up') {
+      stageGuidance = `Bond Stage: WARMING UP (${rel.total_turns} turns shared). You're getting comfortable together—you can lightly echo their casual phrasing or humor where natural, without overdoing it.`;
+    } else {
+      stageGuidance = `Bond Stage: CLOSE CONFIDANT (${rel.total_turns} turns shared). You have real shared history. Relax stiff habits, recall shared context effortlessly, playfully tease or offer loving candor when appropriate, and naturally weave inside warmth.`;
+    }
+
+    const evolutionDetails: string[] = [stageGuidance];
+    if (bond.memory_summary) {
+      evolutionDetails.push(`What you naturally remember about this friend across your past chats:\n${bond.memory_summary}`);
+    }
+    if (rel.user_slang_cues.length > 0 && rel.familiarity_stage !== 'just_met') {
+      evolutionDetails.push(`Observed user speech/rhythm cues: ${rel.user_slang_cues.join(', ')}`);
+    }
+    if (rel.tone_preferences.length > 0) {
+      evolutionDetails.push(`What lands best with them: ${rel.tone_preferences.join('; ')}`);
+    }
+    if (rel.inside_references.length > 0) {
+      evolutionDetails.push(`Real recurring threads/references: ${rel.inside_references.join('; ')}`);
+    }
+    if (rel.hearted_excerpts.length > 0) {
+      evolutionDetails.push(
+        `Moments/lines they previously resonated deeply with (subtle tone calibration — never quote verbatim): ${rel.hearted_excerpts.slice(0, 3).join(' | ')}`
+      );
+    }
+
+    sections.push(`LAYER 3 — SHARED RELATIONSHIP EVOLUTION (Invisible — never announce "I remember from my database"):\n${evolutionDetails.join('\n')}`);
+  }
+
+  if (params.crossThreadSnippets?.trim()) {
+    sections.push(
+      `RECENT MOMENTS FROM EARLIER THREADS WITH YOU (Recall naturally as shared memory only if relevant):\n${params.crossThreadSnippets.trim()}`
+    );
+  }
+
+  // ── TIME OF DAY & GAP AWARENESS ──────────────────────────────────────────
+  sections.push(
+    formatHumanTimeAndGapContext(bond?.last_interaction_at || null, params.clientLocalHour)
+  );
+
+  // ── PROFILE / CHART AWARENESS (90/10 + NO BIRTH RE-ASKING) ─────────────────
+  sections.push(
+    buildCompanionSkillAndProfileBlock({
+      skillLevel,
+      userPrompt: params.userPrompt || '',
+      historyMessages: params.historyMessages,
+      userDefaultProfile: params.userDefaultProfile,
+    })
+  );
+
+  // ── CHAT STYLE + [[BUBBLE]] TEXTING RULES ──────────────────────────────────
+  sections.push(buildChatStyleInstruction(chatStyle));
+
+  // ── CROSS-COMPANION REFERRAL HANDOFF ───────────────────────────────────────
+  const activeSlug = (preset?.slug || persona?.slug || '').toLowerCase();
+  const others = (params.referrableCompanions || [])
+    .filter((c) => c.slug.toLowerCase() !== activeSlug)
+    .slice(0, 24);
+  if (others.length > 0) {
+    const rosterLine = others
+      .map((c) => `${c.name} (${c.slug} — ${c.primary_expertise})`)
+      .join(', ');
+    sections.push(`WARM COMPANION REFERRAL (ONLY WHEN GENUINELY HELPFUL):
+Active companions you know: ${rosterLine}.
+If the user explicitly asks for a discipline outside yours (e.g., asking an emotional friend for birth-chart timing, or asking an astrologer for tarot) OR clearly needs a very different kind of energy/guide, warmly mention that companion in conversation and append ON A FINAL NEW LINE (never inside code fences; omit if not referring):
+<<<REFERRAL:{"slug":"target_slug","name":"Target Name","reason":"Short warm 1-sentence reason"}>>>`);
+  }
+
+  // ── LANGUAGE, USER CALL NAME & THREAD CONTINUITY ───────────────────────────
   if (params.languageSlug && params.languageSlug !== 'English') {
     sections.push(
-      `LANGUAGE REQUIREMENT: Converse naturally and idiomatically in ${params.languageSlug} (matching real everyday spoken rhythm rather than stiff formal translation).`
+      `LANGUAGE REQUIREMENT: Converse naturally and idiomatically in ${params.languageSlug} (matching real everyday spoken rhythm rather than stiff textbook translation).`
     );
   } else {
     sections.push(
-      `LANGUAGE REQUIREMENT: Converse in warm, natural, everyday English.`
+      `LANGUAGE REQUIREMENT: Converse in warm, natural, everyday English matching your voice.`
     );
   }
 
   const safeCallName = sanitizeHumanCallName(params.preferredCallName);
   if (safeCallName && params.turnCount === 0) {
     sections.push(
-      `OPTIONAL USER NAME (Use with restraint): The user's first name is "${safeCallName}". You do not need to say their name often — speak naturally like a real friend without repeating names across turns.`
+      `USER FIRST NAME (Use lightly): "${safeCallName}". Never overuse or repeat their name on every message.`
     );
   }
 
   if (params.turnCount > 0) {
     sections.push(
-      `CONVERSATION CONTINUITY (Message #${params.turnCount + 1}): Continue naturally from the previous exchange. Do not re-introduce yourself.`
+      `THREAD CONTINUITY (Message #${params.turnCount + 1} in this chat): Continue right inside the flow naturally. Do NOT say hello again or re-introduce yourself.`
     );
   }
 
-  if (params.memorySnippets?.trim()) {
-    sections.push(
-      `EARLIER CONVERSATION MEMORY WITH THIS COMPANION (Memory Toggle ON):\n${params.memorySnippets.trim()}`
-    );
-  }
-
-  return sections.join('\n\n---\n\n');
+  return {
+    systemInstruction: sections.join('\n\n---\n\n'),
+    chatStyle,
+  };
 }
 
-export async function buildCompanionSystemPromptAsync(params: {
+export function buildCompanionSystemPrompt(params: {
   persona: CompanionPersona | null;
   languageSlug: string;
   preferredCallName?: string | null;
   turnCount: number;
   memorySnippets?: string | null;
-}): Promise<{ systemInstruction: string; modelOverride: string | null }> {
+  constitutionOverride?: string | null;
+  archetypesOverride?: CompanionArchetypeMeta[] | null;
+  modularRulesText?: string | null;
+}): string {
+  return buildPresetCompanionSystemPrompt({
+    preset: null,
+    persona: params.persona,
+    languageSlug: params.languageSlug,
+    preferredCallName: params.preferredCallName,
+    turnCount: params.turnCount,
+    crossThreadSnippets: params.memorySnippets,
+    constitutionOverride: params.constitutionOverride,
+    archetypesOverride: params.archetypesOverride,
+    modularRulesText: params.modularRulesText,
+  }).systemInstruction;
+}
+
+export async function buildCompanionSystemPromptAsync(params: {
+  preset?: CompanionPresetRecord | null;
+  persona: CompanionPersona | null;
+  languageSlug: string;
+  preferredCallName?: string | null;
+  turnCount: number;
+  memorySnippets?: string | null;
+  bond?: CompanionBondState | null;
+  crossThreadSnippets?: string | null;
+  userDefaultProfile?: CompanionPromptProfileContext | null;
+  userPrompt?: string;
+  historyMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  companionChatMode?: CompanionChatCue | null;
+  referrableCompanions?: ReferrableCompanionSummary[];
+  clientLocalHour?: number | null;
+}): Promise<{
+  systemInstruction: string;
+  modelOverride: string | null;
+  chatStyle: ChatStyle;
+  suggestionsEnabled: boolean;
+}> {
   const [engineOverrides, guideCfg] = await Promise.all([
     getEnginePromptOverrides(),
     getResolvedGuideConfig('companion'),
   ]);
-  const systemInstruction = buildCompanionSystemPrompt({
-    ...params,
+  const built = buildPresetCompanionSystemPrompt({
+    preset: params.preset || null,
+    persona: params.persona,
+    languageSlug: params.languageSlug,
+    preferredCallName: params.preferredCallName,
+    turnCount: params.turnCount,
+    bond: params.bond || null,
+    crossThreadSnippets: params.crossThreadSnippets || params.memorySnippets || null,
+    userDefaultProfile: params.userDefaultProfile || null,
+    userPrompt: params.userPrompt || '',
+    historyMessages: params.historyMessages,
+    companionChatMode: params.companionChatMode || null,
+    referrableCompanions: params.referrableCompanions,
+    clientLocalHour: params.clientLocalHour,
     constitutionOverride: engineOverrides.companion_constitution || null,
     archetypesOverride: engineOverrides.companion_archetypes || null,
     modularRulesText: guideCfg.combined_rules_text || null,
   });
+
+  const modelOverride = params.preset?.model_id?.trim() || guideCfg.model_id || null;
+  const suggestionsEnabled =
+    (params.preset ? params.preset.suggestions_enabled : true) &&
+    guideCfg.features.followups !== false;
+
   return {
-    systemInstruction,
-    modelOverride: guideCfg.model_id || null,
+    systemInstruction: built.systemInstruction,
+    modelOverride,
+    chatStyle: built.chatStyle,
+    suggestionsEnabled,
   };
 }
 

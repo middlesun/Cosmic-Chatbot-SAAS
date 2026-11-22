@@ -27,6 +27,8 @@ import {
   computeAppCacheKey,
 } from '../services/miniAppsCatalog';
 import { getMiniAppsConfig, type MiniAppsGovernanceConfig } from '../services/platformSettings';
+import { getPublicCompanionsCatalogCached } from '../services/companionPresets';
+import type { PublicCompanionCard } from '../../components/app/chatTypes';
 import type {
   MiniAppDefinition,
   MiniAppStructuredHeader,
@@ -511,41 +513,87 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     title: string;
     profile_id: string | null;
     pillar?: string | null;
-    companion_persona_json?: { name?: string; role_label?: string } | null;
+    companion_slug?: string | null;
+    companion_persona_json?: {
+      slug?: string;
+      name?: string;
+      role_label?: string;
+      avatar_url?: string | null;
+      monogram_palette?: { bg: string; ring: string; ink: string } | null;
+    } | null;
     updated_at: string;
   }
 
   let convRows: RawConvRow[] = [];
-  const convV6 = await supabaseAdmin
+  const convV7 = await supabaseAdmin
     .from('conversations')
-    .select('id, title, profile_id, pillar, companion_persona_json, updated_at')
+    .select('id, title, profile_id, pillar, companion_slug, companion_persona_json, updated_at')
     .eq('user_id', req.appUser.id)
     .order('updated_at', { ascending: false })
-    .limit(12);
+    .limit(20);
 
-  if (!convV6.error && convV6.data) {
-    convRows = convV6.data as RawConvRow[];
+  if (!convV7.error && convV7.data) {
+    convRows = convV7.data as RawConvRow[];
   } else {
-    const convBase = await supabaseAdmin
+    const convV6 = await supabaseAdmin
       .from('conversations')
-      .select('id, title, profile_id, updated_at')
+      .select('id, title, profile_id, pillar, companion_persona_json, updated_at')
       .eq('user_id', req.appUser.id)
       .order('updated_at', { ascending: false })
-      .limit(12);
-    convRows = (convBase.data || []) as RawConvRow[];
+      .limit(20);
+
+    if (!convV6.error && convV6.data) {
+      convRows = convV6.data as RawConvRow[];
+    } else {
+      const convBase = await supabaseAdmin
+        .from('conversations')
+        .select('id, title, profile_id, updated_at')
+        .eq('user_id', req.appUser.id)
+        .order('updated_at', { ascending: false })
+        .limit(20);
+      convRows = (convBase.data || []) as RawConvRow[];
+    }
+  }
+
+  const companionCatalog = await getPublicCompanionsCatalogCached().catch(
+    (): PublicCompanionCard[] => []
+  );
+  const companionBySlug = new Map<string, PublicCompanionCard>(
+    companionCatalog.map((c): [string, PublicCompanionCard] => [c.slug.toLowerCase(), c])
+  );
+  const lastConvIdBySlug = new Map<string, string>();
+  for (const c of convRows) {
+    const slugKey = String(
+      c.companion_slug || c.companion_persona_json?.slug || ''
+    )
+      .trim()
+      .toLowerCase();
+    if (slugKey && !lastConvIdBySlug.has(slugKey)) {
+      lastConvIdBySlug.set(slugKey, c.id);
+    }
   }
 
   const visibleConvs = convRows.filter((c) => c.pillar !== 'clarity');
   const recentConversations = visibleConvs.slice(0, 4).map((c) => {
     const isCompanion = c.pillar === 'companion' || Boolean(c.companion_persona_json?.name);
+    const resolvedSlug = String(
+      c.companion_slug || c.companion_persona_json?.slug || ''
+    )
+      .trim()
+      .toLowerCase();
+    const matchedCard = resolvedSlug ? companionBySlug.get(resolvedSlug) : undefined;
     return {
       id: c.id,
       title: c.title,
       pillar: (isCompanion ? 'companion' : 'council') as 'council' | 'companion' | 'clarity',
       profile_id: c.profile_id || null,
       profile_label: c.profile_id ? profileMap.get(c.profile_id) || null : null,
-      companion_name: c.companion_persona_json?.name || null,
-      companion_role: c.companion_persona_json?.role_label || null,
+      companion_slug: resolvedSlug || null,
+      companion_name: matchedCard?.name || c.companion_persona_json?.name || null,
+      companion_role: matchedCard?.primary_expertise || c.companion_persona_json?.role_label || null,
+      avatar_url: matchedCard?.avatar_url ?? c.companion_persona_json?.avatar_url ?? null,
+      monogram_palette:
+        matchedCard?.monogram_palette ?? c.companion_persona_json?.monogram_palette ?? null,
       updated_at: c.updated_at,
     };
   });
@@ -556,19 +604,32 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     id: string;
     title: string;
     subtitle: string;
+    companionSlug?: string;
+    avatarUrl?: string | null;
+    monogramPalette?: { bg: string; ring: string; ink: string } | null;
     conversationId?: string;
     lastActiveAt?: string;
   } | null = null;
 
   for (const c of visibleConvs) {
     if (c.pillar === 'companion' || c.companion_persona_json?.name) {
-      const cname = c.companion_persona_json?.name || c.title.split('·')[0].trim();
-      const crole = c.companion_persona_json?.role_label || 'Companion';
+      const slugKey = String(c.companion_slug || c.companion_persona_json?.slug || '')
+        .trim()
+        .toLowerCase();
+      const matchedCard = slugKey ? companionBySlug.get(slugKey) : undefined;
+      const cname =
+        matchedCard?.name || c.companion_persona_json?.name || c.title.split('·')[0].trim();
+      const crole =
+        matchedCard?.primary_expertise || c.companion_persona_json?.role_label || 'Companion';
       latestCompanion = {
         kind: 'companion',
         id: `comp-${c.id}`,
         title: cname ? `Companion · ${cname}` : 'Companion',
         subtitle: crole,
+        ...(slugKey ? { companionSlug: slugKey } : {}),
+        avatarUrl: matchedCard?.avatar_url ?? c.companion_persona_json?.avatar_url ?? null,
+        monogramPalette:
+          matchedCard?.monogram_palette ?? c.companion_persona_json?.monogram_palette ?? null,
         conversationId: c.id,
         lastActiveAt: c.updated_at,
       };
@@ -577,13 +638,52 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
   }
 
   if (!latestCompanion) {
-    latestCompanion = {
-      kind: 'companion',
-      id: 'comp-starter',
-      title: 'Companion',
-      subtitle: 'Feel better talking through thoughts & stress',
-    };
+    const starterCard = companionBySlug.get('mira') || companionCatalog[0] || null;
+    latestCompanion = starterCard
+      ? {
+          kind: 'companion',
+          id: `comp-${starterCard.slug}`,
+          title: `Companion · ${starterCard.name}`,
+          subtitle: starterCard.tagline || starterCard.primary_expertise,
+          companionSlug: starterCard.slug,
+          avatarUrl: starterCard.avatar_url,
+          monogramPalette: starterCard.monogram_palette,
+        }
+      : {
+          kind: 'companion',
+          id: 'comp-starter',
+          title: 'Companion',
+          subtitle: 'Feel better talking through thoughts & stress',
+        };
   }
+
+  const featuredSlugs = ['mira', 'aira', 'luna', 'kabir', 'rohan', 'dev', 'tara', 'marc', 'bella'];
+  const featuredSet = new Set<string>();
+  const orderedFeaturedCards = [];
+  for (const slug of featuredSlugs) {
+    const card = companionBySlug.get(slug);
+    if (card && !featuredSet.has(card.slug)) {
+      featuredSet.add(card.slug);
+      orderedFeaturedCards.push(card);
+    }
+  }
+  for (const card of companionCatalog) {
+    if (orderedFeaturedCards.length >= 6) break;
+    if (!featuredSet.has(card.slug)) {
+      featuredSet.add(card.slug);
+      orderedFeaturedCards.push(card);
+    }
+  }
+  const featuredCompanions = orderedFeaturedCards.slice(0, 6).map((card) => ({
+    slug: card.slug,
+    name: card.name,
+    age: card.age,
+    primary_expertise: card.primary_expertise,
+    tagline: card.tagline,
+    avatar_url: card.avatar_url,
+    monogram_palette: card.monogram_palette,
+    last_conversation_id: lastConvIdBySlug.get(card.slug.toLowerCase()) || null,
+  }));
 
   // Look up latest activity per Council guide across recent conversations
   const councilConvIds = visibleConvs
@@ -630,6 +730,9 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     title: string;
     subtitle: string;
     expertSlug?: string;
+    companionSlug?: string;
+    avatarUrl?: string | null;
+    monogramPalette?: { bg: string; ring: string; ink: string } | null;
     conversationId?: string;
     lastActiveAt?: string;
   }> = [
@@ -685,6 +788,7 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
   res.json({
     recentConversations,
     recentGuides: recentGuides.slice(0, 6),
+    featuredCompanions,
     favoriteAppSlugs,
     recentAppRuns,
     primaryProfile,

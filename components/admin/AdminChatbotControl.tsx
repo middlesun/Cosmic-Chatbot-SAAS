@@ -47,7 +47,9 @@ interface ChatbotFeaturesConfig {
 import {
   CHAT_NUMERIC_FONT_CLASSES,
   CHAT_NUMERIC_FONT_OPTIONS,
+  CHAT_STYLE_OPTIONS,
   type ChatNumericFont,
+  type ChatStyle,
 } from '../app/chatTypes';
 
 interface ChatbotConfigState {
@@ -113,6 +115,7 @@ interface ResolvedGuideConfigState {
   welcome_subtitle: string;
   general_ready_message: string;
   composer_placeholder: string;
+  chat_style?: ChatStyle;
   features: ChatbotFeaturesConfig;
   modular_rules: ModularRuleBlock[];
   has_custom_modular_rules: boolean;
@@ -828,6 +831,7 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
           welcome_subtitle: activeGuide.welcome_subtitle,
           general_ready_message: activeGuide.general_ready_message,
           composer_placeholder: activeGuide.composer_placeholder,
+          ...(activeGuide.chat_style ? { chat_style: activeGuide.chat_style } : {}),
           features: activeGuide.features,
           modular_rules: activeGuide.modular_rules,
           suggestions: activeGuide.suggestions,
@@ -1623,23 +1627,29 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                     </div>
 
                     {activeGuide && (
-                      <div className="max-w-sm space-y-1.5">
-                        <span className="text-xs font-medium text-[#5C5449]">
-                          OpenRouter Model Override
-                        </span>
-                        <CustomSelect
-                          value={activeGuide.model_id || '__inherit__'}
-                          onChange={(val) =>
-                            updateActiveGuide((g) => ({
-                              ...g,
-                              model_id: val === '__inherit__' ? null : val,
-                            }))
-                          }
-                          ariaLabel="Companion OpenRouter model override"
-                          surface="canvas"
-                          className="w-full"
-                          options={guideModelDropdownOptions}
-                        />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <span className="text-xs font-medium text-[#5C5449]">
+                            OpenRouter Model Override
+                          </span>
+                          <CustomSelect
+                            value={activeGuide.model_id || '__inherit__'}
+                            onChange={(val) =>
+                              updateActiveGuide((g) => ({
+                                ...g,
+                                model_id: val === '__inherit__' ? null : val,
+                              }))
+                            }
+                            ariaLabel="Companion OpenRouter model override"
+                            surface="canvas"
+                            className="w-full"
+                            options={guideModelDropdownOptions}
+                          />
+                        </div>
+                        <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] px-4 py-3 text-xs text-[#5C5449]">
+                          Individual preset personas, portraits, layered Hard/Soft rules, and per-companion AI models are managed in the dedicated{' '}
+                          <span className="font-semibold text-[#3D3830]">Companions</span> admin section.
+                        </div>
                       </div>
                     )}
 
@@ -2287,23 +2297,53 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                   />
                 </label>
 
-                <label className="block space-y-1.5">
-                  <span className="text-xs font-medium text-[#5C5449]">
-                    Composer Placeholder Text
-                  </span>
-                  <input
-                    type="text"
-                    value={activeGuide.composer_placeholder}
-                    onChange={(e) =>
-                      updateActiveGuide((g) => ({
-                        ...g,
-                        isCustomized: true,
-                        composer_placeholder: e.target.value,
-                      }))
-                    }
-                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none"
-                  />
-                </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-medium text-[#5C5449]">
+                      Composer Placeholder Text
+                    </span>
+                    <input
+                      type="text"
+                      value={activeGuide.composer_placeholder}
+                      onChange={(e) =>
+                        updateActiveGuide((g) => ({
+                          ...g,
+                          isCustomized: true,
+                          composer_placeholder: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none"
+                    />
+                  </label>
+
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-[#5C5449]">
+                      Default Chat Render Style
+                    </span>
+                    <CustomSelect
+                      value={activeGuide.chat_style || 'structured'}
+                      onChange={(val) =>
+                        updateActiveGuide((g) => ({
+                          ...g,
+                          isCustomized: true,
+                          chat_style: val as ChatStyle,
+                        }))
+                      }
+                      ariaLabel="Select default chat render style for guide"
+                      surface="canvas"
+                      className="w-full"
+                      options={CHAT_STYLE_OPTIONS.map((opt) => ({
+                        value: opt.value,
+                        label: opt.label,
+                        description: opt.description,
+                      }))}
+                    />
+                    <p className="text-[11px] text-[#8B8275]">
+                      {CHAT_STYLE_OPTIONS.find((o) => o.value === (activeGuide.chat_style || 'structured'))
+                        ?.description || 'Controls message layout and typography in the chat thread.'}
+                    </p>
+                  </div>
+                </div>
               </section>
             )}
 

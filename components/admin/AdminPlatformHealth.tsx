@@ -36,12 +36,16 @@ interface PlatformHealthResponse {
     app_usage_logs?: boolean;
     user_favorite_apps?: boolean;
     chatbot_pipeline_logs?: boolean;
+    companions?: boolean;
+    companion_bonds?: boolean;
+    user_custom_companions?: boolean;
   };
   migration004Ready: boolean;
   migration005Ready?: boolean;
   migration006Ready?: boolean;
   migration007Ready?: boolean;
   migration012Ready?: boolean;
+  migration015Ready?: boolean;
   timestamp: string;
 }
 
@@ -95,7 +99,7 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
           ? ` (${flushData.miniAppsMemoryCleared} cached Mini-App entries cleared)`
           : '';
       setFeedback(
-        `All in-memory Prompt, Recipe, AI Settings, Chatbot, Pricing, and Mini-Apps caches have been cleared${clearedCount}.`
+        `All in-memory Prompt, Companions, Recipe, AI Settings, Chatbot, Pricing, and Mini-Apps caches have been cleared${clearedCount}.`
       );
       await loadHealth();
     } catch (err) {
@@ -193,6 +197,21 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
           ok: Boolean(health.tables.chatbot_pipeline_logs),
           group: 'Pipeline Diagnostics (012)',
         },
+        {
+          name: 'public.companions',
+          ok: Boolean(health.tables.companions),
+          group: 'Companions v2 (015)',
+        },
+        {
+          name: 'public.companion_bonds',
+          ok: Boolean(health.tables.companion_bonds),
+          group: 'Companions v2 (015)',
+        },
+        {
+          name: 'public.user_custom_companions',
+          ok: Boolean(health.tables.user_custom_companions),
+          group: 'Companions v2 (015)',
+        },
       ]
     : [];
 
@@ -240,6 +259,15 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
                 id: '012',
                 file: 'supabase/migrations/012_pipeline_logs_and_stress_context.sql',
                 summary: 'Chatbot Pipeline Diagnostics Logs & User Stress Context',
+              },
+            ]
+          : []),
+        ...(health.migration015Ready === false
+          ? [
+              {
+                id: '015',
+                file: 'supabase/migrations/015_companions_v2_and_chat_styles.sql',
+                summary: 'Preset Companions Roster, Shared Companion Bonds, Reactions & Chat Styles',
               },
             ]
           : []),

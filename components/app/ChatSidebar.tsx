@@ -36,13 +36,16 @@ import type {
   ChatProfile,
   ConversationRecord,
   FavoriteMessageRecord,
+  PublicCompanionCard,
 } from './chatTypes';
+import CompanionAvatar from './CompanionAvatar';
 import CustomSelect from './CustomSelect';
 import Tooltip from './Tooltip';
 
 interface ChatSidebarProps {
   profiles: ChatProfile[];
   conversations: ConversationRecord[];
+  companionCatalog?: PublicCompanionCard[];
   activeConversationId: string | null;
   activeTabConversationIds: string[];
   maxActiveTabs?: number;
@@ -83,6 +86,7 @@ const getProfileDisplayLabel = (p: ChatProfile): string => {
 const ChatSidebar: React.FC<ChatSidebarProps> = ({
   profiles,
   conversations,
+  companionCatalog = [],
   activeConversationId,
   activeTabConversationIds,
   maxActiveTabs = 10,
@@ -126,6 +130,14 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [favFilterProfile, setFavFilterProfile] = useState<string>('');
   const [showNewMenu, setShowNewMenu] = useState(false);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+
+  const companionCatalogBySlug = useMemo(() => {
+    const map = new Map<string, PublicCompanionCard>();
+    for (const c of companionCatalog) {
+      map.set(c.slug, c);
+    }
+    return map;
+  }, [companionCatalog]);
 
   useEffect(() => {
     if (!editingRowId) return;
@@ -226,8 +238,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     const isEditing = editingRowId === rowId;
     const isPinnedTab = activeTabConversationIds.includes(conv.id);
     const isCompanion = conv.pillar === 'companion' || Boolean(conv.companion_persona_json);
-    const companionName = conv.companion_persona_json?.name;
-    const companionRole = conv.companion_persona_json?.role_label;
+    const companionSlug = conv.companion_slug || conv.companion_persona_json?.slug || null;
+    const catalogCard = companionSlug ? companionCatalogBySlug.get(companionSlug) : undefined;
+    const companionName = catalogCard?.name || conv.companion_persona_json?.name;
+    const companionRole =
+      catalogCard?.primary_expertise || conv.companion_persona_json?.role_label;
     const displayTitle =
       isCompanion &&
       companionName &&
@@ -281,21 +296,35 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               e.stopPropagation();
               startRenameConversation(rowId, conv.id, displayTitle);
             }}
-            className="flex-1 min-w-0 text-left cursor-pointer"
+            className="flex flex-1 items-center gap-2 min-w-0 text-left cursor-pointer"
           >
-            <div className="flex items-center gap-1.5">
-              {conv.is_bookmarked && (
-                <Bookmark className="h-3 w-3 shrink-0 fill-[#8B7355] text-[#8B7355]" />
-              )}
-              <span className="truncate text-xs font-medium text-[#3D3830]">
-                {displayTitle}
-              </span>
-            </div>
-            <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
-              {isCompanion && companionRole && (
-                <span className="truncate max-w-[115px] text-[#5C5449]">{companionRole} ·</span>
-              )}
-              <span className="shrink-0">{new Date(conv.updated_at).toLocaleDateString()}</span>
+            {isCompanion && (
+              <CompanionAvatar
+                name={companionName || displayTitle}
+                avatarUrl={catalogCard?.avatar_url ?? conv.companion_persona_json?.avatar_url}
+                palette={
+                  catalogCard?.monogram_palette ??
+                  conv.companion_persona_json?.monogram_palette
+                }
+                size="xs"
+                shape="circle"
+              />
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                {conv.is_bookmarked && (
+                  <Bookmark className="h-3 w-3 shrink-0 fill-[#8B7355] text-[#8B7355]" />
+                )}
+                <span className="truncate text-xs font-medium text-[#3D3830]">
+                  {displayTitle}
+                </span>
+              </div>
+              <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
+                {isCompanion && companionRole && (
+                  <span className="truncate max-w-[115px] text-[#5C5449]">{companionRole} ·</span>
+                )}
+                <span className="shrink-0">{new Date(conv.updated_at).toLocaleDateString()}</span>
+              </div>
             </div>
           </button>
         )}

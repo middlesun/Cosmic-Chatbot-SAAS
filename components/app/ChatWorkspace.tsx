@@ -23,6 +23,8 @@ import ChatSidebar from './ChatSidebar';
 import MessageThread, { type InlineChartCreationState } from './MessageThread';
 import ChatComposer from './ChatComposer';
 import CompanionSetupView from './CompanionSetupView';
+import CompanionAvatar from './CompanionAvatar';
+import CompanionProfileSheet from './CompanionProfileSheet';
 import Tooltip from './Tooltip';
 import UserAvatar from './UserAvatar';
 import MyPromptsModal from './MyPromptsModal';
@@ -47,17 +49,22 @@ import {
   type ChatPillar,
   type ChatProfile,
   type ChatResponseLength,
+  type ChatStyle,
   type ChatToneMode,
   type ClarificationChip,
   type CompanionArchetypeSlug,
+  type CompanionChatCue,
   type CompanionPersona,
   type ConversationRecord,
   type CustomPromptRecord,
   type FavoriteMessageRecord,
   type LifeContextData,
+  type MessageReaction,
+  type MessageReferralPayload,
   type MessageSuggestions,
   type PendingBirthProfileDraft,
   type PublicChatbotUiConfig,
+  type PublicCompanionCard,
   type PublicSuggestionsUiConfig,
   type SuggestionItem,
   type TimingProgressWidget,
@@ -69,6 +76,7 @@ import {
   PREVIEW_FAVORITES,
   PREVIEW_MESSAGES,
   PREVIEW_PROFILES,
+  PREVIEW_PUBLIC_COMPANIONS,
 } from './previewFixtures';
 
 const SIDEBAR_LOCK_STORAGE_KEY = 'cc_chat_sidebar_locked';
@@ -79,6 +87,8 @@ const MAX_ACTIVE_TABS = 10;
 interface LocalConvPillarMeta {
   pillar: ChatPillar;
   companion_type?: CompanionArchetypeSlug | null;
+  companion_slug?: string | null;
+  companion_chat_mode?: CompanionChatCue | null;
   companion_persona_json?: CompanionPersona | null;
 }
 
@@ -153,6 +163,8 @@ function enrichConversationWithLocalMeta(conv: ConversationRecord): Conversation
     ...conv,
     pillar: conv.pillar && conv.pillar !== 'council' ? conv.pillar : local.pillar,
     companion_type: conv.companion_type || local.companion_type || null,
+    companion_slug: conv.companion_slug || local.companion_slug || null,
+    companion_chat_mode: conv.companion_chat_mode || local.companion_chat_mode || null,
     companion_persona_json: conv.companion_persona_json || local.companion_persona_json || null,
   };
 }
@@ -400,6 +412,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const [companionSetupArchetype, setCompanionSetupArchetype] =
     useState<CompanionArchetypeSlug | null>(null);
   const [companionSetupKey, setCompanionSetupKey] = useState<number>(0);
+  const [companionCatalog, setCompanionCatalog] = useState<PublicCompanionCard[]>(
+    isPreviewMode ? PREVIEW_PUBLIC_COMPANIONS : []
+  );
+  const [profileSheetCompanion, setProfileSheetCompanion] =
+    useState<PublicCompanionCard | null>(null);
 
   const [showMyPrompts, setShowMyPrompts] = useState(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
@@ -432,6 +449,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const inChatSearchInputRef = useRef<HTMLInputElement | null>(null);
   const headerThreadMenuRef = useRef<HTMLDivElement | null>(null);
   const seededQueryRef = useRef<string>('');
+  const pendingSeedCompanionRef = useRef<string | null>(null);
   const seededExpertRef = useRef<boolean>(false);
   const seededCouncilFreshRef = useRef<boolean>(false);
   const didLoadInitialTabConvRef = useRef<boolean>(false);
@@ -449,6 +467,54 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     activePillar === 'companion'
       ? activeConversation?.companion_persona_json || null
       : null;
+
+  const activeCompanionCard = useMemo(() => {
+    if (activePillar !== 'companion') return null;
+    const slug = activeConversation?.companion_slug || activeCompanionPersona?.slug;
+    if (!slug) return null;
+    return companionCatalog.find((c) => c.slug === slug) || null;
+  }, [
+    activePillar,
+    activeConversation?.companion_slug,
+    activeCompanionPersona?.slug,
+    companionCatalog,
+  ]);
+
+  const buildSheetCardFromPersona = useCallback(
+    (persona: CompanionPersona, existingCard?: PublicCompanionCard | null): PublicCompanionCard => {
+      if (existingCard) return existingCard;
+      return {
+        id: persona.id || `custom_${persona.slug || 'companion'}`,
+        slug: persona.slug || persona.id,
+        name: persona.name,
+        age: persona.age,
+        sex: persona.gender === 'M' ? 'M' : 'F',
+        tagline: persona.tagline,
+        short_bio: persona.bio,
+        full_bio:
+          [persona.background, persona.conversation_style].filter(Boolean).join('\n\n') ||
+          persona.bio,
+        primary_expertise: persona.role_label || 'Companion',
+        secondary_expertise: [],
+        category_tag: 'support',
+        cultural_fluency: 'Personalized companion',
+        avatar_url: persona.avatar_url ?? null,
+        monogram_palette: persona.monogram_palette || {
+          bg: '#EAE3D7',
+          ring: '#8B7355',
+          ink: '#3D3830',
+        },
+        skill_level: persona.skill_level || 'none_emotional',
+        chat_style: persona.chat_style || 'chat_bubbles',
+        tts_voice_profile: persona.tts_voice_profile || { rate: 0.98, pitch: 1.0 },
+        supports_listening_cue: persona.supports_listening_cue ?? true,
+        suggestions_enabled: true,
+        sort_order: 999,
+        last_conversation_id: activeConversation?.id || null,
+      };
+    },
+    [activeConversation?.id]
+  );
 
   // Persist active tabs locally (for non-preview reloads and pre-migration 006 fallback)
   useEffect(() => {
@@ -539,6 +605,28 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       setCustomPrompts(pr.prompts || []);
     }
   }, [getAccessToken, isPreviewMode, embeddedPreview, appUser?.default_expert, appUser?.default_language]);
+
+  const loadCompanionCatalog = useCallback(async () => {
+    if (isPreviewMode) {
+      setCompanionCatalog(PREVIEW_PUBLIC_COMPANIONS);
+      return;
+    }
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      const res = await fetch('/api/chat/companions', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (Array.isArray(data.companions)) {
+          setCompanionCatalog(data.companions as PublicCompanionCard[]);
+        }
+      }
+    } catch {
+      // Non-fatal; CompanionSetupView also fetches when mounted
+    }
+  }, [getAccessToken, isPreviewMode]);
 
   const loadConversations = useCallback(async () => {
     if (isPreviewMode) {
@@ -755,7 +843,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
   useEffect(() => {
     void loadConfigAndPrompts();
-  }, [loadConfigAndPrompts]);
+    void loadCompanionCatalog();
+  }, [loadConfigAndPrompts, loadCompanionCatalog]);
 
   useEffect(() => {
     void loadConversations();
@@ -953,16 +1042,29 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     const seedPillar = searchParams.get('pillar');
     const seedExpert = searchParams.get('expert');
     const seedSystem = searchParams.get('system');
+    const seedCompanion = searchParams.get('companion');
     const seedNew = searchParams.get('new') === '1';
-    if (!seedProfileId && !seedPrompt && !seedPillar && !seedExpert && !seedSystem && !seedNew) {
+    if (
+      !seedProfileId &&
+      !seedPrompt &&
+      !seedPillar &&
+      !seedExpert &&
+      !seedSystem &&
+      !seedCompanion &&
+      !seedNew
+    ) {
       return;
     }
 
-    const queryKey = `${seedProfileId || ''}::${seedPrompt || ''}::${seedPillar || ''}::${seedExpert || ''}::${seedSystem || ''}::${seedNew ? '1' : '0'}`;
+    const queryKey = `${seedProfileId || ''}::${seedPrompt || ''}::${seedPillar || ''}::${seedExpert || ''}::${seedSystem || ''}::${seedCompanion || ''}::${seedNew ? '1' : '0'}`;
     if (seededQueryRef.current === queryKey) return;
     seededQueryRef.current = queryKey;
 
-    if (seedPillar === 'companion') {
+    if (seedCompanion?.trim()) {
+      pendingSeedCompanionRef.current = seedCompanion.trim().toLowerCase();
+    }
+
+    if (seedPillar === 'companion' || seedCompanion) {
       const compTab = tabs.find((t) => t.pillar === 'companion');
       if (compTab) {
         activateTab(compTab, { skipSnapshot: true });
@@ -1058,6 +1160,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     nextParams.delete('pillar');
     nextParams.delete('expert');
     nextParams.delete('system');
+    nextParams.delete('companion');
     nextParams.delete('new');
     setSearchParams(nextParams, { replace: true });
   }, [
@@ -1890,6 +1993,48 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     }
   };
 
+  const activateStartedCompanionThread = useCallback(
+    async (
+      startedConv: ConversationRecord,
+      displayName: string,
+      companionSlug: string | null,
+      openingMsg: ChatMessageRecord | null,
+      resumed: boolean
+    ) => {
+      setConversations((prev) => [startedConv, ...prev.filter((c) => c.id !== startedConv.id)]);
+      setActiveConversation(startedConv);
+
+      if (resumed) {
+        await loadConversationMessages(startedConv.id);
+      } else {
+        setMessages(openingMsg ? [openingMsg] : []);
+        setHasMoreMessages(false);
+        setAskLaterItems([]);
+        setReplyTarget(null);
+        setPendingTechnicalDirective(null);
+      }
+
+      delete tabCacheRef.current[activeTabId];
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.tabId === activeTabId
+            ? {
+                ...t,
+                pillar: 'companion',
+                conversationId: startedConv.id,
+                companionSlug,
+                label: displayName,
+                customLabel: false,
+              }
+            : t
+        )
+      );
+      setComposerFocusTrigger((n) => n + 1);
+      void loadCompanionCatalog();
+    },
+    [activeTabId, loadCompanionCatalog, loadConversationMessages]
+  );
+
   const handleStartWithCompanion = async (persona: CompanionPersona) => {
     setErrorBanner(null);
 
@@ -1906,6 +2051,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         pillar: 'companion',
         is_active_tab: true,
         companion_type: persona.companion_type,
+        companion_slug: persona.slug || null,
+        companion_chat_mode: 'just_listen',
         companion_persona_json: persona,
         is_bookmarked: false,
         use_full_profile_memory: true,
@@ -1924,6 +2071,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         language_used: languageSlug,
         is_starred: false,
         excluded_from_context: false,
+        render_style: persona.chat_style || 'chat_bubbles',
         word_count: persona.opening_message.split(/\s+/).length,
         parent_message_id: null,
         followups_json: [],
@@ -1931,22 +2079,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       };
       previewConvStoreRef.current[previewId] = previewConv;
       previewMsgStoreRef.current[previewId] = [openingMsg];
-      setConversations((prev) => [previewConv, ...prev]);
-      setActiveConversation(previewConv);
-      setMessages([openingMsg]);
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.tabId === activeTabId
-            ? {
-                ...t,
-                pillar: 'companion',
-                conversationId: previewId,
-                label: persona.name,
-              }
-            : t
-        )
+      await activateStartedCompanionThread(
+        previewConv,
+        persona.name,
+        persona.slug || null,
+        openingMsg,
+        false
       );
-      setComposerFocusTrigger((n) => n + 1);
       return;
     }
 
@@ -1962,8 +2101,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
+        companionSlug: persona.slug || undefined,
         persona,
-        makeActiveTab: true,
+        pinAsTab: true,
       }),
     });
 
@@ -1973,39 +2113,446 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     }
 
     const rawConv = data.conversation as ConversationRecord;
+    const resolvedSlug = rawConv.companion_slug || persona.slug || null;
     saveLocalConvMeta(rawConv.id, {
       pillar: 'companion',
       companion_type: persona.companion_type,
-      companion_persona_json: persona,
+      companion_slug: resolvedSlug,
+      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_persona_json: rawConv.companion_persona_json || persona,
     });
     const startedConv: ConversationRecord = {
       ...rawConv,
       pillar: 'companion',
       is_active_tab: true,
-      companion_type: persona.companion_type,
-      companion_persona_json: persona,
+      companion_type: rawConv.companion_type || persona.companion_type,
+      companion_slug: resolvedSlug,
+      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_persona_json: rawConv.companion_persona_json || persona,
+    };
+    const openingMsg = (data.openingMessage || null) as ChatMessageRecord | null;
+    await activateStartedCompanionThread(
+      startedConv,
+      persona.name,
+      resolvedSlug,
+      openingMsg,
+      Boolean(data.resumed)
+    );
+  };
+
+  const handleStartPresetCompanion = async (
+    card: PublicCompanionCard,
+    options?: { forceNew?: boolean; handoffNote?: string; fromName?: string }
+  ) => {
+    setErrorBanner(null);
+
+    if (isPreviewMode) {
+      if (!options?.forceNew && !options?.handoffNote && card.last_conversation_id) {
+        const existing =
+          previewConvStoreRef.current[card.last_conversation_id] ||
+          PREVIEW_CONVERSATIONS.find((c) => c.id === card.last_conversation_id);
+        if (existing) {
+          handleSelectSidebarConversation(existing.id);
+          return;
+        }
+      }
+
+      const previewId = `preview-preset-${card.slug}-${Date.now()}`;
+      const nowIso = new Date().toISOString();
+      const openingText = options?.handoffNote
+        ? `Hey — ${options.fromName ? `${options.fromName} mentioned you wanted to talk through this: ` : ''}${options.handoffNote}${
+            card.chat_style === 'chat_bubbles' ? ' [[BUBBLE]] ' : '\n\n'
+          }No need to repeat your whole story. Where would you like to pick up?`
+        : card.tagline
+        ? `Hey — glad you stopped by. ${card.tagline}`
+        : `Hey, I'm ${card.name}. Good to have you here.`;
+      const previewPersona: CompanionPersona = {
+        id: card.id,
+        slug: card.slug,
+        name: card.name,
+        age: card.age,
+        gender: card.sex,
+        companion_type: 'friend',
+        role_label: card.primary_expertise,
+        background: card.full_bio,
+        tagline: card.tagline,
+        bio: card.short_bio,
+        conversation_style: '',
+        opening_message: openingText,
+        system_prompt: '',
+        avatar_url: card.avatar_url,
+        monogram_palette: card.monogram_palette,
+        chat_style: card.chat_style,
+        skill_level: card.skill_level,
+        tts_voice_profile: card.tts_voice_profile,
+        supports_listening_cue: card.supports_listening_cue,
+      };
+      const previewConv: ConversationRecord = {
+        id: previewId,
+        user_id: 'preview-user',
+        profile_id: null,
+        linked_report_id: null,
+        title: card.name,
+        mode_type: 'reading',
+        pillar: 'companion',
+        is_active_tab: true,
+        companion_type: 'friend',
+        companion_slug: card.slug,
+        companion_chat_mode: 'just_listen',
+        companion_persona_json: previewPersona,
+        is_bookmarked: false,
+        use_full_profile_memory: true,
+        total_word_count: openingText.split(/\s+/).length,
+        created_at: nowIso,
+        updated_at: nowIso,
+      };
+      const openingMsg: ChatMessageRecord = {
+        id: `preview-msg-preset-${Date.now()}`,
+        conversation_id: previewId,
+        role: 'assistant',
+        content: openingText,
+        expert_used: 'companion',
+        mode_used: card.slug,
+        output_format_used: null,
+        language_used: languageSlug,
+        is_starred: false,
+        excluded_from_context: false,
+        render_style: card.chat_style,
+        word_count: openingText.split(/\s+/).length,
+        parent_message_id: null,
+        followups_json: [],
+        created_at: nowIso,
+      };
+      previewConvStoreRef.current[previewId] = previewConv;
+      previewMsgStoreRef.current[previewId] = [openingMsg];
+      setCompanionCatalog((prev) =>
+        prev.map((c) =>
+          c.slug === card.slug
+            ? { ...c, last_conversation_id: previewId, thread_count: (c.thread_count || 0) + 1 }
+            : c
+        )
+      );
+      await activateStartedCompanionThread(previewConv, card.name, card.slug, openingMsg, false);
+      return;
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      setErrorBanner('Please sign in to chat with a companion.');
+      return;
+    }
+
+    const res = await fetch('/api/chat/companions/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        companionSlug: card.slug,
+        forceNew: options?.forceNew,
+        handoffNote: options?.handoffNote,
+        handoffFromName: options?.fromName,
+        pinAsTab: true,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.conversation) {
+      setErrorBanner(data.error || `Could not open ${card.name} right now.`);
+      return;
+    }
+
+    const rawConv = data.conversation as ConversationRecord;
+    const personaForMeta: CompanionPersona = rawConv.companion_persona_json || {
+      id: card.id,
+      slug: card.slug,
+      name: card.name,
+      age: card.age,
+      gender: card.sex,
+      companion_type: 'friend',
+      role_label: card.primary_expertise,
+      background: card.full_bio,
+      tagline: card.tagline,
+      bio: card.short_bio,
+      conversation_style: '',
+      opening_message: '',
+      system_prompt: '',
+      avatar_url: card.avatar_url,
+      monogram_palette: card.monogram_palette,
+      chat_style: card.chat_style,
+      skill_level: card.skill_level,
+      tts_voice_profile: card.tts_voice_profile,
+      supports_listening_cue: card.supports_listening_cue,
+    };
+
+    saveLocalConvMeta(rawConv.id, {
+      pillar: 'companion',
+      companion_type: rawConv.companion_type || 'friend',
+      companion_slug: card.slug,
+      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_persona_json: personaForMeta,
+    });
+
+    const startedConv: ConversationRecord = {
+      ...rawConv,
+      pillar: 'companion',
+      is_active_tab: true,
+      companion_slug: rawConv.companion_slug || card.slug,
+      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_persona_json: personaForMeta,
+    };
+
+    const openingRaw = (data.openingMessage || null) as ChatMessageRecord | null;
+    const openingMsg = openingRaw
+      ? { ...openingRaw, render_style: openingRaw.render_style || card.chat_style }
+      : null;
+
+    await activateStartedCompanionThread(
+      startedConv,
+      card.name,
+      card.slug,
+      openingMsg,
+      Boolean(data.resumed)
+    );
+  };
+
+  const handleStartCustomBySlug = async (
+    slug: string,
+    persona: CompanionPersona,
+    options?: { forceNew?: boolean }
+  ) => {
+    setErrorBanner(null);
+
+    if (isPreviewMode) {
+      await handleStartWithCompanion({ ...persona, slug });
+      return;
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      setErrorBanner('Please sign in to open this companion.');
+      return;
+    }
+
+    const res = await fetch('/api/chat/companions/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        companionSlug: slug,
+        persona: { ...persona, slug },
+        forceNew: options?.forceNew,
+        pinAsTab: true,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.conversation) {
+      setErrorBanner(data.error || `Could not open ${persona.name} right now.`);
+      return;
+    }
+
+    const rawConv = data.conversation as ConversationRecord;
+    const mergedPersona = rawConv.companion_persona_json || { ...persona, slug };
+    saveLocalConvMeta(rawConv.id, {
+      pillar: 'companion',
+      companion_type: mergedPersona.companion_type,
+      companion_slug: slug,
+      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_persona_json: mergedPersona,
+    });
+    const startedConv: ConversationRecord = {
+      ...rawConv,
+      pillar: 'companion',
+      is_active_tab: true,
+      companion_slug: rawConv.companion_slug || slug,
+      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_persona_json: mergedPersona,
     };
     const openingMsg = (data.openingMessage || null) as ChatMessageRecord | null;
 
-    setConversations((prev) => [startedConv, ...prev.filter((c) => c.id !== startedConv.id)]);
-    setActiveConversation(startedConv);
-    setMessages(openingMsg ? [openingMsg] : []);
-    setHasMoreMessages(false);
-    setAskLaterItems([]);
-    setTabs((prev) =>
-      prev.map((t) =>
-        t.tabId === activeTabId
-          ? {
-              ...t,
-              pillar: 'companion',
-              conversationId: startedConv.id,
-              label: persona.name,
-            }
-          : t
-      )
+    await activateStartedCompanionThread(
+      startedConv,
+      persona.name,
+      slug,
+      openingMsg,
+      Boolean(data.resumed)
     );
-    setComposerFocusTrigger((n) => n + 1);
   };
+
+  const handleToggleCompanionChatMode = async (nextCue: CompanionChatCue) => {
+    if (!activeConversation) return;
+    if ((activeConversation.companion_chat_mode || 'just_listen') === nextCue) return;
+
+    const targetId = activeConversation.id;
+    setActiveConversation((prev) =>
+      prev && prev.id === targetId ? { ...prev, companion_chat_mode: nextCue } : prev
+    );
+    setConversations((prev) =>
+      prev.map((c) => (c.id === targetId ? { ...c, companion_chat_mode: nextCue } : c))
+    );
+    const existingMeta = readLocalConvMetaMap()[targetId];
+    if (existingMeta) {
+      saveLocalConvMeta(targetId, { ...existingMeta, companion_chat_mode: nextCue });
+    }
+    const cached = tabCacheRef.current[activeTabId];
+    if (cached?.conversation && cached.conversation.id === targetId) {
+      tabCacheRef.current[activeTabId] = {
+        ...cached,
+        conversation: { ...cached.conversation, companion_chat_mode: nextCue },
+      };
+    }
+
+    if (isPreviewMode) return;
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      await fetch(`/api/chat/conversations/${targetId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ companion_chat_mode: nextCue }),
+      });
+    } catch {
+      // Keep optimistic state
+    }
+  };
+
+  const handleReactToMessage = async (
+    msg: ChatMessageRecord,
+    nextReaction: MessageReaction | null
+  ) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === msg.id ? { ...m, reaction: nextReaction } : m))
+    );
+    for (const [tabKey, cached] of Object.entries(tabCacheRef.current)) {
+      if (cached?.messages?.some((m) => m.id === msg.id)) {
+        tabCacheRef.current[tabKey] = {
+          ...cached,
+          messages: cached.messages.map((m) =>
+            m.id === msg.id ? { ...m, reaction: nextReaction } : m
+          ),
+        };
+      }
+    }
+
+    if (isPreviewMode) return;
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      await fetch(`/api/chat/messages/${msg.id}/reaction`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reaction: nextReaction }),
+      });
+    } catch {
+      // Keep optimistic reaction state
+    }
+  };
+
+  const handleSwitchToReferredCompanion = async (
+    slug: string,
+    options?: {
+      mode: 'fresh' | 'handoff';
+      handoffNote?: string;
+      fromName?: string;
+    }
+  ) => {
+    const cleanSlug = slug.trim().toLowerCase();
+    if (!cleanSlug) return;
+    const forceNew = options?.mode === 'fresh';
+    const handoffNote = options?.mode === 'handoff' ? options.handoffNote : undefined;
+    const fromName = options?.mode === 'handoff' ? options.fromName : undefined;
+    const matched = companionCatalog.find((c) => c.slug.toLowerCase() === cleanSlug);
+    if (matched) {
+      await handleStartPresetCompanion(matched, {
+        forceNew,
+        handoffNote,
+        fromName,
+      });
+      return;
+    }
+    if (isPreviewMode) {
+      handleOpenNewCompanionSetup(null);
+      return;
+    }
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setErrorBanner('Please sign in to start chatting with a companion.');
+        return;
+      }
+      const res = await fetch('/api/chat/companions/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          companionSlug: cleanSlug,
+          forceNew,
+          handoffNote,
+          handoffFromName: fromName,
+          pinAsTab: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.conversation) {
+        handleOpenNewCompanionSetup(null);
+        return;
+      }
+      const rawConv = data.conversation as ConversationRecord;
+      const persona = rawConv.companion_persona_json;
+      saveLocalConvMeta(rawConv.id, {
+        pillar: 'companion',
+        companion_type: rawConv.companion_type || 'friend',
+        companion_slug: cleanSlug,
+        companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+        companion_persona_json: persona || null,
+      });
+      await activateStartedCompanionThread(
+        {
+          ...rawConv,
+          pillar: 'companion',
+          is_active_tab: true,
+          companion_slug: rawConv.companion_slug || cleanSlug,
+        },
+        persona?.name || cleanSlug,
+        cleanSlug,
+        (data.openingMessage || null) as ChatMessageRecord | null,
+        Boolean(data.resumed)
+      );
+    } catch {
+      handleOpenNewCompanionSetup(null);
+    }
+  };
+
+  // Complete ?pillar=companion&companion=<slug> deep-links cleanly once companionCatalog is hydrated
+  useEffect(() => {
+    const targetSlug = pendingSeedCompanionRef.current;
+    if (!targetSlug) return;
+    if (isPreviewMode) {
+      pendingSeedCompanionRef.current = null;
+      const matched = PREVIEW_PUBLIC_COMPANIONS.find(
+        (c) => c.slug.toLowerCase() === targetSlug
+      );
+      if (matched) {
+        void handleStartPresetCompanion(matched);
+      }
+      return;
+    }
+    if (companionCatalog.length === 0) return;
+    pendingSeedCompanionRef.current = null;
+    void handleSwitchToReferredCompanion(targetSlug);
+  }, [companionCatalog, isPreviewMode]);
 
   const handleToggleBookmark = async (conv: ConversationRecord) => {
     const token = await getAccessToken();
@@ -2526,10 +3073,19 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         body: JSON.stringify({
           content: promptToSend,
           pillar: sendPillar,
+          companionSlug:
+            sendPillar === 'companion'
+              ? targetConversation.companion_slug || activeCompanionPersona?.slug || undefined
+              : undefined,
+          companionChatMode:
+            sendPillar === 'companion'
+              ? targetConversation.companion_chat_mode || 'just_listen'
+              : undefined,
           companionPersona:
             sendPillar === 'companion'
               ? targetConversation.companion_persona_json || activeCompanionPersona || undefined
               : undefined,
+          clientLocalHour: new Date().getHours(),
           technicalDirective: directiveToSend || undefined,
           expert: sendPillar === 'council' ? expertSlug : undefined,
           language: languageSlug,
@@ -2593,6 +3149,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           suggestions?: MessageSuggestions | null;
           techBreakdown?: string | null;
           timingWidgets?: TimingProgressWidget[];
+          render_style?: ChatStyle | null;
+          referral?: MessageReferralPayload | null;
           title?: string;
           conversation?: ConversationRecord;
           pendingProfile?: PendingBirthProfileDraft | null;
@@ -2651,9 +3209,27 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                     ...(eventTimingWidgets ? { timing_widgets: eventTimingWidgets } : {}),
                   }
                 : null;
+            const companionSuggestions: MessageSuggestions | null =
+              sendPillar === 'companion'
+                ? baseSuggestions ||
+                  (Array.isArray(evt.followups) && evt.followups.length > 0
+                    ? {
+                        followups: evt.followups.map((text, idx) => ({
+                          id: `comp_f_${idx}`,
+                          text,
+                        })),
+                        deeper_analysis: [],
+                      }
+                    : null)
+                : null;
             const enrichedAssistant: ChatMessageRecord = {
               ...evt.assistantMessage,
-              suggestions_json: sendPillar === 'council' ? mergedSuggestions : null,
+              suggestions_json:
+                sendPillar === 'council' ? mergedSuggestions : companionSuggestions,
+              render_style:
+                evt.assistantMessage.render_style ?? evt.render_style ?? null,
+              referral_json:
+                evt.assistantMessage.referral_json ?? evt.referral ?? null,
             };
             setMessages((prev) => [...prev, enrichedAssistant]);
             if (sendPillar === 'council' && evt.pendingProfile) {
@@ -2669,6 +3245,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             const mergedConv = enrichConversationWithLocalMeta({
               ...evt.conversation,
               pillar: sendPillar,
+              companion_slug:
+                evt.conversation.companion_slug ||
+                targetConversation.companion_slug ||
+                null,
+              companion_chat_mode:
+                evt.conversation.companion_chat_mode ||
+                targetConversation.companion_chat_mode ||
+                null,
               companion_persona_json:
                 evt.conversation.companion_persona_json ||
                 targetConversation.companion_persona_json ||
@@ -3654,6 +4238,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       <ChatSidebar
         profiles={profiles}
         conversations={conversations}
+        companionCatalog={companionCatalog}
         activeConversationId={activeConversation?.id || null}
         activeTabConversationIds={activeTabConversationIds}
         maxActiveTabs={MAX_ACTIVE_TABS}
@@ -3719,25 +4304,52 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
             {/* Pillar-Aware Title Region */}
             {activePillar === 'companion' ? (
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <HeartHandshake className="h-4 w-4 text-[#8B7355] shrink-0" />
-                <h1 className="font-serif text-[15px] sm:text-base font-medium text-[#3D3830] truncate">
-                  {activeCompanionPersona ? (
-                    <>
-                      <span className="font-semibold text-[#3D3830]">
-                        {activeCompanionPersona.name}
-                      </span>{' '}
-                      <span className="text-[#5C5449]">
-                        ({activeCompanionPersona.role_label})
-                      </span>
-                    </>
-                  ) : (
-                    <>
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                {activeCompanionPersona ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setProfileSheetCompanion(
+                        buildSheetCardFromPersona(activeCompanionPersona, activeCompanionCard)
+                      )
+                    }
+                    className="group flex items-center gap-2.5 min-w-0 rounded-xl px-1.5 py-0.5 -ml-1.5 hover:bg-[#F1ECE3]/80 transition-colors text-left cursor-pointer"
+                    aria-label={`View ${activeCompanionPersona.name}'s profile`}
+                  >
+                    <CompanionAvatar
+                      name={activeCompanionPersona.name}
+                      avatarUrl={
+                        activeCompanionCard?.avatar_url ?? activeCompanionPersona.avatar_url
+                      }
+                      palette={
+                        activeCompanionCard?.monogram_palette ??
+                        activeCompanionPersona.monogram_palette
+                      }
+                      size="sm"
+                      shape="circle"
+                    />
+                    <div className="min-w-0">
+                      <h1 className="font-serif text-[15px] sm:text-base font-medium text-[#3D3830] truncate">
+                        <span className="font-semibold text-[#3D3830] group-hover:underline underline-offset-2">
+                          {activeCompanionPersona.name}
+                        </span>{' '}
+                        <span className="text-[#5C5449]">
+                          ·{' '}
+                          {activeCompanionCard?.primary_expertise ||
+                            activeCompanionPersona.role_label}
+                        </span>
+                      </h1>
+                    </div>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 min-w-0">
+                    <HeartHandshake className="h-4 w-4 text-[#8B7355] shrink-0" />
+                    <h1 className="font-serif text-[15px] sm:text-base font-medium text-[#3D3830] truncate">
                       <span className="font-semibold text-[#3D3830]">Companions</span>{' '}
-                      <span className="text-[#5C5449]">(Find your match)</span>
-                    </>
-                  )}
-                </h1>
+                      <span className="text-[#5C5449]">· Choose someone to talk to</span>
+                    </h1>
+                  </div>
+                )}
               </div>
             ) : activePillar === 'clarity' ? (
               <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -3869,15 +4481,54 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {activePillar === 'companion' &&
+              activeConversation &&
+              (activeCompanionCard?.supports_listening_cue ??
+                activeCompanionPersona?.supports_listening_cue ??
+                true) && (
+                <div
+                  role="group"
+                  aria-label="Conversation pace"
+                  className="hidden md:inline-flex items-center rounded-xl border border-[#3D3830]/12 bg-[#F1ECE3]/85 p-0.5 shrink-0"
+                >
+                  <button
+                    type="button"
+                    aria-pressed={
+                      (activeConversation.companion_chat_mode || 'just_listen') === 'just_listen'
+                    }
+                    onClick={() => void handleToggleCompanionChatMode('just_listen')}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                      (activeConversation.companion_chat_mode || 'just_listen') === 'just_listen'
+                        ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                        : 'text-[#5C5449] hover:text-[#3D3830]'
+                    }`}
+                  >
+                    Just listen
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={activeConversation.companion_chat_mode === 'help_think'}
+                    onClick={() => void handleToggleCompanionChatMode('help_think')}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                      activeConversation.companion_chat_mode === 'help_think'
+                        ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                        : 'text-[#5C5449] hover:text-[#3D3830]'
+                    }`}
+                  >
+                    Help me think
+                  </button>
+                </div>
+              )}
+
             {activePillar === 'companion' && activeConversation && (
-              <Tooltip content="Match a different companion" placement="bottom">
+              <Tooltip content="Browse all companions" placement="bottom">
                 <button
                   type="button"
                   onClick={() => handleOpenNewCompanionSetup(null)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#3D3830]/12 bg-[#FDFBF7] px-2.5 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#3D3830]/12 bg-[#FDFBF7] px-2.5 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] whitespace-nowrap shrink-0 transition-colors cursor-pointer"
                 >
                   <RefreshCw className="h-3.5 w-3.5 text-[#8B7355]" />
-                  <span className="hidden sm:inline">New Match</span>
+                  <span className="hidden sm:inline">All companions</span>
                 </button>
               </Tooltip>
             )}
@@ -4011,6 +4662,51 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           </div>
         </div>
 
+        {/* Mobile Companion Pace Strip (keeps mobile top bar clean & zero-overflow) */}
+        {activePillar === 'companion' &&
+          activeConversation &&
+          (activeCompanionCard?.supports_listening_cue ??
+            activeCompanionPersona?.supports_listening_cue ??
+            true) && (
+            <div className="md:hidden flex items-center justify-between gap-2 border-b border-[#3D3830]/10 bg-[#FAF7F2]/90 px-3 py-1.5">
+              <span className="text-[11px] text-[#8B8275] whitespace-nowrap shrink-0">
+                Tone right now
+              </span>
+              <div
+                role="group"
+                aria-label="Conversation pace"
+                className="inline-flex items-center rounded-xl border border-[#3D3830]/12 bg-[#F1ECE3]/85 p-0.5 shrink-0"
+              >
+                <button
+                  type="button"
+                  aria-pressed={
+                    (activeConversation.companion_chat_mode || 'just_listen') === 'just_listen'
+                  }
+                  onClick={() => void handleToggleCompanionChatMode('just_listen')}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                    (activeConversation.companion_chat_mode || 'just_listen') === 'just_listen'
+                      ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                      : 'text-[#5C5449] hover:text-[#3D3830]'
+                  }`}
+                >
+                  Just listen
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={activeConversation.companion_chat_mode === 'help_think'}
+                  onClick={() => void handleToggleCompanionChatMode('help_think')}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                    activeConversation.companion_chat_mode === 'help_think'
+                      ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                      : 'text-[#5C5449] hover:text-[#3D3830]'
+                  }`}
+                >
+                  Help me think
+                </button>
+              </div>
+            </div>
+          )}
+
         {/* In-Chat Keyword Search Bar */}
         {showInChatSearch && !isCompanionSetupMode && (
           <div className="animate-cc-drawer-in flex items-center gap-2 border-b border-[#3D3830]/10 bg-[#F1ECE3]/80 px-4 md:px-7 py-2">
@@ -4100,15 +4796,37 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             initialArchetype={companionSetupArchetype}
             pastCompanionConversations={pastCompanionConversations}
             archetypeConfigs={chatbotConfig?.companion_archetypes}
+            companionCatalog={companionCatalog}
             isPreviewMode={isPreviewMode}
             getAccessToken={getAccessToken}
             onSelectPastCompanion={(convId) => handleSelectSidebarConversation(convId)}
             onStartWithCompanion={handleStartWithCompanion}
+            onStartPresetCompanion={handleStartPresetCompanion}
+            onStartCustomBySlug={handleStartCustomBySlug}
+            onCatalogLoaded={(cards) => setCompanionCatalog(cards)}
           />
         ) : (
           <MessageThread
             activePillar={activePillar}
             activeCompanionPersona={activeCompanionPersona}
+            activeCompanionCard={activeCompanionCard}
+            companionCatalog={companionCatalog}
+            activeGuideUi={activeGuideUi}
+            onOpenCompanionProfile={(card) => {
+              if (card) {
+                setProfileSheetCompanion(card);
+              } else if (activeCompanionPersona) {
+                setProfileSheetCompanion(
+                  buildSheetCardFromPersona(activeCompanionPersona, activeCompanionCard)
+                );
+              }
+            }}
+            onReactToMessage={(msg, nextReaction) =>
+              void handleReactToMessage(msg, nextReaction)
+            }
+            onSwitchToReferredCompanion={(slug, options) =>
+              void handleSwitchToReferredCompanion(slug, options)
+            }
             onSelectClarityPrompt={(prompt) => void handleSendMessage(prompt)}
             conversation={activeConversation}
             profile={activePillar === 'council' ? activeProfile : null}
@@ -4173,7 +4891,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
               true
             }
             enableFollowups={
-              activeGuideUi
+              activePillar === 'companion'
+                ? (activeCompanionCard?.suggestions_enabled ?? true) &&
+                  (activeGuideUi
+                    ? activeGuideUi.suggestions_enabled &&
+                      activeGuideUi.features?.followups !== false
+                    : chatbotConfig?.features?.followups ?? true)
+                : activeGuideUi
                 ? activeGuideUi.suggestions_enabled && activeGuideUi.features?.followups !== false
                 : activePillar === 'council' &&
                   (chatbotConfig?.features?.followups ?? true) &&
@@ -4222,6 +4946,15 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         <ChatComposer
           activePillar={activePillar}
           activeCompanionPersona={activeCompanionPersona}
+          activeCompanionCard={activeCompanionCard}
+          onOpenCompanionProfile={
+            activeCompanionPersona
+              ? () =>
+                  setProfileSheetCompanion(
+                    buildSheetCardFromPersona(activeCompanionPersona, activeCompanionCard)
+                  )
+              : undefined
+          }
           tabs={tabs}
           activeTabId={activeTabId}
           maxActiveTabs={MAX_ACTIVE_TABS}
@@ -4405,6 +5138,21 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           }
         }}
         onClose={() => setShowChatSettings(false)}
+      />
+
+      {/* Companion Profile Sheet */}
+      <CompanionProfileSheet
+        companion={profileSheetCompanion}
+        isOpen={Boolean(profileSheetCompanion)}
+        onClose={() => setProfileSheetCompanion(null)}
+        onStartChat={(card, opts) => {
+          setProfileSheetCompanion(null);
+          if (companionCatalog.some((c) => c.slug === card.slug)) {
+            void handleStartPresetCompanion(card, opts);
+          } else if (activeCompanionPersona) {
+            void handleStartCustomBySlug(card.slug, activeCompanionPersona, opts);
+          }
+        }}
       />
     </div>
   );

@@ -95,8 +95,11 @@ export interface HomeSummaryResponse {
     pillar: 'council' | 'companion' | 'clarity';
     profile_id: string | null;
     profile_label: string | null;
+    companion_slug?: string | null;
     companion_name: string | null;
     companion_role: string | null;
+    avatar_url?: string | null;
+    monogram_palette?: { bg: string; ring: string; ink: string } | null;
     updated_at: string;
   }>;
   recentGuides: Array<{
@@ -105,8 +108,21 @@ export interface HomeSummaryResponse {
     title: string;
     subtitle: string;
     expertSlug?: string;
+    companionSlug?: string;
+    avatarUrl?: string | null;
+    monogramPalette?: { bg: string; ring: string; ink: string } | null;
     conversationId?: string;
     lastActiveAt?: string;
+  }>;
+  featuredCompanions?: Array<{
+    slug: string;
+    name: string;
+    age: number;
+    primary_expertise: string;
+    tagline: string;
+    avatar_url: string | null;
+    monogram_palette: { bg: string; ring: string; ink: string };
+    last_conversation_id?: string | null;
   }>;
   favoriteAppSlugs: string[];
   recentAppRuns: Array<{

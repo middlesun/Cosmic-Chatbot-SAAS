@@ -44,8 +44,21 @@ import {
   GUIDE_SLUGS,
   getGuideCatalogMeta,
   isValidGuideSlug,
+  normalizeChatStyle,
   type GuideSlug,
 } from '../services/enginePromptDefaults';
+import {
+  COMPANION_MONOGRAM_PALETTES,
+  COMPANION_PORTRAIT_GALLERY,
+  DEFAULT_COMPANION_PRESETS,
+  deleteAdminCompanion,
+  getAdminCompanionsList,
+  invalidateCompanionsCache,
+  isCompanionsTableReady,
+  reorderAdminCompanions,
+  resetAdminCompanionToDefault,
+  upsertAdminCompanion,
+} from '../services/companionPresets';
 import {
   BUILTIN_MODEL_SUGGESTIONS,
   DEFAULT_CONVERSATIONAL_RULES,
@@ -2322,6 +2335,9 @@ router.put('/settings/chatbot/guide/:guideSlug', async (req: AuthenticatedReques
   if (typeof body.composer_placeholder === 'string') {
     nextEntry.composer_placeholder = body.composer_placeholder.trim().slice(0, 200);
   }
+  if (typeof body.chat_style === 'string') {
+    nextEntry.chat_style = normalizeChatStyle(body.chat_style, meta.defaultChatStyle);
+  }
   if (body.features && typeof body.features === 'object') {
     const f = body.features as Record<string, unknown>;
     nextEntry.features = {
@@ -2560,6 +2576,7 @@ router.post('/settings/chatbot/guide/:guideSlug/reset', async (req: Authenticate
       delete entry.welcome_subtitle;
       delete entry.general_ready_message;
       delete entry.composer_placeholder;
+      delete entry.chat_style;
     } else if (scope === 'features') {
       delete entry.features;
     } else if (scope === 'rules') {
@@ -4363,6 +4380,9 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     hasAppUsageLogs,
     hasUserFavoriteApps,
     hasPipelineLogs,
+    hasCompanionsTable,
+    hasCompanionBondsTable,
+    hasCustomCompanionsTable,
   ] = await Promise.all([
     checkTable('users'),
     checkTable('profiles'),
@@ -4377,6 +4397,9 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     checkTable('app_usage_logs'),
     checkTable('user_favorite_apps', 'user_id, app_slug'),
     isPipelineLogsTableReady(),
+    checkTable('companions'),
+    checkTable('companion_bonds'),
+    checkTable('user_custom_companions'),
   ]);
 
   const migration004Ready = hasPlatformSettings && hasPromptRecipes && hasSupportTickets;
@@ -4384,6 +4407,7 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
   const migration006Ready = hasMigration006Conversations;
   const migration007Ready = hasAppCache && hasAppUsageLogs && hasUserFavoriteApps;
   const migration012Ready = hasPipelineLogs;
+  const migration015Ready = hasCompanionsTable && hasCompanionBondsTable && hasCustomCompanionsTable;
 
   res.json({
     integrations: {
@@ -4412,12 +4436,16 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
       app_usage_logs: hasAppUsageLogs,
       user_favorite_apps: hasUserFavoriteApps,
       chatbot_pipeline_logs: hasPipelineLogs,
+      companions: hasCompanionsTable,
+      companion_bonds: hasCompanionBondsTable,
+      user_custom_companions: hasCustomCompanionsTable,
     },
     migration004Ready,
     migration005Ready,
     migration006Ready,
     migration007Ready,
     migration012Ready,
+    migration015Ready,
     timestamp: new Date().toISOString(),
   });
 });
@@ -4479,8 +4507,81 @@ router.delete('/chatbot-logs', async (_req: AuthenticatedRequest, res) => {
 router.post('/platform/cache-flush', async (_req: AuthenticatedRequest, res) => {
   invalidatePromptCache();
   invalidateAllPlatformCaches();
+  invalidateCompanionsCache();
   const miniAppsMemoryCleared = clearMiniAppsMemoryCache();
   res.json({ flushed: true, miniAppsMemoryCleared, timestamp: new Date().toISOString() });
+});
+
+// 15. Companions Manager (Full CRUD, Ordering, Portrait Library & Defaults Reset)
+router.get('/companions', async (_req: AuthenticatedRequest, res) => {
+  try {
+    const [companions, tableReady] = await Promise.all([
+      getAdminCompanionsList(),
+      isCompanionsTableReady(),
+    ]);
+    res.json({
+      companions,
+      tableReady,
+      defaultSlugs: DEFAULT_COMPANION_PRESETS.map((p) => p.slug),
+      availablePortraits: COMPANION_PORTRAIT_GALLERY,
+      monogramPalettes: COMPANION_MONOGRAM_PALETTES,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to load companions' });
+  }
+});
+
+router.post('/companions', async (req: AuthenticatedRequest, res) => {
+  const result = await upsertAdminCompanion((req.body || {}) as Record<string, unknown>, {
+    isNew: true,
+  });
+  if (!result.ok) {
+    res.status(result.status || 400).json({ error: result.error || 'Failed to create companion' });
+    return;
+  }
+  res.status(201).json({ companion: result.companion });
+});
+
+router.patch('/companions/reorder', async (req: AuthenticatedRequest, res) => {
+  const orderedIds = Array.isArray(req.body?.orderedIds)
+    ? req.body.orderedIds.map(String)
+    : [];
+  const result = await reorderAdminCompanions(orderedIds);
+  if (!result.ok) {
+    res.status(400).json({ error: result.error || 'Failed to reorder companions' });
+    return;
+  }
+  res.json({ reordered: true });
+});
+
+router.put('/companions/:id', async (req: AuthenticatedRequest, res) => {
+  const result = await upsertAdminCompanion((req.body || {}) as Record<string, unknown>, {
+    isNew: false,
+    targetId: String(req.params.id || ''),
+  });
+  if (!result.ok) {
+    res.status(result.status || 400).json({ error: result.error || 'Failed to update companion' });
+    return;
+  }
+  res.json({ companion: result.companion });
+});
+
+router.post('/companions/:slug/reset', async (req: AuthenticatedRequest, res) => {
+  const result = await resetAdminCompanionToDefault(String(req.params.slug || ''));
+  if (!result.ok) {
+    res.status(result.status || 400).json({ error: result.error || 'Failed to reset companion' });
+    return;
+  }
+  res.json({ companion: result.companion });
+});
+
+router.delete('/companions/:id', async (req: AuthenticatedRequest, res) => {
+  const result = await deleteAdminCompanion(String(req.params.id || ''));
+  if (!result.ok) {
+    res.status(result.status || 400).json({ error: result.error || 'Failed to delete companion' });
+    return;
+  }
+  res.json({ deleted: true });
 });
 
 export default router;

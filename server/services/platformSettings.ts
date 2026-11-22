@@ -34,12 +34,14 @@ import {
   getGuideCatalogMeta,
   GUIDE_SLUGS,
   isValidGuideSlug,
+  normalizeChatStyle,
+  type ChatStyle,
   type DefaultCompanionArchetype,
   type GuideSlug,
 } from './enginePromptDefaults';
 
-export type { DefaultCompanionArchetype, GuideSlug };
-export { ALL_GUIDE_CATALOG_META, GUIDE_SLUGS, getGuideCatalogMeta, isValidGuideSlug };
+export type { ChatStyle, DefaultCompanionArchetype, GuideSlug };
+export { ALLOWED_CHAT_STYLES, ALL_GUIDE_CATALOG_META, GUIDE_SLUGS, getGuideCatalogMeta, isValidGuideSlug, normalizeChatStyle } from './enginePromptDefaults';
 
 export type SupportedCurrency = 'INR' | 'USD' | 'AED' | 'EUR';
 
@@ -152,6 +154,7 @@ export interface GuideChatbotOverride {
   welcome_subtitle?: string;
   general_ready_message?: string;
   composer_placeholder?: string;
+  chat_style?: ChatStyle;
   features?: Partial<ChatbotFeaturesConfig>;
   modular_rules?: ModularRuleBlock[];
   suggestions?: Partial<GuideSuggestionsConfig>;
@@ -205,6 +208,7 @@ export interface ResolvedGuideConfig {
   welcome_subtitle: string;
   general_ready_message: string;
   composer_placeholder: string;
+  chat_style: ChatStyle;
   features: ChatbotFeaturesConfig;
   modular_rules: ModularRuleBlock[];
   has_custom_modular_rules: boolean;
@@ -897,6 +901,9 @@ export async function getPerGuideChatbotConfig(): Promise<PerGuideChatbotConfigM
         ...(typeof entry.welcome_subtitle === 'string' ? { welcome_subtitle: entry.welcome_subtitle.trim().slice(0, 400) } : {}),
         ...(typeof entry.general_ready_message === 'string' ? { general_ready_message: entry.general_ready_message.trim().slice(0, 400) } : {}),
         ...(typeof entry.composer_placeholder === 'string' ? { composer_placeholder: entry.composer_placeholder.trim().slice(0, 200) } : {}),
+        ...(typeof entry.chat_style === 'string'
+          ? { chat_style: normalizeChatStyle(entry.chat_style, getGuideCatalogMeta(normalized).defaultChatStyle) }
+          : {}),
         ...(entry.features && typeof entry.features === 'object' ? { features: entry.features } : {}),
         ...(sanitizedRules ? { modular_rules: sanitizedRules } : {}),
         ...(entry.suggestions && typeof entry.suggestions === 'object' ? { suggestions: entry.suggestions } : {}),
@@ -1067,12 +1074,17 @@ export async function getResolvedGuideConfig(rawSlug: string): Promise<ResolvedG
     .map((r, i) => `RULE #${i + 1} (${r.title}):\n${r.body.trim()}`)
     .join('\n\n');
 
+  const chatStyle: ChatStyle = override?.chat_style
+    ? normalizeChatStyle(override.chat_style, meta.defaultChatStyle)
+    : meta.defaultChatStyle;
+
   const isCustomized = Boolean(
     override &&
       (override.welcome_title !== undefined ||
         override.welcome_subtitle !== undefined ||
         override.general_ready_message !== undefined ||
         override.composer_placeholder !== undefined ||
+        override.chat_style !== undefined ||
         (override.features && Object.keys(override.features).length > 0) ||
         hasCustomRules ||
         (override.suggestions && Object.keys(override.suggestions).length > 0) ||
@@ -1087,6 +1099,7 @@ export async function getResolvedGuideConfig(rawSlug: string): Promise<ResolvedG
     welcome_subtitle: welcomeSubtitle,
     general_ready_message: generalReadyMessage,
     composer_placeholder: composerPlaceholder,
+    chat_style: chatStyle,
     features: {
       ...features,
       followups: suggestionsEnabled && resolvedSuggestions.followups_enabled !== false,
@@ -1192,6 +1205,7 @@ export async function getPublicChatbotUiConfig() {
       welcome_subtitle: string;
       general_ready_message: string;
       composer_placeholder: string;
+      chat_style: ChatStyle;
       features: ChatbotFeaturesConfig;
       suggestions_enabled: boolean;
       suggestions: {
@@ -1212,6 +1226,7 @@ export async function getPublicChatbotUiConfig() {
       welcome_subtitle: g.welcome_subtitle,
       general_ready_message: g.general_ready_message,
       composer_placeholder: g.composer_placeholder,
+      chat_style: g.chat_style,
       features: g.features,
       suggestions_enabled:
         g.suggestions.enabled &&

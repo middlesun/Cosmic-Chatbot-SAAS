@@ -33,11 +33,24 @@ export function getUserProfileDisplayLabel(
 }
 
 /**
+ * Strips internal companion formatting delimiters ([[BUBBLE]], <<<REFERRAL:...>>>)
+ * before copying, sharing to WhatsApp, or speaking aloud.
+ */
+export function cleanCompanionMarkupText(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/<<<REFERRAL:[\s\S]*?(?:>>>|$)/gi, '')
+    .replace(/\s*\[\[BUBBLE\]\]\s*/gi, '\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
  * Converts Markdown into clean, calm spoken prose with natural pauses and zero symbol artifacts.
  */
 export function stripMarkdownForSpeech(markdown: string): string {
   if (!markdown) return '';
-  let text = markdown
+  let text = cleanCompanionMarkupText(markdown)
     // Remove fenced code blocks
     .replace(/```[\s\S]*?```/g, ' ')
     // Replace markdown tables with readable comma-separated lines
@@ -94,7 +107,8 @@ const LANGUAGE_TO_BCP47: Record<string, string[]> = {
 
 function pickBestSpeechVoice(
   voices: SpeechSynthesisVoice[],
-  languageSlug?: string | null
+  languageSlug?: string | null,
+  preferredGender?: 'M' | 'F'
 ): { voice: SpeechSynthesisVoice | null; lang: string } {
   const preferredLangs =
     (languageSlug && LANGUAGE_TO_BCP47[languageSlug]) || LANGUAGE_TO_BCP47.English;
@@ -136,6 +150,22 @@ function pickBestSpeechVoice(
     if (/google|siri|neerja|prabhat|rishi|isha|samantha|ava|daniel|aria|jenny/.test(nameLower)) {
       score += 22;
     }
+
+    // Soft gender match when speaking as a specific Companion
+    if (preferredGender === 'F') {
+      if (/\b(female|woman|neerja|samantha|ava|aria|jenny|karen|victoria|tessa|veena|lekha|isha|monica|heera|zira|natasha|sara|clara|emma|olivia)\b/.test(nameLower)) {
+        score += 28;
+      } else if (/\b(male|man|prabhat|rishi|daniel|alex|oliver|arthur|david|mark|ravi|thomas|guy|aaron|george|james)\b/.test(nameLower)) {
+        score -= 18;
+      }
+    } else if (preferredGender === 'M') {
+      if (/\b(male|man|prabhat|rishi|daniel|alex|oliver|arthur|david|mark|ravi|thomas|guy|aaron|george|james)\b/.test(nameLower)) {
+        score += 28;
+      } else if (/\b(female|woman|neerja|samantha|ava|aria|jenny|karen|victoria|tessa|veena|lekha|isha|monica|heera|zira|natasha|sara|clara|emma|olivia)\b/.test(nameLower)) {
+        score -= 18;
+      }
+    }
+
     if (/espeak|festival|compact/.test(nameLower)) score -= 30;
     if (voice.localService) score += 6;
 
@@ -206,6 +236,9 @@ export function speakMessageText(
     onStart?: () => void;
     onEnd?: () => void;
     onError?: () => void;
+    rate?: number;
+    pitch?: number;
+    gender?: 'M' | 'F';
   } = {}
 ): boolean {
   if (!isSpeechSynthesisSupported()) {
@@ -234,10 +267,19 @@ export function speakMessageText(
     return false;
   }
 
+  const safeRate =
+    typeof callbacks.rate === 'number' && Number.isFinite(callbacks.rate)
+      ? Math.min(1.25, Math.max(0.75, callbacks.rate))
+      : 0.96;
+  const safePitch =
+    typeof callbacks.pitch === 'number' && Number.isFinite(callbacks.pitch)
+      ? Math.min(1.2, Math.max(0.8, callbacks.pitch))
+      : 1.0;
+
   const startSpeaking = () => {
     if (sessionId !== activeSpeechSessionId) return;
     const voices = synth.getVoices();
-    const { voice, lang } = pickBestSpeechVoice(voices, languageSlug);
+    const { voice, lang } = pickBestSpeechVoice(voices, languageSlug, callbacks.gender);
 
     let index = 0;
     let started = false;
@@ -252,8 +294,8 @@ export function speakMessageText(
       const utterance = new SpeechSynthesisUtterance(chunks[index]);
       utterance.lang = lang;
       if (voice) utterance.voice = voice;
-      utterance.rate = 0.96;
-      utterance.pitch = 1.0;
+      utterance.rate = safeRate;
+      utterance.pitch = safePitch;
 
       utterance.onstart = () => {
         if (sessionId !== activeSpeechSessionId) return;
@@ -309,7 +351,9 @@ export function speakMessageText(
  */
 export function formatMarkdownForWhatsApp(markdown: string): string {
   if (!markdown) return '';
-  let formatted = markdown
+  const cleanMarkdown = cleanCompanionMarkupText(markdown);
+  if (!cleanMarkdown) return '';
+  let formatted = cleanMarkdown
     .replace(/```[\s\S]*?```/g, (block) => block.replace(/```[a-zA-Z]*\n?/g, '').trim())
     // Headings -> WhatsApp *Bold*
     .replace(/^#{1,6}\s+(.+)$/gm, '*$1*')

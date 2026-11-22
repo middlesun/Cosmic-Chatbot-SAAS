@@ -15,6 +15,28 @@ export type GuideSlug =
   | 'companion'
   | 'clarity';
 
+export type ChatStyle =
+  | 'editorial'
+  | 'structured'
+  | 'chat_bubbles'
+  | 'dialogue'
+  | 'concise_brief';
+
+export const ALLOWED_CHAT_STYLES: readonly ChatStyle[] = [
+  'editorial',
+  'structured',
+  'chat_bubbles',
+  'dialogue',
+  'concise_brief',
+] as const;
+
+export function normalizeChatStyle(raw: unknown, fallback: ChatStyle = 'structured'): ChatStyle {
+  if (typeof raw === 'string' && (ALLOWED_CHAT_STYLES as readonly string[]).includes(raw)) {
+    return raw as ChatStyle;
+  }
+  return fallback;
+}
+
 export interface GuideCatalogMeta {
   slug: GuideSlug;
   displayName: string;
@@ -22,6 +44,7 @@ export interface GuideCatalogMeta {
   pillar: 'council' | 'companion' | 'clarity';
   hasSystemPromptRow: boolean;
   defaultSuggestionsEnabled: boolean;
+  defaultChatStyle: ChatStyle;
   defaultWelcomeTitle: string;
   defaultWelcomeSubtitle: string;
   defaultGeneralReadyMessage: string;
@@ -36,6 +59,7 @@ export const ALL_GUIDE_CATALOG_META: GuideCatalogMeta[] = [
     pillar: 'council',
     hasSystemPromptRow: true,
     defaultSuggestionsEnabled: true,
+    defaultChatStyle: 'structured',
     defaultWelcomeTitle: "I'm ready",
     defaultWelcomeSubtitle: '',
     defaultGeneralReadyMessage:
@@ -49,6 +73,7 @@ export const ALL_GUIDE_CATALOG_META: GuideCatalogMeta[] = [
     pillar: 'council',
     hasSystemPromptRow: true,
     defaultSuggestionsEnabled: true,
+    defaultChatStyle: 'structured',
     defaultWelcomeTitle: "I'm ready",
     defaultWelcomeSubtitle: '',
     defaultGeneralReadyMessage:
@@ -62,6 +87,7 @@ export const ALL_GUIDE_CATALOG_META: GuideCatalogMeta[] = [
     pillar: 'council',
     hasSystemPromptRow: true,
     defaultSuggestionsEnabled: true,
+    defaultChatStyle: 'editorial',
     defaultWelcomeTitle: "I'm ready",
     defaultWelcomeSubtitle: '',
     defaultGeneralReadyMessage:
@@ -75,6 +101,7 @@ export const ALL_GUIDE_CATALOG_META: GuideCatalogMeta[] = [
     pillar: 'council',
     hasSystemPromptRow: true,
     defaultSuggestionsEnabled: true,
+    defaultChatStyle: 'structured',
     defaultWelcomeTitle: "I'm ready",
     defaultWelcomeSubtitle: '',
     defaultGeneralReadyMessage:
@@ -88,6 +115,7 @@ export const ALL_GUIDE_CATALOG_META: GuideCatalogMeta[] = [
     pillar: 'council',
     hasSystemPromptRow: true,
     defaultSuggestionsEnabled: true,
+    defaultChatStyle: 'structured',
     defaultWelcomeTitle: "I'm ready",
     defaultWelcomeSubtitle: '',
     defaultGeneralReadyMessage:
@@ -101,6 +129,7 @@ export const ALL_GUIDE_CATALOG_META: GuideCatalogMeta[] = [
     pillar: 'council',
     hasSystemPromptRow: true,
     defaultSuggestionsEnabled: true,
+    defaultChatStyle: 'editorial',
     defaultWelcomeTitle: "I'm ready",
     defaultWelcomeSubtitle: '',
     defaultGeneralReadyMessage:
@@ -110,12 +139,13 @@ export const ALL_GUIDE_CATALOG_META: GuideCatalogMeta[] = [
   {
     slug: 'companion',
     displayName: 'Companion',
-    subtitle: 'Human-like conversational companion personas (Friend, Listener, Motivator, Life Coach, Spiritual Guide).',
+    subtitle: 'Human-like conversational companion personas.',
     pillar: 'companion',
     hasSystemPromptRow: false,
-    defaultSuggestionsEnabled: false,
-    defaultWelcomeTitle: 'Find your companion',
-    defaultWelcomeSubtitle: 'Pick a style below and talk naturally — no birth chart required.',
+    defaultSuggestionsEnabled: true,
+    defaultChatStyle: 'chat_bubbles',
+    defaultWelcomeTitle: 'Choose who you want to talk with',
+    defaultWelcomeSubtitle: 'Quiet company, honest perspective, or a space to vent — no agenda.',
     defaultGeneralReadyMessage: 'Your companion is ready to talk.',
     defaultComposerPlaceholder: 'Write whatever is on your mind...',
   },
@@ -126,6 +156,7 @@ export const ALL_GUIDE_CATALOG_META: GuideCatalogMeta[] = [
     pillar: 'clarity',
     hasSystemPromptRow: false,
     defaultSuggestionsEnabled: false,
+    defaultChatStyle: 'concise_brief',
     defaultWelcomeTitle: 'Clarity',
     defaultWelcomeSubtitle:
       'Your off-record sidekick for quick doubts, prompt drafting, and everyday questions — kept completely separate from your birth chart memory.',

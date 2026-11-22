@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   Coins,
   Cpu,
+  HeartHandshake,
   LayoutDashboard,
   LayoutGrid,
   Layers,
@@ -34,12 +35,14 @@ import AdminPricingPlans from './AdminPricingPlans';
 import AdminSupportDesk from './AdminSupportDesk';
 import AdminPlatformHealth from './AdminPlatformHealth';
 import AdminAppsAnalytics from './AdminAppsAnalytics';
+import AdminCompanionsManager from './AdminCompanionsManager';
 
 type AdminSectionKey =
   | 'dash'
   | 'users'
   | 'prompts'
   | 'chatbot'
+  | 'companions'
   | 'chatbot-logs'
   | 'reports'
   | 'apps'
@@ -119,6 +122,13 @@ const PRIMARY_ADMIN_NAV: SidebarNavItem[] = [
     icon: MessageSquare,
   },
   {
+    key: 'companions',
+    label: 'Companions',
+    path: '/app/admin/companions',
+    description: 'Preset companion roster, portraits, layered Hard/Soft rules, chat styles, and AI models.',
+    icon: HeartHandshake,
+  },
+  {
     key: 'chatbot-logs',
     label: 'Chatbot Logs',
     path: '/app/admin/chatbot-logs',
@@ -184,6 +194,8 @@ function resolveSectionFromPath(pathname: string): AdminSectionKey {
       return 'prompts';
     case 'chatbot':
       return 'chatbot';
+    case 'companions':
+      return 'companions';
     case 'chatbot-logs':
       return 'chatbot-logs';
     case 'reports':
@@ -848,6 +860,14 @@ const AdminPanel: React.FC = () => {
               getAccessToken={getAccessToken}
               modelOptions={modelOptions}
               onPromptsChanged={() => void loadCoreAdminData(true)}
+            />
+          )}
+
+          {/* SECTION 4A: Companions Roster & Governance */}
+          {activeSection === 'companions' && (
+            <AdminCompanionsManager
+              getAccessToken={getAccessToken}
+              modelOptions={modelOptions}
             />
           )}
 

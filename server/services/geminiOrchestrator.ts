@@ -1,7 +1,16 @@
 import crypto from 'crypto';
+import type {
+  ChatStyle,
+  CompanionChatCue,
+  MessageReferralPayload,
+} from '../../components/app/chatTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './astrologyApi';
 import { formatChartForLLM, type CompiledChartData } from './chartCompiler';
+import {
+  normalizeCompanionSlug,
+  type CompanionPresetRecord,
+} from './companionPresets';
 import {
   drawTarotSpread,
   extractNumerologyHintsFromPrompt,
@@ -14,7 +23,9 @@ import {
   buildCompanionSystemPromptAsync,
   type ChatPillar,
   type CompanionPersona,
+  type ReferrableCompanionSummary,
 } from './companionEngine';
+import type { CompanionBondState } from './memoryArchivist';
 import {
   createOpenRouterCompletion,
   getConsultationModel,
@@ -150,6 +161,12 @@ export interface StreamConsultationParams {
   userId: string;
   pillar?: ChatPillar;
   companionPersona?: CompanionPersona | null;
+  companionPreset?: CompanionPresetRecord | null;
+  companionBond?: CompanionBondState | null;
+  companionChatMode?: CompanionChatCue | null;
+  companionCrossThreadSummary?: string | null;
+  referrableCompanions?: ReferrableCompanionSummary[];
+  clientLocalHour?: number | null;
   conversation: {
     id: string;
     profile_id: string | null;
@@ -157,6 +174,8 @@ export interface StreamConsultationParams {
     use_full_profile_memory: boolean;
     title: string;
     pillar?: ChatPillar;
+    companion_slug?: string | null;
+    companion_chat_mode?: CompanionChatCue | null;
     companion_persona_json?: CompanionPersona | null;
   };
   profile: ConsultationProfileRecord | null;
@@ -218,6 +237,8 @@ export interface StreamConsultationResult {
   leakIntercepted?: boolean;
   pendingProfile?: PendingBirthProfileDraft | null;
   suggestions?: MessageSuggestions | null;
+  referral?: MessageReferralPayload | null;
+  renderStyle?: ChatStyle;
   vedicMeta?: VedicSynthesisMeta | null;
   stage2Pkg?: Stage2ContextPackage | null;
   timingWidgets?: TimingProgressWidget[];
@@ -261,6 +282,8 @@ const PROFILE_CONFIRM_REGEX = /<CC_PROFILE_CONFIRM>([\s\S]*?)<\/CC_PROFILE_CONFI
 const PARTIAL_PROFILE_CONFIRM_REGEX = /<CC_PROFILE_CONFIRM[\s\S]*$/i;
 const SUGGESTIONS_BLOCK_REGEX = /<<<SUGGESTIONS_JSON>>>([\s\S]*?)<<<END_SUGGESTIONS_JSON>>>/i;
 const PARTIAL_SUGGESTIONS_REGEX = /<<<SUGGESTIONS(?:_JSON)?[\s\S]*$/i;
+const REFERRAL_BLOCK_REGEX = /<<<REFERRAL:([\s\S]*?)>>>/i;
+const PARTIAL_REFERRAL_REGEX = /<<<REFERRAL[\s\S]*$/i;
 
 function makeSuggestionId(prefix: string): string {
   return `${prefix}_${crypto.randomBytes(4).toString('hex')}`;
@@ -322,12 +345,14 @@ export function extractHiddenDirectives(
   suggestionsConfig?: Pick<
     SuggestionsConfig,
     'followups_enabled' | 'deeper_analysis_enabled' | 'max_followups' | 'max_deeper_analysis'
-  >
+  >,
+  referrableCompanions?: ReferrableCompanionSummary[]
 ): {
   cleanText: string;
   techBreakdown: string | null;
   pendingProfile: PendingBirthProfileDraft | null;
   suggestions: MessageSuggestions | null;
+  referral: MessageReferralPayload | null;
 } {
   let pendingProfile: PendingBirthProfileDraft | null = null;
   const profileMatch = PROFILE_CONFIRM_REGEX.exec(rawText);
@@ -402,15 +427,49 @@ export function extractHiddenDirectives(
     }
   }
 
+  let referral: MessageReferralPayload | null = null;
+  const refMatch = REFERRAL_BLOCK_REGEX.exec(rawText);
+  if (refMatch && refMatch[1]) {
+    const parsed = safeExtractJson<{
+      slug?: unknown;
+      name?: unknown;
+      reason?: unknown;
+    }>(refMatch[1].trim(), {});
+    const normalizedSlug = normalizeCompanionSlug(
+      typeof parsed.slug === 'string' ? parsed.slug : ''
+    );
+    if (normalizedSlug) {
+      const matched =
+        referrableCompanions?.find((c) => c.slug.toLowerCase() === normalizedSlug) || null;
+      if (!referrableCompanions || referrableCompanions.length === 0 || matched) {
+        referral = {
+          slug: matched ? matched.slug : normalizedSlug,
+          name:
+            matched?.name ||
+            (typeof parsed.name === 'string' && parsed.name.trim()
+              ? parsed.name.trim().slice(0, 60)
+              : normalizedSlug),
+          reason:
+            typeof parsed.reason === 'string' && parsed.reason.trim()
+              ? parsed.reason.trim().slice(0, 220)
+              : undefined,
+        };
+      }
+    }
+  }
+
   const strippedBase = rawText
     .replace(PROFILE_CONFIRM_REGEX, '')
     .replace(SUGGESTIONS_BLOCK_REGEX, '')
+    .replace(REFERRAL_BLOCK_REGEX, '')
     .replace(PARTIAL_PROFILE_CONFIRM_REGEX, '')
-    .replace(PARTIAL_SUGGESTIONS_REGEX, '');
+    .replace(PARTIAL_SUGGESTIONS_REGEX, '')
+    .replace(PARTIAL_REFERRAL_REGEX, '')
+    .trimEnd();
 
   const { mainText: cleanText, techBreakdown } = extractTechBreakdown(strippedBase);
 
-  return { cleanText, techBreakdown, pendingProfile, suggestions };
+  return { cleanText, techBreakdown, pendingProfile, suggestions, referral };
 }
 
 export function extractPendingProfileConfirmation(rawText: string): {
@@ -1215,9 +1274,11 @@ User's specific question: ${finalUserText}`;
   let modelOverride: string | null = null;
   let wantsSuggestions = false;
   let activeSuggestionsSpec: SuggestionsConfig | undefined;
+  let resolvedRenderStyle: ChatStyle | undefined;
 
   if (activePillar === 'companion') {
     const builtComp = await buildCompanionSystemPromptAsync({
+      preset: params.companionPreset || null,
       persona: activeCompanionPersona,
       languageSlug: params.languageSlug,
       preferredCallName: params.preferredCallName,
@@ -1225,9 +1286,19 @@ User's specific question: ${finalUserText}`;
       memorySnippets: params.conversation.use_full_profile_memory
         ? params.scopeMemoryContext
         : null,
+      bond: params.companionBond || null,
+      crossThreadSnippets: params.companionCrossThreadSummary || null,
+      userDefaultProfile: params.profile,
+      userPrompt: params.userPrompt,
+      historyMessages: activeHistory,
+      companionChatMode:
+        params.companionChatMode ?? params.conversation.companion_chat_mode ?? null,
+      referrableCompanions: params.referrableCompanions,
+      clientLocalHour: params.clientLocalHour,
     });
     systemInstructionWithDynamic = builtComp.systemInstruction;
     modelOverride = builtComp.modelOverride;
+    resolvedRenderStyle = builtComp.chatStyle;
     wantsSuggestions = false;
   } else if (activePillar === 'clarity') {
     const builtClarity = await buildClaritySystemPromptAsync({
@@ -1369,6 +1440,7 @@ User's specific question: ${finalUserText}`;
       text.search(/<CC_PROFILE_CONFIRM/i),
       text.search(/<<<SUGGESTIONS/i),
       text.search(/<<<TECH_BREAKDOWN/i),
+      text.search(/<<<REFERRAL/i),
     ].filter((idx) => idx !== -1);
     return indices.length > 0 ? Math.min(...indices) : -1;
   };
@@ -1479,13 +1551,21 @@ User's specific question: ${finalUserText}`;
       };
     }
 
-    const extractedFromAccumulated = extractHiddenDirectives(rawAccumulated, activeSuggestionsSpec);
+    const extractedFromAccumulated = extractHiddenDirectives(
+      rawAccumulated,
+      activeSuggestionsSpec,
+      params.referrableCompanions
+    );
     if (!hiddenBlockHoldStarted && extractedFromAccumulated.cleanText.length > flushedLength) {
       params.onChunk(sanitizeVedicProse(extractedFromAccumulated.cleanText.slice(flushedLength)));
       flushedLength = extractedFromAccumulated.cleanText.length;
     }
 
-    const extractedFinal = extractHiddenDirectives(rawAccumulated, activeSuggestionsSpec);
+    const extractedFinal = extractHiddenDirectives(
+      rawAccumulated,
+      activeSuggestionsSpec,
+      params.referrableCompanions
+    );
     const sanitized = sanitizeAssistantOutput(extractedFinal.cleanText);
     if (sanitized.leaked) {
       return {
@@ -1497,6 +1577,8 @@ User's specific question: ${finalUserText}`;
         leakIntercepted: true,
         pendingProfile: null,
         suggestions: null,
+        referral: null,
+        renderStyle: resolvedRenderStyle,
       };
     }
 
@@ -1525,6 +1607,8 @@ User's specific question: ${finalUserText}`;
       leakIntercepted: false,
       pendingProfile: streamResult.aborted || contAborted ? null : extractedFinal.pendingProfile,
       suggestions: streamResult.aborted || contAborted ? null : extractedFinal.suggestions,
+      referral: streamResult.aborted || contAborted ? null : extractedFinal.referral,
+      renderStyle: resolvedRenderStyle,
     };
   } finally {
     params.abortSignal.removeEventListener('abort', forwardAbort);
@@ -1540,37 +1624,58 @@ export async function generateStructuredSuggestions(params: {
   hasProfile: boolean;
 }): Promise<MessageSuggestions> {
   try {
+    const isCompanionSug =
+      params.expertSlug === 'companion' || params.expertSlug.startsWith('companion:');
+    const guideLookupSlug = isCompanionSug
+      ? 'companion'
+      : normalizeCouncilSlug(params.expertSlug);
     const [guideCfg, runtime] = await Promise.all([
-      getResolvedGuideConfig(normalizeCouncilSlug(params.expertSlug)),
+      getResolvedGuideConfig(guideLookupSlug),
       getResolvedOpenRouterRuntime(),
     ]);
     const suggestionsConfig = guideCfg.suggestions;
 
     if (
-      !suggestionsConfig.enabled ||
+      (!isCompanionSug && !suggestionsConfig.enabled) ||
       guideCfg.features.followups === false ||
-      (!suggestionsConfig.followups_enabled && !suggestionsConfig.deeper_analysis_enabled)
+      (!isCompanionSug &&
+        !suggestionsConfig.followups_enabled &&
+        !suggestionsConfig.deeper_analysis_enabled)
     ) {
       return { followups: [], deeper_analysis: [] };
     }
 
-    const maxF = suggestionsConfig.followups_enabled
+    const maxF = isCompanionSug
+      ? Math.max(2, Math.min(4, suggestionsConfig.max_followups || 3))
+      : suggestionsConfig.followups_enabled
       ? Math.max(1, Math.min(6, suggestionsConfig.max_followups || 4))
       : 0;
-    const maxD = suggestionsConfig.deeper_analysis_enabled
+    const maxD = isCompanionSug
+      ? 0
+      : suggestionsConfig.deeper_analysis_enabled
       ? Math.max(1, Math.min(6, suggestionsConfig.max_deeper_analysis || 4))
       : 0;
 
-    const completion = await createOpenRouterCompletion({
-      model: runtime.utilityModel || getUtilityModel(),
-      maxTokens: Math.max(600, runtime.tokenLimits.utility),
-      jsonMode: true,
-      disableReasoning: true,
-      temperature: 0.45,
-      messages: [
-        {
-          role: 'user',
-          content: `Generate structured two-tier suggestions STRICTLY anchored to the user's LAST question and the answer just given.
+    const cleanAnswerPreview = String(params.assistantAnswer || '')
+      .replace(/\[\[BUBBLE\]\]/g, ' ')
+      .slice(0, 1800);
+
+    const promptBody = isCompanionSug
+      ? `Generate 3 natural, human, first-person quick-reply options the USER might text next in this friend/companion conversation.
+Language: ${params.languageSlug}
+
+WHAT THE USER JUST SAID:
+${params.userQuestion.slice(0, 500)}
+
+WHAT THE COMPANION JUST REPLIED:
+${cleanAnswerPreview}
+
+RULES:
+- Sound like real everyday texts a person would actually tap to send (short, candid, human—6 to 14 words max).
+- Vary naturally: e.g. one emotional continuation or confession, one question back to the companion, one lighter/pivot option.
+- NEVER write stiff clinical astrology checklists or "analyze my Dasha/chart deeper" unless the companion explicitly brought it up.
+- Return STRICTLY JSON with shape: { "followups": [{ "text": "..." }], "deeper_analysis": [] }`
+      : `Generate structured two-tier suggestions STRICTLY anchored to the user's LAST question and the answer just given.
 Active Council Guide: ${params.expertSlug}
 Topic Mode: ${params.modeSlug}
 Language: ${params.languageSlug}
@@ -1580,7 +1685,7 @@ USER QUESTION (PRIMARY ANCHOR — NEVER DRIFT TO UNRELATED LIFE AREAS):
 ${params.userQuestion.slice(0, 600)}
 
 COUNCIL ANSWER EXCERPT:
-${params.assistantAnswer.slice(0, 1800)}
+${cleanAnswerPreview}
 
 ${maxF > 0 ? `TIER 1 — "followups" (${Math.min(3, maxF)}–${maxF} items):\n${suggestionsConfig.followups_rules}\n` : ''}
 ${maxD > 0 ? `TIER 2 — "deeper_analysis" (${Math.min(3, maxD)}–${maxD} items):\n${suggestionsConfig.deeper_analysis_rules}\n` : ''}
@@ -1589,9 +1694,15 @@ Return STRICTLY JSON with shape:
 {
   "followups": ${maxF > 0 ? '[{ "text": "..." }]' : '[]'},
   "deeper_analysis": ${maxD > 0 ? '[{ "text": "...", "technical_directive": "..." }]' : '[]'}
-}`,
-        },
-      ],
+}`;
+
+    const completion = await createOpenRouterCompletion({
+      model: runtime.utilityModel || getUtilityModel(),
+      maxTokens: Math.max(500, runtime.tokenLimits.utility),
+      jsonMode: true,
+      disableReasoning: true,
+      temperature: isCompanionSug ? 0.65 : 0.45,
+      messages: [{ role: 'user', content: promptBody }],
     });
 
     const parsed = safeExtractJson<{
@@ -1621,29 +1732,42 @@ export async function generateMoreStructuredSuggestions(params: {
   count?: number;
 }): Promise<MessageSuggestions> {
   try {
+    const isCompanionSug =
+      params.expertSlug === 'companion' || params.expertSlug.startsWith('companion:');
+    const guideLookupSlug = isCompanionSug
+      ? 'companion'
+      : normalizeCouncilSlug(params.expertSlug);
     const [guideCfg, runtime] = await Promise.all([
-      getResolvedGuideConfig(normalizeCouncilSlug(params.expertSlug)),
+      getResolvedGuideConfig(guideLookupSlug),
       getResolvedOpenRouterRuntime(),
     ]);
     const suggestionsConfig = guideCfg.suggestions;
 
     if (
-      !suggestionsConfig.enabled ||
+      (!isCompanionSug && !suggestionsConfig.enabled) ||
       guideCfg.features.followups === false ||
-      (!suggestionsConfig.followups_enabled && !suggestionsConfig.deeper_analysis_enabled)
+      (!isCompanionSug &&
+        !suggestionsConfig.followups_enabled &&
+        !suggestionsConfig.deeper_analysis_enabled)
     ) {
       return { followups: [], deeper_analysis: [] };
     }
 
-    const totalTarget = Math.max(2, Math.min(12, params.count || 8));
+    const totalTarget = Math.max(2, Math.min(12, params.count || (isCompanionSug ? 4 : 8)));
     const bothEnabled =
-      suggestionsConfig.followups_enabled && suggestionsConfig.deeper_analysis_enabled;
-    const countF = bothEnabled
+      !isCompanionSug &&
+      suggestionsConfig.followups_enabled &&
+      suggestionsConfig.deeper_analysis_enabled;
+    const countF = isCompanionSug
+      ? totalTarget
+      : bothEnabled
       ? Math.ceil(totalTarget / 2)
       : suggestionsConfig.followups_enabled
       ? totalTarget
       : 0;
-    const countD = bothEnabled
+    const countD = isCompanionSug
+      ? 0
+      : bothEnabled
       ? Math.floor(totalTarget / 2)
       : suggestionsConfig.deeper_analysis_enabled
       ? totalTarget
@@ -1654,16 +1778,25 @@ export async function generateMoreStructuredSuggestions(params: {
       .map((t, i) => `${i + 1}. ${t}`)
       .join('\n');
 
-    const completion = await createOpenRouterCompletion({
-      model: runtime.utilityModel || getUtilityModel(),
-      maxTokens: 640,
-      jsonMode: true,
-      disableReasoning: true,
-      temperature: 0.65,
-      messages: [
-        {
-          role: 'user',
-          content: `Generate ${totalTarget} BRAND-NEW structured suggestions tightly anchored to the USER QUESTION and COUNCIL ANSWER EXCERPT below. Do NOT drift into unrelated topics (e.g. marriage, promotion, contracts) unless the user asked about them.
+    const cleanAnswerPreview = String(params.assistantAnswer || '')
+      .replace(/\[\[BUBBLE\]\]/g, ' ')
+      .slice(0, 1800);
+
+    const promptBody = isCompanionSug
+      ? `Generate ${countF} BRAND-NEW short, natural first-person user texting replies to continue this conversation.
+Language: ${params.languageSlug}
+
+WHAT THE USER SAID:
+${params.userQuestion.slice(0, 500)}
+
+COMPANION REPLY:
+${cleanAnswerPreview}
+
+DO NOT REPEAT ANY OF THESE:
+${existingListBlock || '(none yet)'}
+
+Return STRICTLY JSON: { "followups": [{ "text": "..." }], "deeper_analysis": [] }`
+      : `Generate ${totalTarget} BRAND-NEW structured suggestions tightly anchored to the USER QUESTION and COUNCIL ANSWER EXCERPT below. Do NOT drift into unrelated topics (e.g. marriage, promotion, contracts) unless the user asked about them.
 Active Council Guide: ${params.expertSlug}
 Topic Mode: ${params.modeSlug}
 Language: ${params.languageSlug}
@@ -1673,7 +1806,7 @@ USER QUESTION (PRIMARY ANCHOR):
 ${params.userQuestion.slice(0, 600)}
 
 COUNCIL ANSWER EXCERPT:
-${params.assistantAnswer.slice(0, 1800)}
+${cleanAnswerPreview}
 
 ${countF > 0 ? `TIER 1 — "followups" (EXACTLY ${countF} new items):\n${suggestionsConfig.followups_rules}\n` : ''}
 ${countD > 0 ? `TIER 2 — "deeper_analysis" (EXACTLY ${countD} new items):\n${suggestionsConfig.deeper_analysis_rules}\n` : ''}
@@ -1686,9 +1819,15 @@ Return STRICTLY JSON with shape:
 {
   "followups": ${countF > 0 ? '[{ "text": "..." }]' : '[]'},
   "deeper_analysis": ${countD > 0 ? '[{ "text": "...", "technical_directive": "..." }]' : '[]'}
-}`,
-        },
-      ],
+}`;
+
+    const completion = await createOpenRouterCompletion({
+      model: runtime.utilityModel || getUtilityModel(),
+      maxTokens: 640,
+      jsonMode: true,
+      disableReasoning: true,
+      temperature: 0.65,
+      messages: [{ role: 'user', content: promptBody }],
     });
 
     const parsed = safeExtractJson<{

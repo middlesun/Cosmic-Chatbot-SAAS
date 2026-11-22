@@ -89,6 +89,9 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
     }
     return astrologyMode === 'western' ? 'western' : 'vedic';
   });
+  const [preferredCallName, setPreferredCallName] = useState<string>(
+    appUser?.preferred_call_name || ''
+  );
   const [suggestionsAutoExpand, setSuggestionsAutoExpand] = useState<boolean>(
     initialSuggestionsAutoExpand
   );
@@ -99,6 +102,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
     if (isOpen) {
       setFontSize(initialFontSize);
       setNumericFontChoice(initialNumericFont);
+      setPreferredCallName(appUser?.preferred_call_name || '');
       const resolvedMode: AstrologyMode = isPreviewMode
         ? astrologyMode
         : appUser?.default_astrology_mode === 'western' ||
@@ -117,6 +121,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
     initialSuggestionsAutoExpand,
     appUser?.default_astrology_mode,
     appUser?.default_expert,
+    appUser?.preferred_call_name,
     astrologyMode,
   ]);
 
@@ -182,6 +187,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
           default_astrology_mode: defaultCouncilMode,
           default_expert: savedDefaultExpert,
           default_language: languageSlug,
+          preferred_call_name: preferredCallName.trim(),
           suggestions_auto_expand: suggestionsAutoExpand,
         }),
       });
@@ -330,6 +336,32 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
                 Profile and council guide are locked for this thread. Start a New Chat to switch them; all fields below remain editable anytime.
               </p>
             )}
+
+            {/* Preferred Personal Name ("What should we call you?") */}
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <label
+                  htmlFor="chat-preferred-call-name"
+                  className="text-xs font-medium text-[#5C5449]"
+                >
+                  What should we call you?
+                </label>
+                <span className="text-[11px] text-[#8B8275]">
+                  Used naturally by companions &amp; guides
+                </span>
+              </div>
+              <input
+                id="chat-preferred-call-name"
+                type="text"
+                maxLength={60}
+                value={preferredCallName}
+                onChange={(e) => setPreferredCallName(e.target.value)}
+                placeholder={
+                  appUser?.full_name?.trim() || 'First name or nickname (optional)'
+                }
+                className="w-full rounded-xl border border-[#3D3830]/14 bg-[#FDFBF7] px-3.5 py-2 text-xs text-[#3D3830] placeholder:text-[#8B8275] focus:outline-none focus:border-[#3D3830]/40"
+              />
+            </div>
 
             {/* Default Council (Always Editable — sets default tradition & new + tab astrologer) */}
             <div>

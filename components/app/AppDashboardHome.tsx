@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import AstrologyModeToggle from './AstrologyModeToggle';
+import CompanionAvatar from './CompanionAvatar';
 import LifeContextModal from './LifeContextModal';
 import TimingRadarDashboard from './TimingRadarDashboard';
 import { getUserProfileDisplayLabel } from './chatUtilities';
@@ -354,13 +355,19 @@ const AppDashboardHome: React.FC = () => {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-2.5">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="h-8 w-8 rounded-full bg-[#4A453D] text-[#FAF7F2] flex items-center justify-center shrink-0">
-                          {isCompanion ? (
-                            <HeartHandshake className="h-3.5 w-3.5 text-[#E6D3B3]" />
-                          ) : (
+                        {isCompanion ? (
+                          <CompanionAvatar
+                            name={conv.companion_name || conv.title || 'Companion'}
+                            avatarUrl={conv.avatar_url}
+                            palette={conv.monogram_palette || undefined}
+                            size="xs"
+                            shape="circle"
+                          />
+                        ) : (
+                          <span className="h-8 w-8 rounded-full bg-[#4A453D] text-[#FAF7F2] flex items-center justify-center shrink-0">
                             <MessageCircle className="h-3.5 w-3.5 text-[#E6D3B3]" />
-                          )}
-                        </span>
+                          </span>
+                        )}
                         <span className="text-[11px] font-medium text-[#5C5449] truncate">
                           {metaLine}
                         </span>
@@ -437,6 +444,8 @@ const AppDashboardHome: React.FC = () => {
               guide.kind === 'companion'
                 ? guide.conversationId
                   ? `/app/chat/${guide.conversationId}`
+                  : guide.companionSlug
+                  ? `/app/chat?pillar=companion&companion=${encodeURIComponent(guide.companionSlug)}`
                   : '/app/chat?pillar=companion'
                 : `/app/chat?pillar=council&expert=${encodeURIComponent(
                     guide.expertSlug || 'vedic_astrologer'
@@ -448,17 +457,25 @@ const AppDashboardHome: React.FC = () => {
                 className="group flex items-start justify-between gap-3.5 rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/15 p-5 transition-colors hover:bg-[#EAE3D7] hover:border-[#3D3830]/25"
               >
                 <div className="flex items-start gap-3.5 min-w-0">
-                  <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/12 flex items-center justify-center text-[#8B7355] shrink-0">
-                    {guide.kind === 'companion' ? (
-                      <HeartHandshake className="h-4 w-4" />
-                    ) : guide.expertSlug === 'tarot_reader' ? (
-                      <Sparkles className="h-4 w-4" />
-                    ) : guide.expertSlug === 'numerologist' ? (
-                      <Hash className="h-4 w-4" />
-                    ) : (
-                      <Compass className="h-4 w-4" />
-                    )}
-                  </div>
+                  {guide.kind === 'companion' ? (
+                    <CompanionAvatar
+                      name={guide.title.replace(/^Companion\s*·\s*/i, '') || 'Companion'}
+                      avatarUrl={guide.avatarUrl}
+                      palette={guide.monogramPalette || undefined}
+                      size="sm"
+                      shape="circle"
+                    />
+                  ) : (
+                    <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/12 flex items-center justify-center text-[#8B7355] shrink-0">
+                      {guide.expertSlug === 'tarot_reader' ? (
+                        <Sparkles className="h-4 w-4" />
+                      ) : guide.expertSlug === 'numerologist' ? (
+                        <Hash className="h-4 w-4" />
+                      ) : (
+                        <Compass className="h-4 w-4" />
+                      )}
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <p className="text-[11px] text-[#8B8275]">
                       {guide.kind === 'companion' ? 'Companion' : 'Council Guide'}
@@ -476,6 +493,77 @@ const AppDashboardHome: React.FC = () => {
           })}
         </div>
       </section>
+
+      {/* SECTION 2B: FEATURED COMPANIONS — Calm Portrait Strip */}
+      {(() => {
+        const featuredCompanions =
+          summary?.featuredCompanions && summary.featuredCompanions.length > 0
+            ? summary.featuredCompanions
+            : PREVIEW_HOME_SUMMARY.featuredCompanions || [];
+        if (featuredCompanions.length === 0) return null;
+        return (
+          <section className="space-y-4">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-xs text-[#8B8275]">Judgment-free company</p>
+                <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
+                  Companions
+                </h2>
+              </div>
+              <Link
+                to="/app/chat?pillar=companion"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors whitespace-nowrap"
+              >
+                <span>Browse all</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {featuredCompanions.map((comp) => {
+                const targetHref = comp.last_conversation_id
+                  ? `/app/chat/${comp.last_conversation_id}`
+                  : `/app/chat?pillar=companion&companion=${encodeURIComponent(comp.slug)}`;
+                return (
+                  <Link
+                    key={comp.slug}
+                    to={targetHref}
+                    className="group flex items-start justify-between gap-3.5 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/14 p-4 sm:p-5 transition-all hover:bg-[#F1ECE3]/80 hover:border-[#3D3830]/28"
+                  >
+                    <div className="flex items-start gap-3.5 min-w-0">
+                      <CompanionAvatar
+                        name={comp.name}
+                        avatarUrl={comp.avatar_url}
+                        palette={comp.monogram_palette}
+                        size="md"
+                        shape="circle"
+                      />
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex items-baseline gap-1.5 min-w-0">
+                          <h3 className="font-serif text-lg font-medium text-[#3D3830] truncate">
+                            {comp.name}
+                          </h3>
+                          <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#8B8275] shrink-0">
+                            {comp.age}
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-medium text-[#8B7355] truncate">
+                          {comp.primary_expertise}
+                          {comp.last_conversation_id ? ' · Active' : ''}
+                        </p>
+                        <p className="text-xs text-[#5C5449] leading-snug line-clamp-2 pt-0.5">
+                          {comp.tagline}
+                        </p>
+                      </div>
+                    </div>
+                    <ArrowRight className="mt-1 h-4 w-4 text-[#8B8275] group-hover:text-[#3D3830] group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Gentle Desh-Kaal-Patra Context Calibration Prompt (when primary profile < 80%) */}
       {summary?.primaryProfile &&

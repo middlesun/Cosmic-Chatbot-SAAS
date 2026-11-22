@@ -114,8 +114,113 @@ export type CompanionArchetypeSlug =
   | 'life_coach'
   | 'spiritual_guide';
 
+export type ChatStyle =
+  | 'editorial'
+  | 'structured'
+  | 'chat_bubbles'
+  | 'dialogue'
+  | 'concise_brief';
+
+export const CHAT_STYLE_OPTIONS: Array<{
+  value: ChatStyle;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'editorial',
+    label: 'Editorial Essay',
+    description: 'Flowing long-form markdown prose with calm typographic breathing room.',
+  },
+  {
+    value: 'structured',
+    label: 'Structured Dossier',
+    description: 'Sectioned parchment cards, comparison tables, and observatory timing bars.',
+  },
+  {
+    value: 'chat_bubbles',
+    label: 'Chat Bubbles',
+    description: 'Two-sided messaging bubbles with DP, live typing pauses, and reactions.',
+  },
+  {
+    value: 'dialogue',
+    label: 'Reflective Letters',
+    description: 'Spacious, intimate parchment note cards with subtle brass accent.',
+  },
+  {
+    value: 'concise_brief',
+    label: 'Quick Brief',
+    description: 'High-signal 1–2 sentence core takeaway plus crisp supporting points.',
+  },
+];
+
+export type CompanionCategoryTag =
+  | 'support'
+  | 'friends'
+  | 'astrology'
+  | 'tarot_numerology'
+  | 'past_life';
+
+export type CompanionSkillLevel =
+  | 'none_emotional'
+  | 'astrology_soft'
+  | 'tarot'
+  | 'numerology'
+  | 'past_life'
+  | 'vedic_soft';
+
+export type CompanionAutonomyLevel = 'steady' | 'intuitive' | 'free';
+
+export type CompanionChatCue = 'just_listen' | 'help_think';
+
+export type MessageReaction = 'heart' | 'felt';
+
+export interface MessageReferralPayload {
+  slug: string;
+  name?: string;
+  reason?: string;
+  handoff_note?: string;
+}
+
+export interface CompanionMonogramPalette {
+  bg: string;
+  ring: string;
+  ink: string;
+}
+
+export interface CompanionTtsVoiceProfile {
+  rate: number;
+  pitch: number;
+}
+
+export interface PublicCompanionCard {
+  id: string;
+  slug: string;
+  name: string;
+  age: number;
+  sex: 'M' | 'F';
+  tagline: string;
+  short_bio: string;
+  full_bio: string;
+  primary_expertise: string;
+  secondary_expertise: string[];
+  category_tag: CompanionCategoryTag;
+  cultural_fluency: string;
+  avatar_url: string | null;
+  monogram_palette: CompanionMonogramPalette;
+  skill_level: CompanionSkillLevel;
+  chat_style: ChatStyle;
+  tts_voice_profile: CompanionTtsVoiceProfile;
+  supports_listening_cue: boolean;
+  suggestions_enabled: boolean;
+  sort_order: number;
+  last_conversation_id?: string | null;
+  last_interaction_at?: string | null;
+  thread_count?: number;
+}
+
 export interface CompanionPersona {
   id: string;
+  slug?: string;
   name: string;
   age: number;
   gender: 'M' | 'F';
@@ -127,6 +232,12 @@ export interface CompanionPersona {
   conversation_style: string;
   opening_message: string;
   system_prompt: string;
+  avatar_url?: string | null;
+  monogram_palette?: CompanionMonogramPalette;
+  chat_style?: ChatStyle;
+  skill_level?: CompanionSkillLevel;
+  tts_voice_profile?: CompanionTtsVoiceProfile;
+  supports_listening_cue?: boolean;
   topic_context?: string;
   religion_profile?: {
     religiousness: number;
@@ -144,6 +255,7 @@ export interface ActiveChatTab {
   subtitle?: string;
   expertSlug?: string;
   companionType?: CompanionArchetypeSlug | null;
+  companionSlug?: string | null;
   companionPersona?: CompanionPersona | null;
   isCore?: boolean;
 }
@@ -159,6 +271,8 @@ export interface ConversationRecord {
   is_active_tab?: boolean;
   active_tab_order?: number;
   companion_type?: CompanionArchetypeSlug | null;
+  companion_slug?: string | null;
+  companion_chat_mode?: CompanionChatCue | null;
   companion_persona_json?: CompanionPersona | null;
   is_bookmarked: boolean;
   total_word_count: number;
@@ -184,6 +298,9 @@ export interface ChatMessageRecord {
   excluded_from_context: boolean;
   followups_json: string[];
   suggestions_json?: MessageSuggestions | null;
+  reaction?: MessageReaction | null;
+  render_style?: ChatStyle | null;
+  referral_json?: MessageReferralPayload | null;
   credits_charged?: number;
   created_at: string;
 }
@@ -262,6 +379,7 @@ export interface PublicGuideUiConfig {
   welcome_subtitle: string;
   general_ready_message: string;
   composer_placeholder: string;
+  chat_style?: ChatStyle;
   features: ChatbotFeaturesUiConfig;
   suggestions_enabled: boolean;
   suggestions: PublicSuggestionsUiConfig & { enabled: boolean };
