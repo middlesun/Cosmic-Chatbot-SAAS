@@ -94,7 +94,19 @@ import {
   CANONICAL_PLAYBOOKS,
   getPlaybooksCatalogSummary,
 } from '../services/canonicalPlaybooks';
-import { MINI_APPS_CATALOG } from '../services/miniAppsCatalog';
+import {
+  createDynamicCategory,
+  createDynamicMiniApp,
+  deleteDynamicCategory,
+  deleteDynamicMiniApp,
+  getDynamicMiniAppsAdminCatalog,
+  invalidateMiniAppsRegistryCache,
+  reorderDynamicCategories,
+  reorderDynamicMiniApps,
+  updateDynamicCategory,
+  updateDynamicMiniApp,
+  type MiniAppMutationPayload,
+} from '../services/miniAppsRegistry';
 import { clearMiniAppsMemoryCache } from './apps';
 import { ensureReportCatalogSeeded } from '../services/reportDefaults';
 import { isSanityConfigured } from '../../lib/sanity';
@@ -3960,9 +3972,10 @@ router.get('/apps/analytics', async (req: AuthenticatedRequest, res) => {
       ? new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
-  const [miniAppsCfg, runtime] = await Promise.all([
+  const [miniAppsCfg, runtime, adminCatalog] = await Promise.all([
     getMiniAppsConfig(),
     getResolvedOpenRouterRuntime(),
+    getDynamicMiniAppsAdminCatalog(),
   ]);
 
   let usageTableMissing = false;
@@ -4188,7 +4201,7 @@ router.get('/apps/analytics', async (req: AuthenticatedRequest, res) => {
     };
   });
 
-  const perAppRows = MINI_APPS_CATALOG.map((app) => {
+  const perAppRows = adminCatalog.apps.map((app) => {
     const agg = perAppAcc.get(app.slug);
     const ov = miniAppsCfg.overrides[app.slug] || {};
     const runs = agg?.runs || 0;
@@ -4205,10 +4218,10 @@ router.get('/apps/analytics', async (req: AuthenticatedRequest, res) => {
       categoryLabel: app.categoryLabel,
       template: app.template,
       cacheScope: app.cacheScope,
-      enabled: ov.enabled !== false,
+      enabled: ov.enabled !== undefined ? ov.enabled !== false : app.isActive,
       featuredOnHome:
         typeof ov.featured_on_home === 'boolean' ? ov.featured_on_home : app.featuredOnHome,
-      modelOverride: ov.model_id || null,
+      modelOverride: ov.model_id !== undefined ? ov.model_id : app.modelId,
       runs,
       liveRuns: appLiveRuns,
       cacheHits: appCacheHits,
@@ -4240,7 +4253,7 @@ router.get('/apps/analytics', async (req: AuthenticatedRequest, res) => {
     periodDays,
     usageTableMissing,
     summary: {
-      totalAppsCount: MINI_APPS_CATALOG.length,
+      totalAppsCount: adminCatalog.apps.length,
       activeAppsCount: perAppRows.filter((r) => r.enabled).length,
       totalRuns,
       liveRuns,
@@ -4319,7 +4332,168 @@ router.put('/apps/config', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
+  invalidateMiniAppsRegistryCache();
   res.json({ saved: true, config: nextConfig });
+});
+
+// Complete Mini-Apps & Categories CRUD + Reorder Endpoints
+router.get('/apps/manager', async (_req: AuthenticatedRequest, res) => {
+  const [catalog, runtime, cfg] = await Promise.all([
+    getDynamicMiniAppsAdminCatalog(),
+    getResolvedOpenRouterRuntime(),
+    getMiniAppsConfig(),
+  ]);
+  res.json({
+    apps: catalog.apps,
+    categories: catalog.categories,
+    storageSource: catalog.storageSource,
+    effectiveDefaultModel: cfg.default_model_id || runtime.utilityModel,
+  });
+});
+
+router.post('/apps/items', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const body = (req.body || {}) as MiniAppMutationPayload;
+  const result = await createDynamicMiniApp(body, req.appUser.id);
+  if ('error' in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.status(201).json({ saved: true, app: result.app });
+});
+
+router.put('/apps/items/reorder', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const orderedSlugs = Array.isArray(req.body?.orderedSlugs)
+    ? req.body.orderedSlugs.map((s: unknown) => String(s || '').trim()).filter(Boolean)
+    : [];
+  if (orderedSlugs.length === 0) {
+    res.status(400).json({ error: 'orderedSlugs array is required.' });
+    return;
+  }
+  const result = await reorderDynamicMiniApps(orderedSlugs, req.appUser.id);
+  if ('error' in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.json({ saved: true });
+});
+
+router.put('/apps/items/:slug', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const slug = String(req.params.slug || '').trim();
+  const body = (req.body || {}) as Partial<MiniAppMutationPayload> & { flushCache?: boolean };
+  const result = await updateDynamicMiniApp(slug, body, req.appUser.id);
+  if ('error' in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  let cacheFlushed = false;
+  if (body.flushCache) {
+    clearMiniAppsMemoryCache(slug);
+    const supabaseAdmin = getSupabaseAdmin();
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('app_cache').delete().eq('app_slug', slug);
+        cacheFlushed = true;
+      } catch {
+        // Non-fatal
+      }
+    }
+  }
+
+  res.json({ saved: true, app: result.app, cacheFlushed });
+});
+
+router.delete('/apps/items/:slug', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const slug = String(req.params.slug || '').trim();
+  const result = await deleteDynamicMiniApp(slug, req.appUser.id);
+  if ('error' in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  clearMiniAppsMemoryCache(slug);
+  res.json({ deleted: true });
+});
+
+router.post('/apps/categories', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const body = (req.body || {}) as { slug?: string; label?: string; isActive?: boolean };
+  const result = await createDynamicCategory(
+    { slug: body.slug, label: String(body.label || ''), isActive: body.isActive },
+    req.appUser.id
+  );
+  if ('error' in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.status(201).json({ saved: true, category: result.category });
+});
+
+router.put('/apps/categories/reorder', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const orderedSlugs = Array.isArray(req.body?.orderedSlugs)
+    ? req.body.orderedSlugs.map((s: unknown) => String(s || '').trim()).filter(Boolean)
+    : [];
+  if (orderedSlugs.length === 0) {
+    res.status(400).json({ error: 'orderedSlugs array is required.' });
+    return;
+  }
+  const result = await reorderDynamicCategories(orderedSlugs, req.appUser.id);
+  if ('error' in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.json({ saved: true });
+});
+
+router.put('/apps/categories/:slug', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const slug = String(req.params.slug || '').trim();
+  const body = (req.body || {}) as { label?: string; isActive?: boolean; sortOrder?: number };
+  const result = await updateDynamicCategory(slug, body, req.appUser.id);
+  if ('error' in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.json({ saved: true, category: result.category });
+});
+
+router.delete('/apps/categories/:slug', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const slug = String(req.params.slug || '').trim();
+  const result = await deleteDynamicCategory(slug, req.appUser.id);
+  if ('error' in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.json({ deleted: true });
 });
 
 router.post('/apps/cache-clear', async (req: AuthenticatedRequest, res) => {
@@ -4512,7 +4686,58 @@ router.post('/platform/cache-flush', async (_req: AuthenticatedRequest, res) => 
   res.json({ flushed: true, miniAppsMemoryCleared, timestamp: new Date().toISOString() });
 });
 
-// 15. Companions Manager (Full CRUD, Ordering, Portrait Library & Defaults Reset)
+// 15. Companions Manager (Full CRUD, DP Upload, Ordering, Portrait Library & Defaults Reset)
+router.post('/companions/upload-dp', async (req: AuthenticatedRequest, res) => {
+  const rawDataUrl = typeof req.body?.dataUrl === 'string' ? req.body.dataUrl.trim() : '';
+  const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(rawDataUrl);
+  if (!match) {
+    res.status(400).json({ error: 'Portrait must be a PNG, JPEG, or WebP image.' });
+    return;
+  }
+
+  const mimeSubtype = match[1].toLowerCase();
+  const base64Body = match[2];
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(base64Body, 'base64');
+  } catch {
+    res.status(400).json({ error: 'Invalid image encoding.' });
+    return;
+  }
+
+  if (buf.length === 0 || buf.length > 250 * 1024) {
+    res.status(400).json({ error: 'Portrait image must be under 250KB.' });
+    return;
+  }
+
+  const isPng =
+    mimeSubtype === 'png' &&
+    buf.length >= 8 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47;
+  const isJpeg =
+    mimeSubtype === 'jpeg' &&
+    buf.length >= 3 &&
+    buf[0] === 0xff &&
+    buf[1] === 0xd8 &&
+    buf[2] === 0xff;
+  const isWebp =
+    mimeSubtype === 'webp' &&
+    buf.length >= 12 &&
+    buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buf.subarray(8, 12).toString('ascii') === 'WEBP';
+
+  if (!isPng && !isJpeg && !isWebp) {
+    res.status(400).json({ error: 'Uploaded file signature does not match PNG, JPEG, or WebP.' });
+    return;
+  }
+
+  const normalizedUrl = `data:image/${mimeSubtype};base64,${buf.toString('base64')}`;
+  res.status(201).json({ avatar_url: normalizedUrl });
+});
+
 router.get('/companions', async (_req: AuthenticatedRequest, res) => {
   try {
     const [companions, tableReady] = await Promise.all([

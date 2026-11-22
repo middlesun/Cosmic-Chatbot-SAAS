@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Product, Currency, Category } from '../types';
+import { Product, Currency, Category } from '../../types';
 import OrderForm from './OrderForm';
 
 interface ProductDetailProps {

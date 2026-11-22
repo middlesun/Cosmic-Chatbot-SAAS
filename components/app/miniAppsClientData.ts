@@ -597,6 +597,31 @@ export const CLIENT_PLANET_QUIZ_PREVIEW: Record<string, PlanetStrengthQuestion[]
   ],
 };
 
+export const MINI_APP_ICON_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'sun', label: 'Sun' },
+  { key: 'calendar-days', label: 'Calendar' },
+  { key: 'moon', label: 'Moon' },
+  { key: 'orbit', label: 'Orbit' },
+  { key: 'hourglass', label: 'Hourglass' },
+  { key: 'compass', label: 'Compass' },
+  { key: 'landmark', label: 'Landmark' },
+  { key: 'heart', label: 'Heart' },
+  { key: 'briefcase', label: 'Briefcase' },
+  { key: 'hash', label: 'Hash' },
+  { key: 'gauge', label: 'Gauge' },
+  { key: 'heart-handshake', label: 'Harmony' },
+  { key: 'scale', label: 'Scale' },
+  { key: 'cloud-moon', label: 'Dream' },
+  { key: 'feather', label: 'Feather' },
+  { key: 'users', label: 'Users' },
+  { key: 'shield-check', label: 'Shield' },
+  { key: 'refresh-cw', label: 'Cycle' },
+  { key: 'sparkles', label: 'Sparkles' },
+  { key: 'trending-up', label: 'Growth' },
+  { key: 'flame', label: 'Flame' },
+  { key: 'paw-print', label: 'Paw Print' },
+];
+
 export function renderMiniAppIcon(iconKey: string, className = 'h-5 w-5'): React.ReactNode {
   switch (iconKey) {
     case 'sun':

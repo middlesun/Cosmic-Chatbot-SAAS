@@ -200,6 +200,23 @@ const splitCompanionBubbles = (raw: string): string[] => {
   return parts;
 };
 
+const getCouncilSpeakerLabel = (expertSlug?: string | null): string => {
+  switch (normalizeCouncilSlug(expertSlug)) {
+    case 'western_astrologer':
+      return 'Western Astrologer';
+    case 'modern_astrologer':
+      return 'Modern Astrologer';
+    case 'tarot_reader':
+      return 'Tarot';
+    case 'numerologist':
+      return 'Numerology';
+    case 'learn_astrology':
+      return 'Learn Astrology';
+    default:
+      return 'Vedic Astrologer';
+  }
+};
+
 const stripInlineTechBreakdown = (text: string): string => {
   const withoutBreakdown = text.replace(/<<<TECH_BREAKDOWN[\s\S]*$/i, '');
   const codeBlocks: string[] = [];
@@ -762,8 +779,32 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const activeCompanionChatStyle: ChatStyle =
     activeCompanionCard?.chat_style || activeCompanionPersona?.chat_style || 'chat_bubbles';
 
+  const activeThreadChatStyle: ChatStyle =
+    activePillar === 'companion'
+      ? activeCompanionChatStyle
+      : activePillar === 'council'
+      ? activeGuideUi?.chat_style || (responseMode === 'detailed' ? 'structured' : 'editorial')
+      : 'editorial';
+
   const isBubbleThread =
-    activePillar === 'companion' && activeCompanionChatStyle === 'chat_bubbles';
+    activePillar !== 'clarity' && activeThreadChatStyle === 'chat_bubbles';
+
+  const [revealedBubbleCount, setRevealedBubbleCount] = useState(1);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      setRevealedBubbleCount(1);
+      return;
+    }
+    if (!isBubbleThread) return;
+    const count = splitCompanionBubbles(streamingText).length;
+    if (count > revealedBubbleCount) {
+      const timer = window.setTimeout(() => {
+        setRevealedBubbleCount((c) => c + 1);
+      }, 780);
+      return () => window.clearTimeout(timer);
+    }
+  }, [isStreaming, isBubbleThread, streamingText, revealedBubbleCount]);
 
   const companionCatalogBySlug = useMemo(() => {
     const map = new Map<string, PublicCompanionCard>();
@@ -1201,10 +1242,10 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     const newChatActionButtons = (
       <div
         ref={emptyDropdownRef}
-        className="flex flex-wrap items-center justify-center gap-2.5 pt-1"
+        className="relative flex flex-wrap items-center justify-center gap-2.5 pt-1 w-full"
       >
         {/* 1. Council Guide Dropdown */}
-        <div className="relative">
+        <div className="sm:relative">
           <button
             type="button"
             onClick={() =>
@@ -1230,7 +1271,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             <div
               role="listbox"
               aria-label="Choose Council Guide"
-              className="animate-cc-dropdown-down absolute left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 mt-2 w-64 sm:w-72 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden text-left z-30"
+              className="animate-cc-dropdown-down absolute left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 mt-2 w-[min(18rem,calc(100vw-2.5rem))] sm:w-72 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden text-left z-30"
             >
               <div className="max-h-64 overflow-y-auto p-1.5 space-y-0.5">
                 {(catalog?.experts || []).map((opt) => {
@@ -1271,7 +1312,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         </div>
 
         {/* 2. Profile / Chart Scrollable Dropdown with Pinned Bottom "Add New" */}
-        <div className="relative">
+        <div className="sm:relative">
           <button
             type="button"
             onClick={() =>
@@ -1304,7 +1345,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             <div
               role="listbox"
               aria-label="Choose Birth Chart Profile"
-              className="animate-cc-dropdown-down absolute left-1/2 -translate-x-1/2 mt-2 w-64 sm:w-72 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden text-left z-30"
+              className="animate-cc-dropdown-down absolute left-1/2 -translate-x-1/2 mt-2 w-[min(18rem,calc(100vw-2.5rem))] sm:w-72 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden text-left z-30"
             >
               <div className="max-h-56 overflow-y-auto p-1.5 space-y-0.5">
                 {profiles.length === 0 ? (
@@ -1696,14 +1737,14 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   (responseMode === 'detailed' ? 'structured' : 'editorial'));
 
             const isBubbleMsg =
-              activePillar === 'companion' && msgRenderStyle === 'chat_bubbles';
+              activePillar !== 'clarity' && msgRenderStyle === 'chat_bubbles';
             const cleanShareText = cleanCompanionMarkupText(
               stripTimingBarTokens(msg.content)
             );
             const hasFeltReaction = msg.reaction === 'heart' || msg.reaction === 'felt';
 
             const utilityFooterContent = (
-              <div className="flex flex-wrap items-center justify-end gap-0.5 text-[#8B8275]">
+              <div className="flex flex-wrap items-center justify-center sm:justify-end gap-0.5 text-[#8B8275]">
                 {msg.excluded_from_context && (
                   <span className="mr-1.5 text-[11px] text-[#7A3E36]">
                     Excluded from context
@@ -1979,17 +2020,19 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                       vedicMeta!.intent === 'PEER_AUDIT');
                   return (
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-[11px] font-medium text-[#8B8275]">
-                        {msg.expert_used === 'western_astrologer'
-                          ? 'Western Astrologer (Western)'
-                          : msg.expert_used === 'modern_astrologer'
-                          ? 'Modern Astrologer (Western)'
-                          : msg.expert_used === 'tarot_reader'
-                          ? 'Tarot'
-                          : msg.expert_used === 'numerologist'
-                          ? 'Numerology'
-                          : 'Vedic Astrologer (Vedic)'}
-                      </p>
+                      {!isBubbleMsg && (
+                        <p className="text-[11px] font-medium text-[#8B8275]">
+                          {msg.expert_used === 'western_astrologer'
+                            ? 'Western Astrologer (Western)'
+                            : msg.expert_used === 'modern_astrologer'
+                            ? 'Modern Astrologer (Western)'
+                            : msg.expert_used === 'tarot_reader'
+                            ? 'Tarot'
+                            : msg.expert_used === 'numerologist'
+                            ? 'Numerology'
+                            : 'Vedic Astrologer (Vedic)'}
+                        </p>
+                      )}
                       {showBadge && vedicMeta && (
                         <Tooltip
                           content={
@@ -2037,9 +2080,20 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   if (isBubbleMsg) {
                     const bubbles = splitCompanionBubbles(msg.content);
                     const bubbleList = bubbles.length > 0 ? bubbles : [cleanText || msg.content];
+                    const bubbleWidgetMap = new Map<string, TimingProgressWidget>();
+                    if (Array.isArray(msg.suggestions_json?.timing_widgets)) {
+                      for (const w of msg.suggestions_json.timing_widgets) {
+                        if (w && w.id) bubbleWidgetMap.set(w.id.toLowerCase(), w);
+                      }
+                    }
+                    const bubbleSpeakerName =
+                      activePillar === 'companion' && activeCompanionPersona
+                        ? activeCompanionPersona.name
+                        : getCouncilSpeakerLabel(msg.expert_used || expertSlug);
+
                     return (
                       <div className="flex items-start gap-2.5 min-w-0">
-                        {activeCompanionPersona && (
+                        {activePillar === 'companion' && activeCompanionPersona ? (
                           <button
                             type="button"
                             onClick={() =>
@@ -2062,13 +2116,18 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                               shape="circle"
                             />
                           </button>
+                        ) : (
+                          <div
+                            aria-hidden="true"
+                            className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#B8965A]/30 bg-[#F1ECE3] text-[#8B7355]"
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                          </div>
                         )}
                         <div className="flex flex-col items-start gap-1.5 min-w-0 flex-1">
-                          {activeCompanionPersona && (
-                            <span className="px-1 text-[11px] font-medium text-[#8B8275]">
-                              {activeCompanionPersona.name}
-                            </span>
-                          )}
+                          <span className="px-1 text-[11px] font-medium text-[#8B8275]">
+                            {bubbleSpeakerName}
+                          </span>
                           {bubbleList.map((bubbleText, bIdx) => (
                             <div
                               key={`${msg.id}-b-${bIdx}`}
@@ -2077,7 +2136,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                               {renderMarkdownWithWidgets(
                                 stripInlineTechBreakdown(bubbleText),
                                 cardMarkdownComponents,
-                                new Map(),
+                                bubbleWidgetMap,
                                 true,
                                 `space-y-1.5 min-w-0 ${sizeTokens.body} text-[#3D3830]`
                               )}
@@ -2090,7 +2149,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
                   if (msgRenderStyle === 'dialogue') {
                     return (
-                      <div className="rounded-3xl border border-[#B8965A]/22 bg-[#FDFBF7] px-5 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
+                      <div className="rounded-3xl border border-[#B8965A]/25 border-l-[3px] border-l-[#B8965A] bg-[#FDFBF7] px-5 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
                         {renderEditorialContent(
                           cleanText,
                           false,
@@ -2433,8 +2492,8 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   <div
                     className={
                       isBubbleMsg
-                        ? 'pl-11 flex flex-wrap items-center justify-between gap-2 pt-0.5'
-                        : 'mt-2 border-t border-[#3D3830]/[0.08] pt-2.5 flex flex-wrap items-center justify-end gap-2'
+                        ? 'pl-11 flex flex-wrap items-center justify-center sm:justify-between gap-2 pt-0.5'
+                        : 'mt-2 border-t border-[#3D3830]/[0.08] pt-2.5 flex flex-wrap items-center justify-center sm:justify-end gap-2'
                     }
                   >
                     {utilityFooterContent}
@@ -2501,67 +2560,86 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           {/* Live Streaming Response */}
           {isStreaming && (
             <article className="animate-cc-message-in space-y-3 pb-6">
-              {isBubbleThread ? (
-                <div className="flex items-start gap-2.5 min-w-0">
-                  {activeCompanionPersona && (
-                    <CompanionAvatar
-                      name={activeCompanionPersona.name}
-                      avatarUrl={
-                        activeCompanionCard?.avatar_url ??
-                        activeCompanionPersona.avatar_url
-                      }
-                      palette={
-                        activeCompanionCard?.monogram_palette ??
-                        activeCompanionPersona.monogram_palette
-                      }
-                      size="sm"
-                      shape="circle"
-                      className="mt-0.5"
-                    />
-                  )}
-                  <div className="flex flex-col items-start gap-1.5 min-w-0 flex-1">
-                    {activeCompanionPersona && (
-                      <span className="px-1 text-[11px] font-medium text-[#8B8275]">
-                        {activeCompanionPersona.name}
-                      </span>
+              {isBubbleThread ? (() => {
+                const liveSpeakerName =
+                  activePillar === 'companion' && activeCompanionPersona
+                    ? activeCompanionPersona.name
+                    : getCouncilSpeakerLabel(expertSlug);
+                const liveBubbles = splitCompanionBubbles(streamingText);
+                const visibleBubbles = liveBubbles.slice(0, revealedBubbleCount);
+                const liveTimingMap = new Map<string, TimingProgressWidget>();
+                if (Array.isArray(streamingTimingWidgets)) {
+                  for (const w of streamingTimingWidgets) {
+                    if (w && w.id) liveTimingMap.set(w.id.toLowerCase(), w);
+                  }
+                }
+                const showTrailingTyping =
+                  !streamingText ||
+                  liveBubbles.length > revealedBubbleCount ||
+                  /\[\[BUBBLE\]\]\s*$/i.test(streamingText);
+
+                return (
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    {activePillar === 'companion' && activeCompanionPersona ? (
+                      <CompanionAvatar
+                        name={activeCompanionPersona.name}
+                        avatarUrl={
+                          activeCompanionCard?.avatar_url ??
+                          activeCompanionPersona.avatar_url
+                        }
+                        palette={
+                          activeCompanionCard?.monogram_palette ??
+                          activeCompanionPersona.monogram_palette
+                        }
+                        size="sm"
+                        shape="circle"
+                        className="mt-0.5"
+                      />
+                    ) : (
+                      <div
+                        aria-hidden="true"
+                        className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#B8965A]/30 bg-[#F1ECE3] text-[#8B7355]"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                      </div>
                     )}
-                    {(() => {
-                      const liveBubbles = splitCompanionBubbles(streamingText);
-                      const showTrailingTyping =
-                        !streamingText ||
-                        /\[\[BUBBLE\]\]\s*$/i.test(streamingText);
-                      return (
-                        <>
-                          {liveBubbles.map((bubbleText, bIdx) => (
-                            <div
-                              key={`live-b-${bIdx}`}
-                              className="animate-cc-message-in w-fit max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm border border-[#3D3830]/12 bg-[#FDFBF7] px-4 py-2.5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0"
-                            >
-                              {renderMarkdownWithWidgets(
-                                stripInlineTechBreakdown(bubbleText),
-                                cardMarkdownComponents,
-                                new Map(),
-                                true,
-                                `space-y-1.5 min-w-0 ${sizeTokens.body} text-[#3D3830]`
-                              )}
-                            </div>
-                          ))}
-                          {showTrailingTyping && (
-                            <div
-                              className="inline-flex items-center gap-1 rounded-2xl rounded-tl-sm border border-[#3D3830]/12 bg-[#FDFBF7] px-4 py-3 shadow-[0_1px_2px_rgba(61,56,48,0.03)]"
-                              aria-label={`${activeCompanionPersona?.name || 'Companion'} is typing`}
-                            >
-                              <span className="h-1.5 w-1.5 rounded-full bg-[#8B8275] animate-bounce [animation-delay:-0.25s]" />
-                              <span className="h-1.5 w-1.5 rounded-full bg-[#8B8275] animate-bounce [animation-delay:-0.12s]" />
-                              <span className="h-1.5 w-1.5 rounded-full bg-[#8B8275] animate-bounce" />
-                            </div>
+                    <div className="flex flex-col items-start gap-1.5 min-w-0 flex-1">
+                      <span className="px-1 text-[11px] font-medium text-[#8B8275]">
+                        {liveSpeakerName}
+                      </span>
+                      {visibleBubbles.map((bubbleText, bIdx) => (
+                        <div
+                          key={`live-b-${bIdx}`}
+                          className="animate-cc-message-in w-fit max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm border border-[#3D3830]/12 bg-[#FDFBF7] px-4 py-2.5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0"
+                        >
+                          {renderMarkdownWithWidgets(
+                            stripInlineTechBreakdown(bubbleText),
+                            cardMarkdownComponents,
+                            liveTimingMap,
+                            true,
+                            `space-y-1.5 min-w-0 ${sizeTokens.body} text-[#3D3830]`
                           )}
-                        </>
-                      );
-                    })()}
+                        </div>
+                      ))}
+                      {showTrailingTyping && (
+                        <div
+                          className="inline-flex items-center gap-2.5 rounded-2xl rounded-tl-sm border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-2.5 shadow-[0_1px_2px_rgba(61,56,48,0.03)]"
+                          aria-label={`${liveSpeakerName} is typing`}
+                        >
+                          <span className="inline-flex items-center gap-1" aria-hidden="true">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#8B8275] animate-bounce [animation-delay:-0.25s]" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#8B8275] animate-bounce [animation-delay:-0.12s]" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#8B8275] animate-bounce" />
+                          </span>
+                          <span className="text-[11px] text-[#8B8275]">
+                            {liveSpeakerName} is typing…
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ) : (
+                );
+              })() : (
                 <>
                   {activePillar === 'companion' && activeCompanionPersona && (
                     <div className="flex items-center gap-2">
@@ -2587,16 +2665,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     <p className="text-[11px] font-medium text-[#8B8275]">Clarity</p>
                   )}
                   {streamingText ? (
-                    activePillar === 'companion' && activeCompanionChatStyle === 'dialogue' ? (
-                      <div className="rounded-3xl border border-[#B8965A]/22 bg-[#FDFBF7] px-5 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
+                    activeThreadChatStyle === 'dialogue' ? (
+                      <div className="rounded-3xl border border-[#B8965A]/25 border-l-[3px] border-l-[#B8965A] bg-[#FDFBF7] px-5 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
                         {renderEditorialContent(
                           cleanCompanionMarkupText(streamingText),
                           false,
                           streamingTimingWidgets
                         )}
                       </div>
-                    ) : activePillar === 'companion' &&
-                      activeCompanionChatStyle === 'concise_brief' ? (
+                    ) : activeThreadChatStyle === 'concise_brief' ? (
                       <div className="rounded-2xl border border-[#3D3830]/14 bg-[#FDFBF7] px-4 py-3.5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#8B8275] mb-1.5">
                           Quick Brief
@@ -2610,10 +2687,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     ) : (
                       renderEditorialContent(
                         cleanCompanionMarkupText(streamingText),
-                        activePillar === 'council' &&
-                          (activeGuideUi?.chat_style
-                            ? activeGuideUi.chat_style === 'structured'
-                            : responseMode === 'detailed'),
+                        activeThreadChatStyle === 'structured',
                         streamingTimingWidgets
                       )
                     )

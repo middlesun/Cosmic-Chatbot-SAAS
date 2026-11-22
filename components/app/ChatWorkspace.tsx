@@ -14,6 +14,7 @@ import {
   Search,
   Settings2,
   Star,
+  UserCheck,
   X,
 } from 'lucide-react';
 import { useAuth, type AstrologyMode } from './AuthContext';
@@ -421,6 +422,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const [showMyPrompts, setShowMyPrompts] = useState(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
   const [showHeaderThreadMenu, setShowHeaderThreadMenu] = useState(false);
+  const [showCompanionChartMenu, setShowCompanionChartMenu] = useState(false);
 
   // Phase 2 & Phase 3 states
   const [generalReadyMode, setGeneralReadyMode] = useState(false);
@@ -448,6 +450,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const abortControllerRef = useRef<AbortController | null>(null);
   const inChatSearchInputRef = useRef<HTMLInputElement | null>(null);
   const headerThreadMenuRef = useRef<HTMLDivElement | null>(null);
+  const companionChartMenuRef = useRef<HTMLDivElement | null>(null);
   const seededQueryRef = useRef<string>('');
   const pendingSeedCompanionRef = useRef<string | null>(null);
   const seededExpertRef = useRef<boolean>(false);
@@ -559,6 +562,32 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       window.removeEventListener('keydown', handleKey);
     };
   }, [showHeaderThreadMenu]);
+
+  // Close companion chart focus popover on outside click, Escape, or tab switch
+  useEffect(() => {
+    setShowCompanionChartMenu(false);
+  }, [activeTabId, activeConversation?.id]);
+
+  useEffect(() => {
+    if (!showCompanionChartMenu) return;
+    const handlePointer = (e: MouseEvent) => {
+      if (
+        companionChartMenuRef.current &&
+        !companionChartMenuRef.current.contains(e.target as Node)
+      ) {
+        setShowCompanionChartMenu(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowCompanionChartMenu(false);
+    };
+    document.addEventListener('mousedown', handlePointer);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handlePointer);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [showCompanionChartMenu]);
 
   const loadConfigAndPrompts = useCallback(async () => {
     if (isPreviewMode) {
@@ -2035,7 +2064,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     [activeTabId, loadCompanionCatalog, loadConversationMessages]
   );
 
-  const handleStartWithCompanion = async (persona: CompanionPersona) => {
+  const handleStartWithCompanion = async (
+    persona: CompanionPersona,
+    options?: { forceNew?: boolean }
+  ) => {
     setErrorBanner(null);
 
     if (isPreviewMode) {
@@ -2103,6 +2135,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       body: JSON.stringify({
         companionSlug: persona.slug || undefined,
         persona,
+        forceNew: options?.forceNew,
+        clientLocalHour: new Date().getHours(),
         pinAsTab: true,
       }),
     });
@@ -2253,6 +2287,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         forceNew: options?.forceNew,
         handoffNote: options?.handoffNote,
         handoffFromName: options?.fromName,
+        clientLocalHour: new Date().getHours(),
         pinAsTab: true,
       }),
     });
@@ -2325,7 +2360,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     setErrorBanner(null);
 
     if (isPreviewMode) {
-      await handleStartWithCompanion({ ...persona, slug });
+      await handleStartWithCompanion({ ...persona, slug }, options);
       return;
     }
 
@@ -2345,6 +2380,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         companionSlug: slug,
         persona: { ...persona, slug },
         forceNew: options?.forceNew,
+        clientLocalHour: new Date().getHours(),
         pinAsTab: true,
       }),
     });
@@ -2420,6 +2456,79 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       });
     } catch {
       // Keep optimistic state
+    }
+  };
+
+  const defaultYouProfile = useMemo(
+    () => profiles.find((p) => p.is_default) || profiles[0] || null,
+    [profiles]
+  );
+
+  const companionFocusedProfile = useMemo(() => {
+    if (activeConversation?.profile_id) {
+      return (
+        profiles.find((p) => p.id === activeConversation.profile_id) || defaultYouProfile
+      );
+    }
+    return defaultYouProfile;
+  }, [activeConversation?.profile_id, profiles, defaultYouProfile]);
+
+  const handleSwitchCompanionChart = async (nextProfileId: string | null) => {
+    if (!activeConversation) return;
+    setShowCompanionChartMenu(false);
+    if ((activeConversation.profile_id || null) === nextProfileId) return;
+
+    const targetId = activeConversation.id;
+    setActiveConversation((prev) =>
+      prev && prev.id === targetId ? { ...prev, profile_id: nextProfileId } : prev
+    );
+    setConversations((prev) =>
+      prev.map((c) => (c.id === targetId ? { ...c, profile_id: nextProfileId } : c))
+    );
+    const cached = tabCacheRef.current[activeTabId];
+    if (cached?.conversation && cached.conversation.id === targetId) {
+      tabCacheRef.current[activeTabId] = {
+        ...cached,
+        conversation: { ...cached.conversation, profile_id: nextProfileId },
+      };
+    }
+
+    if (isPreviewMode) {
+      const stored = previewConvStoreRef.current[targetId];
+      if (stored) {
+        previewConvStoreRef.current[targetId] = { ...stored, profile_id: nextProfileId };
+      }
+      return;
+    }
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      await fetch(`/api/chat/conversations/${targetId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ profile_id: nextProfileId }),
+      });
+    } catch {
+      // Keep optimistic profile focus
+    }
+  };
+
+  const handleStartNewTopicWithCurrentCompanion = () => {
+    if (activeCompanionCard) {
+      void handleStartPresetCompanion(activeCompanionCard, { forceNew: true });
+      return;
+    }
+    if (activeCompanionPersona?.slug) {
+      void handleStartCustomBySlug(activeCompanionPersona.slug, activeCompanionPersona, {
+        forceNew: true,
+      });
+      return;
+    }
+    if (activeCompanionPersona) {
+      void handleStartWithCompanion(activeCompanionPersona, { forceNew: true });
     }
   };
 
@@ -2501,6 +2610,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           forceNew,
           handoffNote,
           handoffFromName: fromName,
+          clientLocalHour: new Date().getHours(),
           pinAsTab: true,
         }),
       });
@@ -4280,8 +4390,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       {/* Main Consultation Studio Pane */}
       <div className="relative flex-1 flex flex-col min-w-0 h-full">
         {/* Slim Single-Line Pillar-Aware Header Strip */}
-        <div className="flex items-center justify-between gap-2 sm:gap-3 border-b border-[#3D3830]/10 bg-[#FAF7F2] px-3 sm:px-4 md:px-6 py-2">
-          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-1.5 sm:gap-3 border-b border-[#3D3830]/10 bg-[#FAF7F2] px-2.5 sm:px-4 md:px-6 py-2">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1">
             <button
               type="button"
               onClick={() => setShowMobileDrawer(true)}
@@ -4367,9 +4477,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                   onClick={() => setShowHeaderThreadMenu((v) => !v)}
                   aria-expanded={showHeaderThreadMenu}
                   aria-label="Switch conversations for this profile"
-                  className="group inline-flex items-center gap-1.5 max-w-full rounded-xl px-2 py-1 -ml-2 hover:bg-[#F1ECE3]/80 transition-colors cursor-pointer text-left"
+                  className="group inline-flex items-center gap-1 sm:gap-1.5 min-w-0 max-w-full rounded-xl px-1.5 sm:px-2 py-1 -ml-1.5 sm:-ml-2 hover:bg-[#F1ECE3]/80 transition-colors cursor-pointer text-left"
                 >
-                  <h1 className="font-serif text-[15px] sm:text-base font-medium text-[#3D3830] truncate">
+                  <h1 className="font-serif text-[15px] sm:text-base font-medium text-[#3D3830] truncate min-w-0">
                     {(() => {
                       const councilName = resolveCouncilDisplayName(expertSlug, catalog);
                       const fallbackDisplay = `${headerProfileName} (${councilName})`;
@@ -4383,8 +4493,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                       if (parenMatch) {
                         return (
                           <>
-                            <span className="font-semibold text-[#3D3830]">{parenMatch[1]}</span>{' '}
-                            <span className="text-[#5C5449]">{parenMatch[2]}</span>
+                            <span className="font-semibold text-[#3D3830]">{parenMatch[1]}</span>
+                            <span className="hidden sm:inline text-[#5C5449]"> {parenMatch[2]}</span>
                           </>
                         );
                       }
@@ -4480,7 +4590,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             {activePillar === 'companion' &&
               activeConversation &&
               (activeCompanionCard?.supports_listening_cue ??
@@ -4520,6 +4630,121 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                 </div>
               )}
 
+            {activePillar === 'companion' && activeConversation && profiles.length > 0 && (
+              <div ref={companionChartMenuRef} className="relative shrink-0">
+                <Tooltip content="Chart in focus for this companion" placement="bottom">
+                  <button
+                    type="button"
+                    aria-expanded={showCompanionChartMenu}
+                    aria-haspopup="listbox"
+                    onClick={() => setShowCompanionChartMenu((v) => !v)}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-[#3D3830]/12 bg-[#FDFBF7] px-2 sm:px-2.5 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+                  >
+                    <UserCheck className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
+                    <span className="hidden sm:inline truncate max-w-[125px]">
+                      Chart:{' '}
+                      {companionFocusedProfile
+                        ? companionFocusedProfile.short_name?.trim() ||
+                          companionFocusedProfile.name
+                        : 'You'}
+                    </span>
+                    <span className="sm:hidden truncate max-w-[54px]">
+                      {companionFocusedProfile
+                        ? (
+                            companionFocusedProfile.short_name?.trim() ||
+                            companionFocusedProfile.name
+                          ).split(' ')[0]
+                        : 'You'}
+                    </span>
+                    <ChevronDown
+                      className={`h-3 w-3 text-[#8B8275] shrink-0 transition-transform duration-150 ${
+                        showCompanionChartMenu ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                </Tooltip>
+
+                {showCompanionChartMenu && (
+                  <div
+                    role="listbox"
+                    aria-label="Chart in focus"
+                    className="animate-cc-dropdown-down absolute right-0 top-full mt-1.5 z-40 w-64 max-w-[calc(100vw-2rem)] rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden"
+                  >
+                    <div className="px-3.5 py-2 bg-[#F1ECE3]/80 border-b border-[#3D3830]/10">
+                      <p className="text-[11px] font-medium text-[#5C5449] truncate">
+                        Chart in focus for {activeCompanionPersona?.name || 'companion'}
+                      </p>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5">
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={!activeConversation.profile_id}
+                        onClick={() => void handleSwitchCompanionChart(null)}
+                        className={`w-full flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-xs transition-colors cursor-pointer ${
+                          !activeConversation.profile_id
+                            ? 'bg-[#F1ECE3] text-[#3D3830] font-medium'
+                            : 'text-[#5C5449] hover:bg-[#F1ECE3]/65 hover:text-[#3D3830]'
+                        }`}
+                      >
+                        <span className="truncate">
+                          Auto (You
+                          {defaultYouProfile
+                            ? ` — ${defaultYouProfile.short_name?.trim() || defaultYouProfile.name}`
+                            : ''}
+                          )
+                        </span>
+                        {!activeConversation.profile_id && (
+                          <Check className="h-3.5 w-3.5 text-[#2D6A4F] shrink-0" />
+                        )}
+                      </button>
+
+                      {profiles.map((p) => {
+                        const isSelected = activeConversation.profile_id === p.id;
+                        const label = p.short_name?.trim() || p.name;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            role="option"
+                            aria-selected={isSelected}
+                            onClick={() => void handleSwitchCompanionChart(p.id)}
+                            className={`w-full flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-xs transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#F1ECE3] text-[#3D3830] font-medium'
+                                : 'text-[#5C5449] hover:bg-[#F1ECE3]/65 hover:text-[#3D3830]'
+                            }`}
+                          >
+                            <span className="truncate">
+                              {label}
+                              {p.is_default ? ' · You' : ''}
+                            </span>
+                            {isSelected && (
+                              <Check className="h-3.5 w-3.5 text-[#2D6A4F] shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activePillar === 'companion' && activeConversation && (
+              <Tooltip content="Start a fresh topic thread" placement="bottom">
+                <button
+                  type="button"
+                  onClick={handleStartNewTopicWithCurrentCompanion}
+                  aria-label="Start a fresh topic thread"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#3D3830]/12 bg-[#FDFBF7] px-2 sm:px-2.5 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+                >
+                  <MessageSquarePlus className="h-3.5 w-3.5 text-[#8B7355]" />
+                  <span className="hidden sm:inline">New topic</span>
+                </button>
+              </Tooltip>
+            )}
+
             {activePillar === 'companion' && activeConversation && (
               <Tooltip content="Browse all companions" placement="bottom">
                 <button
@@ -4551,6 +4776,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                 size="xs"
                 value={astrologyMode}
                 onChange={handleChangeChatAstrologyMode}
+                className="max-sm:[&_button]:px-2 max-sm:text-[10.5px]"
               />
             )}
 
@@ -4579,14 +4805,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                   type="button"
                   onClick={() => setShowAskLaterDrawer(true)}
                   aria-label="Open Ask later saved questions"
-                  className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-xl border transition-all active:scale-[0.96] cursor-pointer ${
+                  className={`inline-flex items-center justify-center gap-1 px-1.5 sm:px-2 py-1.5 rounded-xl border transition-all active:scale-[0.96] cursor-pointer ${
                     askLaterItems.length > 0
                       ? 'border-[#D4A017]/35 bg-[#FDFBF7] text-[#3D3830] hover:bg-[#F1ECE3]'
                       : 'border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:text-[#3D3830]'
                   }`}
                 >
                   <Star
-                    className={`h-4 w-4 ${
+                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${
                       askLaterItems.length > 0
                         ? 'text-[#D4A017] fill-[#D4A017]'
                         : 'text-[#8B8275]'
@@ -4613,7 +4839,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                       : 'border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:text-[#3D3830]'
                   }`}
                 >
-                  <Search className="h-4 w-4" />
+                  <Search className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 </button>
               </Tooltip>
             )}
@@ -4625,7 +4851,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                 aria-label="Open chat settings"
                 className="p-1.5 rounded-xl border border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:text-[#3D3830] active:scale-[0.96] transition-all cursor-pointer"
               >
-                <Settings2 className="h-4 w-4" />
+                <Settings2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </button>
             </Tooltip>
 

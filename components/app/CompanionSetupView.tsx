@@ -703,33 +703,61 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {item.last_conversation_id && (
-                            <button
-                              type="button"
-                              disabled={startingId !== null}
-                              onClick={() =>
-                                void handleResumeCustom(item, { forceNew: true })
-                              }
-                              className="min-h-[44px] rounded-full border border-[#3D3830]/14 bg-[#FAF7F2] px-4 py-2 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer shrink-0"
-                            >
-                              New chat
-                            </button>
-                          )}
+                        <div className="grid grid-cols-3 items-center gap-1.5 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSheetCompanion({
+                                id: item.id,
+                                slug: item.slug,
+                                name: p.name,
+                                age: p.age,
+                                sex: p.gender,
+                                tagline: p.tagline || '',
+                                short_bio: p.bio || p.tagline || '',
+                                full_bio: p.bio || p.tagline || '',
+                                primary_expertise: p.role_label || 'Companion',
+                                secondary_expertise: [],
+                                category_tag: 'friends',
+                                cultural_fluency: p.background || '',
+                                skill_level: p.skill_level || 'none_emotional',
+                                chat_style: p.chat_style || 'chat_bubbles',
+                                tts_voice_profile: p.tts_voice_profile || { rate: 1, pitch: 1 },
+                                supports_listening_cue: Boolean(p.supports_listening_cue),
+                                suggestions_enabled: true,
+                                sort_order: 0,
+                                monogram_palette: p.monogram_palette || {
+                                  bg: '#EAE3D7',
+                                  ring: '#B8965A',
+                                  ink: '#3D3830',
+                                },
+                                avatar_url: p.avatar_url || null,
+                                last_conversation_id: item.last_conversation_id,
+                              })
+                            }
+                            className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] transition-colors cursor-pointer truncate"
+                          >
+                            About
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={startingId !== null}
+                            onClick={() =>
+                              void handleResumeCustom(item, { forceNew: true })
+                            }
+                            className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] disabled:opacity-50 transition-colors cursor-pointer truncate"
+                          >
+                            Start new
+                          </button>
+
                           <button
                             type="button"
                             disabled={startingId !== null}
                             onClick={() => void handleResumeCustom(item)}
-                            className="flex-1 min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer"
+                            className="min-h-[36px] rounded-xl border border-[#3D3830]/14 bg-[#EDE6DA] px-2.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#E4DCCD] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer truncate"
                           >
-                            <span>
-                              {isStarting
-                                ? `Opening ${p.name}…`
-                                : item.last_conversation_id
-                                ? `Continue with ${p.name}`
-                                : `Talk with ${p.name}`}
-                            </span>
-                            {!isStarting && <ArrowRight className="h-3.5 w-3.5" />}
+                            {isStarting ? 'Opening…' : 'Continue Chat'}
                           </button>
                         </div>
                       </div>
@@ -812,11 +840,11 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 pt-0.5">
+                      <div className="grid grid-cols-3 items-center gap-1.5 pt-0.5">
                         <button
                           type="button"
                           onClick={() => setSheetCompanion(card)}
-                          className="min-h-[44px] rounded-full border border-[#3D3830]/14 bg-[#FAF7F2] px-4 py-2 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer shrink-0"
+                          className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] transition-colors cursor-pointer truncate"
                         >
                           About
                         </button>
@@ -824,17 +852,19 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                         <button
                           type="button"
                           disabled={startingId !== null}
-                          onClick={() => void handleStartPreset(card)}
-                          className="flex-1 min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer"
+                          onClick={() => void handleStartPreset(card, { forceNew: true })}
+                          className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] disabled:opacity-50 transition-colors cursor-pointer truncate"
                         >
-                          <span className="truncate">
-                            {isStarting
-                              ? `Connecting…`
-                              : hasHistory
-                              ? `Continue`
-                              : `Talk with ${card.name}`}
-                          </span>
-                          {!isStarting && <ArrowRight className="h-3.5 w-3.5 shrink-0" />}
+                          Start new
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={startingId !== null}
+                          onClick={() => void handleStartPreset(card)}
+                          className="min-h-[36px] rounded-xl border border-[#3D3830]/14 bg-[#EDE6DA] px-2.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#E4DCCD] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer truncate"
+                        >
+                          {isStarting ? 'Connecting…' : 'Continue Chat'}
                         </button>
                       </div>
                     </div>

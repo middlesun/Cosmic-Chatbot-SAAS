@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { TESTIMONIALS } from '../constants';
+import { TESTIMONIALS } from '../../constants';
 
 interface TestimonialsProps {
   onBookReading?: () => void;

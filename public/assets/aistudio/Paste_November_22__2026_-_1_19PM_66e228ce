@@ -1,0 +1,175 @@
+Objective Brief
+Revamp Cosmic Council’s Companions module from generic category matching into a deeply personal, emotionally resonant companion platform—while introducing a unified 5 Chat Styles rendering system across both Councils and Companions, completely manageable from /app/admin with zero code changes.
+Core Behavioral & Architectural Goals:
+19 Named Preset Companions + "Find someone new" (last option): Preserve the 13 original companion prompt architectures verbatim while replacing bot-like prefixes with natural human names balanced across India, US, and Spanish-speaking audiences (Aira, Kira, Camila, Mira, Elia, Max, Tara, Sofia, Luna, Marc, Bella, Kai, Anya), plus 6 complementary companions (Kabir, Mateo, Dev, Leo, Valeria, Rohan) and natural bilingual/code-switching fluency (English, Spanish/Spanglish, Hindi/Hinglish).
+Per-(User × Companion) Shared Memory & Strict Cross-Isolation: All threads with the same companion share longitudinal memory, cross-thread awareness, and invisible relationship evolution (gradual mirroring of slang/tone over time), while strictly isolating context across different companions and between Companions and Council.
+Quiet Chart Access, 90/10 Esoteric Restraint & Warm Referrals: Every companion has read access to the user’s default ("You") profile/chart (and optional per-thread chart switching), never asking for birth details if attached, never bringing up astrology unprompted unless skilled + relevant, and warmly referring out-of-skill requests to the right companion via one-tap "Walk over together" handoff cards.
+Hard Rules vs. Soft Rules + Human Realism: Split rules into non-negotiable Hard Rules and overrideable Soft Rules ("Default Instincts") where individual companion rules always override global rules; inject local time-of-day, time-gap since last reply, contextual return greetings, adaptive reply length, occasional multi-bubble texting with live "Name is typing…" pauses, bubble reactions, and distinct TTS voice-note pacing.
+5 Admin-Selectable Chat Styles (Councils + Companions): editorial, structured, chat_bubbles, dialogue, and concise_brief—selectable per Council guide and per Companion in Admin.
+Editorial Illustrated DPs & Zero-Code Admin Control: Custom editorial watercolor/gouache portraits (with symbolic monogram fallback) and full CRUD management in /app/admin (including per-companion AI Model, Chat Style, Hard/Soft rules, DPs, and live preview).
+Files Involved
+Database & Migrations:
+/supabase/migrations/015_companions_v2_and_chat_styles.sql (new)
+Backend Services & Routes:
+/server/services/companionPresets.ts (new — 19 preset seed definitions preserving the 13 original architectures)
+/server/services/companionEngine.ts (3-layer prompt builder, Hard/Soft precedence, time/relationship/chart/roster injection, referral parser)
+/server/services/memoryArchivist.ts (per-(user, companion) longitudinal memory + silent relationship telemetry & mirroring)
+/server/services/platformSettings.ts (Chat Style configs, per-guide/per-companion AI model & style overrides, cache invalidation)
+/server/services/geminiOrchestrator.ts (multi-bubble pacing hints, Chat Style prompt hints, companion suggestion tuning without Deeper Analysis)
+/server/services/suggestionEngine.ts (human conversational follow-ups for companion threads)
+/server/routes/chat.ts (companion catalog endpoint, open-to-last-thread, cross-thread memory fetch, referral handoff, reaction endpoint, chart attachment)
+/server/routes/admin.ts (full CRUD for Companions, image/DP upload/URL handling, Hard/Soft rules, AI model & Chat Style assignment)
+Frontend Types, Assets & Components:
+/public/assets/companions/* (new — 19 editorial gouache/ink-and-wash illustrated DPs)
+/components/app/chatTypes.ts (ChatStyle union, CompanionPreset, Relationship/Reaction/Referral types)
+/components/app/chatUtilities.ts (per-companion TTS voice pitch/rate profiles)
+/components/app/CompanionAvatar.tsx (new — illustrated DP + symbolic monogram/aura fallback + presence ring)
+/components/app/CompanionProfileSheet.tsx (new — tactile bio/style/action sheet when tapping DP/header, no raw memory list)
+/components/app/CompanionSetupView.tsx (2-col desktop / 1-col mobile grid, cultural/vibe filter, "Find someone new" last)
+/components/app/MessageThread.tsx (5 Chat Styles renderer, live multi-bubble "Typing…" stagger, reactions, utility toolbar, inline referral handoff cards, no Deeper Analysis)
+/components/app/ChatWorkspace.tsx (open-to-last-thread flow, "New topic" action, optional "Just listen / Help me think" cue, per-thread chart switcher, referral navigation)
+/components/app/ChatSidebar.tsx (companion grouping by person/last thread, DP thumbnails)
+/components/app/previewFixtures.ts (updated preview fixtures for Companions v2 & Chat Styles)
+/components/admin/AdminCompanionsManager.tsx (new — full zero-code Companion & live Card/Style preview editor)
+/components/admin/AdminChatbotControl.tsx & /components/admin/AdminPanel.tsx (Chat Style selector for Councils + Companions tab)
+Phased Development Prompts
+Phase 1: Database Schema, Preset Catalog & Core Types
+Goal: Establish the PostgreSQL tables/columns for preset & admin-managed companions, per-(user × companion) shared memory & silent relationship state, message reactions, and the 5 Chat Styles—preserving all 13 original companion architectures verbatim alongside the 6 new complementary companions.
+Development Prompt:
+Implement Phase 1 of the Companions v2 & 5 Chat Styles upgrade in Cosmic Council without altering existing Council reading behavior or UI styling yet:
+Create /supabase/migrations/015_companions_v2_and_chat_styles.sql (idempotent):
+Create public.companions table storing admin-managed preset companions: id (uuid pk), slug (unique text), name, age (int), sex ('M'|'F'), tagline, short_bio, full_bio, primary_expertise, secondary_expertise (text[]), category_tag ('emotional'|'astrology'|'tarot_numerology'|'past_life'|'motivation'), cultural_fluency (text — e.g. India/Hinglish, US/Global, Spanish/Spanglish notes), avatar_url (text nullable), monogram_palette (jsonb), welcome_messages (jsonb array of strings), system_prompt (text), hard_rules (text nullable), soft_rules (text nullable), autonomy_level (text default 'intuitive' — 'steady'|'intuitive'|'free'), override_global_rules (boolean default true), skill_level (text — 'none_emotional'|'astrology_soft'|'tarot'|'numerology'|'past_life'|'vedic_soft'), chat_style (text default 'chat_bubbles'), model_id (text nullable), tts_voice_profile (jsonb nullable), supports_listening_cue (boolean default true), suggestions_enabled (boolean default true), is_active (boolean default true), sort_order (int), created_at, updated_at. Add CHECK constraint for chat_style IN ('editorial', 'structured', 'chat_bubbles', 'dialogue', 'concise_brief').
+Create public.companion_bonds table keyed uniquely by (user_id, companion_slug) to store per-companion shared state: memory_summary (text), relationship_state_json (jsonb containing familiarity_stage: 'just_met'|'warming_up'|'close_confidant', total_turns int, user_slang_cues text[], tone_preferences text[], inside_references text[], hearted_excerpts text[]), last_interaction_at (timestamptz), updated_at.
+Create public.user_custom_companions (or extend companion_bonds / conversations) so companions matched via "Find someone new" are saved with a persistent companion_slug for returning threads and shared memory.
+Alter public.conversations to add companion_slug (text nullable, indexed on (user_id, companion_slug, updated_at DESC)), companion_chat_mode (text nullable — e.g. 'just_listen'|'help_think'), and allow profile_id to optionally reference a birth profile on pillar = 'companion' threads.
+Alter public.messages to add reaction (text nullable, e.g. 'heart'|'felt'), render_style (text nullable), and referral_json (jsonb nullable).
+Enable RLS strictly (service-role write/read on companions & companion_bonds, zero direct client read of system_prompt / hard_rules / soft_rules / relationship_state_json).
+Create /server/services/companionPresets.ts:
+Define all 19 default companions using the exact systemPrompt, welcomeMessages, bio, age, sex, primaryExpertise, and secondaryExpertise from the 13 original companion definitions, renaming only the display names cleanly (Aira, Kira [from Bright Kira], Camila [from Soft Luna], Mira [from Soul Mira], Elia [from Warm Elia], Max, Tara [from Astra Moon], Sofia [from Nova Ashryn], Luna [from Luna Grey], Marc, Bella [from Mystic Bella], Kai [from Arithmos Kai], Anya [from Pastlife Anya]) and preserving their legacy IDs/slugs as aliases if needed.
+Add the 6 new complementary companions using the exact same architecture: Kabir (31M, India/Hinglish, quiet "nothing much" late-night chai buddy, zero unsolicited advice), Mateo (33M, US/Spanish/Spanglish, warm brotherly sounding board), Dev (37M, India/Global, 90% human friend / 10% Vedic & Gita perspective when asked), Leo (25M, US/Global, high-energy playful hype friend), Valeria (35F, Spanish/US, candid best friend for boundaries & honest pushback), and Rohan (44M, India/US, steady unhurried mentor for grief, loss, and transitions).
+Give each companion tailored hard_rules, overrideable soft_rules, cultural_fluency, default chat_style (chat_bubbles or dialogue), skill_level, tts_voice_profile, and monogram_palette.
+Include an idempotent ensureCompanionsSeeded() helper that seeds missing presets into public.companions without overwriting admin-edited rows.
+Update /components/app/chatTypes.ts and /server/services/platformSettings.ts:
+Export ChatStyle = 'editorial' | 'structured' | 'chat_bubbles' | 'dialogue' | 'concise_brief'.
+Add chat_style?: ChatStyle to GuideConfig (for Council experts) and PublicCompanionCard (public-safe fields only—never exposing system_prompt or private rules to non-admin clients).
+Run npm run lint and verify zero TypeScript errors.
+Phase 2: Editorial DPs & Companion Visual Identity System
+Goal: Generate/create the 19 cohesive Editorial Watercolor/Gouache illustrated DPs and build a reusable Avatar + Profile Sheet component matching Cosmic Council’s warm ivory/umber/aged-brass aesthetic.
+Development Prompt:
+Implement Phase 2 for Companion visual identity:
+Create 19 Editorial Illustrated DPs in /public/assets/companions/:
+Generate or curate 19 cohesive, warm, non-photorealistic editorial watercolor / gouache ink-and-wash portraits (<slug>.png, 1:1 aspect ratio) matching Cosmic Council’s palette (Warm Ivory #FAF7F2, Soft Parchment #F1ECE3, Terracotta #7A3E36, Sage #2D6A4F, Slate Indigo, Aged Brass #B8965A, Deep Umber #3D3830)—avoiding photorealistic stock faces and neon gradients. Map each to one of the 19 preset companions (aira.png, kira.png, camila.png, mira.png, elia.png, max.png, tara.png, sofia.png, luna.png, marc.png, bella.png, kai.png, anya.png, kabir.png, mateo.png, dev.png, leo.png, valeria.png, rohan.png).
+Create /components/app/CompanionAvatar.tsx:
+Renders the companion's circular avatar_url image with subtle warm border (border-[#3D3830]/12) and optional soft online/present indicator dot.
+If avatar_url is absent or fails to load (e.g. newly added Admin companions or matched "Find someone new" companions), automatically falls back to a refined Symbolic Monogram / Aura Seal using monogram_palette + Cormorant Garamond initial + subtle celestial hairline ring.
+Support sizes 'xs' | 'sm' | 'md' | 'lg' | 'xl'.
+Create /components/app/CompanionProfileSheet.tsx:
+Clean modal/drawer triggered when tapping a companion’s DP or name in the Hub or Chat header.
+Displays: Illustrated DP, Name, Age, Cultural/Language tags (subtle), Role/Tagline, Full Bio, Conversation Style description, primary/secondary specialties, and action buttons (Continue last chat / Start a new topic / Switch companion).
+Strict privacy/naturalness rule: Do NOT display raw extracted memory bullets or relationship telemetry inside this sheet—keep memory completely organic and invisible to the user.
+Run npm run lint cleanly.
+Phase 3: Per-Companion Shared Memory, Relationship Evolution & 3-Layer Prompt Engine
+Goal: Build the backend intelligence that makes companions remember across threads, evolve relationships organically, mirror tone gradually, respect Hard vs. Soft rule precedence, handle time gaps & birth charts gracefully, and emit warm inter-companion referrals.
+Development Prompt:
+Implement Phase 3 across /server/services/companionEngine.ts, /server/services/memoryArchivist.ts, /server/services/geminiOrchestrator.ts, /server/services/suggestionEngine.ts, and /server/routes/chat.ts:
+Per-(User × Companion) Shared Memory & Relationship State (/server/services/memoryArchivist.ts):
+Add updateCompanionBondAfterTurn(...) running asynchronously in background after every companion reply:
+Reads all recent non-excluded messages across all conversations matching (user_id, companion_slug) (strictly isolated from other companions and from Council).
+Updates companion_bonds.memory_summary (key life events, people/places mentioned, grief/transitions, emotional patterns, inside jokes).
+Updates relationship_state_json: increments total_turns, transitions familiarity_stage (just_met 1–5 → warming_up 6–20 → close_confidant 21+), extracts subtle user_slang_cues (e.g., "bro", "yaar", "tío", lowercase texting, dry humor) and hearted_excerpts (when user reacts with heart/felt to a message).
+On companion message POST, fetch companion_bonds + concise snippets from up to 3 other recent threads with that same companion so cross-thread recall works immediately even before background summarization finishes.
+3-Layer Prompt Architecture & Precedence (/server/services/companionEngine.ts):
+Assemble Companion system prompt in explicit precedence order:
+Layer 1 — Hard Rules: Global safety & anti-bot core + companion-specific hard_rules (never admit to being AI/prompt, no medical/self-harm/death predictions, no isolating dependency, no fabricating chart placements).
+Layer 2 — Companion Core Identity & Skill Blueprint: Verbatim system_prompt + cultural_fluency (natural bilingual/code-switching in English, Spanish/Spanglish, Hindi/Hinglish matching user’s register).
+Layer 3 — Soft Rules ("Default Instincts — Overrideable"): Merge global soft defaults with companion soft_rules, where individual companion rules ALWAYS override global rules (preserving user-initiated warmth/closeness in companions like Camila & Mira). Explicitly instruct: "These are your natural tendencies, not rigid laws—when genuine human empathy, candor, or the moment calls for it (e.g., breaking silence, offering honest pushback, or going short vs. deep), trust your instincts and override your default pacing."
+Relationship Calibration & Soft Mirroring: Inject familiarity_stage + user_slang_cues. At just_met, forbid mimicking user slang; at warming_up, allow subtle occasional relaxation; at close_confidant, allow warm natural mirroring (e.g., adopting 'bro' organically), inside callbacks, and gentle candid pushback.
+Human Time-of-Day & Time-Gap Awareness: Pass user's local time-of-day (late night, morning, afternoon, evening) and elapsed time since last_interaction_at ("first time chatting", "earlier today", "4 days ago", "3 weeks ago").
+Quiet Chart Access & 90/10 Esoteric Restraint: Inject the user’s attached/default birth profile + compiled chart summary + daily transits when available. Override any legacy "Demand complete birth data" instruction: if a chart is attached, forbid re-asking; if no chart is attached, none_emotional companions NEVER ask for birth data, and skill companions only gently nudge if the user asks a chart-dependent question. Instruct skilled companions to stay 90% human friend / 10% gentle esoteric possibilities ("I think the waxing moon last week...") unless explicitly asked a technical astrology/tarot/numerology question.
+Warm Inter-Companion Referrals: Inject a compact list of active fellow companions and their specialties. If the user asks for a skill this companion doesn’t practice (e.g., Tarot from Kabir, Vedic timing from Aira), instruct the companion to reply warmly in character and emit a lightweight hidden marker <<<REFERRAL:{"slug":"bella","reason":"Tarot love clarity"}>>> stripped before display and stored in messages.referral_json.
+Chat Style & Multi-Bubble Formatting: Inject pacing guidance matching the companion’s chat_style. For chat_bubbles, allow adaptive reply lengths (from 1-line replies to heartfelt paragraphs) and occasional natural split beats separated by [[BUBBLE]] (max 3 bubbles per turn).
+Contextual Return Beats & Conversational Follow-Ups:
+Add POST /api/chat/companions/:slug/open endpoint: finds the user’s most recent conversation with companion_slug (if any) and returns it to reopen directly; if none exists, creates the first thread with a random line from welcome_messages[]; if forceNewTopic: true, creates a new thread with a contextual return greeting generated from companion_bonds + time-of-day/gap (or falls back to welcome_messages[]), optionally seeded with a 1-line handoff summary from a referring companion.
+In /server/services/geminiOrchestrator.ts & /server/services/suggestionEngine.ts: for pillar === 'companion', disable deeper_analysis suggestions completely, and if suggestions_enabled is true, generate 2–3 short, natural human texting follow-up replies (4–8 words max, zero astro-jargon).
+Add POST /api/chat/messages/:id/reaction to toggle 'heart' | 'felt' | null and feed hearted messages into companion_bonds.
+Verify npm run lint passes.
+Phase 4: The 5 Chat Styles Renderer & Realistic Messaging UX
+Goal: Upgrade MessageThread.tsx, ChatWorkspace.tsx, and ChatUtilities.ts to render all 5 Chat Styles seamlessly across both Councils and Companions, with realistic multi-bubble "Typing…" animations, reactions, inter-companion referral handoff cards, and per-companion voice-note TTS.
+Development Prompt:
+Implement Phase 4 across /components/app/MessageThread.tsx, /components/app/ChatWorkspace.tsx, /components/app/chatUtilities.ts, and /components/app/ChatSidebar.tsx:
+Unified 5 Chat Styles Renderer (/components/app/MessageThread.tsx):
+Determine active render style from msg.render_style || activeGuideOrCompanionStyle ('editorial' | 'structured' | 'chat_bubbles' | 'dialogue' | 'concise_brief'):
+editorial: Full-width flowing literary markdown prose, Cormorant Garamond headings, pull quotes, clean dividers, zero card boxes.
+structured: Sectioned rounded-2xl Soft Parchment cards for ## sections, tables, Observatory Timing Progress bars, collapsible Technical Evidence drawer.
+chat_bubbles: Left-aligned soft parchment/oat bubbles (#FDFBF7 / #F1ECE3) with CompanionAvatar, tight grouped clustering (4px gap for consecutive bubbles, avatar on cluster start/end), right-aligned Deep Umber (#4A453D) user bubbles, subtle timestamps, and zero markdown headers/tables unless present in text.
+dialogue: Spacious rounded-3xl Soft Parchment note cards with a subtle left Aged Brass (#B8965A) accent bar, DP + name header, and generous breathing room; clean right-aligned user notes.
+concise_brief: Compact single card highlighting a 1–2 sentence core takeaway at top + tight scannable points/snapshot strip below.
+Realistic Multi-Bubble Streaming & "Typing…" Presence:
+Parse [[BUBBLE]] (or natural multi-beat markers) in chat_bubbles mode.
+During live streaming in chat_bubbles: render Bubble 1 as it arrives; when a [[BUBBLE]] break is hit, briefly show "<Name> is typing…" with a calm 3-dot pulse (~650–950ms) before revealing the next bubble. Stored messages in history render immediately as grouped bubbles without re-animating.
+Companion Utility Actions, Bubble Reactions & Follow-Ups:
+Preserve all message utility actions on companion messages (Copy, Listen/TTS, WhatsApp share, Save to Notes, Star, Reply/Quote, Exclude from context, Delete), styled cleanly/quietly for bubble & dialogue layouts.
+Add a subtle tactile Bubble Reaction button (Heart / "Felt that") on companion messages wired to POST /api/chat/messages/:id/reaction.
+In /components/app/chatUtilities.ts, tune Web Speech TTS pitch and rate using the companion’s tts_voice_profile so Listen playback sounds like a warm personal voice note.
+Render conversational follow-up chips (no Deeper Analysis block) when present.
+Inline Referral Handoff Card & Companion Chat Controls (/components/app/ChatWorkspace.tsx):
+When a companion message contains referral_json, render a warm inline card below the bubble: “Walk over to [Target Name]” with two choices: "Start fresh" or "Share what we were talking about" (calls /api/chat/companions/:slug/open with optional 1-sentence handoff note and opens/switches tab smoothly).
+Tapping the companion DP/name in the header opens CompanionProfileSheet.
+Add a clean "New topic" action in the Companion header/sidebar, a subtle optional "Just listen" / "Help me think" mood cue when supports_listening_cue is enabled, and an optional discreet Chart in focus selector (defaulting to "You", or switchable to any saved profile, or prompt to create chart only if user asks for an astrology read without one).
+Update ChatSidebar.tsx so companion threads show the companion's CompanionAvatar and group cleanly with their last message snippet.
+Verify npm run lint passes.
+Phase 5: Companion Hub Grid & Discovery Flow
+Goal: Replace the old category-first CompanionSetupView.tsx with the 2-column preset personality grid, placing "Find someone new" last, with direct open-to-last-thread behavior.
+Development Prompt:
+Implement Phase 5 in /components/app/CompanionSetupView.tsx, /components/app/ChatWorkspace.tsx, and /components/app/previewFixtures.ts:
+Preset Personality Grid (CompanionSetupView.tsx):
+Fetch the active public companion catalog (GET /api/chat/companions/catalog, falling back to preview fixtures in Design Preview mode).
+Render a responsive 2-column grid on desktop (grid-cols-1 md:grid-cols-2) and 1-column on mobile inside the Warm Ivory / Soft Parchment design system (rounded-3xl, subtle #3D3830/12 borders, zero neon gradients).
+Include a quiet, minimal filter row at the top (All · Support & Listeners · Everyday Friends · Astrology · Tarot & Numerology · Past Life).
+Each companion card displays: CompanionAvatar (lg), Name + Age, Role / Tagline, short bio, subtle continuity status if the user has talked with them before (e.g., "Continue chat · 2d ago"), a secondary "Profile" tap to open CompanionProfileSheet, and primary CTA ("Continue chat" if prior thread exists, else "Talk with [Name]").
+Clicking a card calls POST /api/chat/companions/:slug/open so it always opens to their last thread (or starts Thread #1 if new).
+Preserve "Find someone new" as the Last Card:
+Render "Find someone new" as the final card at the end of the grid.
+Clicking it launches the existing 2-question intake + 4 matched companions (2F + 2M) flow, and starting with a matched persona persists them as a reusable custom companion so the user can return to them later with shared memory intact.
+Update /components/app/previewFixtures.ts with rich preview cards & multi-bubble sample conversations matching the new design.
+Verify npm run lint passes.
+Phase 6: Zero-Code Admin Panel — Companions & Chat Styles Manager
+Goal: Give Administrators complete zero-code CRUD control over all Companions, AI Models, Hard/Soft Rules, DPs, Chat Styles (for both Councils and Companions), and live visual previews in /app/admin.
+Development Prompt:
+Implement Phase 6 across /server/routes/admin.ts, /components/admin/AdminCompanionsManager.tsx, /components/admin/AdminChatbotControl.tsx, and /components/admin/AdminPanel.tsx:
+Admin Backend API (/server/routes/admin.ts):
+Add GET /api/admin/companions, POST /api/admin/companions, PATCH /api/admin/companions/:id, DELETE /api/admin/companions/:id, POST /api/admin/companions/reorder, and POST /api/admin/companions/reset/:slug (restores default seed prompt/rules if desired).
+Support DP image assignment via URL or base64/upload endpoint (validating size/mime and storing safely or mapping to /assets/companions/...).
+Add chat_style persistence for all Council experts inside AdminChatbotControl / platformSettings.ts (editorial | structured | chat_bubbles | dialogue | concise_brief) with immediate cache invalidation.
+Admin Companions Manager UI (/components/admin/AdminCompanionsManager.tsx + /components/admin/AdminPanel.tsx):
+Add a dedicated Companions section/tab in Admin featuring a list/reorder view (drag or up/down arrows, active toggle, search/filter) and a full editor panel:
+Identity & Card: Name, Slug, Age, Sex, Category Tag, Primary & Secondary Expertise, Cultural/Language Fluency notes, Tagline, Short Bio, Full Bio.
+DP Editor: Image URL / Upload + curated portrait picker + Symbolic Monogram palette editor with instant CompanionAvatar preview.
+Voice, Brain & Rules:
+System Prompt (full preserved architecture editor)
+Hard Rules (non-negotiable guardrails)
+Soft Rules / Default Instincts (overrideable personality & pacing habits)
+Override Global Companion Rules toggle + Autonomy Level (steady | intuitive | free)
+Welcome Messages[] list editor (add/edit/remove rotating greetings)
+AI Model, Chat Style & Capabilities:
+AI Model selector (any configured OpenRouter model or default)
+Chat Style selector (editorial | structured | chat_bubbles | dialogue | concise_brief)
+Skill / Chart Level (none_emotional | astrology_soft | tarot | numerology | past_life | vedic_soft)
+TTS Voice Profile (rate, pitch)
+Toggles for Listening Cue, Follow-up Suggestions, and Active.
+Live Preview Pane: Side-by-side preview of the 2-column Hub Card AND a sample reply rendered in the selected Chat Style.
+Council Chat Style Control (/components/admin/AdminChatbotControl.tsx):
+Add a Chat Style selector (editorial | structured | chat_bubbles | dialogue | concise_brief) for every Council expert (Vedic Astrologer, Western Astrologer, Modern Astrologer, Tarot, Numerology, Learn Astrology, Clarity) alongside their existing Model & Rules controls.
+Verify npm run lint and npm run build pass cleanly.
+Phase 7: End-to-End Verification, Mobile Polish & Regression Audit
+Goal: Verify mobile 100dvh behavior, design preview mode, memory isolation, zero Supabase egress bloat, and clean compilation.
+Development Prompt:
+Perform a complete end-to-end audit and polish pass across the new Companions & Chat Styles system:
+Egress & Security Audit:
+Verify GET /api/chat/companions/catalog and GET /api/chat/conversations never use select('*') on heavy JSON/text tables and never leak system_prompt, hard_rules, soft_rules, or relationship_state_json to non-admin clients.
+Verify strict memory isolation: test/inspect queries in memoryArchivist.ts and routes/chat.ts to confirm companion_bonds filters strictly by (user_id, companion_slug), never reads Council messages, and never reads other companions' threads.
+UX & Mobile Verification (>95% mobile standard):
+Test Hub 2-col desktop / 1-col mobile grid, "Find someone new" as final card, tapping a companion opens their last thread, [[BUBBLE]] live "Typing…" pauses, bubble reactions, referral handoff cards, all 5 Chat Styles (editorial, structured, chat_bubbles, dialogue, concise_brief), and Design Preview mode.
+Confirm zero horizontal overflow on 375px mobile viewports and zero raw <select> elements anywhere in new UI.
+Build & Lint Verification:
+Run npm run lint (tsc --noEmit) and npm run build (vite build) and resolve any warnings or type errors cleanly.

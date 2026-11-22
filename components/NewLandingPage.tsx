@@ -672,31 +672,11 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                 type="button"
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  onWhyUs();
-                }}
-                className="text-left font-medium text-[#3D3830] py-1.5"
-              >
-                Why Me
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
                   onContact();
                 }}
                 className="text-left font-medium text-[#3D3830] py-1.5"
               >
                 Contact
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onPay();
-                }}
-                className="text-left font-medium text-[#3D3830] py-1.5"
-              >
-                Pay here
               </button>
             </div>
             <div className="pt-3 border-t border-[#3D3830]/10 flex items-center justify-between gap-3">
@@ -706,13 +686,6 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                 className="flex-1 text-center rounded-full bg-[#4A453D] px-4 py-2.5 text-xs font-medium text-[#FAF7F2] active:scale-[0.98] transition-transform"
               >
                 Login with Gmail
-              </Link>
-              <Link
-                to="/legacy"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-xs text-[#8B8275] underline underline-offset-4 whitespace-nowrap"
-              >
-                Classic View
               </Link>
             </div>
           </div>
@@ -1972,7 +1945,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
         </section>
 
         {/* 12. QUICK CONTACT */}
-        <section className="border-t border-[#3D3830]/10 bg-[#FAF7F2] py-20">
+        <section id="contact-section" className="border-t border-[#3D3830]/10 bg-[#FAF7F2] py-20">
           <div className="mx-auto max-w-xl px-6">
             <Reveal direction="up">
               <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-8 md:p-10">
@@ -2102,10 +2075,10 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                   <li>
                     <button
                       type="button"
-                      onClick={onWhyUs}
+                      onClick={() => scrollToSection('methodology-section')}
                       className="hover:text-[#3D3830] transition-colors cursor-pointer"
                     >
-                      Why Me
+                      Methodology
                     </button>
                   </li>
                   <li>
@@ -2136,11 +2109,6 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                       Login
                     </Link>
                   </li>
-                  <li>
-                    <Link to="/legacy" className="hover:text-[#3D3830] transition-colors">
-                      Classic Homepage
-                    </Link>
-                  </li>
                 </ul>
               </div>
 
@@ -2156,13 +2124,6 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={onPay}
-                    className="w-full rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-5 py-2.5 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7] active:scale-[0.98] transition-all duration-200 cursor-pointer"
-                  >
-                    Quick Payment
-                  </button>
-                  <button
-                    type="button"
                     onClick={onContact}
                     className="w-full rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-5 py-2.5 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7] active:scale-[0.98] transition-all duration-200 cursor-pointer"
                   >
@@ -2175,9 +2136,6 @@ const NewLandingPage: React.FC<NewLandingPageProps> = ({
             <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#8B8275]">
               <p>© {new Date().getFullYear()} CosmicCouncil.pro · All rights reserved.</p>
               <div className="flex items-center gap-6">
-                <Link to="/legacy" className="hover:text-[#3D3830] transition-colors">
-                  Archived Classic View
-                </Link>
                 <Link to="/app/login" className="hover:text-[#3D3830] transition-colors">
                   Member Observatory
                 </Link>

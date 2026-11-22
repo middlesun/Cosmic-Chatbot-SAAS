@@ -28,7 +28,11 @@ import CustomSelect from './CustomSelect';
 import LifeContextModal from './LifeContextModal';
 import Tooltip from './Tooltip';
 import type { LifeContextData, PlaceSuggestion } from './chatTypes';
-import { PREVIEW_PROFILES } from './previewFixtures';
+import {
+  PREVIEW_CHART_JSON,
+  PREVIEW_DAILY_TRANSITS,
+  PREVIEW_PROFILES,
+} from './previewFixtures';
 
 interface ProfileSummary {
   id: string;
@@ -447,7 +451,14 @@ const ProfileManager: React.FC = () => {
 
   const handleInspectChart = async (profileId: string) => {
     if (isPreviewMode) {
-      navigate('/app/chat');
+      const target = profiles.find((p) => p.id === profileId) || profiles[0];
+      if (target) {
+        setSelectedDailyTransits(PREVIEW_DAILY_TRANSITS);
+        setSelectedProfile({
+          ...target,
+          chart_json: target.chart_json || PREVIEW_CHART_JSON,
+        });
+      }
       return;
     }
     const token = await getAccessToken();
@@ -568,6 +579,7 @@ const ProfileManager: React.FC = () => {
           chart={selectedProfile.chart_json}
           dailyTransits={selectedDailyTransits}
           profileId={selectedProfile.id}
+          gender={selectedProfile.gender}
           dossier={selectedProfile.natal_truth_dossier_json ?? null}
           lifeContextCompleteness={selectedProfile.life_context_completeness ?? 0}
           onOpenLifeContext={() => setLifeContextTarget(selectedProfile)}
@@ -945,7 +957,14 @@ const ProfileManager: React.FC = () => {
                     )}
                   </div>
 
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830] transition-colors">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleInspectChart(profile.id);
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830] hover:text-[#3D3830] transition-colors cursor-pointer"
+                  >
                     {isInspecting ? (
                       <>
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -957,7 +976,7 @@ const ProfileManager: React.FC = () => {
                         <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-0.5 transition-transform" />
                       </>
                     )}
-                  </span>
+                  </button>
                 </div>
               </div>
             );

@@ -19,6 +19,8 @@ import {
   WESTERN_TIER1_REASONING_LAWS,
 } from './enginePromptDefaults';
 import type { EnginePromptOverrides } from './platformSettings';
+import type { ChatStyle } from '../../components/app/chatTypes';
+import { buildChatStyleInstruction } from './companionEngine';
 
 /**
  * Feature flag controlling decoupled Stage 4 Chart-Aligned Suggestions.
@@ -600,6 +602,7 @@ export interface BuildVedicPathAParams {
   technicalDirective?: string | null;
   priorInferredFluency?: UserFluencyTier | null;
   engineOverrides?: EnginePromptOverrides | null;
+  chatStyle?: ChatStyle;
 }
 
 export interface BuiltVedicPathAPrompt {
@@ -658,6 +661,9 @@ export function buildVedicPathAPrompt(params: BuildVedicPathAParams): BuiltVedic
       engineOverrides: params.engineOverrides,
       tradition,
     }),
+    params.chatStyle
+      ? buildChatStyleInstruction(params.chatStyle, { isCouncil: true })
+      : '',
   ];
 
   // Always address the user naturally with "you/your" rather than repeating names or account handles every turn.

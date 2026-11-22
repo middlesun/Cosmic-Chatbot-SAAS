@@ -38,6 +38,8 @@ import type {
   UserFluencyTier,
   VedicSynthesisMeta,
 } from '../../lib/vedicTypes';
+import type { ChatStyle } from '../../components/app/chatTypes';
+import { buildChatStyleInstruction } from './companionEngine';
 
 export interface DeepAuditLensSpec {
   id:
@@ -252,6 +254,7 @@ export interface RunDeepCouncilAuditParams {
   priorInferredFluency?: UserFluencyTier | null;
   maxOutputTokens: number;
   engineOverrides?: EnginePromptOverrides | null;
+  chatStyle?: ChatStyle;
   abortSignal: AbortSignal;
   onStatus?: (statusText: string) => void;
   onChunk: (chunkText: string) => void;
@@ -344,6 +347,7 @@ End cleanly with a concise, clearly labeled **System Convergence & Technical Tra
       engineOverrides: base.engineOverrides,
       tradition,
     }),
+    base.chatStyle ? buildChatStyleInstruction(base.chatStyle, { isCouncil: true }) : '',
     dualViewRule,
     base.turnCount > 0
       ? `THREAD CONTINUITY (Message #${base.turnCount + 1}): Continue seamlessly from earlier turns without re-introducing yourself.`

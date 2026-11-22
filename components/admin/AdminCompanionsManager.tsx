@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowDown,
@@ -14,10 +14,14 @@ import {
   Sliders,
   Sparkles,
   Trash2,
+  Upload,
   UserCheck,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import CompanionAvatar from '../app/CompanionAvatar';
 import CustomSelect from '../app/CustomSelect';
+import { speakMessageText, stopSpeaking } from '../app/chatUtilities';
 import {
   CHAT_STYLE_OPTIONS,
   type ChatStyle,
@@ -303,7 +307,90 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
     });
   }, [companions, searchQuery, categoryFilter]);
 
+  const [uploadingDp, setUploadingDp] = useState(false);
+  const [dpUploadError, setDpUploadError] = useState<string | null>(null);
+  const [testingVoice, setTestingVoice] = useState(false);
+  const dpFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleUploadPortraitFile = async (file: File) => {
+    setDpUploadError(null);
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setDpUploadError('Please upload a PNG, JPEG, or WebP portrait image.');
+      return;
+    }
+
+    setUploadingDp(true);
+    try {
+      const objectUrl = URL.createObjectURL(file);
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const size = 320;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              reject(new Error('Canvas context unavailable'));
+              return;
+            }
+            const minSide = Math.min(img.width, img.height);
+            const sx = Math.max(0, (img.width - minSide) / 2);
+            const sy = Math.max(0, (img.height - minSide) / 2);
+            ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+            let encoded = canvas.toDataURL('image/webp', 0.86);
+            if (!encoded.startsWith('data:image/webp')) {
+              encoded = canvas.toDataURL('image/jpeg', 0.88);
+            }
+            resolve(encoded);
+          } catch (err) {
+            reject(err);
+          } finally {
+            URL.revokeObjectURL(objectUrl);
+          }
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error('Could not decode selected image.'));
+        };
+        img.src = objectUrl;
+      });
+
+      const token = await getAccessToken();
+      if (!token) {
+        throw new Error('Admin session required.');
+      }
+
+      const res = await fetch('/api/admin/companions/upload-dp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ dataUrl }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.avatar_url) {
+        throw new Error(data.error || 'Failed to upload portrait image.');
+      }
+      setDraft((prev) => (prev ? { ...prev, avatar_url: data.avatar_url } : prev));
+      setFeedback('Portrait image cropped (320×320) and ready — save companion to publish.');
+    } catch (err) {
+      setDpUploadError(err instanceof Error ? err.message : 'Portrait upload failed.');
+    } finally {
+      setUploadingDp(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => stopSpeaking();
+  }, []);
+
   const handleSelectCompanion = (item: AdminCompanionRecord) => {
+    stopSpeaking();
+    setTestingVoice(false);
+    setDpUploadError(null);
     setSelectedId(item.id);
     setDraft({
       ...item,
@@ -825,34 +912,37 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                   </div>
                 </div>
 
-                {/* Editor Section Sub-Tabs */}
-                <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-[#F1ECE3] p-1.5 w-fit">
-                  {(
-                    [
-                      { key: 'identity', label: 'Identity & Portrait', icon: UserCheck },
-                      { key: 'prompts', label: 'Prompts & Layered Rules', icon: Sparkles },
-                      { key: 'behavior', label: 'Chat Style & AI Model', icon: Sliders },
-                    ] as const
-                  ).map((t) => {
-                    const Icon = t.icon;
-                    const active = editorTab === t.key;
-                    return (
-                      <button
-                        key={t.key}
-                        type="button"
-                        onClick={() => setEditorTab(t.key)}
-                        className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                          active
-                            ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
-                            : 'text-[#5C5449] hover:text-[#3D3830]'
-                        }`}
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                        <span>{t.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* Split Editor + Live Preview Grid */}
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_350px] gap-6 items-start">
+                  <div className="min-w-0 space-y-5">
+                    {/* Editor Section Sub-Tabs */}
+                    <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-[#F1ECE3] p-1.5 w-fit">
+                      {(
+                        [
+                          { key: 'identity', label: 'Identity & Portrait', icon: UserCheck },
+                          { key: 'prompts', label: 'Prompts & Layered Rules', icon: Sparkles },
+                          { key: 'behavior', label: 'Chat Style & AI Model', icon: Sliders },
+                        ] as const
+                      ).map((t) => {
+                        const Icon = t.icon;
+                        const active = editorTab === t.key;
+                        return (
+                          <button
+                            key={t.key}
+                            type="button"
+                            onClick={() => setEditorTab(t.key)}
+                            className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                              active
+                                ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                                : 'text-[#5C5449] hover:text-[#3D3830]'
+                            }`}
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                            <span>{t.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
 
                 {/* TAB 1: IDENTITY & PORTRAIT */}
                 {editorTab === 'identity' && (
@@ -1104,6 +1194,42 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                             })}
                           </div>
                         </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-[#3D3830]/20 bg-[#FDFBF7] px-3.5 py-2.5">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-[#3D3830]">
+                            Upload Custom Display Picture (DP)
+                          </p>
+                          <p className="text-[11px] text-[#8B8275]">
+                            PNG, JPEG, or WebP · Auto-cropped square 320×320
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <input
+                            ref={dpFileInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            className="sr-only"
+                            onChange={(e) => {
+                              const picked = e.target.files?.[0];
+                              e.target.value = '';
+                              if (picked) void handleUploadPortraitFile(picked);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            disabled={uploadingDp}
+                            onClick={() => dpFileInputRef.current?.click()}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] disabled:opacity-50 transition-colors cursor-pointer"
+                          >
+                            <Upload className="h-3.5 w-3.5 text-[#8B7355]" />
+                            <span>{uploadingDp ? 'Processing…' : 'Upload Portrait Image'}</span>
+                          </button>
+                        </div>
+                      </div>
+                      {dpUploadError && (
+                        <p className="text-xs text-[#7A3E36]">{dpUploadError}</p>
                       )}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -1654,6 +1780,180 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                     </div>
                   </div>
                 )}
+                  </div>
+
+                  {/* Sticky Side-by-Side Live Companion Preview */}
+                  <aside className="xl:sticky xl:top-4 space-y-4 rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8B8275]">
+                        Live Companion Preview
+                      </span>
+                      <span className="rounded-full bg-[#F1ECE3] px-2 py-0.5 text-[10px] font-medium text-[#5C5449]">
+                        {CHAT_STYLE_OPTIONS.find((o) => o.value === draft.chat_style)?.label ||
+                          draft.chat_style}
+                      </span>
+                    </div>
+
+                    {/* 1. Hub Card Preview */}
+                    <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] p-4 space-y-3 shadow-xs">
+                      <div className="flex items-start gap-3">
+                        <CompanionAvatar
+                          name={draft.name || 'Companion'}
+                          avatarUrl={draft.avatar_url}
+                          palette={draft.monogram_palette}
+                          size="lg"
+                          shape="circle"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline gap-1.5">
+                            <h4 className="font-['Cormorant_Garamond',serif] text-xl font-medium text-[#3D3830] truncate">
+                              {draft.name || 'Unnamed'}
+                            </h4>
+                            <span className="font-mono text-[11px] tabular-nums text-[#8B8275]">
+                              {draft.age}
+                            </span>
+                          </div>
+                          <p className="text-[11px] font-medium text-[#8B7355] truncate">
+                            {draft.primary_expertise || 'Role / Expertise'}
+                          </p>
+                          {secondaryText.trim() && (
+                            <p className="text-[10px] text-[#8B8275] truncate mt-0.5">
+                              {secondaryText
+                                .split(',')
+                                .map((s) => s.trim())
+                                .filter(Boolean)
+                                .slice(0, 2)
+                                .join(' · ')}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-[#5C5449] leading-relaxed line-clamp-2">
+                        {draft.tagline ||
+                          draft.short_bio ||
+                          'Add a warm tagline or short bio to preview the directory card.'}
+                      </p>
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <span className="inline-flex items-center rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-1 text-[11px] font-medium text-[#5C5449]">
+                          About
+                        </span>
+                        <span className="flex-1 text-center rounded-full bg-[#4A453D] px-3 py-1 text-[11px] font-medium text-[#FAF7F2] truncate">
+                          Talk with {draft.name || 'Companion'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 2. Live Chat Style Sample */}
+                    {(() => {
+                      const sampleRaw =
+                        draft.welcome_messages.find((m) => m.trim()) ||
+                        `Hey — glad you stopped by. [[BUBBLE]] What's been sitting heaviest on your mind today?`;
+                      const cleanedSingle = sampleRaw
+                        .replace(/\s*\[\[BUBBLE\]\]\s*/gi, '\n\n')
+                        .trim();
+                      const sampleBubbles = sampleRaw.includes('[[BUBBLE]]')
+                        ? sampleRaw
+                            .split(/\s*\[\[BUBBLE\]\]\s*/gi)
+                            .map((s) => s.trim())
+                            .filter(Boolean)
+                        : [cleanedSingle, 'No rush — pick up wherever it feels easiest.'];
+
+                      return (
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#8B8275]">
+                            In-Thread Style Sample
+                          </span>
+                          {draft.chat_style === 'chat_bubbles' ? (
+                            <div className="flex items-start gap-2">
+                              <CompanionAvatar
+                                name={draft.name || 'Companion'}
+                                avatarUrl={draft.avatar_url}
+                                palette={draft.monogram_palette}
+                                size="xs"
+                                shape="circle"
+                                className="mt-1"
+                              />
+                              <div className="space-y-1.5 flex-1 min-w-0">
+                                {sampleBubbles.slice(0, 3).map((b, i) => (
+                                  <div
+                                    key={i}
+                                    className="w-fit max-w-full rounded-2xl rounded-tl-sm border border-[#3D3830]/12 bg-[#FDFBF7] px-3 py-2 text-xs leading-relaxed text-[#3D3830] shadow-2xs"
+                                  >
+                                    {b}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : draft.chat_style === 'dialogue' ? (
+                            <div className="rounded-2xl border border-[#B8965A]/25 border-l-[3px] border-l-[#B8965A] bg-[#FDFBF7] px-3.5 py-3 text-xs leading-relaxed text-[#5C5449]">
+                              {cleanedSingle}
+                            </div>
+                          ) : draft.chat_style === 'concise_brief' ? (
+                            <div className="rounded-2xl border border-[#3D3830]/14 bg-[#FDFBF7] px-3.5 py-3 text-xs leading-relaxed text-[#5C5449]">
+                              <p className="text-[9px] font-semibold uppercase tracking-[0.11em] text-[#8B8275] mb-1">
+                                Quick Brief
+                              </p>
+                              <p>{cleanedSingle}</p>
+                            </div>
+                          ) : draft.chat_style === 'structured' ? (
+                            <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-3 space-y-1.5 text-xs text-[#5C5449]">
+                              <p className="font-['Cormorant_Garamond',serif] text-base font-medium text-[#3D3830] border-b border-[#3D3830]/10 pb-1">
+                                Core Observation
+                              </p>
+                              <p className="leading-relaxed">{cleanedSingle}</p>
+                            </div>
+                          ) : (
+                            <div className="rounded-2xl border border-[#3D3830]/10 bg-[#FDFBF7]/70 px-3.5 py-3 text-xs leading-relaxed text-[#5C5449]">
+                              {cleanedSingle}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* 3. Voice Cadence Test Button */}
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#3D3830]/10">
+                      <span className="text-[11px] font-mono tabular-nums text-[#8B8275]">
+                        Rate {draft.tts_voice_profile.rate.toFixed(2)}x · Pitch{' '}
+                        {draft.tts_voice_profile.pitch.toFixed(2)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (testingVoice) {
+                            stopSpeaking();
+                            setTestingVoice(false);
+                            return;
+                          }
+                          const sampleLine =
+                            draft.welcome_messages.find((m) => m.trim()) ||
+                            `Hey, I'm ${draft.name || 'your companion'}. Take a breath — I'm right here.`;
+                          speakMessageText(sampleLine, 'English', {
+                            rate: draft.tts_voice_profile.rate,
+                            pitch: draft.tts_voice_profile.pitch,
+                            gender: draft.sex,
+                            onStart: () => setTestingVoice(true),
+                            onEnd: () => setTestingVoice(false),
+                            onError: () => setTestingVoice(false),
+                          });
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                      >
+                        {testingVoice ? (
+                          <>
+                            <VolumeX className="h-3.5 w-3.5 text-[#7A3E36]" />
+                            <span>Stop Voice</span>
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="h-3.5 w-3.5 text-[#8B7355]" />
+                            <span>Test Voice</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </aside>
+                </div>
               </div>
             )}
           </div>

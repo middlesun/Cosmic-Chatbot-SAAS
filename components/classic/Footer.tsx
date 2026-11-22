@@ -1,5 +1,5 @@
 import React from 'react';
-import { Category, Currency } from '../types';
+import { Category, Currency } from '../../types';
 
 interface FooterProps {
   onCategoryClick: (cat: Category) => void;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Currency, Product, Category, formatCurrencyPrice } from '../types';
+import { Currency, Product, Category, formatCurrencyPrice } from '../../types';
 
 interface ProductCardProps {
   product: Product;

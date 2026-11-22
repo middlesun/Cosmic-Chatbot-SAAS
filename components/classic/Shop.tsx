@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import { Currency, Product, Category } from '../types';
-import { PRODUCTS } from '../constants';
+import { Currency, Product, Category } from '../../types';
+import { PRODUCTS } from '../../constants';
 import ProductCard from './ProductCard';
 
 interface ShopProps {

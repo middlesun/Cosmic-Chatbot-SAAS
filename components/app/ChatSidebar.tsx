@@ -4,6 +4,7 @@ import {
   Bookmark,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Coins,
   Database,
   FolderOpen,
@@ -129,7 +130,14 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [editingConvTitle, setEditingConvTitle] = useState<string>('');
   const [favFilterProfile, setFavFilterProfile] = useState<string>('');
   const [showNewMenu, setShowNewMenu] = useState(false);
+  const [mobileFooterExpanded, setMobileFooterExpanded] = useState(false);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!showMobileDrawer) {
+      setMobileFooterExpanded(false);
+    }
+  }, [showMobileDrawer]);
 
   const companionCatalogBySlug = useMemo(() => {
     const map = new Map<string, PublicCompanionCard>();
@@ -231,7 +239,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return null;
   }
 
-  const renderConversationRow = (conv: ConversationRecord, rowKeyPrefix = '') => {
+  const renderConversationRow = (
+    conv: ConversationRecord,
+    rowKeyPrefix = '',
+    options?: { inPersonGroup?: boolean }
+  ) => {
     const rowId = `${rowKeyPrefix}${conv.id}`;
     const isActive = conv.id === activeConversationId;
     const isConfirming = confirmDeleteId === rowId;
@@ -241,16 +253,30 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     const companionSlug = conv.companion_slug || conv.companion_persona_json?.slug || null;
     const catalogCard = companionSlug ? companionCatalogBySlug.get(companionSlug) : undefined;
     const companionName = catalogCard?.name || conv.companion_persona_json?.name;
-    const companionRole =
-      catalogCard?.primary_expertise || conv.companion_persona_json?.role_label;
-    const displayTitle =
-      isCompanion &&
-      companionName &&
-      (!conv.title ||
-        conv.title === 'Companion Chat' ||
-        conv.title.startsWith(`${companionName} ·`))
+    const previewSnippet = (conv.last_message_preview || '').trim();
+    const rawTitle = (conv.title || '').trim();
+    const isGenericCompanionTitle =
+      !rawTitle ||
+      rawTitle === 'Companion Chat' ||
+      (Boolean(companionName) && rawTitle.toLowerCase() === companionName!.toLowerCase());
+    const strippedTopicTitle =
+      companionName && rawTitle.startsWith(`${companionName} ·`)
+        ? rawTitle.slice(`${companionName} ·`.length).trim()
+        : rawTitle;
+    const displayTitle = isCompanion
+      ? options?.inPersonGroup
+        ? isGenericCompanionTitle
+          ? previewSnippet
+            ? previewSnippet.slice(0, 48) + (previewSnippet.length > 48 ? '…' : '')
+            : 'Conversation'
+          : strippedTopicTitle || 'Conversation'
+        : companionName &&
+          (!rawTitle ||
+            rawTitle === 'Companion Chat' ||
+            rawTitle.startsWith(`${companionName} ·`))
         ? companionName
-        : conv.title;
+        : conv.title
+      : conv.title;
 
     return (
       <div
@@ -298,7 +324,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             }}
             className="flex flex-1 items-center gap-2 min-w-0 text-left cursor-pointer"
           >
-            {isCompanion && (
+            {isCompanion && !options?.inPersonGroup && (
               <CompanionAvatar
                 name={companionName || displayTitle}
                 avatarUrl={catalogCard?.avatar_url ?? conv.companion_persona_json?.avatar_url}
@@ -319,12 +345,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   {displayTitle}
                 </span>
               </div>
-              <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
-                {isCompanion && companionRole && (
-                  <span className="truncate max-w-[115px] text-[#5C5449]">{companionRole} ·</span>
-                )}
-                <span className="shrink-0">{new Date(conv.updated_at).toLocaleDateString()}</span>
-              </div>
+              {isCompanion && previewSnippet && (
+                <p className="mt-0.5 text-[11px] leading-snug text-[#5C5449]/85 line-clamp-1">
+                  {previewSnippet}
+                </p>
+              )}
             </div>
           </button>
         )}
@@ -740,7 +765,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 </div>
 
                 {isFolderOpen('companions') && (
-                  <div className="space-y-1 pl-1">
+                  <div className="space-y-2 pl-1">
                     {groupedConversations.companions.length === 0 ? (
                       <div className="px-2.5 py-2 space-y-2">
                         <p className="text-[11px] text-[#8B8275]">
@@ -757,11 +782,119 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                           Find a Companion
                         </button>
                       </div>
-                    ) : (
-                      groupedConversations.companions.map((conv) =>
-                        renderConversationRow(conv, 'folder-comp-')
-                      )
-                    )}
+                    ) : (() => {
+                      const personGroups: Array<{
+                        key: string;
+                        name: string;
+                        role?: string;
+                        avatarUrl?: string | null;
+                        palette?: typeof groupedConversations.companions[0]['companion_persona_json'] extends infer P
+                          ? P extends { monogram_palette?: infer M }
+                            ? M
+                            : undefined
+                          : undefined;
+                        items: ConversationRecord[];
+                      }> = [];
+                      const groupMap = new Map<string, (typeof personGroups)[number]>();
+
+                      for (const conv of groupedConversations.companions) {
+                        const slug =
+                          conv.companion_slug ||
+                          conv.companion_persona_json?.slug ||
+                          null;
+                        const card = slug ? companionCatalogBySlug.get(slug) : undefined;
+                        const name =
+                          card?.name ||
+                          conv.companion_persona_json?.name ||
+                          conv.title ||
+                          'Companion';
+                        const key = (slug || name).toLowerCase();
+                        let group = groupMap.get(key);
+                        if (!group) {
+                          group = {
+                            key,
+                            name,
+                            role:
+                              card?.primary_expertise ||
+                              conv.companion_persona_json?.role_label,
+                            avatarUrl:
+                              card?.avatar_url ??
+                              conv.companion_persona_json?.avatar_url,
+                            palette:
+                              card?.monogram_palette ??
+                              conv.companion_persona_json?.monogram_palette,
+                            items: [],
+                          };
+                          groupMap.set(key, group);
+                          personGroups.push(group);
+                        }
+                        group.items.push(conv);
+                      }
+
+                      return personGroups.map((group, gIdx) => {
+                        const folderKey = `comp-person:${group.key}`;
+                        const containsActive = group.items.some(
+                          (c) => c.id === activeConversationId
+                        );
+                        const isOpen =
+                          expandedFolders[folderKey] !== undefined
+                            ? expandedFolders[folderKey]
+                            : containsActive || gIdx < 5;
+
+                        return (
+                          <div key={group.key} className="space-y-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedFolders((prev) => ({
+                                  ...prev,
+                                  [folderKey]: !isOpen,
+                                }))
+                              }
+                              className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left hover:bg-[#FAF7F2]/60 transition-colors cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <CompanionAvatar
+                                  name={group.name}
+                                  avatarUrl={group.avatarUrl}
+                                  palette={group.palette}
+                                  size="xs"
+                                  shape="circle"
+                                />
+                                <div className="min-w-0 flex items-center gap-1.5">
+                                  <span className="truncate text-[11px] font-semibold text-[#3D3830]">
+                                    {group.name}
+                                  </span>
+                                  {group.items.length > 1 ? (
+                                    <span className="text-[10px] font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] shrink-0">
+                                      ({group.items.length})
+                                    </span>
+                                  ) : group.role ? (
+                                    <span className="truncate text-[10px] text-[#8B8275]">
+                                      · {group.role}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                              {isOpen ? (
+                                <ChevronDown className="h-3 w-3 text-[#8B8275] shrink-0" />
+                              ) : (
+                                <ChevronRight className="h-3 w-3 text-[#8B8275] shrink-0" />
+                              )}
+                            </button>
+                            {isOpen && (
+                              <div className="space-y-1 pl-2.5 ml-3 border-l border-[#3D3830]/10">
+                                {group.items.map((conv) =>
+                                  renderConversationRow(conv, 'folder-comp-', {
+                                    inPersonGroup: true,
+                                  })
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 )}
               </div>
@@ -859,7 +992,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   );
                 })}
 
-                {/* General & Learn Astrology Folder */}
+                {/* Astrology lessons Folder */}
                 <div className="rounded-2xl bg-[#EAE3D7]/60 border border-[#3D3830]/10 p-2 space-y-1.5">
                   <div className="flex items-center justify-between px-1">
                     <button
@@ -872,7 +1005,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       ) : (
                         <ChevronRight className="h-3.5 w-3.5 text-[#5C5449] shrink-0" />
                       )}
-                      <span className="truncate">General &amp; Learn Astrology</span>
+                      <span className="truncate">Astrology lessons</span>
                       <span className="text-[10px] font-medium text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
                         ({groupedConversations.general.length})
                       </span>
@@ -924,7 +1057,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               className="w-full"
               options={[
                 { value: '', label: 'All Profiles & General' },
-                { value: 'general', label: 'General & Learn Astrology' },
+                { value: 'general', label: 'Astrology lessons' },
                 ...profiles.map((p) => ({
                   value: p.id,
                   label: getProfileDisplayLabel(p),
@@ -965,145 +1098,191 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
         </div>
       )}
 
-      {/* Mobile Workspace Navigation Footer (replaces outer mobile bar inside full-screen mobile Chat) */}
-      <div className="md:hidden border-t border-[#3D3830]/12 bg-[#EAE3D7]/55 px-3 py-3 space-y-2">
-        <div className="flex items-center justify-between px-2">
-          <span className="font-serif text-base font-medium text-[#3D3830]">
-            Cosmic Council
-          </span>
-          {(() => {
-            const tierBaseline =
-              appUser?.tier === 'guru' ? 8000 : appUser?.tier === 'pro' ? 2500 : 500;
-            const isLowCredits =
-              !isPreviewMode &&
-              (creditsBalance <= 0 || creditsBalance / tierBaseline < 0.1);
-            return (
-              <Tooltip
-                content={
-                  isLowCredits
-                    ? 'Under 10% credits remaining — tap to top up'
-                    : `${creditsBalance.toLocaleString()} credits remaining`
-                }
-                placement="top"
+      {/* Mobile Workspace Navigation Footer (collapsed by default; expands upward) */}
+      <div className="md:hidden border-t border-[#3D3830]/12 bg-[#EAE3D7]/65 px-3 py-2.5">
+        <div
+          className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ease-out ${
+            mobileFooterExpanded
+              ? 'grid-rows-[1fr] opacity-100 mb-2'
+              : 'grid-rows-[0fr] opacity-0 mb-0 pointer-events-none'
+          }`}
+          aria-hidden={!mobileFooterExpanded}
+        >
+          <div className="overflow-hidden min-h-0">
+            <nav className="grid grid-cols-2 gap-1 pb-1">
+              <NavLink
+                to="/app/home"
+                onClick={onCloseMobileDrawer}
+                tabIndex={mobileFooterExpanded ? 0 : -1}
+                className={mobileNavLinkClass}
               >
-                <Link
-                  to="/app/billing"
+                <Home className="h-3.5 w-3.5 text-[#8B8275]" />
+                <span>Home</span>
+              </NavLink>
+              <NavLink
+                to="/app/apps"
+                onClick={onCloseMobileDrawer}
+                tabIndex={mobileFooterExpanded ? 0 : -1}
+                className={mobileNavLinkClass}
+              >
+                <LayoutGrid className="h-3.5 w-3.5 text-[#8B8275]" />
+                <span>Apps</span>
+              </NavLink>
+              <NavLink
+                to="/app/profiles"
+                onClick={onCloseMobileDrawer}
+                tabIndex={mobileFooterExpanded ? 0 : -1}
+                className={mobileNavLinkClass}
+              >
+                <Users className="h-3.5 w-3.5 text-[#8B8275]" />
+                <span>Profiles</span>
+              </NavLink>
+              <NavLink
+                to="/app/reports"
+                onClick={onCloseMobileDrawer}
+                tabIndex={mobileFooterExpanded ? 0 : -1}
+                className={mobileNavLinkClass}
+              >
+                <ScrollText className="h-3.5 w-3.5 text-[#8B8275]" />
+                <span>Reports</span>
+              </NavLink>
+              <NavLink
+                to="/app/billing"
+                onClick={onCloseMobileDrawer}
+                tabIndex={mobileFooterExpanded ? 0 : -1}
+                className={mobileNavLinkClass}
+              >
+                <Coins className="h-3.5 w-3.5 text-[#8B8275]" />
+                <span>Credits</span>
+              </NavLink>
+              <button
+                type="button"
+                tabIndex={mobileFooterExpanded ? 0 : -1}
+                onClick={() => {
+                  onCloseMobileDrawer();
+                  openSupport();
+                }}
+                className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
+              >
+                <LifeBuoy className="h-3.5 w-3.5 text-[#8B8275]" />
+                <span>Support</span>
+              </button>
+              <button
+                type="button"
+                tabIndex={mobileFooterExpanded ? 0 : -1}
+                onClick={() => {
+                  onCloseMobileDrawer();
+                  openAccountSettings();
+                }}
+                className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
+              >
+                <Settings className="h-3.5 w-3.5 text-[#8B8275]" />
+                <span>Settings</span>
+              </button>
+              <button
+                type="button"
+                tabIndex={mobileFooterExpanded ? 0 : -1}
+                onClick={() => {
+                  onCloseMobileDrawer();
+                  openBackup();
+                }}
+                className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
+              >
+                <Database className="h-3.5 w-3.5 text-[#8B8275]" />
+                <span>Backup</span>
+              </button>
+              {appUser?.is_admin && (
+                <NavLink
+                  to="/app/admin"
                   onClick={onCloseMobileDrawer}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-['DM_Sans',sans-serif] tabular-nums transition-colors ${
-                    isLowCredits
-                      ? 'bg-[#FAF0EE] border-[#7A3E36]/30 text-[#7A3E36] font-medium'
-                      : 'bg-[#FAF7F2] border-[#3D3830]/10 text-[#3D3830]'
-                  }`}
+                  tabIndex={mobileFooterExpanded ? 0 : -1}
+                  className={mobileNavLinkClass}
                 >
-                  <Coins
-                    className={`h-3 w-3 ${isLowCredits ? 'text-[#7A3E36]' : 'text-[#8B7355]'}`}
-                  />
-                  {isLowCredits && <span className="text-[10px] font-semibold">Low ·</span>}
-                  <span>{creditsBalance.toLocaleString()}</span>
-                </Link>
-              </Tooltip>
-            );
-          })()}
+                  <ShieldCheck className="h-3.5 w-3.5 text-[#8B7355]" />
+                  <span>Admin</span>
+                </NavLink>
+              )}
+              {onSignOut && (
+                <button
+                  type="button"
+                  tabIndex={mobileFooterExpanded ? 0 : -1}
+                  onClick={() => {
+                    onCloseMobileDrawer();
+                    onSignOut();
+                  }}
+                  className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#7A3E36] hover:bg-[#FAF7F2]/70 transition-colors"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>{isPreviewMode ? 'Exit Preview' : 'Sign Out'}</span>
+                </button>
+              )}
+            </nav>
+          </div>
         </div>
 
-        <nav className="grid grid-cols-2 gap-1">
-          <NavLink
-            to="/app/home"
-            onClick={onCloseMobileDrawer}
-            className={mobileNavLinkClass}
-          >
-            <Home className="h-3.5 w-3.5 text-[#8B8275]" />
-            <span>Home</span>
-          </NavLink>
-          <NavLink
-            to="/app/apps"
-            onClick={onCloseMobileDrawer}
-            className={mobileNavLinkClass}
-          >
-            <LayoutGrid className="h-3.5 w-3.5 text-[#8B8275]" />
-            <span>Apps</span>
-          </NavLink>
-          <NavLink
-            to="/app/profiles"
-            onClick={onCloseMobileDrawer}
-            className={mobileNavLinkClass}
-          >
-            <Users className="h-3.5 w-3.5 text-[#8B8275]" />
-            <span>Profiles</span>
-          </NavLink>
-          <NavLink
-            to="/app/reports"
-            onClick={onCloseMobileDrawer}
-            className={mobileNavLinkClass}
-          >
-            <ScrollText className="h-3.5 w-3.5 text-[#8B8275]" />
-            <span>Reports</span>
-          </NavLink>
-          <NavLink
-            to="/app/billing"
-            onClick={onCloseMobileDrawer}
-            className={mobileNavLinkClass}
-          >
-            <Coins className="h-3.5 w-3.5 text-[#8B8275]" />
-            <span>Credits</span>
-          </NavLink>
+        <div className="flex items-center justify-between gap-2 px-1">
           <button
             type="button"
-            onClick={() => {
-              onCloseMobileDrawer();
-              openSupport();
-            }}
-            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
+            onClick={() => setMobileFooterExpanded((v) => !v)}
+            aria-expanded={mobileFooterExpanded}
+            aria-label={mobileFooterExpanded ? 'Collapse workspace menu' : 'Expand workspace menu'}
+            className="flex items-center gap-2 min-w-0 text-left py-0.5 cursor-pointer"
           >
-            <LifeBuoy className="h-3.5 w-3.5 text-[#8B8275]" />
-            <span>Support</span>
+            <span className="font-serif text-base font-medium text-[#3D3830] truncate">
+              Cosmic Council
+            </span>
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              onCloseMobileDrawer();
-              openAccountSettings();
-            }}
-            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
-          >
-            <Settings className="h-3.5 w-3.5 text-[#8B8275]" />
-            <span>Settings</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onCloseMobileDrawer();
-              openBackup();
-            }}
-            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
-          >
-            <Database className="h-3.5 w-3.5 text-[#8B8275]" />
-            <span>Backup</span>
-          </button>
-          {appUser?.is_admin && (
-            <NavLink
-              to="/app/admin"
-              onClick={onCloseMobileDrawer}
-              className={mobileNavLinkClass}
-            >
-              <ShieldCheck className="h-3.5 w-3.5 text-[#8B7355]" />
-              <span>Admin</span>
-            </NavLink>
-          )}
-          {onSignOut && (
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {(() => {
+              const tierBaseline =
+                appUser?.tier === 'guru' ? 8000 : appUser?.tier === 'pro' ? 2500 : 500;
+              const isLowCredits =
+                !isPreviewMode &&
+                (creditsBalance <= 0 || creditsBalance / tierBaseline < 0.1);
+              return (
+                <Tooltip
+                  content={
+                    isLowCredits
+                      ? 'Under 10% credits remaining — tap to top up'
+                      : `${creditsBalance.toLocaleString()} credits remaining`
+                  }
+                  placement="top"
+                >
+                  <Link
+                    to="/app/billing"
+                    onClick={onCloseMobileDrawer}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-['DM_Sans',sans-serif] tabular-nums transition-colors ${
+                      isLowCredits
+                        ? 'bg-[#FAF0EE] border-[#7A3E36]/30 text-[#7A3E36] font-medium'
+                        : 'bg-[#FAF7F2] border-[#3D3830]/10 text-[#3D3830]'
+                    }`}
+                  >
+                    <Coins
+                      className={`h-3 w-3 ${isLowCredits ? 'text-[#7A3E36]' : 'text-[#8B7355]'}`}
+                    />
+                    {isLowCredits && <span className="text-[10px] font-semibold">Low ·</span>}
+                    <span>{creditsBalance.toLocaleString()}</span>
+                  </Link>
+                </Tooltip>
+              );
+            })()}
+
             <button
               type="button"
-              onClick={() => {
-                onCloseMobileDrawer();
-                onSignOut();
-              }}
-              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#7A3E36] hover:bg-[#FAF7F2]/70 transition-colors"
+              onClick={() => setMobileFooterExpanded((v) => !v)}
+              aria-expanded={mobileFooterExpanded}
+              aria-label={mobileFooterExpanded ? 'Collapse workspace menu' : 'Expand workspace menu'}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[#3D3830]/12 bg-[#FAF7F2]/80 text-[#5C5449] hover:text-[#3D3830] hover:bg-[#FAF7F2] transition-colors cursor-pointer"
             >
-              <LogOut className="h-3.5 w-3.5" />
-              <span>{isPreviewMode ? 'Exit Preview' : 'Sign Out'}</span>
+              <ChevronUp
+                className={`h-4 w-4 transition-transform duration-200 ${
+                  mobileFooterExpanded ? 'rotate-180' : ''
+                }`}
+              />
             </button>
-          )}
-        </nav>
+          </div>
+        </div>
       </div>
     </aside>
   );

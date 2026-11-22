@@ -2,9 +2,9 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { articlesData } from './articleData';
-import { slugify } from '../types';
-import type { SanityArticleItem } from '../lib/sanity';
+import { articlesData } from '../articleData';
+import { slugify } from '../../types';
+import type { SanityArticleItem } from '../../lib/sanity';
 
 interface MyThoughtsProps {
   onBookReading?: () => void;

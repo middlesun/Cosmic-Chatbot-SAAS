@@ -593,6 +593,7 @@ export type PlatformSettingKey =
   | 'pricing_config'
   | 'suggestions_config'
   | 'mini_apps_config'
+  | 'mini_apps_registry'
   | 'per_guide_chatbot_config'
   | 'engine_prompt_overrides'
   | 'playbook_overrides';

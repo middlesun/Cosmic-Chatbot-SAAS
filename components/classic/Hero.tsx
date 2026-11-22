@@ -1,5 +1,5 @@
 import React from 'react';
-import { Currency } from '../types';
+import { Currency } from '../../types';
 
 interface HeroProps {
   onLearnMore: () => void;

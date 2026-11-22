@@ -18,7 +18,7 @@ const SIZE_CLASSES: Record<CompanionAvatarSize, string> = {
   sm: 'w-9 h-9 text-sm',
   md: 'w-12 h-12 text-base',
   lg: 'w-16 h-16 text-xl',
-  xl: 'w-22 h-22 text-2xl',
+  xl: 'w-20 h-20 text-2xl',
 };
 
 const DEFAULT_PALETTE: CompanionMonogramPalette = {

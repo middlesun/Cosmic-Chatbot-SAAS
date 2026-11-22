@@ -35,6 +35,7 @@ import {
 import { checkRateLimit } from '../services/abuseGuard';
 import {
   COMPANION_ARCHETYPES,
+  generateContextualCompanionReturnGreeting,
   generateMatchedCompanions,
   type ChatPillar,
   type CompanionArchetypeSlug,
@@ -402,7 +403,10 @@ router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res
   } = req.body || {};
 
   const normalizedPillar: ChatPillar = isValidPillar(pillar) ? pillar : 'council';
-  const effectiveProfileId = normalizedPillar === 'council' ? profile_id || null : null;
+  const effectiveProfileId =
+    normalizedPillar === 'council' || normalizedPillar === 'companion'
+      ? profile_id || null
+      : null;
 
   let ownedProfileMeta: { id: string; name?: string | null; short_name?: string | null } | null = null;
   if (effectiveProfileId) {
@@ -499,7 +503,7 @@ router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res
   const primaryInsert = await supabaseAdmin
     .from('conversations')
     .insert(extendedPayload)
-    .select('*')
+    .select(CONVERSATION_LIST_COLUMNS_V7)
     .single();
 
   if (!primaryInsert.error && primaryInsert.data) {
@@ -516,7 +520,7 @@ router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res
   const fallbackInsert = await supabaseAdmin
     .from('conversations')
     .insert(basePayload)
-    .select('*')
+    .select(CONVERSATION_LIST_COLUMNS_BASE)
     .single();
 
   if (fallbackInsert.error || !fallbackInsert.data) {
@@ -1065,6 +1069,29 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
     typeof req.body?.handoffFromName === 'string'
       ? req.body.handoffFromName.trim().slice(0, 40)
       : '';
+  const requestedProfileId =
+    typeof req.body?.profileId === 'string' && req.body.profileId.trim()
+      ? req.body.profileId.trim()
+      : null;
+  const rawClientLocalHour =
+    typeof req.body?.clientLocalHour === 'number' && Number.isFinite(req.body.clientLocalHour)
+      ? Math.trunc(req.body.clientLocalHour)
+      : null;
+
+  let verifiedCompanionProfileId: string | null = null;
+  if (requestedProfileId) {
+    const { data: ownedProf } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('id', requestedProfileId)
+      .eq('user_id', req.appUser.id)
+      .maybeSingle();
+    if (!ownedProf) {
+      res.status(404).json({ error: 'Selected birth profile not found' });
+      return;
+    }
+    verifiedCompanionProfileId = requestedProfileId;
+  }
 
   // ── FLOW A: Preset Admin-Governed Companion ────────────────────────────────
   if (rawCompanionSlug && !rawCompanionSlug.startsWith('custom_')) {
@@ -1186,14 +1213,38 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
       }
     }
 
-    // Pick a fresh welcome message that hasn't been used recently with this companion
+    // Pick a contextual returning greeting if returning via forceNew, else rotate unused welcome lines
     const welcomePool =
       preset.welcome_messages.length > 0
         ? preset.welcome_messages
         : [`Hey — I am ${preset.name}. Good to have you here.`];
     let selectedWelcome = warmHandoffText || welcomePool[0];
+    let usedContextualReturn = false;
 
-    if (!warmHandoffText && welcomePool.length > 1) {
+    if (!warmHandoffText && forceNew) {
+      const bond = await getCompanionBond(req.appUser.id, preset.slug).catch(() => null);
+      if (bond && ((bond.relationship_state?.total_turns || 0) > 0 || bond.last_interaction_at)) {
+        const contextual = await generateContextualCompanionReturnGreeting({
+          name: preset.name,
+          roleLabel: preset.primary_expertise,
+          culturalFluency: preset.cultural_fluency,
+          tagline: preset.tagline,
+          systemPromptSnippet: preset.system_prompt,
+          chatStyle: preset.chat_style,
+          languageSlug: req.appUser.default_language || 'English',
+          preferredCallName: req.appUser.preferred_call_name,
+          bond,
+          clientLocalHour: rawClientLocalHour,
+          modelId: preset.model_id,
+        });
+        if (contextual) {
+          selectedWelcome = contextual;
+          usedContextualReturn = true;
+        }
+      }
+    }
+
+    if (!warmHandoffText && !usedContextualReturn && welcomePool.length > 1) {
       const recentThreadRes = await supabaseAdmin
         .from('conversations')
         .select('id')
@@ -1226,7 +1277,7 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
     const publicSnapshot = buildPublicCompanionPersonaSnapshot(preset);
     const basePayload = {
       user_id: req.appUser.id,
-      profile_id: null,
+      profile_id: verifiedCompanionProfileId,
       mode_type: 'reading' as const,
       title: preset.name.slice(0, 80),
       use_full_profile_memory: true,
@@ -1442,7 +1493,7 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
 
   const basePayload = {
     user_id: req.appUser.id,
-    profile_id: null,
+    profile_id: verifiedCompanionProfileId,
     mode_type: 'reading' as const,
     title: threadTitle.slice(0, 80),
     use_full_profile_memory: true,
@@ -1527,15 +1578,40 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
     )
     .then(() => undefined, () => undefined);
 
+  let customOpeningText = cleanPersona.opening_message;
+  if (forceNew && customSlug) {
+    const customBond = await getCompanionBond(req.appUser.id, customSlug).catch(() => null);
+    if (
+      customBond &&
+      ((customBond.relationship_state?.total_turns || 0) > 0 || customBond.last_interaction_at)
+    ) {
+      const contextual = await generateContextualCompanionReturnGreeting({
+        name: cleanPersona.name,
+        roleLabel: cleanPersona.role_label,
+        culturalFluency: cleanPersona.background,
+        tagline: cleanPersona.tagline,
+        systemPromptSnippet: cleanPersona.system_prompt || cleanPersona.bio,
+        chatStyle: cleanPersona.chat_style || 'chat_bubbles',
+        languageSlug: req.appUser.default_language || 'English',
+        preferredCallName: req.appUser.preferred_call_name,
+        bond: customBond,
+        clientLocalHour: rawClientLocalHour,
+      });
+      if (contextual) {
+        customOpeningText = contextual;
+      }
+    }
+  }
+
   let openingMsgRecord: Record<string, unknown> | null = null;
   const baseOpeningRow = {
     conversation_id: String(createdConv.id),
     role: 'assistant',
-    content: cleanPersona.opening_message,
-    word_count: countWords(cleanPersona.opening_message),
+    content: customOpeningText,
+    word_count: countWords(customOpeningText),
     expert_used: `companion:${customSlug}`,
     mode_used: safeType,
-    output_format_used: 'chat_bubbles',
+    output_format_used: cleanPersona.chat_style || 'chat_bubbles',
     language_used: req.appUser.default_language || 'English',
     followups_json: [],
     tokens_in: 0,
@@ -2448,25 +2524,44 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
     profileData = prof || null;
   } else if (activePillar === 'companion') {
-    // Companions share context across ALL conversations with this same companion slug,
-    // and silently receive the user's own default birth profile (never other profiles or Council chats).
+    // Companions share conversational bond across ALL conversations with this same companion slug,
+    // honor the per-thread focused chart (conversation.profile_id) when set or fall back to the
+    // user's default ("You") profile, and strictly isolate Council memory from Companions.
     const needsCompanionChartJson = presetCompanion?.skill_level === 'astrology_soft';
     const compProfileCols = `id, name, short_name, is_activated, chart_text_context, birth_date, birth_time, birth_city, birth_country, gender, current_city, current_country, life_context_json${
       needsCompanionChartJson ? ', chart_json' : ''
     }`;
 
-    const { data: ownDefaultProf } = await supabaseAdmin
-      .from('profiles')
-      .select(compProfileCols)
-      .eq('user_id', req.appUser.id)
-      .order('is_default', { ascending: false })
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    let focusedCompanionProf: Record<string, unknown> | null = null;
+    if (conversation.profile_id) {
+      const { data: threadProf } = await supabaseAdmin
+        .from('profiles')
+        .select(compProfileCols)
+        .eq('id', conversation.profile_id)
+        .eq('user_id', req.appUser.id)
+        .maybeSingle();
+      if (threadProf) {
+        focusedCompanionProf = threadProf as unknown as Record<string, unknown>;
+      }
+    }
 
-    if (ownDefaultProf) {
+    if (!focusedCompanionProf) {
+      const { data: ownDefaultProf } = await supabaseAdmin
+        .from('profiles')
+        .select(compProfileCols)
+        .eq('user_id', req.appUser.id)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (ownDefaultProf) {
+        focusedCompanionProf = ownDefaultProf as unknown as Record<string, unknown>;
+      }
+    }
+
+    if (focusedCompanionProf) {
       profileData = {
-        ...(ownDefaultProf as unknown as NonNullable<typeof profileData>),
+        ...(focusedCompanionProf as unknown as NonNullable<typeof profileData>),
         profile_memory_summary: null, // Strictly isolate Council memory from Companions
       };
     }
@@ -2671,7 +2766,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       output_format_used: outputSlug,
       language_used: languageSlug,
     })
-    .select('*')
+    .select(MESSAGE_SELECT_COLUMNS_BASE)
     .single();
 
   if (userInsertErr || !userMessage) {
@@ -2722,7 +2817,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         tokens_out: 0,
         credits_charged: 0,
       })
-      .select('*')
+      .select(MESSAGE_SELECT_COLUMNS_BASE)
       .single();
 
     const nextTotalWords =
@@ -2734,8 +2829,21 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         updated_at: new Date().toISOString(),
       })
       .eq('id', conversation.id)
-      .select('*')
-      .single();
+      .select(CONVERSATION_LIST_COLUMNS_V7)
+      .single()
+      .then(
+        (r) => r,
+        async () =>
+          supabaseAdmin
+            .from('conversations')
+            .update({
+              total_word_count: nextTotalWords,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', conversation.id)
+            .select(CONVERSATION_LIST_COLUMNS_BASE)
+            .single()
+      );
 
     scheduleBackgroundTask(() =>
       recordChatbotPipelineLog({
@@ -2852,7 +2960,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         tokens_out: 0,
         credits_charged: 0,
       })
-      .select('*')
+      .select(MESSAGE_SELECT_COLUMNS_BASE)
       .single();
 
     const nextTotalWords =
@@ -2864,8 +2972,21 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         updated_at: new Date().toISOString(),
       })
       .eq('id', conversation.id)
-      .select('*')
-      .single();
+      .select(CONVERSATION_LIST_COLUMNS_V7)
+      .single()
+      .then(
+        (r) => r,
+        async () =>
+          supabaseAdmin
+            .from('conversations')
+            .update({
+              total_word_count: nextTotalWords,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', conversation.id)
+            .select(CONVERSATION_LIST_COLUMNS_BASE)
+            .single()
+      );
 
     scheduleBackgroundTask(() =>
       recordChatbotPipelineLog({
@@ -2934,14 +3055,14 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         ...baseClarifyRow,
         suggestions_json: clarifySuggestionsPayload,
       })
-      .select('*')
+      .select(MESSAGE_SELECT_COLUMNS)
       .single();
 
     if (insertClarify.error) {
       const insertFallback = await supabaseAdmin
         .from('messages')
         .insert(baseClarifyRow)
-        .select('*')
+        .select(MESSAGE_SELECT_COLUMNS_BASE)
         .single();
       assistantMessage = insertFallback.data
         ? {
@@ -2962,8 +3083,21 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         updated_at: new Date().toISOString(),
       })
       .eq('id', conversation.id)
-      .select('*')
-      .single();
+      .select(CONVERSATION_LIST_COLUMNS_V7)
+      .single()
+      .then(
+        (r) => r,
+        async () =>
+          supabaseAdmin
+            .from('conversations')
+            .update({
+              total_word_count: nextTotalWords,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', conversation.id)
+            .select(CONVERSATION_LIST_COLUMNS_BASE)
+            .single()
+      );
 
     const enrichedConversation = normalizeConversationDefaults({
       ...((updatedConversation || conversation) as Record<string, unknown>),
@@ -3594,12 +3728,23 @@ router.patch('/messages/:id', requireAuth, async (req: AuthenticatedRequest, res
     return;
   }
 
-  const { data: conv } = await supabaseAdmin
+  const convRes = await supabaseAdmin
     .from('conversations')
-    .select('id, user_id, profile_id')
+    .select('id, user_id, profile_id, pillar')
     .eq('id', msg.conversation_id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
+
+  const conv = !convRes.error
+    ? (convRes.data as { id: string; user_id: string; profile_id: string | null; pillar?: string | null } | null)
+    : (
+        await supabaseAdmin
+          .from('conversations')
+          .select('id, user_id, profile_id')
+          .eq('id', msg.conversation_id)
+          .eq('user_id', req.appUser.id)
+          .maybeSingle()
+      ).data;
 
   if (!conv) {
     res.status(403).json({ error: 'Forbidden' });
@@ -3616,24 +3761,38 @@ router.patch('/messages/:id', requireAuth, async (req: AuthenticatedRequest, res
     return;
   }
 
-  const { data: updated, error } = await supabaseAdmin
+  let updatedMsgRes = await supabaseAdmin
     .from('messages')
     .update(updates)
     .eq('id', msg.id)
-    .select('*')
+    .select(MESSAGE_SELECT_COLUMNS_V2)
     .single();
+  if (updatedMsgRes.error) {
+    updatedMsgRes = await supabaseAdmin
+      .from('messages')
+      .update(updates)
+      .eq('id', msg.id)
+      .select(MESSAGE_SELECT_COLUMNS_BASE)
+      .single();
+  }
 
-  if (error) {
+  if (updatedMsgRes.error || !updatedMsgRes.data) {
     res.status(500).json({ error: 'Failed to update message' });
     return;
   }
 
-  // If context exclusion changed on a profile thread, rebuild memory faithfully
-  if (typeof excluded_from_context === 'boolean' && conv.profile_id) {
+  // If context exclusion changed on a Council profile thread, rebuild memory faithfully
+  if (
+    typeof excluded_from_context === 'boolean' &&
+    conv.profile_id &&
+    (!('pillar' in conv) || !conv.pillar || conv.pillar === 'council')
+  ) {
     void rebuildProfileMemory(conv.profile_id, req.appUser.id);
   }
 
-  res.json({ message: updated });
+  res.json({
+    message: normalizeMessageDefaults(updatedMsgRes.data as unknown as Record<string, unknown>),
+  });
 });
 
 // 9a-ii. Toggle Heart / Felt Reaction on a Message Bubble & Feed Bond Memory
@@ -3996,12 +4155,29 @@ router.delete('/messages/:id', requireAuth, async (req: AuthenticatedRequest, re
     return;
   }
 
-  const { data: conv } = await supabaseAdmin
+  const delConvRes = await supabaseAdmin
     .from('conversations')
-    .select('id, user_id, profile_id, total_word_count')
+    .select('id, user_id, profile_id, pillar, total_word_count')
     .eq('id', msg.conversation_id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
+
+  const conv = !delConvRes.error
+    ? (delConvRes.data as {
+        id: string;
+        user_id: string;
+        profile_id: string | null;
+        pillar?: string | null;
+        total_word_count?: number;
+      } | null)
+    : (
+        await supabaseAdmin
+          .from('conversations')
+          .select('id, user_id, profile_id, total_word_count')
+          .eq('id', msg.conversation_id)
+          .eq('user_id', req.appUser.id)
+          .maybeSingle()
+      ).data;
 
   if (!conv) {
     res.status(403).json({ error: 'Forbidden' });
@@ -4020,7 +4196,7 @@ router.delete('/messages/:id', requireAuth, async (req: AuthenticatedRequest, re
     .update({ total_word_count: nextTotalWords })
     .eq('id', conv.id);
 
-  if (conv.profile_id) {
+  if (conv.profile_id && (!('pillar' in conv) || !conv.pillar || conv.pillar === 'council')) {
     void rebuildProfileMemory(conv.profile_id, req.appUser.id);
   }
 
@@ -4092,7 +4268,7 @@ router.get('/custom-prompts', requireAuth, async (req: AuthenticatedRequest, res
 
   const { data, error } = await supabaseAdmin
     .from('custom_prompts')
-    .select('*')
+    .select('id, user_id, title, prompt_text, created_at')
     .eq('user_id', req.appUser.id)
     .order('created_at', { ascending: false });
 
@@ -4134,7 +4310,7 @@ router.post('/custom-prompts', requireAuth, async (req: AuthenticatedRequest, re
       title: String(title).trim().slice(0, 80),
       prompt_text: String(prompt_text).trim().slice(0, 4000),
     })
-    .select('*')
+    .select('id, user_id, title, prompt_text, created_at')
     .single();
 
   if (error || !data) {

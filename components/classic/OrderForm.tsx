@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
-import { Product, Currency, BirthDetails, formatCurrencyPrice } from '../types';
+import { Product, Currency, BirthDetails, formatCurrencyPrice } from '../../types';
 
 interface SectionProps {
   index: number;

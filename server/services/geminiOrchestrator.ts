@@ -19,6 +19,7 @@ import {
   formatTropicalWesternContext,
 } from './divinationEngines';
 import {
+  buildChatStyleInstruction,
   buildClaritySystemPromptAsync,
   buildCompanionSystemPromptAsync,
   type ChatPillar,
@@ -500,6 +501,7 @@ async function buildStaticSystemInstruction(params: {
   modelOverride: string | null;
   wantsSuggestions: boolean;
   resolvedSuggestions: GuideSuggestionsConfig;
+  chatStyle: ChatStyle;
 }> {
   const [guideCfg, coreConstitution, activeModeRecipe] = await Promise.all([
     getResolvedGuideConfig(params.expertSlug),
@@ -598,6 +600,8 @@ async function buildStaticSystemInstruction(params: {
       `RESPONSE LENGTH — DETAILED: Provide a thorough, well-paced, comprehensive reading that unpacks the reasoning, relevant timing shifts, and practical next steps without cutting corners.`
     );
   }
+
+  sections.push(buildChatStyleInstruction(guideCfg.chat_style, { isCouncil: true }));
 
   // Speak naturally with "you/your" directly rather than addressing the user by name or account handle.
 
@@ -794,6 +798,7 @@ Keep the JSON strictly valid UTF-8 single-line JSON with double quotes and no tr
     modelOverride,
     wantsSuggestions,
     resolvedSuggestions: guideSug,
+    chatStyle: guideCfg.chat_style,
   };
 }
 
@@ -1020,6 +1025,7 @@ User's specific question: ${finalUserText}`;
         technicalDirective: params.technicalDirective,
         priorInferredFluency: params.userPriorFluency,
         maxOutputTokens: vedicBaseTokens,
+        chatStyle: guideCfg.chat_style,
         abortSignal: params.abortSignal,
         onStatus: params.onStatus,
         onChunk: params.onChunk,
@@ -1049,6 +1055,7 @@ User's specific question: ${finalUserText}`;
         suggestions: null,
         vedicMeta: deepRes.meta,
         stage2Pkg,
+        renderStyle: guideCfg.chat_style,
       };
     }
 
@@ -1073,6 +1080,7 @@ User's specific question: ${finalUserText}`;
       turnCount: activeHistory.length,
       technicalDirective: params.technicalDirective,
       priorInferredFluency: params.userPriorFluency,
+      chatStyle: guideCfg.chat_style,
     });
 
     const pathAAbortController = new AbortController();
@@ -1203,6 +1211,7 @@ User's specific question: ${finalUserText}`;
           pendingProfile: null,
           suggestions: null,
           vedicMeta: pathAPrompt.meta,
+          renderStyle: guideCfg.chat_style,
         };
       }
 
@@ -1233,6 +1242,7 @@ User's specific question: ${finalUserText}`;
           pendingProfile: null,
           suggestions: null,
           vedicMeta: pathAPrompt.meta,
+          renderStyle: guideCfg.chat_style,
         };
       }
 
@@ -1264,6 +1274,7 @@ User's specific question: ${finalUserText}`;
         suggestions: null,
         vedicMeta: pathAPrompt.meta,
         stage2Pkg,
+        renderStyle: guideCfg.chat_style,
       };
     } finally {
       params.abortSignal.removeEventListener('abort', forwardPathAAbort);
@@ -1332,6 +1343,7 @@ User's specific question: ${finalUserText}`;
     modelOverride = built.modelOverride;
     wantsSuggestions = built.wantsSuggestions;
     activeSuggestionsSpec = built.resolvedSuggestions;
+    resolvedRenderStyle = built.chatStyle;
 
     // Fetch today's cached Gochar transits (max 1 API call/day across platform, with deterministic fallback)
     let gocharContext = '';

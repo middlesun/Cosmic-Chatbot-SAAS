@@ -6,6 +6,7 @@ interface MetaTagsProps {
   canonicalUrl: string;
   ogType?: string;
   schemaData?: object;
+  noIndex?: boolean;
 }
 
 const MetaTags: React.FC<MetaTagsProps> = ({
@@ -13,7 +14,8 @@ const MetaTags: React.FC<MetaTagsProps> = ({
   description,
   canonicalUrl,
   ogType = 'website',
-  schemaData
+  schemaData,
+  noIndex = false
 }) => {
   useEffect(() => {
     // 1. Update Title
@@ -32,7 +34,7 @@ const MetaTags: React.FC<MetaTagsProps> = ({
 
     // 2. Update standard metadata
     getOrCreateMeta('description').setAttribute('content', description);
-    getOrCreateMeta('robots').setAttribute('content', 'index, follow');
+    getOrCreateMeta('robots').setAttribute('content', noIndex ? 'noindex, nofollow' : 'index, follow');
 
     // 3. Update Open Graph Metadata
     getOrCreateMeta('og:title', 'property').setAttribute('content', title);

@@ -2150,11 +2150,28 @@ function sanitizeHexColor(raw: unknown, fallback: string): string {
   return fallback;
 }
 
+const COMPANION_SELECT_COLUMNS =
+  'id, slug, legacy_id, name, age, sex, tagline, short_bio, full_bio, primary_expertise, secondary_expertise, category_tag, cultural_fluency, avatar_url, monogram_palette, welcome_messages, system_prompt, hard_rules, soft_rules, autonomy_level, override_global_rules, skill_level, chat_style, model_id, tts_voice_profile, supports_listening_cue, suggestions_enabled, is_active, sort_order, created_at, updated_at';
+
+const RASTER_AVATAR_DATA_URL_RE =
+  /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/i;
+
 export function sanitizeCompanionAvatarUrl(raw: unknown): { ok: true; url: string | null } | { ok: false; error: string } {
   if (raw === null || raw === undefined) return { ok: true, url: null };
   if (typeof raw !== 'string') return { ok: false, error: 'Avatar URL must be a string or null.' };
   const trimmed = raw.trim();
   if (!trimmed) return { ok: true, url: null };
+
+  if (trimmed.startsWith('data:image/')) {
+    if (!RASTER_AVATAR_DATA_URL_RE.test(trimmed)) {
+      return { ok: false, error: 'Uploaded portrait must be a PNG, JPEG, or WebP image.' };
+    }
+    if (trimmed.length > 350_000) {
+      return { ok: false, error: 'Uploaded portrait is too large (max ~250KB).' };
+    }
+    return { ok: true, url: trimmed };
+  }
+
   if (trimmed.length > 1024) return { ok: false, error: 'Avatar URL is too long (max 1024 characters).' };
 
   if (trimmed.startsWith('/assets/')) {
@@ -2212,20 +2229,20 @@ export async function upsertAdminCompanion(
   if (!options.isNew && options.targetId) {
     const target = options.targetId.trim();
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
-    const query = supabaseAdmin.from('companions').select('*');
+    const query = supabaseAdmin.from('companions').select(COMPANION_SELECT_COLUMNS);
     const res = isUuid
       ? await query.eq('id', target).maybeSingle()
       : await query.eq('slug', target.toLowerCase()).maybeSingle();
     if (res.data) {
-      existingRow = res.data as Record<string, unknown>;
+      existingRow = res.data as unknown as Record<string, unknown>;
     } else if (!isUuid && target.startsWith('preset_')) {
       const slugAttempt = target.replace(/^preset_/, '').toLowerCase();
       const bySlug = await supabaseAdmin
         .from('companions')
-        .select('*')
+        .select(COMPANION_SELECT_COLUMNS)
         .eq('slug', slugAttempt)
         .maybeSingle();
-      if (bySlug.data) existingRow = bySlug.data as Record<string, unknown>;
+      if (bySlug.data) existingRow = bySlug.data as unknown as Record<string, unknown>;
     }
     if (!existingRow) {
       return { ok: false, status: 404, error: 'Companion not found.' };
@@ -2392,13 +2409,17 @@ export async function upsertAdminCompanion(
 
   let res;
   if (options.isNew) {
-    res = await supabaseAdmin.from('companions').insert(payload).select('*').single();
+    res = await supabaseAdmin
+      .from('companions')
+      .insert(payload)
+      .select(COMPANION_SELECT_COLUMNS)
+      .single();
   } else {
     res = await supabaseAdmin
       .from('companions')
       .update(payload)
       .eq('id', String(existingRow!.id))
-      .select('*')
+      .select(COMPANION_SELECT_COLUMNS)
       .single();
   }
 
@@ -2510,7 +2531,7 @@ export async function resetAdminCompanionToDefault(
   const { data, error } = await supabaseAdmin
     .from('companions')
     .upsert(payload, { onConflict: 'slug' })
-    .select('*')
+    .select(COMPANION_SELECT_COLUMNS)
     .single();
 
   if (error || !data) {

@@ -872,25 +872,43 @@ ${
   return blocks.join('\n\n');
 }
 
-function buildChatStyleInstruction(chatStyle: ChatStyle): string {
+export function buildChatStyleInstruction(
+  chatStyle: ChatStyle,
+  options?: { isCouncil?: boolean }
+): string {
+  const isCouncil = Boolean(options?.isCouncil);
   switch (chatStyle) {
     case 'chat_bubbles':
-      return `TEXTING RHYTHM & MULTI-BUBBLE FORMAT:
+      return isCouncil
+        ? `CHAT BUBBLES FORMAT (COUNCIL):
+- Keep your astrological/esoteric analysis 100% rigorous and grounded in the chart facts above, but deliver your answer in 2–3 natural, approachable conversational bubbles separated by the exact marker [[BUBBLE]] (never exceed 3 bubbles in one turn).
+- Put any [[TIMING_BAR:...]] token on its own standalone line inside the bubble where that period is discussed.
+- If emitting <<<TECH_BREAKDOWN>>> or <<<SUGGESTIONS_JSON>>>, place them cleanly at the very end after the final bubble.`
+        : `TEXTING RHYTHM & MULTI-BUBBLE FORMAT:
 - Text like a genuine person messaging on their phone — NO essay headings, NO bulleted advice lists unless requested, NO robotic wrap-up questions on every turn.
 - Match real texting variety: sometimes just 1 crisp honest line; sometimes a warm medium thought; sometimes 2–3 quick back-to-back texts.
 - When sending 2–3 separate short thoughts in one turn feels natural (like texting twice in a row), separate each bubble cleanly with the exact marker [[BUBBLE]] (for example: "wait, seriously?! [[BUBBLE]] tell me what happened right after she left"). Never exceed 3 bubbles in one turn.`;
     case 'dialogue':
       return `REFLECTIVE LETTERS STYLE:
-- Write with calm, unhurried emotional intimacy in clean prose paragraphs (no [[BUBBLE]] markers, no stiff report headings). Keep the tone spacious, reflective, and deeply human.`;
+- Write with calm, unhurried emotional intimacy in clean, spacious prose paragraphs (no [[BUBBLE]] markers, no stiff report headings). Keep the tone reflective, personal, and deeply human.`;
     case 'concise_brief':
-      return `QUICK BRIEF STYLE:
+      return isCouncil
+        ? `QUICK BRIEF STYLE (COUNCIL):
+- Lead immediately with a clear 1–2 sentence core conclusion upfront, followed by at most 2–3 crisp, high-signal supporting insights and timing windows (no [[BUBBLE]] markers).`
+        : `QUICK BRIEF STYLE:
 - Lead with a clear 1–2 sentence core takeaway, followed by at most 2–3 crisp grounded observations. Warm, direct, and easy to scan (no [[BUBBLE]] markers).`;
     case 'structured':
-      return `STRUCTURED DOSSIER STYLE:
+      return isCouncil
+        ? `STRUCTURED DOSSIER STYLE (COUNCIL):
+- Organize your reading cleanly using concise section headings, clear visual hierarchy, and scannable comparisons where helpful (no [[BUBBLE]] markers).`
+        : `STRUCTURED DOSSIER STYLE:
 - Organize clear, warm insight cleanly using concise bold subheadings or light structured comparisons (no [[BUBBLE]] markers).`;
     case 'editorial':
     default:
-      return `EDITORIAL PROSE STYLE:
+      return isCouncil
+        ? `EDITORIAL PROSE STYLE (COUNCIL):
+- Write in calm, flowing, long-form markdown paragraphs with generous typographic breathing room and grounded clarity (no [[BUBBLE]] markers).`
+        : `EDITORIAL PROSE STYLE:
 - Write in calm, flowing, conversational markdown paragraphs with generous breathing room and grounded warmth (no [[BUBBLE]] markers).`;
   }
 }
@@ -1253,4 +1271,82 @@ export async function buildClaritySystemPromptAsync(params: {
     systemInstruction,
     modelOverride: guideCfg.model_id || null,
   };
+}
+
+export async function generateContextualCompanionReturnGreeting(params: {
+  name: string;
+  roleLabel: string;
+  culturalFluency?: string | null;
+  tagline?: string | null;
+  systemPromptSnippet?: string | null;
+  chatStyle: ChatStyle;
+  languageSlug?: string | null;
+  preferredCallName?: string | null;
+  bond: CompanionBondState;
+  clientLocalHour?: number | null;
+  modelId?: string | null;
+}): Promise<string | null> {
+  if (!(await isOpenRouterConfiguredAsync())) {
+    return null;
+  }
+  const hasHistory =
+    (params.bond.relationship_state?.total_turns || 0) > 0 ||
+    Boolean(params.bond.last_interaction_at);
+  if (!hasHistory) {
+    return null;
+  }
+
+  try {
+    const runtime = await getResolvedOpenRouterRuntime();
+    const model = params.modelId?.trim() || runtime.utilityModel || getUtilityModel();
+    const timingCtx = formatHumanTimeAndGapContext(
+      params.bond.last_interaction_at,
+      params.clientLocalHour ?? null
+    );
+    const safeName = sanitizeHumanCallName(params.preferredCallName);
+    const rel = params.bond.relationship_state;
+    const styleNote =
+      params.chatStyle === 'chat_bubbles'
+        ? 'Write 1–2 very short texting bubbles (if sending 2 quick lines, separate them with [[BUBBLE]]). Never exceed 2 short lines.'
+        : 'Write a brief, warm 1–2 sentence greeting matching your voice (no [[BUBBLE]] markers).';
+
+    const system = `You are ${params.name} (${params.roleLabel}).
+Cultural / voice feel: ${params.culturalFluency || 'Warm everyday conversationalist'}.
+${params.tagline ? `Presence: ${params.tagline}` : ''}
+${params.systemPromptSnippet ? `Voice cue: ${params.systemPromptSnippet.slice(0, 500)}` : ''}
+${timingCtx}
+Bond stage: ${rel.familiarity_stage} (${rel.total_turns} turns shared).
+${params.bond.memory_summary ? `Quiet shared memory:\n${params.bond.memory_summary.slice(0, 600)}` : ''}
+${rel.inside_references.length > 0 ? `Shared threads: ${rel.inside_references.slice(0, 3).join('; ')}` : ''}
+${safeName ? `User's preferred name: ${safeName} (use lightly only if natural).` : ''}
+Language: ${params.languageSlug || 'English'}.
+
+TASK: Your friend just opened a fresh chat with you to start a new topic. Give a brief, genuinely human, unforced opening check-in shaped subtly by the time of day, gap since you last spoke, and shared warmth. NEVER announce "according to my memory/logs" or repeat exact timestamps. ${styleNote}`;
+
+    const completion = await createOpenRouterCompletion({
+      model,
+      system,
+      messages: [
+        {
+          role: 'user',
+          content: 'Say hello as I open a fresh conversation with you.',
+        },
+      ],
+      maxTokens: 150,
+      temperature: 0.82,
+    });
+
+    const cleaned = completion.text
+      .replace(/^["'\s]+|["'\s]+$/g, '')
+      .replace(/\b(as an ai|language model|my database|my logs)\b/gi, '')
+      .trim();
+
+    if (!cleaned || cleaned.length < 4) return null;
+    if (params.chatStyle !== 'chat_bubbles') {
+      return cleaned.replace(/\[\[BUBBLE\]\]/gi, ' ').replace(/\s+/g, ' ').trim();
+    }
+    return cleaned;
+  } catch {
+    return null;
+  }
 }

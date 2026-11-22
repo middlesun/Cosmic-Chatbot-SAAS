@@ -85,11 +85,260 @@ interface ProfileOption {
 
 const DASHA_LEVEL_HINTS: Record<DashaProgressItem['level'], string> = {
   Mahadasha: 'Major life chapter',
-  Antardasha: 'Active sub-phase',
-  Pratyantardasha: 'Current micro-window',
-  'Annual Profection': 'Current year house lord',
-  'Progressed Moon': '2.5-year emotional chapter',
-  'Solar Return': 'Birthday-to-birthday focus',
+  Antardasha: 'Current sub-chapter',
+  Pratyantardasha: 'Short-term focus',
+  'Annual Profection': 'This year’s focus',
+  'Progressed Moon': 'Emotional chapter',
+  'Solar Return': 'Year ahead focus',
+};
+
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+function formatFriendlyDate(raw: string): string {
+  if (!raw) return '';
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return raw;
+  const year = match[1];
+  const monthIdx = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const monthLabel = MONTH_NAMES[monthIdx] || match[2];
+  return `${day} ${monthLabel} ${year}`;
+}
+
+function formatTimeLeft(daysRemaining: number): string {
+  if (!Number.isFinite(daysRemaining) || daysRemaining <= 0) return 'Ending soon';
+  if (daysRemaining >= 365) {
+    const years = Math.floor(daysRemaining / 365);
+    const months = Math.round((daysRemaining % 365) / 30);
+    return months > 0 ? `${years}y ${months}m left` : `${years}y left`;
+  }
+  if (daysRemaining >= 60) {
+    const months = Math.round(daysRemaining / 30);
+    return `${months}m left`;
+  }
+  return `${daysRemaining}d left`;
+}
+
+function humanizeWindowLabel(label: string): string {
+  return label
+    .replace(/^Immediate Horizon\s*\(Next 30 Days\)$/i, 'Next 30 Days')
+    .replace(/^Quarterly Timing Pivot\s*\(30[–-]90 Days\)$/i, 'Next 1–3 Months')
+    .replace(/^Medium-Term Trajectory\s*\(90[–-]180 Days\)$/i, 'Next 3–6 Months')
+    .replace(/^Sub-Period Shift:\s*/i, 'Coming Cycle: ')
+    .replace(/^Profection Transition$/i, 'Yearly Shift')
+    .replace(/^Progressed Moon Transition$/i, 'Emotional Shift');
+}
+
+function humanizeIntensity(intensity: ConvergenceWindow['intensity']): {
+  label: string;
+  barColor: string;
+  badgeColor: string;
+  fillPercent: number;
+} {
+  if (intensity === 'Peak Alignment') {
+    return {
+      label: 'Strong Momentum',
+      barColor: '#4EA87E',
+      badgeColor: 'text-[#6CD4A0] bg-[#4EA87E]/15 border-[#4EA87E]/25',
+      fillPercent: 86,
+    };
+  }
+  if (intensity === 'Steady Consolidation') {
+    return {
+      label: 'Steady Growth',
+      barColor: '#B8965A',
+      badgeColor: 'text-[#E3C184] bg-[#B8965A]/15 border-[#B8965A]/25',
+      fillPercent: 62,
+    };
+  }
+  return {
+    label: 'Quiet Reset',
+    barColor: '#8B9EB7',
+    badgeColor: 'text-[#AFC2DA] bg-[#8B9EB7]/15 border-[#8B9EB7]/25',
+    fillPercent: 40,
+  };
+}
+
+function humanizeFocusDomain(focus: string): string {
+  return focus
+    .replace(/Dasha \+ Slow Gochar Convergence/i, 'Life Cycle & Moving Planets')
+    .replace(/Pratyantardasha Transition/i, 'Short-Cycle Change')
+    .replace(/Antardasha Transition/i, 'Sub-Chapter Change')
+    .replace(/Profection Transition/i, 'Annual Cycle Change');
+}
+
+function humanizeWindowRange(range: string): { text: string; progressPercent: number | null } {
+  const arrowMatch = range.match(/^(\d{4}-\d{2}-\d{2})\s*[→-]+\s*(\d{4}-\d{2}-\d{2})$/);
+  if (arrowMatch) {
+    const startMs = new Date(`${arrowMatch[1]}T00:00:00Z`).getTime();
+    const endMs = new Date(`${arrowMatch[2]}T00:00:00Z`).getTime();
+    const nowMs = Date.now();
+    let progressPercent: number | null = null;
+    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+      if (nowMs <= startMs) {
+        progressPercent = 12;
+      } else if (nowMs >= endMs) {
+        progressPercent = 100;
+      } else {
+        progressPercent = Math.max(8, Math.round(((nowMs - startMs) / (endMs - startMs)) * 100));
+      }
+    }
+    return {
+      text: `${formatFriendlyDate(arrowMatch[1])} – ${formatFriendlyDate(arrowMatch[2])}`,
+      progressPercent,
+    };
+  }
+
+  const transitionMatch = range.match(/^Transitions\s+(\d{4}-\d{2}-\d{2})$/i);
+  if (transitionMatch) {
+    return {
+      text: `Starts ${formatFriendlyDate(transitionMatch[1])}`,
+      progressPercent: null,
+    };
+  }
+
+  return { text: range, progressPercent: null };
+}
+
+function humanizePlanetNote(note: string): string {
+  return note
+    .replace(/(\d+)\s+SAV bindus/gi, 'Strength $1/40')
+    .replace(/\bLagna\b/g, 'Ascendant');
+}
+
+interface CyclePieProps {
+  percent: number;
+  size?: number;
+  strokeWidth?: number;
+  color?: string;
+}
+
+const CyclePieChart: React.FC<CyclePieProps> = ({
+  percent,
+  size = 54,
+  strokeWidth = 5,
+  color = '#B8965A',
+}) => {
+  const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - clamped / 100);
+
+  return (
+    <div
+      className="relative inline-flex items-center justify-center shrink-0"
+      style={{ width: size, height: size }}
+      aria-label={`${clamped}% completed`}
+    >
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="rgba(244, 239, 230, 0.04)"
+          stroke="rgba(244, 239, 230, 0.14)"
+          strokeWidth={strokeWidth}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          className="transition-all duration-500"
+        />
+      </svg>
+      <span className="absolute text-[11px] font-['DM_Sans',sans-serif] font-medium tabular-nums text-[#F4EFE6]">
+        {clamped}%
+      </span>
+    </div>
+  );
+};
+
+interface SkyBalancePieProps {
+  supportive: number;
+  neutral: number;
+  intense: number;
+}
+
+const SkyBalancePie: React.FC<SkyBalancePieProps> = ({ supportive, neutral, intense }) => {
+  const total = supportive + neutral + intense;
+  if (total === 0) return null;
+  const size = 48;
+  const strokeWidth = 7;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+
+  const segments = [
+    { count: supportive, color: '#4EA87E' },
+    { count: neutral, color: '#B8965A' },
+    { count: intense, color: '#D97C6E' },
+  ].filter((s) => s.count > 0);
+
+  let cumulativeOffset = 0;
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="relative inline-flex items-center justify-center shrink-0">
+        <svg width={size} height={size} className="-rotate-90">
+          {segments.map((seg, i) => {
+            const fraction = seg.count / total;
+            const dash = fraction * circumference;
+            const offset = -cumulativeOffset;
+            cumulativeOffset += dash;
+            return (
+              <circle
+                key={i}
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="none"
+                stroke={seg.color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={`${dash} ${circumference - dash}`}
+                strokeDashoffset={offset}
+              />
+            );
+          })}
+        </svg>
+        <span className="absolute text-[11px] font-['DM_Sans',sans-serif] font-medium tabular-nums text-[#F4EFE6]">
+          {total}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#F4EFE6]/80">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-[#4EA87E]" />
+          {supportive} Supportive
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-[#B8965A]" />
+          {neutral} Steady
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-[#D97C6E]" />
+          {intense} Take Care
+        </span>
+      </div>
+    </div>
+  );
 };
 
 const TimingRadarDashboard: React.FC = () => {
@@ -160,11 +409,9 @@ const TimingRadarDashboard: React.FC = () => {
   if (isLoading) {
     return (
       <section className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-7 md:p-9 text-[#F4EFE6]">
-        <p className="text-xs text-[#F4EFE6]/60">Observatory Timing Radar</p>
+        <p className="text-xs text-[#F4EFE6]/60">Planetary Overview</p>
         <p className="mt-2 font-serif text-2xl font-medium">
-          {isWesternView
-            ? 'Aligning Profections, Progressions & Tropical transits...'
-            : 'Aligning Dasha progression & Gochar transits...'}
+          Loading your current life cycles and sky positions...
         </p>
       </section>
     );
@@ -177,15 +424,13 @@ const TimingRadarDashboard: React.FC = () => {
           <div className="space-y-2 max-w-xl">
             <div className="flex items-center gap-2 text-xs text-[#F4EFE6]/65">
               <Compass className="h-4 w-4 text-[#B8965A]" />
-              <span>Personal Timing Radar</span>
+              <span>Planetary Overview</span>
             </div>
             <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#F4EFE6]">
-              Add Birth Details to Unlock Live Planetary Timing
+              Add Birth Details to See Your Planetary Timing
             </h2>
             <p className="text-sm text-[#F4EFE6]/70 leading-relaxed">
-              {isWesternView
-                ? 'Once you save a birth chart, this observatory radar tracks your Annual Profection, Progressed Moon, and Solar Return progress bars alongside live Tropical transits and daily briefs.'
-                : 'Once you save a birth chart, this observatory radar tracks your active Mahadasha, Antardasha, and Pratyantardasha progress bars alongside live Gochar transits and daily briefs.'}
+              Once you save a birth chart, you can track your active life chapters, see how much time is left in each period, and follow where slow planets are moving right now.
             </p>
           </div>
           <Link
@@ -224,29 +469,19 @@ const TimingRadarDashboard: React.FC = () => {
   if (isPreviewMode) chatParams.set('preview', '1');
   const discussPhaseUrl = `/app/chat?${chatParams.toString()}`;
 
-  const nextShiftLabel = radar.upcomingShift
-    ? radar.upcomingShift.type === 'Profection'
-      ? 'Next Profection'
-      : radar.upcomingShift.type === 'Progressed Moon'
-      ? 'Next Prog. Moon'
-      : `Next ${radar.upcomingShift.type.slice(0, 2)}`
-    : '';
+  const supportiveCount = radar.slowPlanetShifts.filter((t) => t.signal === 'supportive').length;
+  const neutralCount = radar.slowPlanetShifts.filter((t) => t.signal === 'neutral').length;
+  const intenseCount = radar.slowPlanetShifts.filter((t) => t.signal === 'intense').length;
 
   return (
     <section className="space-y-5">
-      {/* Observatory Night Radar Container */}
-      <div className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-7 md:p-9 text-[#F4EFE6] shadow-[0_24px_60px_-24px_rgba(31,34,41,0.45)] space-y-7">
+      <div className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-6 sm:p-7 md:p-9 text-[#F4EFE6] shadow-[0_24px_60px_-24px_rgba(31,34,41,0.45)] space-y-7">
         {/* Header & Profile Switcher */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#F4EFE6]/10 pb-5">
           <div>
-            <p className="text-xs text-[#F4EFE6]/60 mb-1">
-              Timing Radar · {radar.ascendantSign}{' '}
-              {isWesternView ? 'Rising (Tropical)' : 'Lagna'} · {radar.moonSign} Moon
-              {radar.transitsDate
-                ? isWesternView
-                  ? ` · Transits ${radar.transitsDate}`
-                  : ` · Gochar ${radar.transitsDate}`
-                : ''}
+            <p className="text-xs text-[#F4EFE6]/65 mb-1">
+              {radar.ascendantSign} {isWesternView ? 'Rising' : 'Lagna'} · {radar.moonSign} Moon
+              {radar.transitsDate ? ` · ${formatFriendlyDate(radar.transitsDate)}` : ''}
             </p>
             <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#F4EFE6]">
               Quick overview for {radar.profileName}
@@ -257,7 +492,7 @@ const TimingRadarDashboard: React.FC = () => {
             {profiles.length > 0 && (
               <div
                 role="tablist"
-                aria-label="Switch birth profile for Timing Radar"
+                aria-label="Switch birth profile"
                 className="inline-flex items-center gap-1 rounded-full bg-[#F4EFE6]/8 border border-[#F4EFE6]/12 p-1 overflow-x-auto no-scrollbar max-w-full"
               >
                 {profiles.map((p) => {
@@ -295,70 +530,85 @@ const TimingRadarDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Row 1: Active Cycle Progress Ladder + Daily/Monthly Cached Brief */}
+        {/* Row 1: Graphical Life Chapters (Pie Charts + Progress Bars) & Observatory Brief */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-7">
-          {/* Active Cycle Progress Bars */}
           <div className="lg:col-span-6 space-y-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <div>
-                <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
-                  {isWesternView ? 'Multi-Clock Cycle Progression' : 'Vimshottari Dasha Progression'}
+                <h3 className="text-xs font-medium text-[#F4EFE6]/80 uppercase tracking-wider">
+                  {isWesternView ? 'Current Timing Cycles' : 'Current Life Chapters (Dasha)'}
                 </h3>
                 <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
-                  {isWesternView
-                    ? 'Annual Profection, Progressed Moon & Solar Return active now'
-                    : 'Planetary life cycles active in your chart right now'}
+                  When each period started, how far along you are, and time left
                 </p>
               </div>
               {radar.upcomingShift && (
                 <span className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#B8965A]">
-                  {nextShiftLabel}: {radar.upcomingShift.toLord} ({radar.upcomingShift.transitionDate})
+                  Next change: {radar.upcomingShift.toLord} ({formatFriendlyDate(radar.upcomingShift.transitionDate)})
                 </span>
               )}
             </div>
 
-            <div className="space-y-4">
-              {radar.dashaLadder.map((item) => (
-                <div
-                  key={item.level}
-                  className="rounded-2xl bg-[#F4EFE6]/5 border border-[#F4EFE6]/10 p-4 space-y-2"
-                >
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <div className="min-w-0">
-                      <span className="text-[#F4EFE6]/60 mr-2">{item.level}</span>
-                      <span className="font-medium text-[#F4EFE6]">{item.lord}</span>
-                      <span className="text-[11px] text-[#F4EFE6]/50 ml-2">
-                        · {DASHA_LEVEL_HINTS[item.level]}
-                      </span>
+            <div className="space-y-3">
+              {radar.dashaLadder.map((item, idx) => {
+                const ringColor =
+                  idx === 0 ? '#B8965A' : idx === 1 ? '#D4B072' : '#8DB49E';
+                return (
+                  <div
+                    key={item.level}
+                    className="rounded-2xl bg-[#F4EFE6]/5 border border-[#F4EFE6]/10 p-4 flex items-center gap-4"
+                  >
+                    <CyclePieChart percent={item.percentElapsed} color={ringColor} />
+
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-start justify-between gap-2 text-xs">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-baseline gap-x-2">
+                            <span className="font-medium text-[#F4EFE6] text-sm">
+                              {item.lord}
+                            </span>
+                            <span className="text-[#F4EFE6]/65 text-xs">
+                              {item.level}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[#F4EFE6]/50">
+                            {DASHA_LEVEL_HINTS[item.level]}
+                          </p>
+                        </div>
+
+                        <span className="font-['DM_Sans',sans-serif] tabular-nums text-xs font-medium text-[#E3C184] shrink-0">
+                          {formatTimeLeft(item.daysRemaining)}
+                        </span>
+                      </div>
+
+                      <div className="h-1.5 w-full rounded-full bg-[#F4EFE6]/10 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${Math.max(4, Math.min(100, item.percentElapsed))}%`,
+                            backgroundColor: ringColor,
+                          }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#F4EFE6]/55">
+                        <span>Started {formatFriendlyDate(item.startDate)}</span>
+                        <span>Ends {formatFriendlyDate(item.endDate)}</span>
+                      </div>
                     </div>
-                    <span className="font-['DM_Sans',sans-serif] tabular-nums text-[#F4EFE6]/80 shrink-0">
-                      {item.daysRemaining.toLocaleString()}d left · {item.percentElapsed}%
-                    </span>
                   </div>
-
-                  <div className="h-1.5 w-full rounded-full bg-[#F4EFE6]/10 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-[#B8965A] transition-all"
-                      style={{ width: `${Math.max(3, Math.min(100, item.percentElapsed))}%` }}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between text-[10px] font-['DM_Sans',sans-serif] tabular-nums text-[#F4EFE6]/50">
-                    <span>{item.startDate}</span>
-                    <span>{item.endDate}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
-          {/* Cached Daily & Monthly Observatory Brief */}
+          {/* Cached Daily & Monthly Brief */}
           <div className="lg:col-span-6 flex flex-col justify-between rounded-2xl bg-[#F4EFE6]/5 border border-[#F4EFE6]/10 p-5 md:p-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs text-[#F4EFE6]/75">
                   <CalendarClock className="h-4 w-4 text-[#B8965A]" />
-                  <span>Observatory Brief</span>
+                  <span>Daily & Monthly Guidance</span>
                 </div>
 
                 <div className="flex items-center gap-3 text-xs">
@@ -390,7 +640,7 @@ const TimingRadarDashboard: React.FC = () => {
               {briefView === 'daily' ? (
                 <div className="space-y-3">
                   <p className="text-[11px] font-['DM_Sans',sans-serif] text-[#F4EFE6]/50">
-                    {radar.dailyBrief.date}
+                    {formatFriendlyDate(radar.dailyBrief.date)}
                   </p>
                   <h4 className="font-serif text-2xl font-medium text-[#F4EFE6]">
                     {radar.dailyBrief.headline}
@@ -422,74 +672,179 @@ const TimingRadarDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Row 2: Convergence Timing Windows */}
+        {/* Row 2: Upcoming Highlights (Plain English + Progress Visuals) */}
         <div className="space-y-3 pt-2 border-t border-[#F4EFE6]/10">
           <div>
-            <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
-              {isWesternView
-                ? 'Progression & Transit Convergence Windows'
-                : 'Dasha & Gochar Convergence Windows'}
+            <h3 className="text-xs font-medium text-[#F4EFE6]/80 uppercase tracking-wider">
+              Upcoming Highlights
             </h3>
             <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
-              {isWesternView
-                ? 'Windows when your progressions & profections align with outer transits'
-                : 'Dates when your personal life cycle aligns with current sky transits'}
+              Key dates ahead when your life chapters and moving planets line up
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {radar.convergenceWindows.map((win, idx) => (
-              <div
-                key={idx}
-                className="rounded-2xl bg-[#F4EFE6]/5 border border-[#F4EFE6]/10 p-4 space-y-1.5"
-              >
-                <p className="text-[11px] font-['DM_Sans',sans-serif] text-[#B8965A]">
-                  {win.windowRange}
-                </p>
-                <p className="text-sm font-medium text-[#F4EFE6]">{win.label}</p>
-                <p className="text-xs text-[#F4EFE6]/60">
-                  {win.focusDomain} · {win.intensity}
-                </p>
-                <p className="text-xs text-[#F4EFE6]/80 leading-relaxed pt-1">
-                  {win.drivers}
-                </p>
-              </div>
-            ))}
+            {radar.convergenceWindows.map((win, idx) => {
+              const mood = humanizeIntensity(win.intensity);
+              const parsedRange = humanizeWindowRange(win.windowRange);
+              const barWidth = parsedRange.progressPercent ?? mood.fillPercent;
+              return (
+                <div
+                  key={idx}
+                  className="rounded-2xl bg-[#F4EFE6]/5 border border-[#F4EFE6]/10 p-4 flex flex-col justify-between gap-3"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#E3C184]">
+                        {parsedRange.text}
+                      </p>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-medium shrink-0 ${mood.badgeColor}`}
+                      >
+                        {mood.label}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-[#F4EFE6]">
+                      {humanizeWindowLabel(win.label)}
+                    </p>
+                    <p className="text-[11px] text-[#F4EFE6]/55">
+                      {humanizeFocusDomain(win.focusDomain)}
+                    </p>
+                    <p className="text-xs text-[#F4EFE6]/80 leading-relaxed pt-1">
+                      {humanizePlanetNote(win.drivers)}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1 pt-1">
+                    <div className="h-1.5 w-full rounded-full bg-[#F4EFE6]/10 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${barWidth}%`,
+                          backgroundColor: mood.barColor,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* Row 3: Live Slow-Planet Transits Relative to Natal Houses */}
+        {/* Row 3: Where Moving Planets Are Now (Pie Chart + 12-House Bars) */}
         {radar.slowPlanetShifts.length > 0 && (
-          <div className="space-y-3 pt-2 border-t border-[#F4EFE6]/10">
-            <div>
-              <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
-                {isWesternView
-                  ? 'Live Tropical Transits Over Natal Houses'
-                  : 'Live Gochar Alignment Over Natal Houses'}
-              </h3>
-              <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
-                {isWesternView
-                  ? 'Current sky positions relative to your Tropical Ascendant & natal houses'
-                  : 'Current sky positions (Gochar) relative to your birth Ascendant (Lagna)'}
-              </p>
+          <div className="space-y-4 pt-2 border-t border-[#F4EFE6]/10">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-xs font-medium text-[#F4EFE6]/80 uppercase tracking-wider">
+                  Where Slow Planets Are Now
+                </h3>
+                <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
+                  Which of the 12 areas of your chart each planet is moving through
+                </p>
+              </div>
+              <SkyBalancePie
+                supportive={supportiveCount}
+                neutral={neutralCount}
+                intense={intenseCount}
+              />
             </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {radar.slowPlanetShifts.map((t) => (
-                <div
-                  key={t.planet}
-                  className="rounded-2xl bg-[#1F2229]/70 border border-[#F4EFE6]/10 px-4 py-3 space-y-1"
-                >
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-[#F4EFE6]">
-                      {t.planet}
-                      {t.isRetrograde ? ' (R)' : ''}
-                    </span>
-                    <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#F4EFE6]/75">
-                      {t.sign} · H{t.houseFromLagna} {isWesternView ? 'Tropical' : 'Lagna'}
-                    </span>
+              {radar.slowPlanetShifts.map((t) => {
+                const sigColor =
+                  t.signal === 'supportive'
+                    ? '#4EA87E'
+                    : t.signal === 'intense'
+                    ? '#D97C6E'
+                    : '#B8965A';
+                const sigLabel =
+                  t.signal === 'supportive'
+                    ? 'Supportive'
+                    : t.signal === 'intense'
+                    ? 'Take Care'
+                    : 'Steady';
+                const strengthPct =
+                  t.savBindus > 0 ? Math.min(100, Math.round((t.savBindus / 40) * 100)) : 0;
+
+                return (
+                  <div
+                    key={t.planet}
+                    className="rounded-2xl bg-[#1F2229]/75 border border-[#F4EFE6]/10 p-4 space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: sigColor }}
+                        />
+                        <span className="font-medium text-[#F4EFE6] truncate">
+                          {t.planet}
+                          {t.isRetrograde ? ' (Retrograde)' : ''}
+                        </span>
+                      </div>
+                      <span
+                        className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F4EFE6]/6 border border-[#F4EFE6]/10 shrink-0"
+                        style={{ color: sigColor }}
+                      >
+                        {sigLabel}
+                      </span>
+                    </div>
+
+                    {/* 12-House Position Strip */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#F4EFE6]/75">
+                        <span>{t.sign}</span>
+                        <span>House {t.houseFromLagna} of 12</span>
+                      </div>
+                      <div
+                        className="grid grid-cols-12 gap-0.5"
+                        aria-label={`House ${t.houseFromLagna} of 12`}
+                      >
+                        {Array.from({ length: 12 }, (_, idx) => {
+                          const houseNum = idx + 1;
+                          const isActive = houseNum === t.houseFromLagna;
+                          return (
+                            <span
+                              key={houseNum}
+                              className="h-1.5 rounded-sm transition-colors"
+                              style={{
+                                backgroundColor: isActive
+                                  ? sigColor
+                                  : 'rgba(244, 239, 230, 0.12)',
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {t.savBindus > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-[#F4EFE6]/55">
+                          <span>House strength</span>
+                          <span className="font-['DM_Sans',sans-serif] tabular-nums">
+                            {t.savBindus}/40
+                          </span>
+                        </div>
+                        <div className="h-1 w-full rounded-full bg-[#F4EFE6]/10 overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${strengthPct}%`,
+                              backgroundColor: sigColor,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-[11px] text-[#F4EFE6]/65 leading-relaxed">
+                      {humanizePlanetNote(t.note)}
+                    </p>
                   </div>
-                  <p className="text-[11px] text-[#F4EFE6]/65">{t.note}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

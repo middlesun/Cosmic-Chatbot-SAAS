@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Currency, Category } from '../types';
-import FloatingScrollControls from './FloatingScrollControls';
+import { Currency, Category } from '../../types';
+import FloatingScrollControls from '../FloatingScrollControls';
 
 interface HeaderProps {
   currency: Currency;

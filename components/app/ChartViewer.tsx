@@ -12,10 +12,25 @@ import {
   Flame,
   Orbit,
   RefreshCw,
+  Grid3X3,
+  Download,
+  FileText,
+  Loader2,
 } from 'lucide-react';
-import CustomSelect from './CustomSelect';
 import AstrologyModeToggle from './AstrologyModeToggle';
 import { useAuth, type AstrologyMode } from './AuthContext';
+import {
+  SHODASHVARGA_DEFS,
+  VEDIC_SIGNS_SHORT,
+  buildJaiminiChartPair,
+  computeTraditionalBirthMeta,
+  resolveCompleteVargas,
+} from '../../lib/chartMetaAndVarga';
+import {
+  downloadChartJson,
+  downloadChartPdf,
+  downloadChartText,
+} from '../../lib/chartExport';
 
 export interface PlanetPosition {
   name: string;
@@ -350,24 +365,18 @@ const SOUTH_SIGN_CELLS: Record<number, { col: number; row: number }> = {
   10: { col: 0, row: 1 },
 };
 
-const ALL_VARGAS: Array<{ code: string; label: string }> = [
-  { code: 'D1', label: 'D1 (Rasi · Birth Chart)' },
-  { code: 'D2', label: 'D2 (Hora · Wealth)' },
-  { code: 'D3', label: 'D3 (Drekkana · Siblings)' },
-  { code: 'D4', label: 'D4 (Chaturthamsa · Property)' },
-  { code: 'D7', label: 'D7 (Saptamsa · Children)' },
-  { code: 'D9', label: 'D9 (Navamsha · Marriage)' },
-  { code: 'D10', label: 'D10 (Dasamsa · Career)' },
-  { code: 'D12', label: 'D12 (Dwadasamsa · Parents)' },
-  { code: 'D16', label: 'D16 (Shodasamsa · Comforts)' },
-  { code: 'D20', label: 'D20 (Vimsamsa · Spirituality)' },
-  { code: 'D24', label: 'D24 (Chaturvimsamsa · Learning)' },
-  { code: 'D27', label: 'D27 (Nakshatramsa · Vitality)' },
-  { code: 'D30', label: 'D30 (Trimsamsa · Adversities)' },
-  { code: 'D40', label: 'D40 (Khavedamsa · Maternal)' },
-  { code: 'D45', label: 'D45 (Akshavedamsa · Paternal)' },
-  { code: 'D60', label: 'D60 (Shashtiamsa · Karma)' },
-];
+const SHODASHVARGA_PLANET_COLS = [
+  { name: 'Ascendant', short: 'Asc' },
+  { name: 'Sun', short: 'Su' },
+  { name: 'Moon', short: 'Mo' },
+  { name: 'Mars', short: 'Ma' },
+  { name: 'Mercury', short: 'Me' },
+  { name: 'Jupiter', short: 'Ju' },
+  { name: 'Venus', short: 'Ve' },
+  { name: 'Saturn', short: 'Sa' },
+  { name: 'Rahu', short: 'Ra' },
+  { name: 'Ketu', short: 'Ke' },
+] as const;
 
 export interface NatalTruthDossierClient {
   version: number;
@@ -415,13 +424,14 @@ interface ChartViewerProps {
   dailyTransits?: DailyTransitsPayload | null;
   initialMode?: AstrologyMode;
   profileId?: string;
+  gender?: string | null;
   dossier?: NatalTruthDossierClient | null;
   lifeContextCompleteness?: number;
   onOpenLifeContext?: () => void;
   onDossierRefreshed?: (nextDossier: NatalTruthDossierClient) => void;
 }
 
-type VedicTabId = 'overview' | 'planets' | 'kp' | 'dasha' | 'jaimini' | 'shadbala' | 'lalkitab';
+type VedicTabId = 'overview' | 'vargas' | 'planets' | 'kp' | 'dasha' | 'jaimini' | 'shadbala' | 'lalkitab';
 type WesternTabId = 'overview' | 'planets' | 'aspects';
 
 function polarToXY(cx: number, cy: number, r: number, angleDeg: number): { x: number; y: number } {
@@ -432,11 +442,294 @@ function polarToXY(cx: number, cy: number, r: number, angleDeg: number): { x: nu
   };
 }
 
+interface KundliSvgProps {
+  chartStyle: 'north' | 'south';
+  title: string;
+  subtitle?: string;
+  centerTitle: string;
+  centerSub?: string;
+  ascendantSignIndex: number;
+  placements: Array<{ name: string; signIndex: number; house: number }>;
+  natalPlanets: PlanetPosition[];
+  compact?: boolean;
+}
+
+const KundliSvg: React.FC<KundliSvgProps> = ({
+  chartStyle,
+  title,
+  subtitle,
+  centerTitle,
+  centerSub,
+  ascendantSignIndex,
+  placements,
+  natalPlanets,
+  compact = false,
+}) => {
+  const retroSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of natalPlanets) {
+      if (p.isRetrograde) s.add(p.name);
+    }
+    return s;
+  }, [natalPlanets]);
+
+  const byHouse = useMemo(() => {
+    const map: Record<number, string[]> = {};
+    for (let h = 1; h <= 12; h++) map[h] = [];
+    for (const pl of placements) {
+      if (pl.name === 'Ascendant') continue;
+      const code = `${PLANET_CODE[pl.name] || pl.name.slice(0, 2)}${retroSet.has(pl.name) ? '*' : ''}`;
+      if (map[pl.house]) map[pl.house].push(code);
+    }
+    return map;
+  }, [placements, retroSet]);
+
+  const bySign = useMemo(() => {
+    const map: Record<number, string[]> = {};
+    for (let s = 0; s < 12; s++) map[s] = [];
+    for (const pl of placements) {
+      const code =
+        pl.name === 'Ascendant'
+          ? 'Asc'
+          : `${PLANET_CODE[pl.name] || pl.name.slice(0, 2)}${retroSet.has(pl.name) ? '*' : ''}`;
+      if (map[pl.signIndex]) map[pl.signIndex].push(code);
+    }
+    return map;
+  }, [placements, retroSet]);
+
+  return (
+    <div
+      className={`rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/12 ${
+        compact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'
+      } flex flex-col items-center`}
+    >
+      <div className="w-full flex items-baseline justify-between gap-2 mb-3">
+        <h3 className={`font-serif font-medium text-[#3D3830] ${compact ? 'text-base' : 'text-lg sm:text-xl'}`}>
+          {title}
+        </h3>
+        {subtitle && (
+          <span className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355] truncate">
+            {subtitle}
+          </span>
+        )}
+      </div>
+
+      {chartStyle === 'north' ? (
+        <svg
+          viewBox="0 0 400 400"
+          className={`w-full h-auto select-none ${compact ? 'max-w-[290px]' : 'max-w-[350px]'}`}
+          role="img"
+          aria-label={`North Indian ${title}`}
+        >
+          <rect
+            x="8"
+            y="8"
+            width="384"
+            height="384"
+            rx="14"
+            fill="#FDFBF7"
+            stroke="rgba(61,56,48,0.34)"
+            strokeWidth="1.4"
+          />
+          <line x1="8" y1="8" x2="392" y2="392" stroke="rgba(61,56,48,0.24)" strokeWidth="1" />
+          <line x1="392" y1="8" x2="8" y2="392" stroke="rgba(61,56,48,0.24)" strokeWidth="1" />
+          <polygon
+            points="200,8 392,200 200,392 8,200"
+            fill="none"
+            stroke="rgba(61,56,48,0.34)"
+            strokeWidth="1.3"
+          />
+
+          {Array.from({ length: 12 }, (_, idx) => {
+            const house = idx + 1;
+            const signNum = ((ascendantSignIndex + idx) % 12) + 1;
+            const pos = NORTH_HOUSE_POSITIONS[house];
+            const items = byHouse[house] || [];
+            const line1 = items.slice(0, 3).join(' ');
+            const line2 = items.slice(3).join(' ');
+            return (
+              <g key={house}>
+                <text
+                  x={pos.signX}
+                  y={pos.signY}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="#8B7355"
+                  fontSize="11.5"
+                  fontWeight="600"
+                  fontFamily="JetBrains Mono, monospace"
+                >
+                  {signNum}
+                </text>
+                {line1 && (
+                  <text
+                    x={pos.x}
+                    y={line2 ? pos.y - 7 : pos.y}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="#3D3830"
+                    fontSize="12.5"
+                    fontWeight="600"
+                    fontFamily="Plus Jakarta Sans, sans-serif"
+                  >
+                    {line1}
+                  </text>
+                )}
+                {line2 && (
+                  <text
+                    x={pos.x}
+                    y={pos.y + 10}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="#3D3830"
+                    fontSize="12.5"
+                    fontWeight="600"
+                    fontFamily="Plus Jakarta Sans, sans-serif"
+                  >
+                    {line2}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      ) : (
+        <svg
+          viewBox="0 0 400 400"
+          className={`w-full h-auto select-none ${compact ? 'max-w-[290px]' : 'max-w-[350px]'}`}
+          role="img"
+          aria-label={`South Indian ${title}`}
+        >
+          <rect
+            x="8"
+            y="8"
+            width="384"
+            height="384"
+            rx="14"
+            fill="#FDFBF7"
+            stroke="rgba(61,56,48,0.34)"
+            strokeWidth="1.4"
+          />
+          {[1, 2, 3].map((i) => (
+            <React.Fragment key={i}>
+              <line
+                x1={8 + i * 96}
+                y1={8}
+                x2={8 + i * 96}
+                y2={i === 2 ? 104 : 392}
+                stroke="rgba(61,56,48,0.22)"
+                strokeWidth="1"
+              />
+              <line
+                x1={8}
+                y1={8 + i * 96}
+                x2={i === 2 ? 104 : 392}
+                y2={8 + i * 96}
+                stroke="rgba(61,56,48,0.22)"
+                strokeWidth="1"
+              />
+            </React.Fragment>
+          ))}
+          <line x1="200" y1="304" x2="200" y2="392" stroke="rgba(61,56,48,0.22)" strokeWidth="1" />
+          <line x1="296" y1="200" x2="392" y2="200" stroke="rgba(61,56,48,0.22)" strokeWidth="1" />
+          <rect
+            x="104"
+            y="104"
+            width="192"
+            height="192"
+            fill="#F1ECE3"
+            stroke="rgba(61,56,48,0.25)"
+            strokeWidth="1"
+          />
+          <text
+            x="200"
+            y="192"
+            textAnchor="middle"
+            fill="#3D3830"
+            fontSize="16"
+            fontWeight="600"
+            fontFamily="Cormorant Garamond, serif"
+          >
+            {centerTitle}
+          </text>
+          {centerSub && (
+            <text
+              x="200"
+              y="214"
+              textAnchor="middle"
+              fill="#5C5449"
+              fontSize="11"
+              fontFamily="Plus Jakarta Sans, sans-serif"
+            >
+              {centerSub}
+            </text>
+          )}
+
+          {Object.entries(SOUTH_SIGN_CELLS).map(([sIdxStr, cell]) => {
+            const sIdx = Number(sIdxStr);
+            const x = 8 + cell.col * 96;
+            const y = 8 + cell.row * 96;
+            const items = bySign[sIdx] || [];
+            const isAsc = sIdx === ascendantSignIndex;
+            return (
+              <g key={sIdx}>
+                {isAsc && (
+                  <line
+                    x1={x}
+                    y1={y + 18}
+                    x2={x + 18}
+                    y2={y}
+                    stroke="#8B7355"
+                    strokeWidth="1.5"
+                  />
+                )}
+                <text
+                  x={x + 8}
+                  y={y + 18}
+                  fill="#8B7355"
+                  fontSize="9.5"
+                  fontWeight="600"
+                  fontFamily="JetBrains Mono, monospace"
+                >
+                  {SIGN_NAMES_SHORT[sIdx]}
+                </text>
+                <text
+                  x={x + 48}
+                  y={y + 54}
+                  textAnchor="middle"
+                  fill="#3D3830"
+                  fontSize="12"
+                  fontWeight="600"
+                >
+                  {items.slice(0, 3).join(' ')}
+                </text>
+                {items.length > 3 && (
+                  <text
+                    x={x + 48}
+                    y={y + 72}
+                    textAnchor="middle"
+                    fill="#3D3830"
+                    fontSize="12"
+                    fontWeight="600"
+                  >
+                    {items.slice(3).join(' ')}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      )}
+    </div>
+  );
+};
+
 const ChartViewer: React.FC<ChartViewerProps> = ({
   chart,
   dailyTransits: propTransits,
   initialMode,
   profileId,
+  gender,
   dossier,
   lifeContextCompleteness,
   onOpenLifeContext,
@@ -445,6 +738,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
   const { astrologyMode: sessionMode, getAccessToken, isPreviewMode } = useAuth();
   const [viewMode, setViewMode] = useState<AstrologyMode>(initialMode || sessionMode || 'vedic');
   const [refreshingDossier, setRefreshingDossier] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     if (!initialMode) {
@@ -453,7 +747,6 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
   }, [sessionMode, initialMode]);
 
   const [chartStyle, setChartStyle] = useState<'north' | 'south'>('north');
-  const [selectedVarga, setSelectedVarga] = useState<string>('D1');
   const [vedicTab, setVedicTab] = useState<VedicTabId>('overview');
   const [westernTab, setWesternTab] = useState<WesternTabId>('overview');
   const [aspectFilter, setAspectFilter] = useState<'all' | 'Major' | 'Minor'>('all');
@@ -515,35 +808,19 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
     };
   }, [propTransits, isPreviewMode, getAccessToken]);
 
-  const activeVarga = useMemo(() => {
-    return chart.vargas[selectedVarga] || chart.vargas.D1;
-  }, [chart.vargas, selectedVarga]);
+  const allVargas = useMemo(() => resolveCompleteVargas(chart), [chart]);
+  const birthMeta = useMemo(() => computeTraditionalBirthMeta(chart, gender), [chart, gender]);
+  const jaiminiCharts = useMemo(() => buildJaiminiChartPair(chart), [chart]);
 
-  const planetsByHouse = useMemo(() => {
-    const map: Record<number, string[]> = {};
-    for (let h = 1; h <= 12; h++) map[h] = [];
-    for (const pl of activeVarga.placements) {
-      if (pl.name === 'Ascendant') continue;
-      const d1Match = chart.planets.find((p) => p.name === pl.name);
-      const code = `${PLANET_CODE[pl.name] || pl.name.slice(0, 2)}${d1Match?.isRetrograde ? '*' : ''}`;
-      map[pl.house].push(code);
+  const handleDownloadPdf = async () => {
+    if (exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      await downloadChartPdf(chart, birthMeta, allVargas, chartStyle);
+    } finally {
+      setExportingPdf(false);
     }
-    return map;
-  }, [activeVarga, chart.planets]);
-
-  const planetsBySign = useMemo(() => {
-    const map: Record<number, string[]> = {};
-    for (let s = 0; s < 12; s++) map[s] = [];
-    for (const pl of activeVarga.placements) {
-      const d1Match = chart.planets.find((p) => p.name === pl.name);
-      const code =
-        pl.name === 'Ascendant'
-          ? 'Asc'
-          : `${PLANET_CODE[pl.name] || pl.name.slice(0, 2)}${d1Match?.isRetrograde ? '*' : ''}`;
-      map[pl.signIndex].push(code);
-    }
-    return map;
-  }, [activeVarga, chart.planets]);
+  };
 
   const d1Asc = chart.planets.find((p) => p.name === 'Ascendant');
   const d1Moon = chart.planets.find((p) => p.name === 'Moon');
@@ -609,203 +886,177 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Observatory Night Hero Chart Section */}
-      <div className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-5 sm:p-6 md:p-8 text-[#F4EFE6]">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-white/10 pb-5 mb-6">
+      {/* Light Observatory Chart Hero Section */}
+      <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 sm:p-6 md:p-8 text-[#3D3830]">
+        {/* Row 1: Title + Fixed Top-Right Exports & Vedic/Western Mode Toggle */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#3D3830]/10 pb-4 mb-4">
           <div className="min-w-0">
-            <p className="text-xs text-[#F4EFE6]/60 mb-1 truncate">
+            <p className="text-xs text-[#8B8275] mb-1 truncate">
               {viewMode === 'vedic'
                 ? `${chart.meta.ayanamsha} · ${chart.meta.location.locationLabel}`
                 : `${chart.western?.system || 'Tropical (Placidus)'} · ${chart.meta.location.locationLabel}`}
             </p>
-            <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#F4EFE6]">
-              {chart.meta.name} — {viewMode === 'vedic' ? `${selectedVarga} Chart` : 'Tropical Natal Wheel'}
+            <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
+              {chart.meta.name} — {viewMode === 'vedic' ? 'Vedic Kundli (D1 & D9)' : 'Tropical Natal Wheel'}
             </h2>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div
+              role="group"
+              aria-label="Download chart data"
+              className="inline-flex items-center rounded-xl bg-[#FAF7F2] border border-[#3D3830]/12 p-1 gap-0.5 text-xs"
+            >
+              <button
+                type="button"
+                disabled={exportingPdf}
+                onClick={() => void handleDownloadPdf()}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium text-[#3D3830] hover:bg-[#EAE3D7]/80 transition-colors cursor-pointer disabled:opacity-50"
+                title="Download full chart dossier as PDF"
+              >
+                {exportingPdf ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[#8B7355]" />
+                ) : (
+                  <Download className="h-3.5 w-3.5 text-[#8B7355]" />
+                )}
+                <span>PDF</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadChartText(chart, birthMeta, allVargas)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EAE3D7]/80 transition-colors cursor-pointer"
+                title="Download complete chart data as plain text"
+              >
+                <FileText className="h-3.5 w-3.5 text-[#8B7355]" />
+                <span>Text</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadChartJson(chart, birthMeta, allVargas)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EAE3D7]/80 transition-colors cursor-pointer"
+                title="Download raw structured chart data as JSON"
+              >
+                <span>JSON</span>
+              </button>
+            </div>
+
             <AstrologyModeToggle
               value={viewMode}
               onChange={setViewMode}
-              variant="dark"
+              variant="light"
               size="sm"
             />
-
-            {viewMode === 'vedic' && (
-              <>
-                {/* Style Switcher */}
-                <div className="flex items-center rounded-xl bg-white/10 p-1 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setChartStyle('north')}
-                    className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
-                      chartStyle === 'north'
-                        ? 'bg-[#F4EFE6] text-[#1F2229] font-medium'
-                        : 'text-[#F4EFE6]/70 hover:text-[#F4EFE6]'
-                    }`}
-                  >
-                    North Indian
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setChartStyle('south')}
-                    className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
-                      chartStyle === 'south'
-                        ? 'bg-[#F4EFE6] text-[#1F2229] font-medium'
-                        : 'text-[#F4EFE6]/70 hover:text-[#F4EFE6]'
-                    }`}
-                  >
-                    South Indian
-                  </button>
-                </div>
-
-                {/* All 16 Vargas Selector */}
-                <CustomSelect
-                  ariaLabel="Select Divisional Chart"
-                  value={selectedVarga}
-                  onChange={setSelectedVarga}
-                  variant="dark"
-                  size="sm"
-                  align="right"
-                  minMenuWidth={240}
-                  triggerClassName="font-['JetBrains_Mono',monospace] bg-white/10 border-white/15"
-                  options={ALL_VARGAS.filter((d) => chart.vargas[d.code]).map((d) => ({
-                    value: d.code,
-                    label: d.label,
-                  }))}
-                />
-              </>
-            )}
           </div>
+        </div>
+
+        {/* Row 2: Fixed Left-Aligned North/South Toggle (No Jumping When Switching Modes) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 min-h-[38px]">
+          <div
+            role="group"
+            aria-label="Chart layout style"
+            aria-disabled={viewMode !== 'vedic'}
+            className={`inline-flex items-center rounded-xl bg-[#EAE3D7]/80 border border-[#3D3830]/12 p-1 text-xs transition-opacity ${
+              viewMode === 'vedic' ? 'opacity-100' : 'opacity-40 pointer-events-none'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setChartStyle('north')}
+              className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+                chartStyle === 'north'
+                  ? 'bg-[#4A453D] text-[#FAF7F2] font-medium shadow-xs'
+                  : 'text-[#5C5449] hover:text-[#3D3830]'
+              }`}
+            >
+              North Indian
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartStyle('south')}
+              className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+                chartStyle === 'south'
+                  ? 'bg-[#4A453D] text-[#FAF7F2] font-medium shadow-xs'
+                  : 'text-[#5C5449] hover:text-[#3D3830]'
+              }`}
+            >
+              South Indian
+            </button>
+          </div>
+
+          <p className="text-xs font-['JetBrains_Mono',monospace] tabular-nums text-[#8B8275]">
+            {viewMode === 'vedic'
+              ? `D1 Lagna: ${d1Asc?.sign || '—'} · D9 Lagna: ${
+                  allVargas.D9 ? VEDIC_SIGNS_SHORT[allVargas.D9.ascendantSignIndex] : '—'
+                }`
+              : `AC: ${chart.western?.angles.ascendant.sign || '—'} · MC: ${
+                  chart.western?.angles.midheaven.sign || '—'
+                }`}
+          </p>
         </div>
 
         {/* HERO VISUAL + TELEMETRY */}
         {viewMode === 'vedic' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            <div className="lg:col-span-6 flex justify-center">
-              {chartStyle === 'north' ? (
-                <svg
-                  viewBox="0 0 400 400"
-                  className="w-full max-w-[360px] h-auto select-none"
-                  role="img"
-                  aria-label={`North Indian ${selectedVarga} chart`}
-                >
-                  <rect x="8" y="8" width="384" height="384" rx="16" fill="rgba(255,255,255,0.03)" stroke="rgba(244,239,230,0.28)" strokeWidth="1.2" />
-                  <line x1="8" y1="8" x2="392" y2="392" stroke="rgba(244,239,230,0.22)" strokeWidth="1" />
-                  <line x1="392" y1="8" x2="8" y2="392" stroke="rgba(244,239,230,0.22)" strokeWidth="1" />
-                  <polygon points="200,8 392,200 200,392 8,200" fill="none" stroke="rgba(244,239,230,0.28)" strokeWidth="1.2" />
-
-                  {Array.from({ length: 12 }, (_, idx) => {
-                    const house = idx + 1;
-                    const signNum = ((activeVarga.ascendantSignIndex + idx) % 12) + 1;
-                    const pos = NORTH_HOUSE_POSITIONS[house];
-                    const items = planetsByHouse[house] || [];
-                    return (
-                      <g key={house}>
-                        <text
-                          x={pos.signX}
-                          y={pos.signY}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          fill="rgba(184,150,90,0.85)"
-                          fontSize="11"
-                          fontFamily="JetBrains Mono, monospace"
-                        >
-                          {signNum}
-                        </text>
-                        <text
-                          x={pos.x}
-                          y={pos.y}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          fill="#F4EFE6"
-                          fontSize="12.5"
-                          fontWeight="500"
-                          fontFamily="Plus Jakarta Sans, sans-serif"
-                        >
-                          {items.join(' ')}
-                        </text>
-                      </g>
-                    );
-                  })}
-                </svg>
-              ) : (
-                <svg
-                  viewBox="0 0 400 400"
-                  className="w-full max-w-[360px] h-auto select-none"
-                  role="img"
-                  aria-label={`South Indian ${selectedVarga} chart`}
-                >
-                  <rect x="8" y="8" width="384" height="384" rx="16" fill="rgba(255,255,255,0.03)" stroke="rgba(244,239,230,0.28)" strokeWidth="1.2" />
-                  {[1, 2, 3].map((i) => (
-                    <React.Fragment key={i}>
-                      <line x1={8 + i * 96} y1={8} x2={8 + i * 96} y2={i === 2 ? 104 : 392} stroke="rgba(244,239,230,0.22)" strokeWidth="1" />
-                      <line x1={8} y1={8 + i * 96} x2={i === 2 ? 104 : 392} y2={8 + i * 96} stroke="rgba(244,239,230,0.22)" strokeWidth="1" />
-                    </React.Fragment>
-                  ))}
-                  <line x1="200" y1="304" x2="200" y2="392" stroke="rgba(244,239,230,0.22)" strokeWidth="1" />
-                  <line x1="296" y1="200" x2="392" y2="200" stroke="rgba(244,239,230,0.22)" strokeWidth="1" />
-                  <rect x="104" y="104" width="192" height="192" fill="rgba(31,34,41,0.7)" stroke="rgba(244,239,230,0.25)" strokeWidth="1" />
-                  <text x="200" y="192" textAnchor="middle" fill="#F4EFE6" fontSize="16" fontFamily="Cormorant Garamond, serif">
-                    {selectedVarga}
-                  </text>
-                  <text x="200" y="214" textAnchor="middle" fill="rgba(244,239,230,0.55)" fontSize="11" fontFamily="Plus Jakarta Sans, sans-serif">
-                    {SIGN_NAMES_SHORT[activeVarga.ascendantSignIndex]} Lagna
-                  </text>
-
-                  {Object.entries(SOUTH_SIGN_CELLS).map(([sIdxStr, cell]) => {
-                    const sIdx = Number(sIdxStr);
-                    const x = 8 + cell.col * 96;
-                    const y = 8 + cell.row * 96;
-                    const items = planetsBySign[sIdx] || [];
-                    const isAsc = sIdx === activeVarga.ascendantSignIndex;
-                    return (
-                      <g key={sIdx}>
-                        {isAsc && (
-                          <line x1={x} y1={y + 18} x2={x + 18} y2={y} stroke="rgba(184,150,90,0.8)" strokeWidth="1.2" />
-                        )}
-                        <text x={x + 8} y={y + 18} fill="rgba(184,150,90,0.7)" fontSize="9.5" fontFamily="JetBrains Mono, monospace">
-                          {SIGN_NAMES_SHORT[sIdx]}
-                        </text>
-                        <text x={x + 48} y={y + 54} textAnchor="middle" fill="#F4EFE6" fontSize="12" fontWeight="500">
-                          {items.slice(0, 3).join(' ')}
-                        </text>
-                        {items.length > 3 && (
-                          <text x={x + 48} y={y + 72} textAnchor="middle" fill="#F4EFE6" fontSize="12" fontWeight="500">
-                            {items.slice(3).join(' ')}
-                          </text>
-                        )}
-                      </g>
-                    );
-                  })}
-                </svg>
+          <div className="space-y-6">
+            {/* Side-by-Side Lagna (D1) and Navamsha (D9) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {allVargas.D1 && (
+                <KundliSvg
+                  chartStyle={chartStyle}
+                  title="Lagna Chart (D1)"
+                  subtitle={`${SIGN_NAMES_SHORT[allVargas.D1.ascendantSignIndex]} Lagna`}
+                  centerTitle="D1 Lagna"
+                  centerSub={`${SIGN_NAMES_SHORT[allVargas.D1.ascendantSignIndex]} Asc`}
+                  ascendantSignIndex={allVargas.D1.ascendantSignIndex}
+                  placements={allVargas.D1.placements}
+                  natalPlanets={chart.planets}
+                />
+              )}
+              {allVargas.D9 && (
+                <KundliSvg
+                  chartStyle={chartStyle}
+                  title="Navamsha Chart (D9)"
+                  subtitle={`${SIGN_NAMES_SHORT[allVargas.D9.ascendantSignIndex]} Lagna`}
+                  centerTitle="D9 Navamsha"
+                  centerSub={`${SIGN_NAMES_SHORT[allVargas.D9.ascendantSignIndex]} Asc`}
+                  ascendantSignIndex={allVargas.D9.ascendantSignIndex}
+                  placements={allVargas.D9.placements}
+                  natalPlanets={chart.planets}
+                />
               )}
             </div>
 
-            {/* Right Summary Telemetry (Vedic) */}
-            <div className="lg:col-span-6 space-y-4">
+            {/* Light Telemetry Strip Below D1 & D9 */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
               {chart.vimshottari.currentStack && (
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
-                  <p className="text-xs text-[#F4EFE6]/60 mb-2">Active Vimshottari Phase</p>
+                <div className="lg:col-span-6 rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4 sm:p-5 flex flex-col justify-center">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-[#8B8275] mb-2.5">
+                    Active Vimshottari Phase
+                  </p>
                   <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <p className="text-xs text-[#F4EFE6]/55">Mahadasha</p>
-                      <p className="font-serif text-xl text-[#F4EFE6]">{chart.vimshottari.currentStack.mahadasha}</p>
-                      <p className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#B8965A]">
+                      <p className="text-xs text-[#8B8275]">Mahadasha</p>
+                      <p className="font-serif text-lg sm:text-xl text-[#3D3830]">
+                        {chart.vimshottari.currentStack.mahadasha}
+                      </p>
+                      <p className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#8B7355]">
                         → {chart.vimshottari.currentStack.mdEnd}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-[#F4EFE6]/55">Antardasha</p>
-                      <p className="font-serif text-xl text-[#F4EFE6]">{chart.vimshottari.currentStack.antardasha}</p>
-                      <p className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#B8965A]">
+                      <p className="text-xs text-[#8B8275]">Antardasha</p>
+                      <p className="font-serif text-lg sm:text-xl text-[#3D3830]">
+                        {chart.vimshottari.currentStack.antardasha}
+                      </p>
+                      <p className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#8B7355]">
                         → {chart.vimshottari.currentStack.adEnd}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-[#F4EFE6]/55">Pratyantar</p>
-                      <p className="font-serif text-xl text-[#F4EFE6]">{chart.vimshottari.currentStack.pratyantardasha}</p>
-                      <p className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#B8965A]">
+                      <p className="text-xs text-[#8B8275]">Pratyantar</p>
+                      <p className="font-serif text-lg sm:text-xl text-[#3D3830]">
+                        {chart.vimshottari.currentStack.pratyantardasha}
+                      </p>
+                      <p className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums text-[#8B7355]">
                         → {chart.vimshottari.currentStack.pdEnd}
                       </p>
                     </div>
@@ -813,37 +1064,34 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-                  <p className="text-[#F4EFE6]/60 mb-1">D1 Lagna (Ascendant)</p>
-                  <p className="font-serif text-lg text-[#F4EFE6]">
-                    {d1Asc?.sign || '—'}
-                  </p>
-                  <p className="font-['JetBrains_Mono',monospace] tabular-nums text-[#F4EFE6]/70 mt-0.5">
+              <div
+                className={`${
+                  chart.vimshottari.currentStack ? 'lg:col-span-6' : 'lg:col-span-12'
+                } grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-3 text-xs`}
+              >
+                <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-3.5">
+                  <p className="text-[#8B8275] mb-0.5">D1 Lagna (Ascendant)</p>
+                  <p className="font-serif text-lg text-[#3D3830]">{d1Asc?.sign || '—'}</p>
+                  <p className="font-['JetBrains_Mono',monospace] tabular-nums text-[#5C5449] mt-0.5">
                     {d1Asc?.dms || ''} · {d1Asc?.nakshatra || ''}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-                  <p className="text-[#F4EFE6]/60 mb-1">Rashi (Moon Sign)</p>
-                  <p className="font-serif text-lg text-[#F4EFE6]">
-                    {d1Moon?.sign || '—'}
-                  </p>
-                  <p className="font-['JetBrains_Mono',monospace] tabular-nums text-[#F4EFE6]/70 mt-0.5">
+                <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-3.5">
+                  <p className="text-[#8B8275] mb-0.5">Rashi (Moon Sign)</p>
+                  <p className="font-serif text-lg text-[#3D3830]">{d1Moon?.sign || '—'}</p>
+                  <p className="font-['JetBrains_Mono',monospace] tabular-nums text-[#5C5449] mt-0.5">
                     {d1Moon?.nakshatra || '—'} P{d1Moon?.pada || '—'}
                   </p>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-                  <p className="text-[#F4EFE6]/60 mb-1">Sun · Karakamsha</p>
-                  <p className="font-serif text-base text-[#F4EFE6]">
-                    {d1Sun?.sign || '—'} · {chart.jaimini.karakamshaSign}
+                <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-3.5">
+                  <p className="text-[#8B8275] mb-0.5">Sun · Karakamsha</p>
+                  <p className="font-serif text-base text-[#3D3830]">
+                    {d1Sun?.sign || '—'} · {jaiminiCharts.karakamshaSign}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-                  <p className="text-[#F4EFE6]/60 mb-1">Strongest Shadbala</p>
-                  <p className="font-serif text-base text-[#B8965A]">
+                <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-3.5">
+                  <p className="text-[#8B8275] mb-0.5">Strongest Shadbala</p>
+                  <p className="font-serif text-base text-[#8B7355] font-medium">
                     {chart.shadbala?.strongestPlanet || 'Balanced'}
                   </p>
                 </div>
@@ -852,7 +1100,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
           </div>
         ) : westernWheelData ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            {/* Circular Western Natal Wheel SVG */}
+            {/* Circular Western Natal Wheel SVG (Warm Ivory Light Theme) */}
             <div className="lg:col-span-6 flex justify-center">
               <svg
                 viewBox="0 0 420 420"
@@ -861,9 +1109,9 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                 aria-label="Western Tropical Natal Wheel"
               >
                 {/* Outer Zodiac Ring */}
-                <circle cx="210" cy="210" r="196" fill="rgba(255,255,255,0.025)" stroke="rgba(244,239,230,0.28)" strokeWidth="1.2" />
-                <circle cx="210" cy="210" r="162" fill="none" stroke="rgba(244,239,230,0.22)" strokeWidth="1" />
-                <circle cx="210" cy="210" r="106" fill="rgba(31,34,41,0.55)" stroke="rgba(244,239,230,0.18)" strokeWidth="1" />
+                <circle cx="210" cy="210" r="196" fill="#FAF7F2" stroke="rgba(61,56,48,0.32)" strokeWidth="1.3" />
+                <circle cx="210" cy="210" r="162" fill="none" stroke="rgba(61,56,48,0.22)" strokeWidth="1" />
+                <circle cx="210" cy="210" r="106" fill="#F1ECE3" stroke="rgba(61,56,48,0.2)" strokeWidth="1" />
 
                 {/* Zodiac 12 Sign Sectors */}
                 {Array.from({ length: 12 }, (_, signIdx) => {
@@ -876,15 +1124,15 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                   const pText = polarToXY(210, 210, 179, aMid);
                   return (
                     <g key={`z-${signIdx}`}>
-                      <line x1={pOuter.x} y1={pOuter.y} x2={pInner.x} y2={pInner.y} stroke="rgba(244,239,230,0.18)" strokeWidth="1" />
+                      <line x1={pOuter.x} y1={pOuter.y} x2={pInner.x} y2={pInner.y} stroke="rgba(61,56,48,0.18)" strokeWidth="1" />
                       <text
                         x={pText.x}
                         y={pText.y}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fill="rgba(184,150,90,0.9)"
+                        fill="#8B7355"
                         fontSize="12"
-                        fontWeight="500"
+                        fontWeight="600"
                       >
                         {ZODIAC_GLYPHS[signIdx]}
                       </text>
@@ -911,7 +1159,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                         y1={pOut.y}
                         x2={pIn.x}
                         y2={pIn.y}
-                        stroke={isAngle ? 'rgba(184,150,90,0.75)' : 'rgba(244,239,230,0.14)'}
+                        stroke={isAngle ? '#8B7355' : 'rgba(61,56,48,0.18)'}
                         strokeWidth={isAngle ? '1.5' : '0.8'}
                         strokeDasharray={isAngle ? undefined : '2,2'}
                       />
@@ -920,7 +1168,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                         y={labelPos.y}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fill="rgba(244,239,230,0.42)"
+                        fill="#8B8275"
                         fontSize="9"
                         fontFamily="JetBrains Mono, monospace"
                       >
@@ -939,7 +1187,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                     x2={line.p2.x}
                     y2={line.p2.y}
                     stroke={line.stroke}
-                    strokeWidth="0.9"
+                    strokeWidth="1"
                   />
                 ))}
 
@@ -950,14 +1198,14 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                   const glyphPos = polarToXY(210, 210, 140, b.displayAngle);
                   return (
                     <g key={`wp-${b.name}`}>
-                      <line x1={tickOuter.x} y1={tickOuter.y} x2={tickInner.x} y2={tickInner.y} stroke="#B8965A" strokeWidth="1.2" />
-                      <circle cx={glyphPos.x} cy={glyphPos.y} r="10.5" fill="#1F2229" stroke="rgba(244,239,230,0.22)" strokeWidth="0.8" />
+                      <line x1={tickOuter.x} y1={tickOuter.y} x2={tickInner.x} y2={tickInner.y} stroke="#8B7355" strokeWidth="1.2" />
+                      <circle cx={glyphPos.x} cy={glyphPos.y} r="10.5" fill="#FDFBF7" stroke="rgba(61,56,48,0.28)" strokeWidth="0.9" />
                       <text
                         x={glyphPos.x}
                         y={glyphPos.y + 0.5}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fill="#F4EFE6"
+                        fill="#3D3830"
                         fontSize="11.5"
                       >
                         {b.symbol}
@@ -967,52 +1215,52 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                 })}
 
                 {/* Horizon AC/DC Labels */}
-                <text x="16" y="210" textAnchor="middle" dominantBaseline="middle" fill="#B8965A" fontSize="10" fontWeight="600">
+                <text x="16" y="210" textAnchor="middle" dominantBaseline="middle" fill="#8B7355" fontSize="10" fontWeight="600">
                   AC
                 </text>
-                <text x="404" y="210" textAnchor="middle" dominantBaseline="middle" fill="#B8965A" fontSize="10" fontWeight="600">
+                <text x="404" y="210" textAnchor="middle" dominantBaseline="middle" fill="#8B7355" fontSize="10" fontWeight="600">
                   DC
                 </text>
-                <text x="210" y="24" textAnchor="middle" dominantBaseline="middle" fill="#B8965A" fontSize="10" fontWeight="600">
+                <text x="210" y="24" textAnchor="middle" dominantBaseline="middle" fill="#8B7355" fontSize="10" fontWeight="600">
                   MC
                 </text>
               </svg>
             </div>
 
-            {/* Right Summary Telemetry (Western) */}
+            {/* Right Summary Telemetry (Western - Light Theme) */}
             <div className="lg:col-span-6 space-y-4">
-              <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
-                <p className="text-xs text-[#F4EFE6]/60 mb-3">Tropical Big Three & Midheaven</p>
+              <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-5">
+                <p className="text-xs text-[#8B8275] mb-3">Tropical Big Three &amp; Midheaven</p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <div>
-                    <p className="text-xs text-[#F4EFE6]/55">Sun</p>
-                    <p className="font-serif text-lg text-[#F4EFE6]">
+                    <p className="text-xs text-[#8B8275]">Sun</p>
+                    <p className="font-serif text-lg text-[#3D3830]">
                       {westernWheelData.w.planets.find((p) => p.name === 'Sun')?.sign || '—'}
                     </p>
-                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#B8965A]">
+                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
                       {westernWheelData.w.planets.find((p) => p.name === 'Sun')?.dms || ''}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-[#F4EFE6]/55">Moon</p>
-                    <p className="font-serif text-lg text-[#F4EFE6]">
+                    <p className="text-xs text-[#8B8275]">Moon</p>
+                    <p className="font-serif text-lg text-[#3D3830]">
                       {westernWheelData.w.planets.find((p) => p.name === 'Moon')?.sign || '—'}
                     </p>
-                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#B8965A]">
+                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
                       {westernWheelData.w.planets.find((p) => p.name === 'Moon')?.dms || ''}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-[#F4EFE6]/55">Rising (AC)</p>
-                    <p className="font-serif text-lg text-[#F4EFE6]">{westernWheelData.w.angles.ascendant.sign}</p>
-                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#B8965A]">
+                    <p className="text-xs text-[#8B8275]">Rising (AC)</p>
+                    <p className="font-serif text-lg text-[#3D3830]">{westernWheelData.w.angles.ascendant.sign}</p>
+                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
                       {westernWheelData.w.angles.ascendant.dms}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-[#F4EFE6]/55">Midheaven (MC)</p>
-                    <p className="font-serif text-lg text-[#F4EFE6]">{westernWheelData.w.angles.midheaven.sign}</p>
-                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#B8965A]">
+                    <p className="text-xs text-[#8B8275]">Midheaven (MC)</p>
+                    <p className="font-serif text-lg text-[#3D3830]">{westernWheelData.w.angles.midheaven.sign}</p>
+                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
                       {westernWheelData.w.angles.midheaven.dms}
                     </p>
                   </div>
@@ -1020,20 +1268,20 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-xs">
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-                  <p className="text-[#F4EFE6]/60 mb-2">Elemental Signature</p>
-                  <p className="font-serif text-lg text-[#F4EFE6] mb-2">{westernWheelData.w.dominantElement} Dominant</p>
-                  <div className="grid grid-cols-4 gap-1.5 font-['JetBrains_Mono',monospace] text-[11px] text-[#F4EFE6]/75">
-                    <span>🔥 {westernWheelData.w.elements.Fire}</span>
-                    <span>🌍 {westernWheelData.w.elements.Earth}</span>
-                    <span>💨 {westernWheelData.w.elements.Air}</span>
-                    <span>💧 {westernWheelData.w.elements.Water}</span>
+                <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4">
+                  <p className="text-[#8B8275] mb-2">Elemental Signature</p>
+                  <p className="font-serif text-lg text-[#3D3830] mb-2">{westernWheelData.w.dominantElement} Dominant</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 font-['JetBrains_Mono',monospace] text-[11px] text-[#5C5449]">
+                    <span>Fire {westernWheelData.w.elements.Fire}</span>
+                    <span>Earth {westernWheelData.w.elements.Earth}</span>
+                    <span>Air {westernWheelData.w.elements.Air}</span>
+                    <span>Water {westernWheelData.w.elements.Water}</span>
                   </div>
                 </div>
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-                  <p className="text-[#F4EFE6]/60 mb-2">Modality & Polarity</p>
-                  <p className="font-serif text-lg text-[#F4EFE6] mb-2">{westernWheelData.w.dominantModality} Mode</p>
-                  <p className="font-['JetBrains_Mono',monospace] text-[11px] text-[#F4EFE6]/75">
+                <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4">
+                  <p className="text-[#8B8275] mb-2">Modality &amp; Polarity</p>
+                  <p className="font-serif text-lg text-[#3D3830] mb-2">{westernWheelData.w.dominantModality} Mode</p>
+                  <p className="font-['JetBrains_Mono',monospace] text-[11px] text-[#5C5449]">
                     Yang {westernWheelData.w.polarities.Yang} · Yin {westernWheelData.w.polarities.Yin}
                   </p>
                 </div>
@@ -1041,7 +1289,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl bg-white/5 border border-white/10 p-6 text-sm text-[#F4EFE6]/70">
+          <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-6 text-sm text-[#5C5449]">
             Waiting for Tropical coordinates to finish compiling for this profile.
           </div>
         )}
@@ -1053,6 +1301,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
           <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-[#F1ECE3] p-1.5 w-fit">
             {[
               { id: 'overview', label: 'Overview', icon: Sun },
+              { id: 'vargas', label: 'Divisional Charts', icon: Grid3X3 },
               { id: 'planets', label: 'Planetary Positions', icon: Compass },
               { id: 'kp', label: 'KP Cusps & Sub-Lords', icon: Layers },
               { id: 'dasha', label: 'Dashas', icon: Clock },
@@ -1067,7 +1316,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setVedicTab(tab.id as VedicTabId)}
-                  className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                  className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                     active ? 'bg-[#FDFBF7] text-[#3D3830] shadow-sm' : 'text-[#5C5449] hover:text-[#3D3830]'
                   }`}
                 >
@@ -1081,6 +1330,70 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
           {/* VEDIC: OVERVIEW */}
           {vedicTab === 'overview' && (
             <div className="space-y-6">
+              {/* Traditional Birth Details & Astronomical Summary Box */}
+              <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 sm:p-6">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+                  <h3 className="font-serif text-xl font-medium text-[#3D3830]">
+                    Birth Details &amp; Astronomical Summary
+                  </h3>
+                  <span className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
+                    {birthMeta.ayanType} · {birthMeta.ayanamshaDms}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-2 text-xs">
+                  {(
+                    [
+                      [
+                        ['Name', birthMeta.name],
+                        ['Sex', birthMeta.sex],
+                        ['Date', birthMeta.birthDate],
+                        ['Day', birthMeta.dayOfWeek],
+                        ['Time of Birth', birthMeta.birthTime],
+                        ['SID', birthMeta.siderealTime],
+                      ],
+                      [
+                        ['Julian Day', birthMeta.julianDay],
+                        ['Ayan Type', birthMeta.ayanType],
+                        ['Ayan', birthMeta.ayanamshaDms],
+                        ['Place', birthMeta.place],
+                        ['Longitude', birthMeta.longitudeLabel],
+                        ['Latitude', birthMeta.latitudeLabel],
+                      ],
+                      [
+                        ['Asc Lord', birthMeta.ascLord],
+                        ['Asc', birthMeta.ascendant],
+                        ['Yoga', birthMeta.yoga],
+                        ['Tithi', birthMeta.tithi],
+                        ['Sunset', birthMeta.sunset],
+                        ['Sunrise', birthMeta.sunrise],
+                      ],
+                      [
+                        ['Bal. Dasha', birthMeta.balanceOfDasha],
+                        ['Karan', birthMeta.karan],
+                        ['Star Lord', birthMeta.starLord],
+                        ['Star - Pada', birthMeta.starPada],
+                        ['Rasi Lord', birthMeta.rasiLord],
+                        ['Rasi', birthMeta.rasi],
+                      ],
+                    ] as Array<Array<[string, string]>>
+                  ).map((colRows, cIdx) => (
+                    <div
+                      key={cIdx}
+                      className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/8 p-3.5 space-y-1.5"
+                    >
+                      {colRows.map(([label, val]) => (
+                        <div key={label} className="flex items-baseline justify-between gap-3">
+                          <span className="text-[#8B8275] shrink-0">{label}</span>
+                          <span className="font-medium text-[#3D3830] text-right truncate font-['JetBrains_Mono',monospace] tabular-nums">
+                            {val}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Vedic Structural Chart DNA Card */}
               {dossier?.layer_a?.snapshot_scores && (
                 <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 sm:p-6 space-y-4">
@@ -1213,26 +1526,6 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                 </div>
               )}
 
-              {/* Major Vedic Yogas */}
-              {chart.yogas && chart.yogas.length > 0 && (
-                <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 sm:p-6">
-                  <h3 className="font-serif text-xl font-medium text-[#3D3830] mb-4">
-                    Key Classical Yogas Present
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {chart.yogas.map((y, idx) => (
-                      <div key={`${y.name}-${idx}`} className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4">
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <p className="font-medium text-sm text-[#3D3830]">{y.name}</p>
-                          <span className="text-[11px] font-medium text-[#8B7355]">{y.category}</span>
-                        </div>
-                        <p className="text-xs text-[#5C5449] leading-relaxed">{y.summary}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Live Current Transits (Gochar) */}
               <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 overflow-hidden">
                 <div className="px-5 sm:px-6 py-4 border-b border-[#3D3830]/10 flex items-center justify-between">
@@ -1291,6 +1584,107 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                     Current transit table is temporarily unavailable in this view.
                   </p>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* VEDIC: DIVISIONAL CHARTS & SHODASHVARGA */}
+          {vedicTab === 'vargas' && (
+            <div className="space-y-6">
+              {/* Full 16x10 Shodashvarga Table */}
+              <div className="overflow-x-auto rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10">
+                <div className="px-5 sm:px-6 py-4 border-b border-[#3D3830]/10 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-serif text-xl font-medium text-[#3D3830]">
+                      Shodashvarga Table
+                    </h3>
+                    <p className="text-xs text-[#8B8275]">
+                      Sign number &amp; rashi across all 16 Parashari divisional charts
+                    </p>
+                  </div>
+                </div>
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#3D3830]/10 bg-[#FAF7F2] text-[#8B8275]">
+                      <th className="py-3 px-4 font-medium">Chart</th>
+                      <th className="py-3 px-4 font-medium">Shodashvarga</th>
+                      {SHODASHVARGA_PLANET_COLS.map((col) => (
+                        <th key={col.name} className="py-3 px-2.5 text-center font-medium">
+                          {col.short}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#3D3830]/10">
+                    {SHODASHVARGA_DEFS.map((def) => {
+                      const varga = allVargas[def.code];
+                      if (!varga) return null;
+                      return (
+                        <tr key={def.code} className="hover:bg-[#F1ECE3]/50">
+                          <td className="py-2.5 px-4 font-['JetBrains_Mono',monospace] font-semibold text-[#8B7355]">
+                            {def.code}
+                          </td>
+                          <td className="py-2.5 px-4 font-medium text-[#3D3830] whitespace-nowrap">
+                            {def.name}
+                          </td>
+                          {SHODASHVARGA_PLANET_COLS.map((col) => {
+                            const pl = varga.placements.find((x) => x.name === col.name);
+                            return (
+                              <td
+                                key={col.name}
+                                className="py-2.5 px-2.5 text-center font-['JetBrains_Mono',monospace] tabular-nums text-[#3D3830] whitespace-nowrap"
+                              >
+                                {pl ? (
+                                  <span>
+                                    <span className="text-[#8B7355]">{pl.signIndex + 1}</span>{' '}
+                                    <span>{VEDIC_SIGNS_SHORT[pl.signIndex]}</span>
+                                  </span>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* All 16 Visual Divisional Charts */}
+              <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 sm:p-6 space-y-5">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div>
+                    <h3 className="font-serif text-xl font-medium text-[#3D3830]">
+                      All 16 Divisional Charts ({chartStyle === 'north' ? 'North Indian' : 'South Indian'})
+                    </h3>
+                    <p className="text-xs text-[#8B8275]">
+                      Synchronized with the {chartStyle === 'north' ? 'North Indian' : 'South Indian'} chart toggle above
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                  {SHODASHVARGA_DEFS.map((def) => {
+                    const varga = allVargas[def.code];
+                    if (!varga) return null;
+                    return (
+                      <KundliSvg
+                        key={def.code}
+                        chartStyle={chartStyle}
+                        title={`${def.code} · ${def.name}`}
+                        subtitle={`${SIGN_NAMES_SHORT[varga.ascendantSignIndex]} Asc`}
+                        centerTitle={def.code}
+                        centerSub={def.name}
+                        ascendantSignIndex={varga.ascendantSignIndex}
+                        placements={varga.placements}
+                        natalPlanets={chart.planets}
+                        compact
+                      />
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -1575,6 +1969,45 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
           {/* VEDIC: JAIMINI & ASHTAKAVARGA */}
           {vedicTab === 'jaimini' && (
             <div className="space-y-6">
+              {/* Jaimini System — Karakamsha & Swamsa Side by Side */}
+              <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 sm:p-6">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+                  <div>
+                    <h3 className="font-serif text-xl font-medium text-[#3D3830]">
+                      Jaimini System — Karakamsha &amp; Swamsa
+                    </h3>
+                    <p className="text-xs text-[#8B8275]">
+                      D1 and D9 planetary placements anchored to Atmakaraka’s Navamsha sign ({jaiminiCharts.karakamshaSign})
+                    </p>
+                  </div>
+                  <span className="text-xs font-['JetBrains_Mono',monospace] text-[#8B7355]">
+                    Karakamsha: {jaiminiCharts.karakamshaSign}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <KundliSvg
+                    chartStyle={chartStyle}
+                    title="Karakamsha Chart"
+                    subtitle="D1 Planets from Karakamsha"
+                    centerTitle="Karakamsha"
+                    centerSub={jaiminiCharts.karakamshaSign}
+                    ascendantSignIndex={jaiminiCharts.karakamshaSignIndex}
+                    placements={jaiminiCharts.karakamshaPlacements}
+                    natalPlanets={chart.planets}
+                  />
+                  <KundliSvg
+                    chartStyle={chartStyle}
+                    title="Swamsa Chart"
+                    subtitle="D9 Planets from Karakamsha"
+                    centerTitle="Swamsa"
+                    centerSub={jaiminiCharts.karakamshaSign}
+                    ascendantSignIndex={jaiminiCharts.karakamshaSignIndex}
+                    placements={jaiminiCharts.swamsaPlacements}
+                    natalPlanets={chart.planets}
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 <div className="overflow-x-auto rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10">
                   <div className="px-5 py-4 border-b border-[#3D3830]/10 flex items-center justify-between">

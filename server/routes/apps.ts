@@ -17,8 +17,6 @@ import type { PlanetPosition, WesternPlanetPosition } from '../services/jyotishM
 import {
   BIRTH_CHART_DOMAINS,
   FALLBACK_PLANET_QUIZ,
-  MINI_APPS_BY_SLUG,
-  MINI_APPS_CATALOG,
   PLANET_STRENGTH_PLANETS,
   buildFallbackMarkdownForApp,
   buildMiniAppPrompt,
@@ -26,7 +24,11 @@ import {
   buildStructuredHeaderForApp,
   computeAppCacheKey,
 } from '../services/miniAppsCatalog';
-import { getMiniAppsConfig, type MiniAppsGovernanceConfig } from '../services/platformSettings';
+import {
+  getDynamicAppBySlug,
+  getDynamicMiniAppsPublicCatalog,
+} from '../services/miniAppsRegistry';
+import { getMiniAppsConfig } from '../services/platformSettings';
 import { getPublicCompanionsCatalogCached } from '../services/companionPresets';
 import type { PublicCompanionCard } from '../../components/app/chatTypes';
 import type {
@@ -64,19 +66,7 @@ export function clearMiniAppsMemoryCache(appSlug?: string): number {
   return removed;
 }
 
-function resolveEffectiveCatalog(cfg: MiniAppsGovernanceConfig): MiniAppDefinition[] {
-  const result: MiniAppDefinition[] = [];
-  for (const app of MINI_APPS_CATALOG) {
-    const ov = cfg.overrides[app.slug];
-    if (ov && ov.enabled === false) continue;
-    result.push({
-      ...app,
-      featuredOnHome:
-        typeof ov?.featured_on_home === 'boolean' ? ov.featured_on_home : app.featuredOnHome,
-    });
-  }
-  return result;
-}
+// Helper removed in favor of getDynamicMiniAppsPublicCatalog() from miniAppsRegistry.ts
 
 const EXPERT_META: Record<string, { title: string; subtitle: string }> = {
   [DEFAULT_COUNCIL_EXPERT_SLUG]: {
@@ -230,11 +220,11 @@ router.get('/catalog', requireAuth, async (req: AuthenticatedRequest, res) => {
     // Graceful pre-migration fallback
   }
 
-  const miniAppsCfg = await getMiniAppsConfig();
-  const effectiveCatalog = resolveEffectiveCatalog(miniAppsCfg);
+  const publicCatalog = await getDynamicMiniAppsPublicCatalog();
 
   res.json({
-    apps: effectiveCatalog,
+    categories: publicCatalog.categories,
+    apps: publicCatalog.apps,
     breakdownDomains: BIRTH_CHART_DOMAINS.map((d) => ({
       id: d.id,
       title: d.title,
@@ -313,10 +303,14 @@ router.get('/usage-summary', requireAuth, async (req: AuthenticatedRequest, res)
           existing.runs += 1;
         }
       }
+      const { apps: catalogApps } = await getDynamicMiniAppsPublicCatalog();
+      const titleLookup = new Map<string, string>(
+        catalogApps.map((a) => [a.slug, a.shortTitle || a.title])
+      );
       topApps = Array.from(bySlug.entries())
         .map(([slug, info]) => ({
           slug,
-          title: MINI_APPS_BY_SLUG[slug]?.shortTitle || MINI_APPS_BY_SLUG[slug]?.title || slug,
+          title: titleLookup.get(slug) || slug,
           runs: info.runs,
           lastUsedAt: info.lastUsedAt,
         }))
@@ -370,7 +364,8 @@ router.post('/favorites/toggle', requireAuth, async (req: AuthenticatedRequest, 
   }
 
   const appSlug = typeof req.body?.appSlug === 'string' ? req.body.appSlug.trim() : '';
-  if (!appSlug || !MINI_APPS_BY_SLUG[appSlug]) {
+  const matchedApp = appSlug ? await getDynamicAppBySlug(appSlug) : null;
+  if (!appSlug || !matchedApp) {
     res.status(400).json({ error: 'Unknown mini-app slug' });
     return;
   }
@@ -806,7 +801,8 @@ router.get('/:slug/readings', requireAuth, async (req: AuthenticatedRequest, res
   }
 
   const slug = String(req.params.slug || '').trim();
-  if (!MINI_APPS_BY_SLUG[slug]) {
+  const appDef = await getDynamicAppBySlug(slug);
+  if (!appDef) {
     res.status(404).json({ error: 'Mini-App not found' });
     return;
   }
@@ -886,7 +882,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
   }
 
   const slug = String(req.params.slug || '').trim();
-  const appDef = MINI_APPS_BY_SLUG[slug];
+  const appDef = await getDynamicAppBySlug(slug);
   if (!appDef) {
     res.status(404).json({ error: 'Mini-App not found' });
     return;
@@ -894,7 +890,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
 
   const miniAppsCfg = await getMiniAppsConfig();
   const appOverride = miniAppsCfg.overrides[slug];
-  if (appOverride && appOverride.enabled === false) {
+  if (!appDef.isActive || (appOverride && appOverride.enabled === false)) {
     res.status(403).json({
       error: 'This app is currently paused.',
       code: 'APP_DISABLED',
@@ -1212,19 +1208,22 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
   }
 
   // Fetch live platform-cached Gochar + Tropical transits for timing-aware apps
-  const needsTransits = [
-    'daily-horoscope',
-    'weekly-horoscope',
-    'monthly-horoscope',
-    'current-transits',
-    'dasha-analysis',
-    'wealth-blueprint',
-    'love-forecast',
-    'career-navigator',
-    'salary-negotiator',
-    'jupiter-opportunities',
-    'breakup-clarity',
-  ].includes(slug);
+  const needsTransits =
+    [
+      'daily-horoscope',
+      'weekly-horoscope',
+      'monthly-horoscope',
+      'current-transits',
+      'dasha-analysis',
+      'wealth-blueprint',
+      'love-forecast',
+      'career-navigator',
+      'salary-negotiator',
+      'jupiter-opportunities',
+      'breakup-clarity',
+    ].includes(slug) ||
+    appDef.category === 'daily_timing' ||
+    ['daily', 'weekly', 'monthly'].includes(appDef.cacheScope);
 
   let transitPlanets: PlanetPosition[] = [];
   let westernTransitPlanets: WesternPlanetPosition[] = [];
@@ -1263,6 +1262,13 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     partnerProfile,
     transitSummary: transitSummary || null,
     inputs,
+    customPrompts: {
+      vedicPrompt: appDef.vedicPrompt,
+      westernPrompt: appDef.westernPrompt,
+      systemOverride: appDef.systemOverride,
+      title: appDef.title,
+      description: appDef.description,
+    },
   });
 
   let markdown = '';
@@ -1274,7 +1280,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     try {
       const fallbackUtilityModel = await getUtilityModelAsync();
       modelUsed =
-        appOverride?.model_id || miniAppsCfg.default_model_id || fallbackUtilityModel;
+        appDef.modelId || appOverride?.model_id || miniAppsCfg.default_model_id || fallbackUtilityModel;
       const completion = await createOpenRouterCompletion({
         model: modelUsed,
         system: promptSpec.system,
@@ -1293,6 +1299,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
   if (!markdown) {
     markdown = buildFallbackMarkdownForApp({
       slug,
+      title: appDef.title,
       profileName: profile?.name,
       inputs,
       astrologyMode,

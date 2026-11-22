@@ -2,12 +2,14 @@ import type { LifeContextData } from '../../lib/lifeContextSchema';
 
 export type MiniAppTemplate = 'auto_brief' | 'domain_explorer' | 'form_reading' | 'guided_quiz';
 
-export type MiniAppCategory =
-  | 'daily_timing'
-  | 'self_chart'
-  | 'love'
-  | 'money_career'
-  | 'mind_wellness';
+export type MiniAppCategory = string;
+
+export interface MiniAppCategoryRecord {
+  slug: string;
+  label: string;
+  sortOrder: number;
+  isActive: boolean;
+}
 
 export interface MiniAppDefinition {
   slug: string;
@@ -25,6 +27,10 @@ export interface MiniAppDefinition {
   cacheScope: 'daily' | 'weekly' | 'monthly' | 'chart' | 'none';
   chatSeedPrompt: string;
   estimatedRead: string;
+  sortOrder?: number;
+  isActive?: boolean;
+  inputLabel?: string;
+  inputPlaceholder?: string;
 }
 
 export interface BreakdownSubTopic {
@@ -138,6 +144,14 @@ export interface HomeSummaryResponse {
     life_context_completeness?: number;
   } | null;
 }
+
+export const DEFAULT_MINI_APP_CATEGORY_RECORDS: MiniAppCategoryRecord[] = [
+  { slug: 'daily_timing', label: 'Timing', sortOrder: 10, isActive: true },
+  { slug: 'self_chart', label: 'Identity', sortOrder: 20, isActive: true },
+  { slug: 'love', label: 'Love', sortOrder: 30, isActive: true },
+  { slug: 'money_career', label: 'Money & Career', sortOrder: 40, isActive: true },
+  { slug: 'mind_wellness', label: 'Mind & Wellness', sortOrder: 50, isActive: true },
+];
 
 export const MINI_APP_CATEGORIES: Array<{ id: 'all' | 'popular' | MiniAppCategory | 'favorites'; label: string }> = [
   { id: 'all', label: 'All' },

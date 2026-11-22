@@ -149,7 +149,7 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
   if (totalCount === 0) {
     if (!utilityBar) return null;
     return (
-      <div className="mt-2 border-t border-[#3D3830]/[0.08] pt-2.5 flex flex-wrap items-center justify-end gap-2">
+      <div className="mt-2 border-t border-[#3D3830]/[0.08] pt-2.5 flex flex-wrap items-center justify-center sm:justify-end gap-2">
         {utilityBar}
       </div>
     );
@@ -419,13 +419,19 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
       className="mt-2 border-t border-[#3D3830]/[0.08] pt-2.5"
       aria-label="Suggestions and message actions"
     >
-      {/* Unified Option-A Footer: Suggestions (Left) + Utility Icons (Right) */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* Unified Option-A Footer: Mobile stacks Utility Icons centered above Suggestions; Desktop keeps Suggestions Left + Utility Icons Right */}
+      <div className="flex flex-col items-center gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
+        {utilityBar ? (
+          <div className="order-1 sm:order-2 w-full sm:w-auto flex justify-center sm:justify-end sm:ml-auto">
+            {utilityBar}
+          </div>
+        ) : null}
+
         <button
           type="button"
           onClick={toggleExpand}
           aria-expanded={isExpanded}
-          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-left text-xs font-medium active:scale-[0.98] transition-all cursor-pointer ${
+          className={`order-2 sm:order-1 inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-left text-xs font-medium active:scale-[0.98] transition-all cursor-pointer ${
             isExpanded
               ? 'border-[#3D3830]/22 bg-[#F1ECE3] text-[#3D3830] shadow-xs'
               : 'border-[#3D3830]/14 bg-[#FDFBF7] text-[#3D3830] hover:bg-[#F1ECE3] hover:border-[#3D3830]/22'
@@ -438,8 +444,6 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
             }`}
           />
         </button>
-
-        {utilityBar ? <div className="ml-auto">{utilityBar}</div> : null}
       </div>
 
       {/* Smoothly Animated Expandable Suggestions Body */}

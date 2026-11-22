@@ -30,6 +30,7 @@ import {
 } from './miniAppsClientData';
 import type {
   BreakdownDomain,
+  MiniAppDefinition,
   MiniAppPastReading,
   MiniAppRunResponse,
   PlanetStrengthQuestion,
@@ -90,15 +91,32 @@ const PATTERN_EXAMPLES = [
 
 const FAVORITES_STORAGE_KEY = 'cc_favorite_apps_v1';
 
+const BUILTIN_FORM_SLUGS = new Set([
+  'love-compatibility',
+  'dream-interpreter',
+  'affirmations-generator',
+  'salary-negotiator',
+  'birth-chart-matching',
+  'breakup-clarity',
+  'relationship-patterns',
+  'pet-bond',
+]);
+
 const MiniAppRunner: React.FC = () => {
   const { appSlug } = useParams<{ appSlug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { isPreviewMode, getAccessToken, astrologyMode, setAstrologyMode } = useAuth();
 
+  const [dynamicApps, setDynamicApps] = useState<MiniAppDefinition[]>(CLIENT_MINI_APPS);
+  const [catalogLoaded, setCatalogLoaded] = useState<boolean>(isPreviewMode);
+
   const appDef = useMemo(
-    () => CLIENT_MINI_APPS.find((a) => a.slug === appSlug) || null,
-    [appSlug]
+    () =>
+      dynamicApps.find((a) => a.slug === appSlug) ||
+      CLIENT_MINI_APPS.find((a) => a.slug === appSlug) ||
+      null,
+    [dynamicApps, appSlug]
   );
 
   const [profiles, setProfiles] = useState<ProfileOption[]>(() =>
@@ -163,6 +181,7 @@ const MiniAppRunner: React.FC = () => {
   const [petSpecies, setPetSpecies] = useState('Dog');
   const [petDate, setPetDate] = useState('');
   const [petQuirks, setPetQuirks] = useState('');
+  const [customFormInput, setCustomFormInput] = useState('');
 
   // Template D: Planet Strength Tester Quiz states
   const [selectedPlanet, setSelectedPlanet] = useState<string | null>(null);
@@ -171,10 +190,11 @@ const MiniAppRunner: React.FC = () => {
   const [quizAnswers, setQuizAnswers] = useState<Array<{ question: string; answer: string; score: number }>>([]);
   const [planetNatalMeta, setPlanetNatalMeta] = useState<MiniAppRunResponse['planetNatalContext']>(null);
 
-  // Load profiles on mount
+  // Load dynamic catalog & profiles on mount
   useEffect(() => {
     if (isPreviewMode) {
       setProfilesLoaded(true);
+      setCatalogLoaded(true);
       return;
     }
 
@@ -182,14 +202,33 @@ const MiniAppRunner: React.FC = () => {
     (async () => {
       const token = await getAccessToken();
       if (!token) {
-        if (!cancelled) setProfilesLoaded(true);
+        if (!cancelled) {
+          setProfilesLoaded(true);
+          setCatalogLoaded(true);
+        }
         return;
       }
-      const res = await fetch('/api/profiles', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok && !cancelled) {
-        const data = await res.json();
+      const [catRes, profRes] = await Promise.all([
+        fetch('/api/apps/catalog', { headers: { Authorization: `Bearer ${token}` } }).catch(
+          () => null
+        ),
+        fetch('/api/profiles', { headers: { Authorization: `Bearer ${token}` } }).catch(
+          () => null
+        ),
+      ]);
+      if (catRes && catRes.ok && !cancelled) {
+        const cData = await catRes.json();
+        if (Array.isArray(cData.apps)) {
+          setDynamicApps(cData.apps as MiniAppDefinition[]);
+        }
+        if (Array.isArray(cData.favoriteSlugs) && appSlug) {
+          setIsFavorite((cData.favoriteSlugs as string[]).includes(appSlug));
+        }
+      }
+      if (!cancelled) setCatalogLoaded(true);
+
+      if (profRes && profRes.ok && !cancelled) {
+        const data = await profRes.json();
         const list = (data.profiles || []) as ProfileOption[];
         setProfiles(list);
         const queryPid = searchParams.get('profileId');
@@ -208,7 +247,7 @@ const MiniAppRunner: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [getAccessToken, isPreviewMode, searchParams]);
+  }, [appSlug, getAccessToken, isPreviewMode, searchParams]);
 
   const loadPastReadings = useCallback(async () => {
     if (!appDef || isPreviewMode) {
@@ -558,6 +597,15 @@ const MiniAppRunner: React.FC = () => {
       }
     }
   };
+
+  if (!appDef && !catalogLoaded) {
+    return (
+      <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-10 text-center space-y-3">
+        <Loader2 className="h-5 w-5 animate-spin text-[#8B7355] mx-auto" />
+        <p className="text-xs text-[#8B8275]">Loading app...</p>
+      </div>
+    );
+  }
 
   if (!appDef) {
     return (
@@ -1413,6 +1461,52 @@ const MiniAppRunner: React.FC = () => {
                     ) : (
                       <>
                         <span>Explore Pet Bond</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {!BUILTIN_FORM_SLUGS.has(appDef.slug) && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="font-serif text-2xl font-medium text-[#3D3830]">
+                      {appDef.inputLabel || 'Share your question or context'}
+                    </h2>
+                    <p className="text-xs text-[#5C5449] mt-0.5">
+                      {appDef.description}
+                    </p>
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={customFormInput}
+                    onChange={(e) => setCustomFormInput(e.target.value)}
+                    placeholder={
+                      appDef.inputPlaceholder ||
+                      'Share the focus, question, or context you would like examined through your chart...'
+                    }
+                    className="w-full rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/12 px-4 py-3.5 text-sm text-[#3D3830] placeholder:text-[#8B8275] focus:outline-none focus:border-[#3D3830]/35 leading-relaxed"
+                  />
+                  <button
+                    type="button"
+                    disabled={isLoading || !customFormInput.trim()}
+                    onClick={() =>
+                      void executeMiniApp({
+                        inputs: { userInput: customFormInput.trim() },
+                      })
+                    }
+                    className="min-h-[44px] inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-6 py-3 text-sm font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors disabled:opacity-45 cursor-pointer"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Generating reading...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 text-[#B8965A]" />
+                        <span>Generate Reading</span>
                         <ArrowRight className="h-4 w-4" />
                       </>
                     )}

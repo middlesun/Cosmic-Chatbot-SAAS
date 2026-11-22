@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
-import { Currency } from '../types';
+import { Currency } from '../../types';
 
 interface SelectedProduct {
   id: string;

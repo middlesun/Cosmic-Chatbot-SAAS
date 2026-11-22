@@ -144,9 +144,9 @@ const PRIMARY_ADMIN_NAV: SidebarNavItem[] = [
   },
   {
     key: 'apps',
-    label: 'Apps & Usage',
+    label: 'Apps manager',
     path: '/app/admin/apps',
-    description: 'Mini-Apps usage telemetry, cache efficiency, token cost economics, and governance.',
+    description: 'Manage Mini-Apps, prompts, display order, categories, usage telemetry, and governance.',
     icon: LayoutGrid,
   },
   {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Currency } from '../types';
+import { Currency } from '../../types';
 
 interface WhyUsProps {
   onBack: () => void;
