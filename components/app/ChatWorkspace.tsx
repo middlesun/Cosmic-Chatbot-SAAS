@@ -30,29 +30,31 @@ import ChatSettingsModal, { type ChatFontSize } from './ChatSettingsModal';
 import BirthChartModal from './BirthChartModal';
 import AskLaterDrawer from './AskLaterDrawer';
 import { getUserProfileDisplayLabel, isAffirmativeReply } from './chatUtilities';
-import type {
-  ActiveChatTab,
-  AskLaterItem,
-  ChatAttachmentInput,
-  ChatCatalog,
-  ChatMessageRecord,
-  ChatPillar,
-  ChatProfile,
-  ChatResponseLength,
-  ChatToneMode,
-  ClarificationChip,
-  CompanionArchetypeSlug,
-  CompanionPersona,
-  ConversationRecord,
-  CustomPromptRecord,
-  FavoriteMessageRecord,
-  LifeContextData,
-  MessageSuggestions,
-  PendingBirthProfileDraft,
-  PublicChatbotUiConfig,
-  PublicSuggestionsUiConfig,
-  SuggestionItem,
-  TimingProgressWidget,
+import {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  normalizeCouncilSlug,
+  type ActiveChatTab,
+  type AskLaterItem,
+  type ChatAttachmentInput,
+  type ChatCatalog,
+  type ChatMessageRecord,
+  type ChatPillar,
+  type ChatProfile,
+  type ChatResponseLength,
+  type ChatToneMode,
+  type ClarificationChip,
+  type CompanionArchetypeSlug,
+  type CompanionPersona,
+  type ConversationRecord,
+  type CustomPromptRecord,
+  type FavoriteMessageRecord,
+  type LifeContextData,
+  type MessageSuggestions,
+  type PendingBirthProfileDraft,
+  type PublicChatbotUiConfig,
+  type PublicSuggestionsUiConfig,
+  type SuggestionItem,
+  type TimingProgressWidget,
 } from './chatTypes';
 import {
   PREVIEW_CHAT_CATALOG,
@@ -93,7 +95,7 @@ const DEFAULT_CORE_TABS: ActiveChatTab[] = [
     pillar: 'council',
     conversationId: null,
     label: 'Vedic Astrologer',
-    expertSlug: 'council_synthesis',
+    expertSlug: DEFAULT_COUNCIL_EXPERT_SLUG,
     isCore: false,
   },
   {
@@ -150,7 +152,7 @@ function enrichConversationWithLocalMeta(conv: ConversationRecord): Conversation
 }
 
 const COUNCIL_EXPERT_FALLBACK_NAMES: Record<string, string> = {
-  council_synthesis: 'Vedic Astrologer',
+  [DEFAULT_COUNCIL_EXPERT_SLUG]: 'Vedic Astrologer',
   western_astrologer: 'Western Astrologer',
   modern_astrologer: 'Modern Astrologer',
   tarot_reader: 'Tarot',
@@ -159,9 +161,10 @@ const COUNCIL_EXPERT_FALLBACK_NAMES: Record<string, string> = {
 };
 
 function resolveCouncilDisplayName(slug: string, catalog: ChatCatalog | null): string {
-  const match = catalog?.experts?.find((e) => e.slug === slug)?.displayName?.trim();
+  const normalized = normalizeCouncilSlug(slug);
+  const match = catalog?.experts?.find((e) => e.slug === normalized)?.displayName?.trim();
   if (match) return match;
-  return COUNCIL_EXPERT_FALLBACK_NAMES[slug] || 'Vedic Astrologer';
+  return COUNCIL_EXPERT_FALLBACK_NAMES[normalized] || 'Vedic Astrologer';
 }
 
 function buildClientCouncilTitle(
@@ -325,7 +328,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const [showMobileDrawer, setShowMobileDrawer] = useState(false);
 
   // Active consultation parameters
-  const [expertSlug, setExpertSlug] = useState(appUser?.default_expert || 'council_synthesis');
+  const [expertSlug, setExpertSlug] = useState(
+    normalizeCouncilSlug(appUser?.default_expert)
+  );
   const [languageSlug, setLanguageSlug] = useState(appUser?.default_language || 'English');
   const [toneMode, setToneMode] = useState<ChatToneMode>('technical');
   const [responseLength, setResponseLength] = useState<ChatResponseLength>('detailed');
@@ -437,7 +442,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   // Sync defaults once appUser loads
   useEffect(() => {
     if (appUser) {
-      setExpertSlug((prev) => prev || appUser.default_expert || 'council_synthesis');
+      setExpertSlug((prev) => prev || normalizeCouncilSlug(appUser.default_expert));
       setLanguageSlug((prev) => prev || appUser.default_language || 'English');
       setChatFontSize(appUser.chat_font_size || 'base');
       if (typeof appUser.suggestions_auto_expand === 'boolean') {
@@ -992,12 +997,15 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           seedSystem === 'western' || seedExpert === 'western_astrologer'
             ? 'Western Astrologer'
             : 'Vedic Astrologer';
+        const normalizedSeedExpert = seedExpert ? normalizeCouncilSlug(seedExpert) : null;
         const newCouncilTab: ActiveChatTab = {
           tabId: `tab-council-${Date.now()}`,
           pillar: 'council',
           conversationId: null,
           label: defaultLabel,
-          expertSlug: seedExpert || (seedSystem === 'western' ? 'western_astrologer' : 'council_synthesis'),
+          expertSlug:
+            normalizedSeedExpert ||
+            (seedSystem === 'western' ? 'western_astrologer' : DEFAULT_COUNCIL_EXPERT_SLUG),
           isCore: false,
         };
         seededCouncilFreshRef.current = true;
@@ -1013,12 +1021,12 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       setAstrologyMode(seedSystem);
       if (!seedExpert) {
         seededExpertRef.current = false;
-        setExpertSlug(seedSystem === 'western' ? 'western_astrologer' : 'council_synthesis');
+        setExpertSlug(seedSystem === 'western' ? 'western_astrologer' : DEFAULT_COUNCIL_EXPERT_SLUG);
       }
     }
     if (seedExpert) {
       seededExpertRef.current = true;
-      setExpertSlug(seedExpert);
+      setExpertSlug(normalizeCouncilSlug(seedExpert));
     }
     if (seedPrompt) setDraftText(seedPrompt);
     if (seedProfileId) setPendingProfileId(seedProfileId);
@@ -1125,15 +1133,15 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     if (isThreadLocked || activeConversation || activePillar !== 'council' || seededExpertRef.current) {
       return;
     }
-    const nextExpert = astrologyMode === 'western' ? 'western_astrologer' : 'council_synthesis';
+    const nextExpert = astrologyMode === 'western' ? 'western_astrologer' : DEFAULT_COUNCIL_EXPERT_SLUG;
     const nextLabel = astrologyMode === 'western' ? 'Western Astrologer' : 'Vedic Astrologer';
-    if (astrologyMode === 'western' && expertSlug === 'council_synthesis') {
+    if (astrologyMode === 'western' && normalizeCouncilSlug(expertSlug) === DEFAULT_COUNCIL_EXPERT_SLUG) {
       setExpertSlug('western_astrologer');
     } else if (
       astrologyMode === 'vedic' &&
       (expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer')
     ) {
-      setExpertSlug('council_synthesis');
+      setExpertSlug(DEFAULT_COUNCIL_EXPERT_SLUG);
     }
     setTabs((prev) =>
       prev.map((t) =>
@@ -1157,13 +1165,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           ? expertSlug === 'modern_astrologer'
             ? 'modern_astrologer'
             : 'western_astrologer'
-          : 'council_synthesis';
+          : DEFAULT_COUNCIL_EXPERT_SLUG;
       if (nextMode === 'western') {
         if (expertSlug !== 'modern_astrologer') {
           setExpertSlug('western_astrologer');
         }
       } else {
-        setExpertSlug('council_synthesis');
+        setExpertSlug(DEFAULT_COUNCIL_EXPERT_SLUG);
       }
       const nextLabel =
         nextExpert === 'modern_astrologer'
@@ -1286,7 +1294,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         setExpertSlug('learn_astrology');
       } else if (expertSlug === 'learn_astrology') {
         seededExpertRef.current = false;
-        setExpertSlug(appUser?.default_expert || chatbotConfig?.default_expert || 'council_synthesis');
+        setExpertSlug(
+          normalizeCouncilSlug(appUser?.default_expert || chatbotConfig?.default_expert)
+        );
       }
     }
 
@@ -1470,7 +1480,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     }
 
     const nextExpert =
-      targetTradition === 'western' ? 'western_astrologer' : 'council_synthesis';
+      targetTradition === 'western' ? 'western_astrologer' : DEFAULT_COUNCIL_EXPERT_SLUG;
     const nextLabel =
       targetTradition === 'western' ? 'Western Astrologer' : 'Vedic Astrologer';
 
@@ -1493,9 +1503,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   };
 
   const handleReplaceTabWithCouncil = (targetTabId: string, guideSlug: string) => {
+    const normalizedGuideSlug = normalizeCouncilSlug(guideSlug);
     const targetTab = tabs.find((t) => t.tabId === targetTabId);
     if (!targetTab) return;
-    const guide = catalog?.experts.find((e) => e.slug === guideSlug);
+    const guide = catalog?.experts.find((e) => e.slug === normalizedGuideSlug);
     const guideLabel = guide?.displayName || 'Vedic Astrologer';
 
     const updatedTab: ActiveChatTab = {
@@ -1503,21 +1514,21 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       pillar: 'council',
       conversationId: null,
       label: guideLabel,
-      expertSlug: guideSlug,
+      expertSlug: normalizedGuideSlug,
       customLabel: false,
       isCore: false,
     };
 
     seededExpertRef.current = true;
-    if (guideSlug === 'western_astrologer' || guideSlug === 'modern_astrologer') {
+    if (normalizedGuideSlug === 'western_astrologer' || normalizedGuideSlug === 'modern_astrologer') {
       setAstrologyMode('western');
-    } else if (guideSlug === 'council_synthesis') {
+    } else if (normalizedGuideSlug === DEFAULT_COUNCIL_EXPERT_SLUG) {
       setAstrologyMode('vedic');
     }
 
     delete tabCacheRef.current[targetTabId];
     setTabs((prev) => prev.map((t) => (t.tabId === targetTabId ? updatedTab : t)));
-    setExpertSlug(guideSlug);
+    setExpertSlug(normalizedGuideSlug);
     activateTab(updatedTab, { skipSnapshot: activeTabId === targetTabId });
     setComposerFocusTrigger((n) => n + 1);
   };
@@ -2150,7 +2161,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       expertSlug === 'learn_astrology'
         ? defaultCouncilMode === 'western'
           ? 'western_astrologer'
-          : 'council_synthesis'
+          : DEFAULT_COUNCIL_EXPERT_SLUG
         : expertSlug;
     if (expertSlug === 'learn_astrology') {
       seededExpertRef.current = false;
@@ -2234,7 +2245,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     overrideText?: string,
     overrideConversation?: ConversationRecord,
     overrideTechnicalDirective?: string,
-    sutraOptions?: {
+    vedicOptions?: {
       bypassClarification?: boolean;
       clarifiedPlaybookId?: string;
       clarifiedContextPatch?: Partial<LifeContextData>;
@@ -2270,7 +2281,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     if (
       !overrideConversation &&
       !overrideText &&
-      !sutraOptions?.bypassClarification &&
+      !vedicOptions?.bypassClarification &&
       pendingAttachments.length === 0 &&
       /^(?:continue|skip|proceed|go ahead|just answer|answer anyway|continue without details|no details|skip details)[.!]?$/i.test(
         promptToSend
@@ -2310,7 +2321,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     const currentReplyTarget = replyTarget;
     const currentExtraProfiles =
       sendPillar === 'council'
-        ? sutraOptions?.overrideExtraProfileIds ?? extraProfileIds
+        ? vedicOptions?.overrideExtraProfileIds ?? extraProfileIds
         : [];
     const directiveToSend =
       sendPillar === 'council'
@@ -2459,21 +2470,19 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           deepAudit:
             sendPillar === 'council' &&
             Boolean(targetConversation.profile_id) &&
-            expertSlug !== 'western_astrologer' &&
-            expertSlug !== 'modern_astrologer' &&
             expertSlug !== 'tarot_reader' &&
             expertSlug !== 'numerologist' &&
             expertSlug !== 'learn_astrology' &&
             targetConversation.mode_type !== 'learn_astrology' &&
             targetConversation.mode_type !== 'report_followup' &&
             pendingAttachments.length === 0 &&
-            (sutraOptions?.overrideDeepAudit || deepAudit)
+            (vedicOptions?.overrideDeepAudit || deepAudit)
               ? true
               : undefined,
-          bypassClarification: sutraOptions?.bypassClarification || undefined,
-          clarifiedPlaybookId: sutraOptions?.clarifiedPlaybookId || undefined,
-          clarifiedContextPatch: sutraOptions?.clarifiedContextPatch || undefined,
-          curatedStarter: sutraOptions?.curatedStarter || undefined,
+          bypassClarification: vedicOptions?.bypassClarification || undefined,
+          clarifiedPlaybookId: vedicOptions?.clarifiedPlaybookId || undefined,
+          clarifiedContextPatch: vedicOptions?.clarifiedContextPatch || undefined,
+          curatedStarter: vedicOptions?.curatedStarter || undefined,
           attachments: pendingAttachments.map((a) => ({
             kind: a.kind,
             name: a.name,
@@ -2861,7 +2870,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     const isWesternExpert =
       expertSlug === 'western_astrologer' ||
       expertSlug === 'modern_astrologer' ||
-      (astrologyMode === 'western' && expertSlug === 'council_synthesis');
+      (astrologyMode === 'western' && normalizeCouncilSlug(expertSlug) === DEFAULT_COUNCIL_EXPERT_SLUG);
     const systemWord = isWesternExpert ? 'Western' : 'Vedic';
 
     const readingPrompt = originalQuestion
@@ -3096,7 +3105,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         sourceType === 'council'
           ? msgExpert === 'western_astrologer' || msgExpert === 'modern_astrologer'
             ? 'western'
-            : msgExpert === 'council_synthesis'
+            : normalizeCouncilSlug(msgExpert) === DEFAULT_COUNCIL_EXPERT_SLUG
             ? 'vedic'
             : astrologyMode
           : null;
@@ -4089,24 +4098,25 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             astrologyMode={astrologyMode}
             expertSlug={expertSlug}
             onChangeExpert={(nextExpert) => {
+              const normalizedNext = normalizeCouncilSlug(nextExpert);
               seededExpertRef.current = true;
-              setExpertSlug(nextExpert);
+              setExpertSlug(normalizedNext);
               if (!isThreadLocked) {
-                if (nextExpert === 'western_astrologer' || nextExpert === 'modern_astrologer') {
+                if (normalizedNext === 'western_astrologer' || normalizedNext === 'modern_astrologer') {
                   setAstrologyMode('western');
-                } else if (nextExpert === 'council_synthesis') {
+                } else if (normalizedNext === DEFAULT_COUNCIL_EXPERT_SLUG) {
                   setAstrologyMode('vedic');
                 }
                 const nextLabel =
                   activeConversation || activeProfile || generalReadyMode
-                    ? buildClientCouncilTitle(activeProfile, nextExpert, catalog)
-                    : resolveCouncilDisplayName(nextExpert, catalog);
+                    ? buildClientCouncilTitle(activeProfile, normalizedNext, catalog)
+                    : resolveCouncilDisplayName(normalizedNext, catalog);
                 setTabs((prev) =>
                   prev.map((t) =>
                     t.tabId === activeTabId &&
                     t.pillar === 'council' &&
                     !t.customLabel
-                      ? { ...t, label: nextLabel, expertSlug: nextExpert }
+                      ? { ...t, label: nextLabel, expertSlug: normalizedNext }
                       : t
                   )
                 );
@@ -4210,8 +4220,6 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           canUseDeepAudit={
             activePillar === 'council' &&
             Boolean(effectiveProfileId) &&
-            expertSlug !== 'western_astrologer' &&
-            expertSlug !== 'modern_astrologer' &&
             expertSlug !== 'tarot_reader' &&
             expertSlug !== 'numerologist' &&
             expertSlug !== 'learn_astrology' &&

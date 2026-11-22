@@ -1081,7 +1081,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
           {/* VEDIC: OVERVIEW */}
           {vedicTab === 'overview' && (
             <div className="space-y-6">
-              {/* Sutradhara Structural Chart DNA Card */}
+              {/* Vedic Structural Chart DNA Card */}
               {dossier?.layer_a?.snapshot_scores && (
                 <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 sm:p-6 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

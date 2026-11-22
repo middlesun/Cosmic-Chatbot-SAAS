@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  normalizeCouncilSlug,
+} from '../../lib/vedicTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import {
@@ -73,7 +77,7 @@ function resolveEffectiveCatalog(cfg: MiniAppsGovernanceConfig): MiniAppDefiniti
 }
 
 const EXPERT_META: Record<string, { title: string; subtitle: string }> = {
-  council_synthesis: {
+  [DEFAULT_COUNCIL_EXPERT_SLUG]: {
     title: 'Vedic Astrologer',
     subtitle: 'Parashari, KP, Jaimini & Dasha synthesis',
   },
@@ -423,14 +427,14 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     life_context_completeness: number;
   } | null = null;
 
-  const sutraProfRes = await supabaseAdmin
+  const profSummaryRes = await supabaseAdmin
     .from('profiles')
     .select('id, name, short_name, is_default, life_context_json, life_context_completeness')
     .eq('user_id', req.appUser.id)
     .order('created_at', { ascending: false });
 
-  if (!sutraProfRes.error && sutraProfRes.data) {
-    for (const p of sutraProfRes.data) {
+  if (!profSummaryRes.error && profSummaryRes.data) {
+    for (const p of profSummaryRes.data) {
       const label = p.is_default
         ? p.short_name
           ? `You (${p.short_name})`
@@ -599,10 +603,12 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
       .limit(36);
 
     for (const m of msgExperts || []) {
-      const slug = String(m.expert_used || '').trim();
-      if (!slug || slug.startsWith('companion') || slug === 'clarity' || expertActivity.has(slug)) {
+      const rawSlug = String(m.expert_used || '').trim();
+      if (!rawSlug || rawSlug.startsWith('companion') || rawSlug === 'clarity') {
         continue;
       }
+      const slug = normalizeCouncilSlug(rawSlug);
+      if (expertActivity.has(slug)) continue;
       expertActivity.set(slug, {
         conversationId: String(m.conversation_id),
         lastActiveAt: String(m.created_at),
@@ -611,7 +617,7 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
   }
 
   const orderedSlugs = [
-    'council_synthesis',
+    DEFAULT_COUNCIL_EXPERT_SLUG,
     'modern_astrologer',
     'western_astrologer',
     'tarot_reader',

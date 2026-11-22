@@ -1,5 +1,5 @@
 /**
- * Sutradhara Engine (SUTRA) — Phase 6 Vedic Benchmark QA Harness
+ * Cosmic Council Vedic Engine — Phase 6 Vedic Benchmark QA Harness
  *
  * Run offline (zero DB mutations, zero API keys required):
  *   npx tsx scripts/sutraBenchmarkVedic.ts
@@ -10,8 +10,8 @@
 
 import assert from 'node:assert/strict';
 import type { LifeContextData } from '../lib/lifeContextSchema';
-import type { Stage1RouterResult, SutraUserProfile } from '../lib/sutraTypes';
-import { sanitizeAssistantOutput, sanitizeSutraProse } from '../server/services/abuseGuard';
+import type { Stage1RouterResult, VedicUserProfile } from '../lib/vedicTypes';
+import { sanitizeAssistantOutput, sanitizeVedicProse } from '../server/services/abuseGuard';
 import { getPlaybookById } from '../server/services/canonicalPlaybooks';
 import { enrichCompiledChart, type CompiledChartData } from '../server/services/chartCompiler';
 import { compileStage2ContextPackage } from '../server/services/contextSlicer';
@@ -32,7 +32,7 @@ import {
   type PlanetPosition,
 } from '../server/services/jyotishMath';
 import {
-  computeUpdatedSutraUserProfile,
+  computeUpdatedVedicUserProfile,
   mergeCoreStressAreas,
 } from '../server/services/memoryArchivist';
 import { mergeExtractedLifeFacts } from '../server/services/lifeContextGuard';
@@ -43,11 +43,11 @@ import {
   generateMoreAlignedStage4Suggestions,
 } from '../server/services/suggestionEngine';
 import {
-  buildSutraPathAPrompt,
+  buildVedicPathAPrompt,
   computeDeterministicPillarConvergence,
   extractTechBreakdown,
   USE_DECOUPLED_STAGE4_SUGGESTIONS,
-} from '../server/services/sutraSynthesizer';
+} from '../server/services/vedicAstrologerEngine';
 
 interface BenchmarkCaseResult {
   id: string;
@@ -160,7 +160,7 @@ async function runBenchmark() {
   const hasJev = Boolean(process.env.TYPESAFE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim());
 
   console.log('========================================================================');
-  console.log(' SUTRADHARA ENGINE (SUTRA) — VEDIC BENCHMARK QA HARNESS (8-Case Battery)');
+  console.log(' COSMIC COUNCIL VEDIC ENGINE — VEDIC BENCHMARK QA HARNESS (9-Case Battery)');
   console.log('========================================================================');
   console.log(
     `Mode: ${isLiveMode ? 'LIVE + DETERMINISTIC' : 'OFFLINE DETERMINISTIC'} | OpenRouter Key: ${
@@ -252,7 +252,7 @@ async function runBenchmark() {
       dossier,
       lifeContext: marriedContext,
     });
-    const pathA = buildSutraPathAPrompt({
+    const pathA = buildVedicPathAPrompt({
       constitutionPrompt: 'SYSTEM',
       pkg,
       chart: baseChart,
@@ -269,7 +269,7 @@ async function runBenchmark() {
       stage2Pkg: pkg,
       dossier,
       routerResult,
-      sutraMeta: pathA.meta,
+      vedicMeta: pathA.meta,
       userQuestion: 'How will my married life be overall?',
       assistantAnswer: 'Across your Dasha phases, 7th house dynamics balance steadiness with patience.',
       languageSlug: 'English',
@@ -316,7 +316,7 @@ async function runBenchmark() {
       dossier,
       lifeContext: singleContext,
     });
-    const pathA = buildSutraPathAPrompt({
+    const pathA = buildVedicPathAPrompt({
       constitutionPrompt: 'SYSTEM',
       pkg,
       chart: baseChart,
@@ -333,14 +333,26 @@ async function runBenchmark() {
       stage2Pkg: pkg,
       dossier,
       routerResult,
-      sutraMeta: pathA.meta,
+      vedicMeta: pathA.meta,
       userQuestion: 'Should I switch to business or stay salaried?',
       assistantAnswer: 'Looking at your 10th and 6th houses, salaried growth leads unless 7th triggers activate.',
       languageSlug: 'English',
       userFluency: 'guided_bridge',
     });
-    const hasDeepAuditEscalation = s4.deeper_analysis.some((d) => d.action === 'deep_audit');
-    assert.ok(hasDeepAuditEscalation, 'Case 3 expected 1-tap Deep Audit escalation for complexity >= 8');
+    const seeds = buildStage4StructuredSeeds({
+      stage2Pkg: pkg,
+      dossier,
+      routerResult,
+      vedicMeta: pathA.meta,
+      assistantAnswer:
+        'Looking at your 10th and 6th houses, salaried growth leads unless 7th triggers activate.',
+    });
+    const hasDeepAuditEscalation = seeds.needsDeepAuditEscalation;
+    assert.ok(hasDeepAuditEscalation, 'Case 3 expected deep audit escalation flag for complexity >= 8');
+    assert.ok(
+      s4.deeper_analysis.length > 0 && s4.deeper_analysis.every((d) => Boolean(d.technical_directive)),
+      'Case 3 expected deeper_analysis items with technical_directive'
+    );
     results.push({
       id: 'CASE-03',
       label: 'CAR_02 Hard Decision (Job vs Business)',
@@ -350,7 +362,7 @@ async function runBenchmark() {
       intentOrAction: pathA.meta.intent,
       convergence: pathA.meta.convergenceBandLabel,
       cancellations: pkg.triggeredCancellations.length,
-      suggestionsInfo: `${s4.followups.length} fu / ${s4.deeper_analysis.length} da (DeepAudit=Yes)`,
+      suggestionsInfo: `${s4.followups.length} fu / ${s4.deeper_analysis.length} da (Escalation=Yes)`,
       notes: '3-Gate Law + Escalation',
     });
   }
@@ -380,7 +392,7 @@ async function runBenchmark() {
       dossier,
       lifeContext: singleContext,
     });
-    const pathA = buildSutraPathAPrompt({
+    const pathA = buildVedicPathAPrompt({
       constitutionPrompt: 'SYSTEM',
       pkg,
       chart: baseChart,
@@ -437,7 +449,7 @@ async function runBenchmark() {
       stage2Pkg: pkg,
       dossier,
       routerResult,
-      sutraMeta: {
+      vedicMeta: {
         intent: 'HARD_DECISION',
         playbookId: pb.id,
         domain: pb.domain,
@@ -459,7 +471,7 @@ async function runBenchmark() {
       stage2Pkg: pkg,
       dossier,
       routerResult,
-      sutraMeta: {
+      vedicMeta: {
         intent: 'HARD_DECISION',
         playbookId: pb.id,
         domain: pb.domain,
@@ -520,7 +532,7 @@ async function runBenchmark() {
       dossier,
       lifeContext: singleContext,
     });
-    const pathA = buildSutraPathAPrompt({
+    const pathA = buildVedicPathAPrompt({
       constitutionPrompt: 'SYSTEM',
       pkg,
       chart: baseChart,
@@ -536,14 +548,14 @@ async function runBenchmark() {
     assert.ok(pathA.systemInstruction.includes('D1 VS. D9/VARGA BOUNDARY'));
 
     // Test memoryArchivist v2 silent user intelligence progression
-    const seedProfile: SutraUserProfile = {
+    const seedProfile: VedicUserProfile = {
       inferred_fluency: 'beginner',
       recurring_domains: ['marriage'],
       domain_weights: { marriage: 1.0 },
       preferred_tradition: 'vedic',
       last_updated_at: new Date().toISOString(),
     };
-    const stepped = computeUpdatedSutraUserProfile(seedProfile, {
+    const stepped = computeUpdatedVedicUserProfile(seedProfile, {
       routerResult: { ...routerResult, detected_user_fluency: 'beginner' },
       domain: 'career',
       effectiveFluency: 'guided_bridge',
@@ -580,7 +592,7 @@ async function runBenchmark() {
     });
     assert.equal(d7.action, 'refuse_extraction');
     assert.equal(d7.creditsCharged, 0);
-    const proseCheck = sanitizeSutraProse("The native's chart shows the native has strong Jupiter.");
+    const proseCheck = sanitizeVedicProse("The native's chart shows the native has strong Jupiter.");
     assert.equal(proseCheck, 'Your chart shows you have strong Jupiter.');
     const leakCheck = sanitizeAssistantOutput('CORE COSMIC COUNCIL DIRECTIVES: Act as an astrologer');
     assert.equal(leakCheck.leaked, true);
@@ -637,7 +649,7 @@ async function runBenchmark() {
       stage2Pkg: pkg,
       dossier: sandhiDossier,
       routerResult,
-      sutraMeta: {
+      vedicMeta: {
         intent: 'TIMING',
         playbookId: pb.id,
         domain: pb.domain,
@@ -767,7 +779,7 @@ async function runBenchmark() {
     const liveS4 = await generateAlignedStage4Suggestions({
       stage2Pkg: pkg,
       dossier,
-      sutraMeta: {
+      vedicMeta: {
         intent: 'SOFT_HORIZON',
         playbookId: 'CAR_01',
         domain: 'career',

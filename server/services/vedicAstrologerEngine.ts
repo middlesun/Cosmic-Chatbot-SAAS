@@ -1,24 +1,28 @@
 import type {
-  SutraIntentArchetype,
-  SutraSynthesisMeta,
   TimingProgressWidget,
   UserFluencyTier,
-} from '../../lib/sutraTypes';
+  VedicIntentArchetype,
+  VedicSynthesisMeta,
+} from '../../lib/vedicTypes';
 import type { CompiledChartData } from './chartCompiler';
 import type { Stage2ContextPackage } from './contextSlicer';
 import {
   DEFAULT_FLUENCY_INSTRUCTIONS,
   DEFAULT_FORMAT_CONTRACTS,
   DEFAULT_INTENT_OUTPUT_CONTRACTS,
-  DEFAULT_SUTRA_ANTI_CLICHE_RULES,
-  DEFAULT_SUTRA_TIER1_REASONING_LAWS,
+  DEFAULT_VEDIC_ANTI_CLICHE_RULES,
+  DEFAULT_VEDIC_TIER1_REASONING_LAWS,
+  WESTERN_ANTI_CLICHE_RULES,
+  WESTERN_FLUENCY_INSTRUCTIONS,
+  WESTERN_FORMAT_CONTRACTS,
+  WESTERN_INTENT_OUTPUT_CONTRACTS,
+  WESTERN_TIER1_REASONING_LAWS,
 } from './enginePromptDefaults';
 import type { EnginePromptOverrides } from './platformSettings';
 
 /**
  * Feature flag controlling decoupled Stage 4 Chart-Aligned Suggestions.
- * Flipped to `true` in Phase 6 so `chat.ts` invokes `suggestionEngine.ts`
- * cleanly without embedding `<<<SUGGESTIONS_JSON>>>` inside Stage 3 prose.
+ * Invokes `suggestionEngine.ts` cleanly without embedding JSON inside Stage 3 prose.
  */
 export const USE_DECOUPLED_STAGE4_SUGGESTIONS = true;
 
@@ -63,12 +67,22 @@ export function extractTechBreakdown(rawText: string): {
 
 export function buildShortReplyBreakdownInstruction(
   effectiveFluency: UserFluencyTier,
-  languageSlug: string
+  languageSlug: string,
+  tradition: 'vedic' | 'western' = 'vedic'
 ): string {
   const depthHint =
-    effectiveFluency === 'practitioner'
+    tradition === 'western'
+      ? effectiveFluency === 'practitioner'
+        ? 'Full concise Tropical trace: exact Tropical degrees, Placidus cusps & rulers, Diurnal/Nocturnal Sect, Essential/Accidental Dignity, Mutual Receptions, tight <=2° aspects, configurations, and active Profection / Progressed / Transit triggers.'
+        : 'Clean, structured Tropical verification: key houses & cusp rulers, Day/Night Sect balance, tight aspects, Dignity/Mutual Reception notes, and active Profection/Transit window dates.'
+      : effectiveFluency === 'practitioner'
       ? 'Full concise Jyotish trace: exact D1 degrees/Nakshatra/Pada, D9/Varga sign/house/dignity, KP Sub-Lord, Shadbala/SAV bindus, and active MD/AD/PD + Gochar triggers.'
       : 'Clean, structured technical verification: key houses & house lords, Nakshatra/KP Sub-Lord confirmation, D9/D10 endurance check, Ashtakavarga bindus, and active Dasha/transit window dates.';
+
+  const accuracyRule =
+    tradition === 'western'
+      ? '3. Use strictly Western Tropical terminology and exact degrees from the chart slice; never invent placements or inject Vedic terms.'
+      : '3. Enforce D1-only degrees: never invent or quote degrees inside D9 or other Vargas inside the breakdown.';
 
   return `SHORT-REPLY + COLLAPSIBLE TECHNICAL BREAKDOWN CONTRACT (ACTIVE BECAUSE SHORT REPLY IS ON):
 1. First, deliver ONLY the concise, calm plain-English answer (120–210 words max). Keep the main answer completely readable for an everyday user without dumping raw degrees or long technical lists inside it.
@@ -76,10 +90,10 @@ export function buildShortReplyBreakdownInstruction(
 ${TECH_BREAKDOWN_START}
 ...compact bulleted technical verification (${depthHint}) in ${languageSlug || 'English'}...
 ${TECH_BREAKDOWN_END}
-3. Enforce D1-only degrees: never invent or quote degrees inside D9 or other Vargas inside the breakdown.`;
+${accuracyRule}`;
 }
 
-export type SutraVoicePreset =
+export type VedicVoicePreset =
   | 'observatory_calm'
   | 'editor_reflective'
   | 'casual_confidant'
@@ -99,18 +113,147 @@ export interface DeterministicConvergenceResult {
 /**
  * Shared non-negotiable Tier 1 adjudicative laws from VEDIC_FORMULA_AND_PRIORITY_LIBRARY.md.
  */
-export const SUTRA_TIER1_REASONING_LAWS = DEFAULT_SUTRA_TIER1_REASONING_LAWS;
+export const VEDIC_TIER1_REASONING_LAWS = DEFAULT_VEDIC_TIER1_REASONING_LAWS;
 
-export const SUTRA_ANTI_CLICHE_RULES = DEFAULT_SUTRA_ANTI_CLICHE_RULES;
+export const VEDIC_ANTI_CLICHE_RULES = DEFAULT_VEDIC_ANTI_CLICHE_RULES;
+
+function computeWesternPillarConvergence(
+  pkg: Stage2ContextPackage,
+  chart: CompiledChartData
+): DeterministicConvergenceResult {
+  const pillars: Array<{ name: string; aligned: boolean; note: string }> = [];
+  const w = chart.western;
+
+  // Pillar 1: House & Cusp Promise (Domain Audit / Truth Gate)
+  const domainAudit = pkg.chartSlice.domainAudit as
+    | {
+        structural_verdict?: string;
+        positive_weights_0_100?: number;
+        friction_weights_0_100?: number;
+        promise_level?: string;
+        physical_resilience?: string;
+      }
+    | undefined;
+  let p1Aligned = true;
+  let p1Note = 'Focus houses assessed';
+  if (
+    domainAudit &&
+    typeof domainAudit.positive_weights_0_100 === 'number' &&
+    typeof domainAudit.friction_weights_0_100 === 'number'
+  ) {
+    p1Aligned = domainAudit.positive_weights_0_100 >= domainAudit.friction_weights_0_100 - 8;
+    p1Note = `${domainAudit.structural_verdict || 'assessed'} (+${domainAudit.positive_weights_0_100}/-${domainAudit.friction_weights_0_100})`;
+  } else if (domainAudit?.promise_level) {
+    p1Aligned = domainAudit.promise_level !== 'low';
+    p1Note = `Promise ${domainAudit.promise_level}`;
+  } else {
+    const avgHouseScore =
+      pkg.truthGateResolution.length > 0
+        ? pkg.truthGateResolution.reduce((s, r) => s + r.houseScore, 0) /
+          pkg.truthGateResolution.length
+        : 60;
+    p1Aligned = avgHouseScore >= 55;
+    p1Note = `Avg house score ${Math.round(avgHouseScore)}/100`;
+  }
+  pillars.push({ name: 'House & Cusp Promise', aligned: p1Aligned, note: p1Note });
+
+  // Pillar 2: Sect & Essential Dignity
+  const hasMutualReception = (w?.mutualReceptions?.length || 0) > 0;
+  const hasUnrescuedStrain = pkg.triggeredCancellations.some(
+    (c) => c.code === 'ESSENTIAL_DIGNITY_CHECK' && !c.title.includes('Rescued')
+  );
+  const hasContraryMalefic = pkg.triggeredCancellations.some(
+    (c) => c.code === 'CONTRARY_TO_SECT_MALEFIC'
+  );
+  const p2Aligned = !hasUnrescuedStrain && (!hasContraryMalefic || hasMutualReception);
+  pillars.push({
+    name: 'Sect & Dignity',
+    aligned: p2Aligned,
+    note: hasMutualReception
+      ? 'Mutual Reception support active'
+      : hasContraryMalefic
+      ? 'Contrary-to-Sect caution'
+      : `${w?.sect?.chartType || 'Diurnal'} sect balanced`,
+  });
+
+  // Pillar 3: Tight Aspects (<2°) & Configurations
+  const coreAspectsCount = (w?.aspects || []).filter((a) => a.orb <= 2.0).length;
+  const supportiveCore = (w?.aspects || []).filter(
+    (a) => a.orb <= 2.0 && ['Conjunction', 'Trine', 'Sextile'].includes(a.aspect)
+  ).length;
+  const hardCore = (w?.aspects || []).filter(
+    (a) => a.orb <= 2.0 && ['Square', 'Opposition'].includes(a.aspect)
+  ).length;
+  const hasGrandTrine = (w?.configurations || []).some((c) => c.type === 'Grand Trine');
+  const p3Aligned = hasGrandTrine || supportiveCore >= hardCore || coreAspectsCount === 0;
+  pillars.push({
+    name: 'Tight Aspects (<2°)',
+    aligned: p3Aligned,
+    note: `${coreAspectsCount} core aspects (${supportiveCore} flowing, ${hardCore} dynamic)`,
+  });
+
+  // Pillar 4: Dispositor & Angles
+  const rulerDig = w?.chartRuler?.traditionalDignity || 'Peregrine';
+  const angleSensitive = pkg.triggeredCancellations.some(
+    (c) => c.code === 'ANGLE_BOUNDARY_SENSITIVITY'
+  );
+  const hasFinals = (w?.dispositorTree?.traditional?.finalDispositors?.length || 0) > 0;
+  const p4Aligned =
+    !angleSensitive && (['Domicile', 'Exaltation'].includes(rulerDig) || hasFinals || hasMutualReception);
+  pillars.push({
+    name: 'Dispositor & Angles',
+    aligned: p4Aligned,
+    note: angleSensitive
+      ? 'Ascendant cusp minute-sensitive'
+      : `Chart ruler ${w?.chartRuler?.traditional || 'checked'} (${rulerDig})`,
+  });
+
+  // Pillar 5: Profections & Transits
+  const timingObj = pkg.chartSlice.timing as
+    | {
+        profection?: { profectedHouse?: number; lordOfYearTraditional?: string };
+        transits?: { tightHitsToNatal?: unknown[] };
+      }
+    | undefined;
+  const tightTransitHits = timingObj?.transits?.tightHitsToNatal?.length || 0;
+  const p5Aligned = Boolean(timingObj?.profection) || tightTransitHits > 0 || !pkg.requiresTimingStack;
+  pillars.push({
+    name: 'Profections & Transits',
+    aligned: p5Aligned,
+    note: timingObj?.profection
+      ? `H${timingObj.profection.profectedHouse} Profection (${timingObj.profection.lordOfYearTraditional}), ${tightTransitHits} tight hits`
+      : 'Baseline cycles steady',
+  });
+
+  const alignedCount = pillars.filter((p) => p.aligned).length;
+  const tierLabel =
+    alignedCount >= 4
+      ? 'High Convergence'
+      : alignedCount === 3
+      ? 'Moderate-High Convergence'
+      : alignedCount === 2
+      ? 'Mixed / Conditional'
+      : 'Low / Restrained';
+
+  return {
+    alignedCount,
+    bandLabel: `${alignedCount}/5 Pillars Aligned`,
+    tierLabel,
+    pillars,
+  };
+}
 
 /**
- * Deterministically checks 5 independent Jyotish pillars from Stage 2 + Chart Telemetry
+ * Deterministically checks 5 independent pillars from Stage 2 + Chart Telemetry
  * so `X / 5 Pillars` convergence badges remain grounded in real data rather than hallucinated numbers.
  */
 export function computeDeterministicPillarConvergence(
   pkg: Stage2ContextPackage,
   chart: CompiledChartData
 ): DeterministicConvergenceResult {
+  if (pkg.tradition === 'western') {
+    return computeWesternPillarConvergence(pkg, chart);
+  }
   const pillars: Array<{ name: string; aligned: boolean; note: string }> = [];
 
   // Pillar 1: D1 Structural Promise & Domain Audit
@@ -258,8 +401,20 @@ export function resolveEffectiveFluency(
 export function buildFluencyInstruction(
   effectiveFluency: UserFluencyTier,
   responseLength: 'short' | 'detailed' = 'detailed',
-  engineOverrides?: EnginePromptOverrides | null
+  engineOverrides?: EnginePromptOverrides | null,
+  tradition: 'vedic' | 'western' = 'vedic'
 ): string {
+  if (tradition === 'western') {
+    if (responseLength === 'short') {
+      if (effectiveFluency === 'beginner') return WESTERN_FLUENCY_INSTRUCTIONS.short_beginner;
+      if (effectiveFluency === 'guided_bridge') return WESTERN_FLUENCY_INSTRUCTIONS.short_guided_bridge;
+      return WESTERN_FLUENCY_INSTRUCTIONS.short_practitioner;
+    }
+    if (effectiveFluency === 'beginner') return WESTERN_FLUENCY_INSTRUCTIONS.detailed_beginner;
+    if (effectiveFluency === 'guided_bridge') return WESTERN_FLUENCY_INSTRUCTIONS.detailed_guided_bridge;
+    return WESTERN_FLUENCY_INSTRUCTIONS.detailed_practitioner;
+  }
+
   const custom = engineOverrides?.fluency_instructions;
   if (responseLength === 'short') {
     if (effectiveFluency === 'beginner') {
@@ -281,11 +436,12 @@ export function buildFluencyInstruction(
 }
 
 export function buildIntentOutputContract(
-  intent: SutraIntentArchetype,
+  intent: VedicIntentArchetype,
   convergence: DeterministicConvergenceResult,
   responseLength: 'short' | 'detailed',
   requiresTimingStack = false,
-  engineOverrides?: EnginePromptOverrides | null
+  engineOverrides?: EnginePromptOverrides | null,
+  tradition: 'vedic' | 'western' = 'vedic'
 ): string {
   const lengthHint =
     responseLength === 'short'
@@ -294,12 +450,28 @@ export function buildIntentOutputContract(
 
   const mandatoryGocharClause =
     intent === 'TIMING' || requiresTimingStack
-      ? `\n- MANDATORY GOCHAR & DOUBLE TRANSIT RULE: Explicitly reference current **Saturn** and **Jupiter** Gochar (transit) signs and house positions **counted from BOTH your Lagna (Ascendant) AND Natal Moon**, plus **Double Transit** activation on the relevant focus houses and SAV/BAV bindus from the timing slice.`
+      ? tradition === 'western'
+        ? `\n- MANDATORY MULTI-CLOCK TIMING RULE: Explicitly reference the active **Annual Profection (House & Lord of the Year)**, **Secondary Progressed Moon/Sun**, and current **Saturn & Jupiter transits** (plus any tight outer-planet hits <= 2.5°) relative to your natal houses and tight aspects.`
+        : `\n- MANDATORY GOCHAR & DOUBLE TRANSIT RULE: Explicitly reference current **Saturn** and **Jupiter** Gochar (transit) signs and house positions **counted from BOTH your Lagna (Ascendant) AND Natal Moon**, plus **Double Transit** activation on the relevant focus houses and SAV/BAV bindus from the timing slice.`
       : '';
 
   const convergenceLine = `**${convergence.bandLabel}** (${convergence.tierLabel}: ${convergence.pillars
     .map((p) => `${p.name}=${p.aligned ? 'Yes' : 'Caution'}`)
     .join(', ')})`;
+
+  if (tradition === 'western') {
+    const rawWesternTemplate =
+      (intent === 'SOFT_HORIZON' && WESTERN_INTENT_OUTPUT_CONTRACTS.SOFT_HORIZON) ||
+      (intent === 'HARD_DECISION' && WESTERN_INTENT_OUTPUT_CONTRACTS.HARD_DECISION) ||
+      (intent === 'TIMING' && WESTERN_INTENT_OUTPUT_CONTRACTS.TIMING) ||
+      (intent === 'PEER_AUDIT' && WESTERN_INTENT_OUTPUT_CONTRACTS.PEER_AUDIT) ||
+      WESTERN_INTENT_OUTPUT_CONTRACTS.CONVERSATIONAL;
+
+    return rawWesternTemplate
+      .replace(/\{\{LENGTH_HINT\}\}/g, lengthHint)
+      .replace(/\{\{MANDATORY_GOCHAR_CLAUSE\}\}/g, mandatoryGocharClause)
+      .replace(/\{\{CONVERGENCE_LINE\}\}/g, convergenceLine);
+  }
 
   const customContracts = engineOverrides?.intent_output_contracts;
   const rawTemplate =
@@ -316,14 +488,16 @@ export function buildIntentOutputContract(
 }
 
 export function buildVoiceAndFormatInstructions(params: {
-  voicePreset?: SutraVoicePreset;
+  voicePreset?: VedicVoicePreset;
   outputSlug: string;
   languageSlug: string;
   responseLength: 'short' | 'detailed';
   effectiveFluency: UserFluencyTier;
   engineOverrides?: EnginePromptOverrides | null;
+  tradition?: 'vedic' | 'western';
 }): string {
-  const voiceMap: Record<SutraVoicePreset, string> = {
+  const tradition = params.tradition === 'western' ? 'western' : 'vedic';
+  const voiceMap: Record<VedicVoicePreset, string> = {
     observatory_calm:
       'TONE REGISTER — OBSERVATORY CALM: Warm, measured, empathetic strategic counsel. Grounded clarity over hype.',
     editor_reflective:
@@ -334,20 +508,32 @@ export function buildVoiceAndFormatInstructions(params: {
       'TONE REGISTER — ULTRA-DIRECT: Zero filler or preamble; surgical insight and exact mechanism in minimal words.',
   };
 
-  const formatOverrides = params.engineOverrides?.format_contracts;
   let outputShape = '';
-  if (params.outputSlug === 'marriage_master' || params.outputSlug === 'dual_view') {
-    outputShape = formatOverrides?.dual_view?.trim() || DEFAULT_FORMAT_CONTRACTS.dual_view;
-  } else if (params.responseLength === 'short') {
-    outputShape = formatOverrides?.short?.trim() || DEFAULT_FORMAT_CONTRACTS.short;
+  if (tradition === 'western') {
+    if (params.outputSlug === 'marriage_master' || params.outputSlug === 'dual_view') {
+      outputShape = WESTERN_FORMAT_CONTRACTS.dual_view;
+    } else if (params.responseLength === 'short') {
+      outputShape = WESTERN_FORMAT_CONTRACTS.short;
+    } else {
+      outputShape = WESTERN_FORMAT_CONTRACTS.detailed;
+    }
   } else {
-    outputShape = formatOverrides?.detailed?.trim() || DEFAULT_FORMAT_CONTRACTS.detailed;
+    const formatOverrides = params.engineOverrides?.format_contracts;
+    if (params.outputSlug === 'marriage_master' || params.outputSlug === 'dual_view') {
+      outputShape = formatOverrides?.dual_view?.trim() || DEFAULT_FORMAT_CONTRACTS.dual_view;
+    } else if (params.responseLength === 'short') {
+      outputShape = formatOverrides?.short?.trim() || DEFAULT_FORMAT_CONTRACTS.short;
+    } else {
+      outputShape = formatOverrides?.detailed?.trim() || DEFAULT_FORMAT_CONTRACTS.detailed;
+    }
   }
 
   let langRule = 'LANGUAGE: Natural, clear modern English.';
   if (params.languageSlug === 'Hindi') {
     langRule =
-      'LANGUAGE: Pure, natural Hindi in Devanagari script (हिंदी). Use accurate Jyotish terms gracefully.';
+      tradition === 'western'
+        ? 'LANGUAGE: Pure, natural Hindi in Devanagari script (हिंदी). Translate Western astrological concepts gracefully.'
+        : 'LANGUAGE: Pure, natural Hindi in Devanagari script (हिंदी). Use accurate Jyotish terms gracefully.';
   } else if (params.languageSlug === 'Hinglish') {
     langRule =
       'LANGUAGE: Natural, warm conversational Hinglish (Roman script mixing Hindi & English smoothly).';
@@ -357,7 +543,12 @@ export function buildVoiceAndFormatInstructions(params: {
     voiceMap[params.voicePreset || 'observatory_calm'],
     outputShape,
     langRule,
-    buildFluencyInstruction(params.effectiveFluency, params.responseLength, params.engineOverrides),
+    buildFluencyInstruction(
+      params.effectiveFluency,
+      params.responseLength,
+      params.engineOverrides,
+      tradition
+    ),
   ].join('\n\n');
 }
 
@@ -378,7 +569,7 @@ Rules:
 3. NEVER invent new token IDs, NEVER modify the \`[[TIMING_BAR:...]]\` syntax, and NEVER mention these tokens in your prose.`;
 }
 
-export interface BuildSutraPathAParams {
+export interface BuildVedicPathAParams {
   constitutionPrompt: string;
   conversationalRules?: string;
   expertDirective?: string;
@@ -390,7 +581,7 @@ export interface BuildSutraPathAParams {
   responseLength: 'short' | 'detailed';
   outputSlug: string;
   languageSlug: string;
-  voicePreset?: SutraVoicePreset;
+  voicePreset?: VedicVoicePreset;
   gocharFeedText?: string | null;
   profileMemorySummary?: string | null;
   preferredCallName?: string | null;
@@ -400,15 +591,17 @@ export interface BuildSutraPathAParams {
   engineOverrides?: EnginePromptOverrides | null;
 }
 
-export interface BuiltSutraPathAPrompt {
+export interface BuiltVedicPathAPrompt {
   systemInstruction: string;
   wantsSuggestions: boolean;
   effectiveFluency: UserFluencyTier;
   convergence: DeterministicConvergenceResult;
-  meta: SutraSynthesisMeta;
+  meta: VedicSynthesisMeta;
 }
 
-export function buildSutraPathAPrompt(params: BuildSutraPathAParams): BuiltSutraPathAPrompt {
+export function buildVedicPathAPrompt(params: BuildVedicPathAParams): BuiltVedicPathAPrompt {
+  const tradition: 'vedic' | 'western' =
+    params.pkg.tradition === 'western' ? 'western' : 'vedic';
   const convergence = computeDeterministicPillarConvergence(params.pkg, params.chart);
   const effectiveFluency = resolveEffectiveFluency(
     params.routerFluency,
@@ -418,11 +611,15 @@ export function buildSutraPathAPrompt(params: BuildSutraPathAParams): BuiltSutra
   );
 
   const tier1Laws =
-    params.engineOverrides?.sutra_tier1_reasoning_laws?.trim() ||
-    SUTRA_TIER1_REASONING_LAWS;
+    tradition === 'western'
+      ? WESTERN_TIER1_REASONING_LAWS
+      : params.engineOverrides?.vedic_tier1_reasoning_laws?.trim() ||
+        VEDIC_TIER1_REASONING_LAWS;
   const antiCliche =
-    params.engineOverrides?.sutra_anti_cliche_rules?.trim() ||
-    SUTRA_ANTI_CLICHE_RULES;
+    tradition === 'western'
+      ? WESTERN_ANTI_CLICHE_RULES
+      : params.engineOverrides?.vedic_anti_cliche_rules?.trim() ||
+        VEDIC_ANTI_CLICHE_RULES;
 
   const sections: string[] = [
     params.constitutionPrompt,
@@ -436,7 +633,8 @@ export function buildSutraPathAPrompt(params: BuildSutraPathAParams): BuiltSutra
       convergence,
       params.responseLength,
       Boolean(params.pkg.requiresTimingStack),
-      params.engineOverrides
+      params.engineOverrides,
+      tradition
     ),
     buildVoiceAndFormatInstructions({
       voicePreset: params.voicePreset,
@@ -445,6 +643,7 @@ export function buildSutraPathAPrompt(params: BuildSutraPathAParams): BuiltSutra
       responseLength: params.responseLength,
       effectiveFluency,
       engineOverrides: params.engineOverrides,
+      tradition,
     }),
   ];
 
@@ -461,7 +660,7 @@ export function buildSutraPathAPrompt(params: BuildSutraPathAParams): BuiltSutra
     );
   }
 
-  // Lean Stage 2 context package (76-82% smaller than monolithic V1 chart dump!)
+  // Lean Stage 2 context package
   sections.push(params.pkg.renderedPromptContext);
 
   if (params.gocharFeedText?.trim()) {
@@ -486,13 +685,15 @@ export function buildSutraPathAPrompt(params: BuildSutraPathAParams): BuiltSutra
   }
 
   if (params.responseLength === 'short') {
-    sections.push(buildShortReplyBreakdownInstruction(effectiveFluency, params.languageSlug));
+    sections.push(
+      buildShortReplyBreakdownInstruction(effectiveFluency, params.languageSlug, tradition)
+    );
   }
 
-  // Explicit suggestions separation contract for Phase 5 -> Phase 6
   const wantsSuggestions = USE_DECOUPLED_STAGE4_SUGGESTIONS ? false : false;
 
-  const meta: SutraSynthesisMeta = {
+  const meta: VedicSynthesisMeta = {
+    tradition,
     intent: params.pkg.intent,
     playbookId: params.pkg.playbookId,
     domain: params.pkg.domain,

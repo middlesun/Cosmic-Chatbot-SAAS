@@ -1,6 +1,6 @@
 // Pure deterministic Vedic Astrology (Parashari, KP, Jaimini, Ashtakavarga, Vimshottari) math
 // Derived from Sidereal Lahiri planetary longitudes & birth coordinates.
-import type { TimingProgressWidget, TimingWidgetId } from '../../lib/sutraTypes';
+import type { TimingProgressWidget, TimingWidgetId } from '../../lib/vedicTypes';
 
 export const SIGNS = [
   'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo',
@@ -1072,6 +1072,11 @@ export interface WesternPlanetPosition {
   dignity: string;
   element: 'Fire' | 'Earth' | 'Air' | 'Water';
   modality: 'Cardinal' | 'Fixed' | 'Mutable';
+  essentialScore?: number;
+  accidentalScore?: number;
+  houseClass?: 'Angular' | 'Succedent' | 'Cadent';
+  solarCondition?: 'Cazimi' | 'Combust' | 'Under Beams' | 'Free';
+  sectAlignment?: 'In Sect' | 'Neutral' | 'Contrary to Sect';
 }
 
 export interface WesternHouseCusp {
@@ -1101,6 +1106,127 @@ export interface WesternAspectItem {
   angle: number;
   orb: number;
   exactness: 'Exact' | 'Tight' | 'Moderate' | 'Wide';
+  orbTier?: 'core_structural' | 'active' | 'background';
+  weightScore?: number; // 0..100
+}
+
+export interface WesternSectInfo {
+  chartType: 'Diurnal' | 'Nocturnal';
+  sunHouse: number;
+  sectLight: 'Sun' | 'Moon';
+  beneficOfSect: 'Jupiter' | 'Venus';
+  beneficContrary: 'Venus' | 'Jupiter';
+  maleficOfSect: 'Saturn' | 'Mars';
+  maleficContrary: 'Mars' | 'Saturn';
+  summary: string;
+}
+
+export interface WesternChartRulerInfo {
+  ascSign: string;
+  traditional: string;
+  modern: string;
+  traditionalHouse: number;
+  traditionalDignity: string;
+  modernHouse: number;
+  modernDignity: string;
+}
+
+export interface WesternMutualReceptionItem {
+  planetA: string;
+  planetB: string;
+  type: 'Domicile' | 'Exaltation' | 'Mixed';
+  summary: string;
+}
+
+export interface WesternDispositorSystem {
+  chains: Record<string, string[]>;
+  finalDispositors: string[];
+  loops: string[][];
+}
+
+export interface WesternDispositorTree {
+  traditional: WesternDispositorSystem;
+  modern: WesternDispositorSystem;
+}
+
+export interface WesternAspectConfiguration {
+  type: 'T-Square' | 'Grand Trine' | 'Grand Cross' | 'Yod' | 'Stellium';
+  planets: string[];
+  apex?: string;
+  elementOrModality?: string;
+  houseOrSign?: string;
+  maxOrb: number;
+  summary: string;
+}
+
+export interface WesternTimingSnapshot {
+  asOfDate: string;
+  profection: {
+    age: number;
+    profectedHouse: number;
+    profectedSign: string;
+    lordOfYearTraditional: string;
+    lordOfYearModern: string;
+    lordNatalHouse: number;
+    lordDignity: string;
+    yearStartIso: string;
+    yearEndIso: string;
+    percentElapsed: number;
+    daysLeft: number;
+  };
+  progressions: {
+    progressedDateIso: string;
+    sun: { sign: string; dms: string; house: number };
+    moon: {
+      sign: string;
+      signIndex: number;
+      dms: string;
+      house: number;
+      signStartIso: string;
+      signEndIso: string;
+      percentElapsed: number;
+      daysLeft: number;
+    };
+    mercury: { sign: string; dms: string; isRetrograde: boolean };
+    venus: { sign: string; dms: string; isRetrograde: boolean };
+    mars: { sign: string; dms: string; isRetrograde: boolean };
+    ascendantSign: string;
+    midheavenSign: string;
+    tightAspectsToNatal: Array<{
+      progressedBody: string;
+      aspect: string;
+      natalBody: string;
+      orb: number;
+    }>;
+  };
+  solarReturn: {
+    returnDateIso: string;
+    yearStartIso: string;
+    yearEndIso: string;
+    srAscendantSign: string;
+    srAscendantDms: string;
+    srMidheavenSign: string;
+    srSunHouse: number;
+    srMoonSign: string;
+    summary: string;
+  };
+  transits: {
+    transitDate: string;
+    outerPlanets: Array<{
+      planet: string;
+      sign: string;
+      dms: string;
+      natalHouse: number;
+      isRetrograde: boolean;
+    }>;
+    tightHitsToNatal: Array<{
+      transitPlanet: string;
+      aspect: string;
+      natalBody: string;
+      orb: number;
+      orbTier: 'core_structural' | 'active';
+    }>;
+  };
 }
 
 export interface WesternChartData {
@@ -1120,6 +1246,11 @@ export interface WesternChartData {
   polarities: { Yang: number; Yin: number };
   dominantElement: string;
   dominantModality: string;
+  sect?: WesternSectInfo;
+  chartRuler?: WesternChartRulerInfo;
+  mutualReceptions?: WesternMutualReceptionItem[];
+  dispositorTree?: WesternDispositorTree;
+  configurations?: WesternAspectConfiguration[];
 }
 
 const NATURAL_FRIENDS: Record<string, { friends: string[]; neutral: string[]; enemies: string[] }> = {
@@ -2272,6 +2403,322 @@ const WESTERN_ASPECT_SPECS: Array<{
   { aspect: 'Semi-sextile', category: 'Minor', angle: 30, orb: 2 },
 ];
 
+export const WESTERN_TRADITIONAL_RULERS = [
+  'Mars', 'Venus', 'Mercury', 'Moon', 'Sun', 'Mercury',
+  'Venus', 'Mars', 'Jupiter', 'Saturn', 'Saturn', 'Jupiter',
+] as const;
+
+export const WESTERN_MODERN_RULERS = [
+  'Mars', 'Venus', 'Mercury', 'Moon', 'Sun', 'Mercury',
+  'Venus', 'Pluto', 'Jupiter', 'Saturn', 'Uranus', 'Neptune',
+] as const;
+
+function getWesternHouseClass(house: number): 'Angular' | 'Succedent' | 'Cadent' {
+  if (house === 1 || house === 4 || house === 7 || house === 10) return 'Angular';
+  if (house === 2 || house === 5 || house === 8 || house === 11) return 'Succedent';
+  return 'Cadent';
+}
+
+function getWesternEssentialScore(dignity: string): number {
+  if (dignity === 'Domicile') return 5;
+  if (dignity === 'Exaltation') return 4;
+  if (dignity === 'Detriment') return -5;
+  if (dignity === 'Fall') return -4;
+  if (dignity === 'Angle') return 3;
+  return 0;
+}
+
+function computeWesternAspectWeight(
+  bodyA: string,
+  bodyB: string,
+  aspect: WesternAspectItem['aspect'],
+  orb: number
+): number {
+  const maxOrb = aspect === 'Conjunction' || aspect === 'Opposition' ? 8 : aspect === 'Trine' || aspect === 'Square' ? 7 : aspect === 'Sextile' ? 6 : 3;
+  const tightness = Math.max(0, 1 - orb / Math.max(1, maxOrb));
+  const coreBoost = orb <= 2.0 ? 22 : orb <= 5.0 ? 8 : -10;
+  const majorBoost =
+    aspect === 'Conjunction' || aspect === 'Opposition' || aspect === 'Square' || aspect === 'Trine'
+      ? 18
+      : aspect === 'Sextile'
+      ? 12
+      : 4;
+  const luminaryOrAngleBoost =
+    ['Sun', 'Moon', 'Ascendant', 'Midheaven'].includes(bodyA) ||
+    ['Sun', 'Moon', 'Ascendant', 'Midheaven'].includes(bodyB)
+      ? 10
+      : 0;
+  return Math.max(5, Math.min(100, Math.round(tightness * 55 + coreBoost + majorBoost + luminaryOrAngleBoost)));
+}
+
+function computeMutualReceptions(
+  planets: WesternPlanetPosition[]
+): WesternMutualReceptionItem[] {
+  const classicalAndModern = planets.filter((p) => Boolean(WESTERN_DOMICILES[p.name]));
+  const items: WesternMutualReceptionItem[] = [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i < classicalAndModern.length; i++) {
+    for (let j = i + 1; j < classicalAndModern.length; j++) {
+      const a = classicalAndModern[i];
+      const b = classicalAndModern[j];
+      if (a.signIndex === b.signIndex) continue;
+
+      const aInBDom = WESTERN_DOMICILES[b.name]?.includes(a.signIndex) ?? false;
+      const bInADom = WESTERN_DOMICILES[a.name]?.includes(b.signIndex) ?? false;
+      const aInBExalt = WESTERN_EXALT[b.name] === a.signIndex;
+      const bInAExalt = WESTERN_EXALT[a.name] === b.signIndex;
+
+      let type: 'Domicile' | 'Exaltation' | 'Mixed' | null = null;
+      if (aInBDom && bInADom) type = 'Domicile';
+      else if (aInBExalt && bInAExalt) type = 'Exaltation';
+      else if ((aInBDom && bInAExalt) || (aInBExalt && bInADom)) type = 'Mixed';
+
+      if (!type) continue;
+      const key = [a.name, b.name].sort().join(':');
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      items.push({
+        planetA: a.name,
+        planetB: b.name,
+        type,
+        summary: `${a.name} (${a.sign}) and ${b.name} (${b.sign}) share ${type} Mutual Reception — cooperating across houses H${a.house} & H${b.house}.`,
+      });
+    }
+  }
+  return items;
+}
+
+function buildWesternDispositorSystem(
+  planets: WesternPlanetPosition[],
+  rulerTable: readonly string[]
+): WesternDispositorSystem {
+  const coreSet = new Set([
+    'Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto',
+  ]);
+  const signMap = new Map<string, number>();
+  for (const p of planets) {
+    if (coreSet.has(p.name)) signMap.set(p.name, p.signIndex);
+  }
+
+  const chains: Record<string, string[]> = {};
+  const finals = new Set<string>();
+  const loopKeys = new Set<string>();
+  const loops: string[][] = [];
+
+  for (const [name, sIdx] of signMap.entries()) {
+    const chain: string[] = [name];
+    let cur = name;
+    let curSign = sIdx;
+    for (let step = 0; step < 12; step++) {
+      const ruler = rulerTable[curSign];
+      if (!ruler) break;
+      if (ruler === cur) {
+        finals.add(cur);
+        break;
+      }
+      const existingIdx = chain.indexOf(ruler);
+      chain.push(ruler);
+      if (existingIdx !== -1) {
+        const cycle = chain.slice(existingIdx, chain.length - 1);
+        const key = [...cycle].sort().join('->');
+        if (cycle.length >= 2 && !loopKeys.has(key)) {
+          loopKeys.add(key);
+          loops.push(cycle);
+        }
+        break;
+      }
+      const nextSign = signMap.get(ruler);
+      if (nextSign === undefined) break;
+      cur = ruler;
+      curSign = nextSign;
+    }
+    chains[name] = chain;
+  }
+
+  return {
+    chains,
+    finalDispositors: Array.from(finals),
+    loops,
+  };
+}
+
+function detectWesternAspectConfigurations(
+  planets: WesternPlanetPosition[],
+  aspects: WesternAspectItem[]
+): WesternAspectConfiguration[] {
+  const configs: WesternAspectConfiguration[] = [];
+  const coreBodies = planets.filter(
+    (p) =>
+      p.name !== 'Ascendant' &&
+      p.name !== 'Midheaven' &&
+      p.name !== 'South Node' &&
+      p.name !== 'Lilith'
+  );
+  const planetByName = new Map(planets.map((p) => [p.name, p]));
+  const hasAspect = (a: string, b: string, target: WesternAspectItem['aspect']): WesternAspectItem | undefined =>
+    aspects.find(
+      (asp) =>
+        asp.aspect === target &&
+        ((asp.bodyA === a && asp.bodyB === b) || (asp.bodyA === b && asp.bodyB === a))
+    );
+
+  // 1. T-Squares (Opposition + two Squares to Apex)
+  const oppositions = aspects.filter(
+    (a) => a.aspect === 'Opposition' && a.bodyA !== 'North Node' && a.bodyB !== 'North Node'
+  );
+  const tSquareKeys = new Set<string>();
+  for (const opp of oppositions) {
+    for (const candidate of coreBodies) {
+      if (candidate.name === opp.bodyA || candidate.name === opp.bodyB) continue;
+      const sq1 = hasAspect(opp.bodyA, candidate.name, 'Square');
+      const sq2 = hasAspect(opp.bodyB, candidate.name, 'Square');
+      if (sq1 && sq2) {
+        const trio = [opp.bodyA, opp.bodyB, candidate.name];
+        const key = `${[...trio].sort().join('+')}:${candidate.name}`;
+        if (tSquareKeys.has(key)) continue;
+        tSquareKeys.add(key);
+        const maxOrb = Math.max(opp.orb, sq1.orb, sq2.orb);
+        configs.push({
+          type: 'T-Square',
+          planets: trio,
+          apex: candidate.name,
+          elementOrModality: candidate.modality,
+          houseOrSign: `${candidate.sign} H${candidate.house}`,
+          maxOrb: Number(maxOrb.toFixed(2)),
+          summary: `${candidate.modality} T-Square: ${opp.bodyA} opposite ${opp.bodyB} squaring apex ${candidate.name} (${candidate.sign} H${candidate.house}, max orb ${maxOrb.toFixed(1)}°).`,
+        });
+      }
+    }
+  }
+
+  // 2. Grand Crosses (2 Oppositions mutually Square)
+  const gcKeys = new Set<string>();
+  for (let i = 0; i < oppositions.length; i++) {
+    for (let j = i + 1; j < oppositions.length; j++) {
+      const o1 = oppositions[i];
+      const o2 = oppositions[j];
+      const four = [o1.bodyA, o1.bodyB, o2.bodyA, o2.bodyB];
+      if (new Set(four).size !== 4) continue;
+      const s1 = hasAspect(o1.bodyA, o2.bodyA, 'Square');
+      const s2 = hasAspect(o1.bodyA, o2.bodyB, 'Square');
+      const s3 = hasAspect(o1.bodyB, o2.bodyA, 'Square');
+      const s4 = hasAspect(o1.bodyB, o2.bodyB, 'Square');
+      if (s1 && s2 && s3 && s4) {
+        const key = [...four].sort().join('+');
+        if (gcKeys.has(key)) continue;
+        gcKeys.add(key);
+        const mod = planetByName.get(o1.bodyA)?.modality || 'Cardinal';
+        const maxOrb = Math.max(o1.orb, o2.orb, s1.orb, s2.orb, s3.orb, s4.orb);
+        configs.push({
+          type: 'Grand Cross',
+          planets: four,
+          elementOrModality: mod,
+          maxOrb: Number(maxOrb.toFixed(2)),
+          summary: `${mod} Grand Cross linking ${four.join(', ')} (max orb ${maxOrb.toFixed(1)}°).`,
+        });
+      }
+    }
+  }
+
+  // 3. Grand Trines (3 planets mutually Trine)
+  const trines = aspects.filter((a) => a.aspect === 'Trine');
+  const gtKeys = new Set<string>();
+  for (const tr of trines) {
+    for (const candidate of coreBodies) {
+      if (candidate.name === tr.bodyA || candidate.name === tr.bodyB) continue;
+      const t2 = hasAspect(tr.bodyA, candidate.name, 'Trine');
+      const t3 = hasAspect(tr.bodyB, candidate.name, 'Trine');
+      if (t2 && t3) {
+        const trio = [tr.bodyA, tr.bodyB, candidate.name];
+        const key = [...trio].sort().join('+');
+        if (gtKeys.has(key)) continue;
+        gtKeys.add(key);
+        const maxOrb = Math.max(tr.orb, t2.orb, t3.orb);
+        configs.push({
+          type: 'Grand Trine',
+          planets: trio,
+          elementOrModality: candidate.element,
+          maxOrb: Number(maxOrb.toFixed(2)),
+          summary: `${candidate.element} Grand Trine connecting ${trio.join(', ')} (max orb ${maxOrb.toFixed(1)}°).`,
+        });
+      }
+    }
+  }
+
+  // 4. Yods (Sextile base + 2 Quincunxes to Apex)
+  const sextiles = aspects.filter((a) => a.aspect === 'Sextile');
+  const yodKeys = new Set<string>();
+  for (const sx of sextiles) {
+    for (const candidate of coreBodies) {
+      if (candidate.name === sx.bodyA || candidate.name === sx.bodyB) continue;
+      const q1 = hasAspect(sx.bodyA, candidate.name, 'Quincunx');
+      const q2 = hasAspect(sx.bodyB, candidate.name, 'Quincunx');
+      if (q1 && q2) {
+        const trio = [sx.bodyA, sx.bodyB, candidate.name];
+        const key = `${[...trio].sort().join('+')}:${candidate.name}`;
+        if (yodKeys.has(key)) continue;
+        yodKeys.add(key);
+        const maxOrb = Math.max(sx.orb, q1.orb, q2.orb);
+        configs.push({
+          type: 'Yod',
+          planets: trio,
+          apex: candidate.name,
+          houseOrSign: `${candidate.sign} H${candidate.house}`,
+          maxOrb: Number(maxOrb.toFixed(2)),
+          summary: `Yod (Finger of God): ${sx.bodyA} sextile ${sx.bodyB} pointing via quincunx to apex ${candidate.name} (${candidate.sign} H${candidate.house}, max orb ${maxOrb.toFixed(1)}°).`,
+        });
+      }
+    }
+  }
+
+  // 5. Stelliums (3+ core personal/social/outer planets in same Sign or same House)
+  const stelliumBodies = planets.filter((p) =>
+    ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto'].includes(
+      p.name
+    )
+  );
+  const bySign = new Map<string, WesternPlanetPosition[]>();
+  const byHouse = new Map<number, WesternPlanetPosition[]>();
+  for (const p of stelliumBodies) {
+    bySign.set(p.sign, [...(bySign.get(p.sign) || []), p]);
+    byHouse.set(p.house, [...(byHouse.get(p.house) || []), p]);
+  }
+  const stelliumSeen = new Set<string>();
+  for (const [sign, group] of bySign.entries()) {
+    if (group.length >= 3) {
+      const names = group.map((g) => g.name);
+      const key = names.slice().sort().join('+');
+      stelliumSeen.add(key);
+      configs.push({
+        type: 'Stellium',
+        planets: names,
+        houseOrSign: `${sign} (Sign Stellium)`,
+        maxOrb: 30,
+        summary: `${sign} Stellium (${names.join(', ')}) concentrating focus across H${Array.from(new Set(group.map((g) => g.house))).join('/H')}.`,
+      });
+    }
+  }
+  for (const [house, group] of byHouse.entries()) {
+    if (group.length >= 3) {
+      const names = group.map((g) => g.name);
+      const key = names.slice().sort().join('+');
+      if (stelliumSeen.has(key)) continue;
+      configs.push({
+        type: 'Stellium',
+        planets: names,
+        houseOrSign: `House ${house} Stellium`,
+        maxOrb: 30,
+        summary: `House ${house} Stellium (${names.join(', ')}) packing concentrated drive into H${house}.`,
+      });
+    }
+  }
+
+  configs.sort((a, b) => a.maxOrb - b.maxOrb);
+  return configs.slice(0, 10);
+}
+
 export function computeWesternChart(params: {
   siderealPlanets: PlanetPosition[];
   kpCusps: KPCusp[];
@@ -2342,10 +2789,65 @@ export function computeWesternChart(params: {
   baseBodies.push({ name: 'Ascendant', longitude: ascLon, isRetrograde: false });
   baseBodies.push({ name: 'Midheaven', longitude: mcLon, isRetrograde: false });
 
+  // Preliminary planet build to resolve Sun house (Diurnal vs Nocturnal Sect) and solar proximity
+  const rawSun = baseBodies.find((b) => b.name === 'Sun');
+  const sunLon = rawSun ? normalizeDeg(rawSun.longitude) : 0;
+  const sunHouse = rawSun ? getHouseForTropicalLon(sunLon, tropCuspLons) : 10;
+  const isDiurnal = sunHouse >= 7 && sunHouse <= 12;
+
+  const sect: WesternSectInfo = {
+    chartType: isDiurnal ? 'Diurnal' : 'Nocturnal',
+    sunHouse,
+    sectLight: isDiurnal ? 'Sun' : 'Moon',
+    beneficOfSect: isDiurnal ? 'Jupiter' : 'Venus',
+    beneficContrary: isDiurnal ? 'Venus' : 'Jupiter',
+    maleficOfSect: isDiurnal ? 'Saturn' : 'Mars',
+    maleficContrary: isDiurnal ? 'Mars' : 'Saturn',
+    summary: isDiurnal
+      ? `Diurnal (Day) Chart (Sun in H${sunHouse}): Jupiter acts as Benefic of Sect (most constructive ease) and Saturn is Malefic of Sect (disciplined structure); Mars and Venus operate contrary to sect.`
+      : `Nocturnal (Night) Chart (Sun in H${sunHouse}): Moon leads with Venus as Benefic of Sect and Mars as Malefic of Sect (focused drive); Saturn and Jupiter operate contrary to sect.`,
+  };
+
   const planets: WesternPlanetPosition[] = baseBodies.map((b) => {
     const lon = normalizeDeg(b.longitude);
     const signIndex = Math.floor(lon / 30) % 12;
     const degInSign = lon % 30;
+    const house =
+      b.name === 'Ascendant'
+        ? 1
+        : b.name === 'Midheaven'
+        ? 10
+        : getHouseForTropicalLon(lon, tropCuspLons);
+    const houseClass = getWesternHouseClass(house);
+    const dignity = getWesternDignity(b.name, signIndex);
+    const essentialScore = getWesternEssentialScore(dignity);
+
+    let solarCondition: WesternPlanetPosition['solarCondition'] = 'Free';
+    if (
+      b.name !== 'Sun' &&
+      b.name !== 'Ascendant' &&
+      b.name !== 'Midheaven' &&
+      b.name !== 'North Node' &&
+      b.name !== 'South Node'
+    ) {
+      const distSun = circularDist(lon, sunLon);
+      if (distSun <= 0.28) solarCondition = 'Cazimi';
+      else if (distSun <= 8.5) solarCondition = 'Combust';
+      else if (distSun <= 15) solarCondition = 'Under Beams';
+    }
+
+    let sectAlignment: WesternPlanetPosition['sectAlignment'] = 'Neutral';
+    if (b.name === 'Sun' || b.name === 'Jupiter' || b.name === 'Saturn') {
+      sectAlignment = isDiurnal ? 'In Sect' : 'Contrary to Sect';
+    } else if (b.name === 'Moon' || b.name === 'Venus' || b.name === 'Mars') {
+      sectAlignment = !isDiurnal ? 'In Sect' : 'Contrary to Sect';
+    }
+
+    let accidentalScore = houseClass === 'Angular' ? 3 : houseClass === 'Succedent' ? 1 : -1;
+    if (solarCondition === 'Cazimi') accidentalScore += 3;
+    else if (solarCondition === 'Combust') accidentalScore -= 2;
+    if (b.isRetrograde && b.name !== 'North Node' && b.name !== 'South Node') accidentalScore -= 1;
+
     return {
       name: b.name,
       symbol: WESTERN_SYMBOLS[b.name] || b.name.slice(0, 2),
@@ -2354,21 +2856,21 @@ export function computeWesternChart(params: {
       sign: SIGNS[signIndex],
       degreeInSign: Number(degInSign.toFixed(4)),
       dms: formatDMS(degInSign),
-      house:
-        b.name === 'Ascendant'
-          ? 1
-          : b.name === 'Midheaven'
-          ? 10
-          : getHouseForTropicalLon(lon, tropCuspLons),
+      house,
       wholeSignHouse: ((signIndex - ascSignIdx + 12) % 12) + 1,
       isRetrograde: b.isRetrograde,
-      dignity: getWesternDignity(b.name, signIndex),
+      dignity,
       element: WESTERN_ELEMENTS[signIndex],
       modality: WESTERN_MODALITIES[signIndex],
+      essentialScore,
+      accidentalScore,
+      houseClass,
+      solarCondition,
+      sectAlignment,
     };
   });
 
-  // Compute Major & Minor Aspects
+  // Compute Major & Minor Aspects with Tight-Orb Tiering (<2° Core vs 2-5° Active vs >5° Background)
   const aspects: WesternAspectItem[] = [];
   for (let i = 0; i < planets.length; i++) {
     for (let j = i + 1; j < planets.length; j++) {
@@ -2388,14 +2890,17 @@ export function computeWesternChart(params: {
         const maxOrb = isMinorBody ? Math.min(spec.orb, 4) : spec.orb;
         const orb = Math.abs(sep - spec.angle);
         if (orb <= maxOrb) {
+          const roundedOrb = Number(orb.toFixed(2));
           aspects.push({
             bodyA: a.name,
             bodyB: b.name,
             aspect: spec.aspect,
             category: spec.category,
             angle: spec.angle,
-            orb: Number(orb.toFixed(2)),
+            orb: roundedOrb,
             exactness: orb <= 1 ? 'Exact' : orb <= 3 ? 'Tight' : orb <= 5.5 ? 'Moderate' : 'Wide',
+            orbTier: orb <= 2.0 ? 'core_structural' : orb <= 5.0 ? 'active' : 'background',
+            weightScore: computeWesternAspectWeight(a.name, b.name, spec.aspect, roundedOrb),
           });
           break;
         }
@@ -2426,6 +2931,28 @@ export function computeWesternChart(params: {
   const descLon = normalizeDeg(ascLon + 180);
   const icLon = normalizeDeg(mcLon + 180);
 
+  const tradRulerName = WESTERN_TRADITIONAL_RULERS[ascSignIdx];
+  const modRulerName = WESTERN_MODERN_RULERS[ascSignIdx];
+  const tradRulerObj = planets.find((p) => p.name === tradRulerName);
+  const modRulerObj = planets.find((p) => p.name === modRulerName);
+
+  const chartRuler: WesternChartRulerInfo = {
+    ascSign: SIGNS[ascSignIdx],
+    traditional: tradRulerName,
+    modern: modRulerName,
+    traditionalHouse: tradRulerObj?.house ?? 1,
+    traditionalDignity: tradRulerObj?.dignity ?? 'Peregrine',
+    modernHouse: modRulerObj?.house ?? 1,
+    modernDignity: modRulerObj?.dignity ?? 'Peregrine',
+  };
+
+  const mutualReceptions = computeMutualReceptions(planets);
+  const dispositorTree: WesternDispositorTree = {
+    traditional: buildWesternDispositorSystem(planets, WESTERN_TRADITIONAL_RULERS),
+    modern: buildWesternDispositorSystem(planets, WESTERN_MODERN_RULERS),
+  };
+  const configurations = detectWesternAspectConfigurations(planets, aspects);
+
   return {
     system: 'Tropical (Placidus)',
     ayanamshaUsedForConversion: Number(lahiri.toFixed(4)),
@@ -2443,6 +2970,11 @@ export function computeWesternChart(params: {
     polarities: { Yang: yang, Yin: yin },
     dominantElement,
     dominantModality,
+    sect,
+    chartRuler,
+    mutualReceptions,
+    dispositorTree,
+    configurations,
   };
 }
 
@@ -2491,7 +3023,7 @@ export function computeWesternDailyTransits(
 }
 
 // =============================================================================
-// SUTRADHARA ENGINE (PHASE 1) — DETERMINISTIC VEDIC PRECISION CALCULATORS
+// VEDIC ASTROLOGER ENGINE — DETERMINISTIC VEDIC PRECISION CALCULATORS
 // =============================================================================
 
 export interface InduLagnaInfo {
@@ -4343,6 +4875,551 @@ export function buildDeterministicTimingWidgets(
     next: {
       label: `Rahu/Ketu ${SIGNS[rahuWin.nextSignIndex].slice(0, 3)}/${SIGNS[(rahuWin.nextSignIndex + 6) % 12].slice(0, 3)}`,
     },
+  });
+
+  return widgets;
+}
+
+// 13. Deterministic Western Multi-Clock Timing Snapshot & 3-Step Visual Progress Widgets
+function computeTropicalCoreAtJD(jd: number): Record<string, number> {
+  const lahiri = getLahiriAyanamsaApprox(jd);
+  const sidSlow = computeSiderealSlowLongitudesAtJD(jd);
+
+  const d = jd - 2451543.5;
+  const toRad = Math.PI / 180;
+  const toDeg = 180 / Math.PI;
+  const precession = 1.39697 * ((jd - 2451545.0) / 36525.0);
+
+  const solveKepler = (Mdeg: number, e: number): number => {
+    const M = normalizeDeg(Mdeg) * toRad;
+    let E = M + e * Math.sin(M) * (1 + e * Math.cos(M));
+    for (let k = 0; k < 6; k++) {
+      E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    }
+    return E;
+  };
+
+  const helioXY = (N: number, i: number, w: number, a: number, e: number, M: number) => {
+    const E = solveKepler(M, e);
+    const xv = a * (Math.cos(E) - e);
+    const yv = a * Math.sqrt(1 - e * e) * Math.sin(E);
+    const v = Math.atan2(yv, xv);
+    const r = Math.hypot(xv, yv);
+    const Nrad = N * toRad;
+    const irad = i * toRad;
+    const vw = v + w * toRad;
+    const xh = r * (Math.cos(Nrad) * Math.cos(vw) - Math.sin(Nrad) * Math.sin(vw) * Math.cos(irad));
+    const yh = r * (Math.sin(Nrad) * Math.cos(vw) + Math.cos(Nrad) * Math.sin(vw) * Math.cos(irad));
+    return { xh, yh };
+  };
+
+  const wSun = 282.9404 + 4.70935e-5 * d;
+  const eSun = 0.016709 - 1.151e-9 * d;
+  const MSun = 356.047 + 0.9856002585 * d;
+  const ESun = solveKepler(MSun, eSun);
+  const xvS = Math.cos(ESun) - eSun;
+  const yvS = Math.sqrt(1 - eSun * eSun) * Math.sin(ESun);
+  const lSun = Math.atan2(yvS, xvS) + wSun * toRad;
+  const rSun = Math.hypot(xvS, yvS);
+  const xe = -rSun * Math.cos(lSun);
+  const ye = -rSun * Math.sin(lSun);
+  const tropGeo = (xh: number, yh: number) =>
+    normalizeDeg(Math.atan2(yh - ye, xh - xe) * toDeg + precession);
+
+  const Nm = 125.1228 - 0.0529538083 * d;
+  const wm = 318.0634 + 0.1643573223 * d;
+  const Mm = 115.3654 + 13.0649929509 * d;
+  const moonXY = helioXY(Nm, 5.1454, wm, 60.2666, 0.0549, Mm);
+  const Ls = MSun + wSun;
+  const Lm = Mm + wm + Nm;
+  const Dm = Lm - Ls;
+  const Fm = Lm - Nm;
+  const deltaMoon =
+    -1.274 * Math.sin((Mm - 2 * Dm) * toRad) +
+    0.658 * Math.sin(2 * Dm * toRad) -
+    0.186 * Math.sin(MSun * toRad) -
+    0.059 * Math.sin((2 * Mm - 2 * Dm) * toRad) -
+    0.057 * Math.sin((Mm - 2 * Dm + MSun) * toRad) +
+    0.053 * Math.sin((Mm + 2 * Dm) * toRad) +
+    0.046 * Math.sin((2 * Dm - MSun) * toRad) +
+    0.041 * Math.sin((Mm - MSun) * toRad) -
+    0.035 * Math.sin(Dm * toRad) -
+    0.031 * Math.sin((Mm + MSun) * toRad) -
+    0.015 * Math.sin((2 * Fm - 2 * Dm) * toRad) +
+    0.011 * Math.sin((Mm - 4 * Dm) * toRad);
+
+  const me = helioXY(48.3313 + 3.24587e-5 * d, 7.0047 + 5.0e-8 * d, 29.1241 + 1.01444e-5 * d, 0.387098, 0.205635 + 5.59e-10 * d, 168.6562 + 4.0923344368 * d);
+  const ve = helioXY(76.6799 + 2.4659e-5 * d, 3.3946 + 2.75e-8 * d, 54.891 + 1.38374e-5 * d, 0.72333, 0.006773 - 1.302e-9 * d, 48.0052 + 1.6021302244 * d);
+  const ma = helioXY(49.5574 + 2.11081e-5 * d, 1.8497 - 1.78e-8 * d, 286.5016 + 2.92961e-5 * d, 1.523688, 0.093405 + 2.516e-9 * d, 18.6021 + 0.5240207766 * d);
+
+  const outers = computeOuterAndMinorTropicalBodies(jd);
+  const outerMap = Object.fromEntries(outers.map((o) => [o.name, o.longitude]));
+
+  return {
+    Sun: tropGeo(0, 0),
+    Moon: normalizeDeg(Math.atan2(moonXY.yh, moonXY.xh) * toDeg + deltaMoon + precession),
+    Mercury: tropGeo(me.xh, me.yh),
+    Venus: tropGeo(ve.xh, ve.yh),
+    Mars: tropGeo(ma.xh, ma.yh),
+    Jupiter: normalizeDeg(sidSlow.Jupiter + lahiri),
+    Saturn: normalizeDeg(sidSlow.Saturn + lahiri),
+    'North Node': normalizeDeg(sidSlow.Rahu + lahiri),
+    'South Node': normalizeDeg(sidSlow.Ketu + lahiri),
+    Uranus: outerMap.Uranus ?? 0,
+    Neptune: outerMap.Neptune ?? 0,
+    Pluto: outerMap.Pluto ?? 0,
+    Chiron: outerMap.Chiron ?? 0,
+  };
+}
+
+function computeTropicalAscMcAtJD(jd: number, latitude: number, longitude: number): {
+  asc: number;
+  mc: number;
+} {
+  const t = (jd - 2451545.0) / 36525.0;
+  const epsDeg = 23.4392911 - 0.01300416 * t;
+  const eps = (epsDeg * Math.PI) / 180;
+  const latRad = (Math.max(-66, Math.min(66, latitude)) * Math.PI) / 180;
+  const gmstDeg = normalizeDeg(
+    280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.000387933 * t * t - (t * t * t) / 38710000
+  );
+  const ramcDeg = normalizeDeg(gmstDeg + longitude);
+  const ramc = (ramcDeg * Math.PI) / 180;
+  const mcRad = Math.atan2(Math.sin(ramc), Math.cos(ramc) * Math.cos(eps));
+  const mc = normalizeDeg((mcRad * 180) / Math.PI);
+  const ascRad = Math.atan2(
+    Math.cos(ramc),
+    -(Math.sin(ramc) * Math.cos(eps) + Math.tan(latRad) * Math.sin(eps))
+  );
+  const asc = normalizeDeg((ascRad * 180) / Math.PI);
+  return { asc, mc };
+}
+
+function jdToIsoDate(jd: number): string {
+  const ms = (jd - 2440587.5) * 86400000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function computeTropicalSlowTransitWindow(
+  planetName: 'Jupiter' | 'Saturn',
+  nowISO: string,
+  nowDayMs: number
+): {
+  prevSignIndex: number;
+  currentSignIndex: number;
+  nextSignIndex: number;
+  startDateIso: string;
+  endDateIso: string;
+  percentElapsed: number;
+  daysLeft: number;
+} {
+  const [y, m, d] = nowISO.split('-').map(Number);
+  const baseJd = toJulianDay(y || 2026, m || 1, d || 1, 12);
+  const getTropLon = (j: number) => {
+    const s = computeSiderealSlowLongitudesAtJD(j)[planetName];
+    return normalizeDeg(s + getLahiriAyanamsaApprox(j));
+  };
+  const currentSignIndex = Math.floor(getTropLon(baseJd) / 30) % 12;
+
+  const maxDays = 1300;
+  let daysSinceIngress = 180;
+  let prevSignIndex = (currentSignIndex + 11) % 12;
+
+  for (let day = 7; day <= maxDays; day += 7) {
+    const sIdx = Math.floor(getTropLon(baseJd - day) / 30) % 12;
+    if (sIdx !== currentSignIndex) {
+      for (let fine = Math.max(1, day - 7); fine <= day; fine++) {
+        const fineSign = Math.floor(getTropLon(baseJd - fine) / 30) % 12;
+        if (fineSign !== currentSignIndex) {
+          daysSinceIngress = Math.max(0, fine - 1);
+          prevSignIndex = fineSign;
+          break;
+        }
+      }
+      break;
+    }
+  }
+
+  let daysUntilIngress = 365;
+  let nextSignIndex = (currentSignIndex + 1) % 12;
+  for (let day = 7; day <= maxDays; day += 7) {
+    const sIdx = Math.floor(getTropLon(baseJd + day) / 30) % 12;
+    if (sIdx !== currentSignIndex) {
+      for (let fine = Math.max(1, day - 7); fine <= day; fine++) {
+        const fineSign = Math.floor(getTropLon(baseJd + fine) / 30) % 12;
+        if (fineSign !== currentSignIndex) {
+          daysUntilIngress = fine;
+          nextSignIndex = fineSign;
+          break;
+        }
+      }
+      break;
+    }
+  }
+
+  const startDateIso = new Date(nowDayMs - daysSinceIngress * 86400000).toISOString().slice(0, 10);
+  const endDateIso = new Date(nowDayMs + daysUntilIngress * 86400000).toISOString().slice(0, 10);
+  const { percentElapsed, daysLeft } = computeProgressMetrics(startDateIso, endDateIso, nowDayMs);
+
+  return {
+    prevSignIndex,
+    currentSignIndex,
+    nextSignIndex,
+    startDateIso,
+    endDateIso,
+    percentElapsed,
+    daysLeft,
+  };
+}
+
+export function computeWesternTimingSnapshot(params: {
+  westernChart: WesternChartData;
+  birthDateISO: string;
+  birthTimeStr: string;
+  timezoneOffsetHours: number;
+  latitude: number;
+  longitude: number;
+  transitPlanets?: WesternPlanetPosition[] | null;
+  nowDate?: Date | string;
+}): WesternTimingSnapshot {
+  const parsedNow =
+    params.nowDate instanceof Date
+      ? params.nowDate
+      : typeof params.nowDate === 'string' && params.nowDate.trim()
+      ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(params.nowDate.trim()) ? `${params.nowDate.trim()}T12:00:00Z` : params.nowDate)
+      : new Date();
+  const safeNow = Number.isNaN(parsedNow.getTime()) ? new Date() : parsedNow;
+  const nowISO = safeNow.toISOString().slice(0, 10);
+  const nowDayMs = parseUtcDayMs(nowISO);
+
+  const [by, bm, bd] = (params.birthDateISO || '2000-01-01').split('-').map(Number);
+  const timeParts = (params.birthTimeStr || '12:00:00').split(':').map(Number);
+  const localHours = (timeParts[0] || 0) + (timeParts[1] || 0) / 60 + (timeParts[2] || 0) / 3600;
+  const birthJD = toJulianDay(by || 2000, bm || 1, bd || 1, localHours - params.timezoneOffsetHours);
+
+  const [ny, nm, nd] = nowISO.split('-').map(Number);
+  const nowJD = toJulianDay(ny, nm, nd, 12);
+
+  // 1. Annual Profections (exact birthday boundary)
+  const hadBirthdayThisYear = nm > bm || (nm === bm && nd >= bd);
+  const age = Math.max(0, ny - by - (hadBirthdayThisYear ? 0 : 1));
+  const lastBdayYear = hadBirthdayThisYear ? ny : ny - 1;
+  const nextBdayYear = lastBdayYear + 1;
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const clampDay = (yr: number, mo: number, dy: number) =>
+    mo === 2 && dy === 29 && yr % 4 !== 0 ? 28 : dy;
+  const yearStartIso = `${lastBdayYear}-${pad2(bm)}-${pad2(clampDay(lastBdayYear, bm, bd))}`;
+  const yearEndIso = `${nextBdayYear}-${pad2(bm)}-${pad2(clampDay(nextBdayYear, bm, bd))}`;
+  const profProgress = computeProgressMetrics(yearStartIso, yearEndIso, nowDayMs);
+
+  const ascSignIdx = Math.floor((params.westernChart.angles.ascendant.longitude || 0) / 30) % 12;
+  const profectedHouse = (age % 12) + 1;
+  const profectedSignIdx = (ascSignIdx + profectedHouse - 1) % 12;
+  const lordTrad = WESTERN_TRADITIONAL_RULERS[profectedSignIdx];
+  const lordMod = WESTERN_MODERN_RULERS[profectedSignIdx];
+  const lordNatalObj = params.westernChart.planets.find((p) => p.name === lordTrad);
+
+  // 2. Secondary Progressions (1 day after birth = 1 year of life)
+  const exactAgeYears = Math.max(0, (nowJD - birthJD) / 365.2422);
+  const progJD = birthJD + exactAgeYears;
+  const progLonNow = computeTropicalCoreAtJD(progJD);
+  const progLonPrev = computeTropicalCoreAtJD(progJD - 0.05); // ~18 days in life earlier for Rx check
+  const progSign = (lon: number) => SIGNS[Math.floor(normalizeDeg(lon) / 30) % 12];
+  const cuspLons = params.westernChart.cusps.map((c) => c.longitude);
+
+  const progMoonLon = progLonNow.Moon;
+  const progMoonSignIdx = Math.floor(normalizeDeg(progMoonLon) / 30) % 12;
+  // Find Secondary Progressed Moon sign start/end dates (each Moon day ~ 2.5 years of life)
+  let pMoonDaysBefore = 1.25;
+  for (let step = 0.05; step <= 3.5; step += 0.05) {
+    const sIdx = Math.floor(computeTropicalCoreAtJD(progJD - step).Moon / 30) % 12;
+    if (sIdx !== progMoonSignIdx) {
+      pMoonDaysBefore = Math.max(0.02, step - 0.025);
+      break;
+    }
+  }
+  let pMoonDaysAfter = 1.25;
+  for (let step = 0.05; step <= 3.5; step += 0.05) {
+    const sIdx = Math.floor(computeTropicalCoreAtJD(progJD + step).Moon / 30) % 12;
+    if (sIdx !== progMoonSignIdx) {
+      pMoonDaysAfter = Math.max(0.02, step);
+      break;
+    }
+  }
+  const progMoonStartIso = new Date(nowDayMs - pMoonDaysBefore * 365.2422 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const progMoonEndIso = new Date(nowDayMs + pMoonDaysAfter * 365.2422 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const progMoonMetrics = computeProgressMetrics(progMoonStartIso, progMoonEndIso, nowDayMs);
+
+  const natalSunLon =
+    params.westernChart.planets.find((p) => p.name === 'Sun')?.longitude ?? progLonNow.Sun;
+  const solarArcDelta = normalizeDeg(progLonNow.Sun - natalSunLon);
+  const progAscLon = normalizeDeg(params.westernChart.angles.ascendant.longitude + solarArcDelta);
+  const progMcLon = normalizeDeg(params.westernChart.angles.midheaven.longitude + solarArcDelta);
+
+  const tightAspectsToNatal: WesternTimingSnapshot['progressions']['tightAspectsToNatal'] = [];
+  const progKeys = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars'] as const;
+  const majorAspAngles = [
+    { name: 'Conjunction', deg: 0 },
+    { name: 'Sextile', deg: 60 },
+    { name: 'Square', deg: 90 },
+    { name: 'Trine', deg: 120 },
+    { name: 'Opposition', deg: 180 },
+  ];
+  for (const pk of progKeys) {
+    const pLon = progLonNow[pk];
+    for (const natal of params.westernChart.planets) {
+      if (natal.name === 'Lilith' || natal.name === 'South Node') continue;
+      const dist = circularDist(pLon, natal.longitude);
+      for (const spec of majorAspAngles) {
+        const orb = Math.abs(dist - spec.deg);
+        if (orb <= 1.5) {
+          tightAspectsToNatal.push({
+            progressedBody: pk,
+            aspect: spec.name,
+            natalBody: natal.name,
+            orb: Number(orb.toFixed(2)),
+          });
+          break;
+        }
+      }
+    }
+  }
+  tightAspectsToNatal.sort((a, b) => a.orb - b.orb);
+
+  // 3. Solar Return (exact JD when transiting Sun matches natal Sun longitude)
+  let srJd = toJulianDay(lastBdayYear, bm, clampDay(lastBdayYear, bm, bd), 12);
+  for (let iter = 0; iter < 5; iter++) {
+    const sLon = computeTropicalCoreAtJD(srJd).Sun;
+    let diff = natalSunLon - sLon;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    srJd += diff / 0.9856;
+  }
+  const srBodies = computeTropicalCoreAtJD(srJd);
+  const srAscMc = computeTropicalAscMcAtJD(srJd, params.latitude, params.longitude);
+  const srAscSignIdx = Math.floor(srAscMc.asc / 30) % 12;
+  const srMcSignIdx = Math.floor(srAscMc.mc / 30) % 12;
+  const srMoonSignIdx = Math.floor(srBodies.Moon / 30) % 12;
+  const srSunHouse = ((Math.floor(srBodies.Sun / 30) % 12 - srAscSignIdx + 12) % 12) + 1;
+  const srDateIso = jdToIsoDate(srJd);
+
+  // 4. Outer & Slow Transits to Natal (<2.5° tight orbs)
+  const transitNow = computeTropicalCoreAtJD(nowJD);
+  const transitYesterday = computeTropicalCoreAtJD(nowJD - 1);
+  const outerNames = ['Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto', 'Chiron', 'North Node'] as const;
+  const outerPlanets = outerNames.map((pName) => {
+    const apiMatch = params.transitPlanets?.find((tp) => tp.name === pName);
+    const lon = apiMatch ? apiMatch.longitude : transitNow[pName];
+    const sIdx = Math.floor(normalizeDeg(lon) / 30) % 12;
+    let delta = lon - transitYesterday[pName];
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    const isRx =
+      apiMatch !== undefined
+        ? apiMatch.isRetrograde
+        : pName === 'North Node'
+        ? true
+        : delta < 0;
+    return {
+      planet: pName,
+      lon,
+      sign: SIGNS[sIdx],
+      dms: formatDMS(normalizeDeg(lon) % 30),
+      natalHouse: cuspLons.length === 12 ? getHouseForTropicalLon(lon, cuspLons) : ((sIdx - ascSignIdx + 12) % 12) + 1,
+      isRetrograde: isRx,
+    };
+  });
+
+  const tightHitsToNatal: WesternTimingSnapshot['transits']['tightHitsToNatal'] = [];
+  for (const tp of outerPlanets) {
+    for (const natal of params.westernChart.planets) {
+      if (natal.name === 'Lilith' || natal.name === 'South Node') continue;
+      const dist = circularDist(tp.lon, natal.longitude);
+      for (const spec of majorAspAngles) {
+        const orb = Math.abs(dist - spec.deg);
+        if (orb <= 2.5) {
+          tightHitsToNatal.push({
+            transitPlanet: tp.planet,
+            aspect: spec.name,
+            natalBody: natal.name,
+            orb: Number(orb.toFixed(2)),
+            orbTier: orb <= 1.2 ? 'core_structural' : 'active',
+          });
+          break;
+        }
+      }
+    }
+  }
+  tightHitsToNatal.sort((a, b) => a.orb - b.orb);
+
+  return {
+    asOfDate: nowISO,
+    profection: {
+      age,
+      profectedHouse,
+      profectedSign: SIGNS[profectedSignIdx],
+      lordOfYearTraditional: lordTrad,
+      lordOfYearModern: lordMod,
+      lordNatalHouse: lordNatalObj?.house ?? 1,
+      lordDignity: lordNatalObj?.dignity ?? 'Peregrine',
+      yearStartIso,
+      yearEndIso,
+      percentElapsed: profProgress.percentElapsed,
+      daysLeft: profProgress.daysLeft,
+    },
+    progressions: {
+      progressedDateIso: jdToIsoDate(progJD),
+      sun: {
+        sign: progSign(progLonNow.Sun),
+        dms: formatDMS(normalizeDeg(progLonNow.Sun) % 30),
+        house: cuspLons.length === 12 ? getHouseForTropicalLon(progLonNow.Sun, cuspLons) : 1,
+      },
+      moon: {
+        sign: SIGNS[progMoonSignIdx],
+        signIndex: progMoonSignIdx,
+        dms: formatDMS(normalizeDeg(progMoonLon) % 30),
+        house: cuspLons.length === 12 ? getHouseForTropicalLon(progMoonLon, cuspLons) : 1,
+        signStartIso: progMoonStartIso,
+        signEndIso: progMoonEndIso,
+        percentElapsed: progMoonMetrics.percentElapsed,
+        daysLeft: progMoonMetrics.daysLeft,
+      },
+      mercury: {
+        sign: progSign(progLonNow.Mercury),
+        dms: formatDMS(normalizeDeg(progLonNow.Mercury) % 30),
+        isRetrograde: normalizeDeg(progLonNow.Mercury - progLonPrev.Mercury) > 180,
+      },
+      venus: {
+        sign: progSign(progLonNow.Venus),
+        dms: formatDMS(normalizeDeg(progLonNow.Venus) % 30),
+        isRetrograde: normalizeDeg(progLonNow.Venus - progLonPrev.Venus) > 180,
+      },
+      mars: {
+        sign: progSign(progLonNow.Mars),
+        dms: formatDMS(normalizeDeg(progLonNow.Mars) % 30),
+        isRetrograde: normalizeDeg(progLonNow.Mars - progLonPrev.Mars) > 180,
+      },
+      ascendantSign: progSign(progAscLon),
+      midheavenSign: progSign(progMcLon),
+      tightAspectsToNatal: tightAspectsToNatal.slice(0, 10),
+    },
+    solarReturn: {
+      returnDateIso: srDateIso,
+      yearStartIso,
+      yearEndIso,
+      srAscendantSign: SIGNS[srAscSignIdx],
+      srAscendantDms: formatDMS(srAscMc.asc % 30),
+      srMidheavenSign: SIGNS[srMcSignIdx],
+      srSunHouse,
+      srMoonSign: SIGNS[srMoonSignIdx],
+      summary: `Solar Return (${srDateIso}): SR Ascendant ${SIGNS[srAscSignIdx]} ${formatDMS(srAscMc.asc % 30)}, SR MC ${SIGNS[srMcSignIdx]}, SR Sun in SR H${srSunHouse}, SR Moon in ${SIGNS[srMoonSignIdx]}.`,
+    },
+    transits: {
+      transitDate: nowISO,
+      outerPlanets: outerPlanets.map(({ lon: _lon, ...rest }) => rest),
+      tightHitsToNatal: tightHitsToNatal.slice(0, 14),
+    },
+  };
+}
+
+export function buildWesternTimingWidgets(
+  snapshot: WesternTimingSnapshot,
+  nowDate?: Date | string
+): TimingProgressWidget[] {
+  const parsedNow =
+    nowDate instanceof Date
+      ? nowDate
+      : typeof nowDate === 'string' && nowDate.trim()
+      ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(nowDate.trim()) ? `${nowDate.trim()}T12:00:00Z` : nowDate)
+      : new Date();
+  const safeNow = Number.isNaN(parsedNow.getTime()) ? new Date() : parsedNow;
+  const nowISO = safeNow.toISOString().slice(0, 10);
+  const nowDayMs = parseUtcDayMs(nowISO);
+
+  const widgets: TimingProgressWidget[] = [];
+
+  // 1. Annual Profection Year
+  const curH = snapshot.profection.profectedHouse;
+  const prevH = curH === 1 ? 12 : curH - 1;
+  const nextH = curH === 12 ? 1 : curH + 1;
+  widgets.push({
+    id: 'profection',
+    kind: 'dasha',
+    title: `Annual Profection (Age ${snapshot.profection.age})`,
+    previous: { label: `${prevH}H Year` },
+    current: {
+      label: `${curH}H ${snapshot.profection.profectedSign} · Lord ${snapshot.profection.lordOfYearTraditional}`,
+      startDateIso: snapshot.profection.yearStartIso,
+      endDateIso: snapshot.profection.yearEndIso,
+      startDisplay: formatWidgetDisplayDate(snapshot.profection.yearStartIso),
+      endDisplay: formatWidgetDisplayDate(snapshot.profection.yearEndIso),
+      percentElapsed: snapshot.profection.percentElapsed,
+      daysLeft: snapshot.profection.daysLeft,
+    },
+    next: { label: `${nextH}H Year` },
+  });
+
+  // 2. Secondary Progressed Moon Sign Cycle
+  const pmIdx = snapshot.progressions.moon.signIndex;
+  const pmPrev = (pmIdx + 11) % 12;
+  const pmNext = (pmIdx + 1) % 12;
+  widgets.push({
+    id: 'progressed_moon',
+    kind: 'dasha',
+    title: 'Progressed Moon Cycle',
+    previous: { label: `Moon in ${SIGNS[pmPrev]}` },
+    current: {
+      label: `Progressed Moon in ${SIGNS[pmIdx]} (H${snapshot.progressions.moon.house})`,
+      startDateIso: snapshot.progressions.moon.signStartIso,
+      endDateIso: snapshot.progressions.moon.signEndIso,
+      startDisplay: formatWidgetDisplayDate(snapshot.progressions.moon.signStartIso),
+      endDisplay: formatWidgetDisplayDate(snapshot.progressions.moon.signEndIso),
+      percentElapsed: snapshot.progressions.moon.percentElapsed,
+      daysLeft: snapshot.progressions.moon.daysLeft,
+    },
+    next: { label: `Moon in ${SIGNS[pmNext]}` },
+  });
+
+  // 3. Tropical Saturn Transit
+  const satWin = computeTropicalSlowTransitWindow('Saturn', nowISO, nowDayMs);
+  widgets.push({
+    id: 'w_saturn',
+    kind: 'transit',
+    title: 'Saturn Transit (Tropical)',
+    previous: { label: `Saturn in ${SIGNS[satWin.prevSignIndex]}` },
+    current: {
+      label: `Saturn in ${SIGNS[satWin.currentSignIndex]}`,
+      startDateIso: satWin.startDateIso,
+      endDateIso: satWin.endDateIso,
+      startDisplay: formatWidgetDisplayDate(satWin.startDateIso),
+      endDisplay: formatWidgetDisplayDate(satWin.endDateIso),
+      percentElapsed: satWin.percentElapsed,
+      daysLeft: satWin.daysLeft,
+    },
+    next: { label: `Saturn in ${SIGNS[satWin.nextSignIndex]}` },
+  });
+
+  // 4. Tropical Jupiter Transit
+  const jupWin = computeTropicalSlowTransitWindow('Jupiter', nowISO, nowDayMs);
+  widgets.push({
+    id: 'w_jupiter',
+    kind: 'transit',
+    title: 'Jupiter Transit (Tropical)',
+    previous: { label: `Jupiter in ${SIGNS[jupWin.prevSignIndex]}` },
+    current: {
+      label: `Jupiter in ${SIGNS[jupWin.currentSignIndex]}`,
+      startDateIso: jupWin.startDateIso,
+      endDateIso: jupWin.endDateIso,
+      startDisplay: formatWidgetDisplayDate(jupWin.startDateIso),
+      endDisplay: formatWidgetDisplayDate(jupWin.endDateIso),
+      percentElapsed: jupWin.percentElapsed,
+      daysLeft: jupWin.daysLeft,
+    },
+    next: { label: `Jupiter in ${SIGNS[jupWin.nextSignIndex]}` },
   });
 
   return widgets;

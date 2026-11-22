@@ -1,7 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { getClientIpHash } from '../services/abuseGuard';
-import type { SutraUserProfile } from '../../lib/sutraTypes';
+import {
+  normalizeCouncilSlug,
+  type VedicUserProfile,
+} from '../../lib/vedicTypes';
 
 export const PRIMARY_ADMIN_EMAIL = 'fintasticapps@gmail.com';
 
@@ -26,7 +29,7 @@ export interface AppUserRecord {
   preferred_call_name?: string | null;
   chat_font_size?: 'sm' | 'base' | 'lg' | null;
   suggestions_auto_expand?: boolean | null;
-  sutra_user_profile_json?: SutraUserProfile | null;
+  sutra_user_profile_json?: VedicUserProfile | null;
   signup_ip_hash?: string | null;
   last_ip_hash?: string | null;
   referral_code: string;
@@ -253,7 +256,13 @@ export const requireAuth = async (
       return;
     }
 
-    req.appUser = appUser as AppUserRecord;
+    const normalizedAppUser: AppUserRecord = {
+      ...(appUser as AppUserRecord),
+      default_expert: normalizeCouncilSlug(
+        (appUser as AppUserRecord).default_expert
+      ),
+    };
+    req.appUser = normalizedAppUser;
     next();
   } catch (err) {
     console.error('[auth] Unexpected error validating token:', err);

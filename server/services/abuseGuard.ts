@@ -358,12 +358,12 @@ export function containsInternalPromptLeak(text: string): boolean {
 }
 
 /**
- * Light, non-destructive Sutradhara prose sanitizer:
+ * Light, non-destructive Vedic Astrologer prose sanitizer:
  * - Replaces archaic third-person chart tells ("the native", "the native's") with second-person ("you", "your")
  * - Strips accidental internal cartridge/priority debug tags ([F_...], [PRIO_...])
  * - Preserves markdown structure, tables, code fences, and inline Sanskrit/Jyotish terms
  */
-export function sanitizeSutraProse(
+export function sanitizeVedicProse(
   text: string,
   allowedTimingWidgetIds?: Set<string> | null
 ): string {
@@ -423,9 +423,9 @@ export function sanitizeSutraProse(
       return offset === 0 || /(?:^|[.!?]\s+|\n|:\s+)$/.test(before) ? 'You' : 'you';
     })
     .replace(/\b(?:the|a)\s+native\b/g, 'you')
-    // Strip any accidental internal rule token leakage like [F_DASHA_LADDER] or (PRIO_CAREER)
-    .replace(/\[(?:F|PRIO)_[A-Z0-9_]+\]\s*/g, '')
-    .replace(/\((?:F|PRIO)_[A-Z0-9_]+\)\s*/g, '')
+    // Strip any accidental internal rule token leakage like [F_DASHA_LADDER], (PRIO_CAREER), or [W_SECT_POLARITY]
+    .replace(/\[(?:F|PRIO|W|W_PRIO)_[A-Z0-9_]+\]\s*/g, '')
+    .replace(/\((?:F|PRIO|W|W_PRIO)_[A-Z0-9_]+\)\s*/g, '')
     // Strip legacy prompt-structure markers (:::prediction, :::analysis, :::, [CONFIDENCE: ...], [FOLLOWUP])
     .replace(/^[ \t]*:::[a-zA-Z0-9_-]*[ \t]*(?:\r?\n|$)/gm, '')
     .replace(/:::(?:prediction|analysis)\b[ \t]*/gi, '')
@@ -461,7 +461,7 @@ export function sanitizeAssistantOutput(
     return { text: PROMPT_EXTRACTION_REFUSAL, leaked: true };
   }
   return {
-    text: sanitizeSutraProse(text, allowedTimingWidgetIds),
+    text: sanitizeVedicProse(text, allowedTimingWidgetIds),
     leaked: false,
   };
 }

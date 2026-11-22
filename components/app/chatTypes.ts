@@ -3,14 +3,21 @@ import type {
   LifeContextChild,
   LifeContextData,
 } from '../../lib/lifeContextSchema';
-import type {
-  ClarificationChip,
-  ClarificationPayload,
-  Stage1RouterResult,
-  SutraSynthesisMeta,
-  TimingProgressWidget,
-  TimingWidgetId,
-} from '../../lib/sutraTypes';
+import {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  normalizeCouncilSlug,
+  type ClarificationChip,
+  type ClarificationPayload,
+  type Stage1RouterResult,
+  type TimingProgressWidget,
+  type TimingWidgetId,
+  type VedicSynthesisMeta,
+} from '../../lib/vedicTypes';
+
+export {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  normalizeCouncilSlug,
+};
 
 export type {
   LifeContextAnchor,
@@ -19,7 +26,7 @@ export type {
   ClarificationChip,
   ClarificationPayload,
   Stage1RouterResult,
-  SutraSynthesisMeta,
+  VedicSynthesisMeta,
   TimingProgressWidget,
   TimingWidgetId,
 };
@@ -51,8 +58,10 @@ export interface MessageSuggestions {
   followups: SuggestionItem[];
   deeper_analysis: SuggestionItem[];
   clarification?: ClarificationPayload | null;
+  vedic_stage1?: Stage1RouterResult | null;
+  vedic_meta?: VedicSynthesisMeta | null;
   sutra_stage1?: Stage1RouterResult | null;
-  sutra_meta?: SutraSynthesisMeta | null;
+  sutra_meta?: VedicSynthesisMeta | null;
   tech_breakdown?: string | null;
   timing_widgets?: TimingProgressWidget[] | null;
 }

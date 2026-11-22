@@ -106,7 +106,7 @@ export interface CompiledChartData {
   lalKitab?: LalKitabData;
   western?: WesternChartData;
   shadBalaSummary?: unknown;
-  // Sutradhara Phase 1 Precision Additions
+  // Vedic Astrologer Precision Additions
   specialPoints?: SpecialVedicPointsReport;
   bhavaChalit?: BhavaChalitReport;
   ascendantMaturity?: AscendantMaturityReport;
@@ -303,6 +303,10 @@ export function enrichCompiledChart(rawChart: CompiledChartData): {
     !rawChart.yogas ||
     !rawChart.lalKitab ||
     !rawChart.western ||
+    !rawChart.western.sect ||
+    !rawChart.western.configurations ||
+    !rawChart.western.mutualReceptions ||
+    !rawChart.western.dispositorTree ||
     !rawChart.kp?.rulingPlanets ||
     !rawChart.jaimini?.arudhaPadas ||
     !rawChart.jaimini?.charaDasha ||
@@ -365,14 +369,21 @@ export function enrichCompiledChart(rawChart: CompiledChartData): {
   const yogas = rawChart.yogas || computeMajorYogas(rawChart.planets);
   const lalKitab = rawChart.lalKitab || computeLalKitab(rawChart.planets, birthDate);
   const western =
-    rawChart.western ||
-    computeWesternChart({
-      siderealPlanets: rawChart.planets,
-      kpCusps,
-      birthDateISO: birthDate,
-      birthTimeStr: birthTime,
-      timezoneOffsetHours: tz,
-    });
+    rawChart.western?.sect &&
+    rawChart.western?.configurations &&
+    rawChart.western?.mutualReceptions &&
+    rawChart.western?.dispositorTree
+      ? rawChart.western
+      : computeWesternChart({
+          siderealPlanets: rawChart.planets,
+          kpCusps,
+          birthDateISO: birthDate,
+          birthTimeStr: birthTime,
+          timezoneOffsetHours: tz,
+          apiWesternPlanets: rawChart.western?.planets
+            ?.filter((p) => !['Ascendant', 'Midheaven'].includes(p.name))
+            .map((p) => ({ name: p.name, longitude: p.longitude, isRetrograde: p.isRetrograde })),
+        });
 
   const specialPoints = rawChart.specialPoints || computeSpecialVedicPoints(rawChart.planets, vargas);
   const bhavaChalit = rawChart.bhavaChalit || computeBhavaChalitShifts(rawChart.planets, kpCusps);
@@ -444,6 +455,8 @@ export function formatChartForLLM(
   const enriched =
     !chart.shadbala ||
     !chart.western ||
+    !chart.western.sect ||
+    !chart.western.configurations ||
     !chart.lalKitab ||
     !chart.panchang ||
     !chart.vargas?.D27 ||
@@ -462,6 +475,16 @@ export function formatChartForLLM(
         tob: enriched.meta.birthTime,
         place: enriched.meta.location.locationLabel,
       },
+      sect: w.sect
+        ? {
+            type: w.sect.chartType,
+            sunH: w.sect.sunHouse,
+            sectLight: w.sect.sectLight,
+            beneficOfSect: w.sect.beneficOfSect,
+            maleficOfSect: w.sect.maleficOfSect,
+          }
+        : undefined,
+      chartRuler: w.chartRuler,
       angles: {
         Asc: `${w.angles.ascendant.sign} ${w.angles.ascendant.dms}`,
         MC: `${w.angles.midheaven.sign} ${w.angles.midheaven.dms}`,
@@ -473,14 +496,27 @@ export function formatChartForLLM(
         s: `${p.sign.slice(0, 3)} ${p.dms}`,
         h: p.house,
         wsH: p.wholeSignHouse,
+        hc: p.houseClass,
         rx: p.isRetrograde || undefined,
         dig: p.dignity !== 'Peregrine' ? p.dignity : undefined,
+        ess: typeof p.essentialScore === 'number' && p.essentialScore !== 0 ? p.essentialScore : undefined,
+        sol: p.solarCondition && p.solarCondition !== 'Free' ? p.solarCondition : undefined,
+        sect: p.sectAlignment && p.sectAlignment !== 'Neutral' ? p.sectAlignment : undefined,
       })),
       cusps: w.cusps.map((c) => `H${c.house}:${c.sign.slice(0, 3)} ${c.dms}`),
       elements: w.elements,
       modalities: w.modalities,
       polarities: w.polarities,
-      aspects: w.aspects.slice(0, 36).map((a) => `${a.bodyA} ${a.aspect} ${a.bodyB} (${a.orb.toFixed(1)}°)`),
+      mutualReceptions: w.mutualReceptions?.map((m) => m.summary),
+      finalDispositors: w.dispositorTree?.traditional.finalDispositors,
+      dispositorLoops: w.dispositorTree?.traditional.loops,
+      configurations: w.configurations?.map((cfg) => cfg.summary),
+      aspects: w.aspects
+        .slice(0, 36)
+        .map(
+          (a) =>
+            `${a.bodyA} ${a.aspect} ${a.bodyB} (${a.orb.toFixed(1)}°${a.orbTier === 'core_structural' ? ' CORE' : ''})`
+        ),
     };
     return `VERIFIED WESTERN TROPICAL CHART JSON:\n${JSON.stringify(compactWestern)}`;
   }
@@ -509,8 +545,8 @@ export function formatChartForLLM(
 
   // Trim Vimshottari AD/PD detail to active MD + adjacent ±15yr window to preserve full 100-yr MD visibility while bounding tokens
   const vimCompact = {
-    active: enriched.vimshottari.currentStack,
-    timeline: enriched.vimshottari.timeline.map((md) => {
+    active: enriched.vimshottari?.currentStack || null,
+    timeline: (enriched.vimshottari?.timeline || []).map((md) => {
       const mdStartY = Number(md.startDate.slice(0, 4));
       const mdEndY = Number(md.endDate.slice(0, 4));
       const isNearNow = mdEndY >= nowYear - 12 && mdStartY <= nowYear + 20;
@@ -629,7 +665,7 @@ export function formatChartForLLM(
     yogas: enriched.scoredYogas
       ? enriched.scoredYogas.map((y) => `${y.name} [${y.status}, YSI:${y.ysiTotal}/110]`)
       : enriched.yogas?.map((y) => `${y.name} [${y.planets.join('+')}]`),
-    sutradharaPrecision: {
+    vedicPrecision: {
       ascMaturity: enriched.ascendantMaturity
         ? `${enriched.ascendantMaturity.sign} ${enriched.ascendantMaturity.degreeInSign}° (${enriched.ascendantMaturity.maturityBand}${enriched.ascendantMaturity.birthTimeSensitivityWarning ? ', SANDHI/SENSITIVE' : ''})`
         : undefined,

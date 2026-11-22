@@ -1,13 +1,22 @@
 import { enrichCompiledChart, type CompiledChartData } from './chartCompiler';
-import type {
-  BadhakaReport,
-  DoubleTransitHouseRow,
-  KPCusp,
-  KPSignificatorRow,
-  PlanetaryHealthRow,
-  PlanetPosition,
-  ScoredYogaItem,
-  StructuralDoshaItem,
+import {
+  WESTERN_MODERN_RULERS,
+  WESTERN_TRADITIONAL_RULERS,
+  type BadhakaReport,
+  type DoubleTransitHouseRow,
+  type KPCusp,
+  type KPSignificatorRow,
+  type PlanetaryHealthRow,
+  type PlanetPosition,
+  type ScoredYogaItem,
+  type StructuralDoshaItem,
+  type WesternAspectConfiguration,
+  type WesternAspectItem,
+  type WesternChartData,
+  type WesternChartRulerInfo,
+  type WesternMutualReceptionItem,
+  type WesternPlanetPosition,
+  type WesternSectInfo,
 } from './jyotishMath';
 import type { LifeContextData } from './lifeContextGuard';
 import {
@@ -161,11 +170,110 @@ export interface NatalNarrativeKernel {
   generated_by: 'llm' | 'deterministic_fallback';
 }
 
+export interface WesternTruthDossierV1 {
+  schema_version: 'western_truth_v1';
+  sect_and_ruler: {
+    chart_type: 'Diurnal' | 'Nocturnal';
+    sun_house: number;
+    sect_light: 'Sun' | 'Moon';
+    benefic_of_sect: 'Jupiter' | 'Venus';
+    malefic_of_sect: 'Saturn' | 'Mars';
+    ascendant_sign: string;
+    ascendant_dms: string;
+    midheaven_sign: string;
+    midheaven_dms: string;
+    angle_cusp_minute_sensitive: boolean;
+    dominant_element: string;
+    dominant_modality: string;
+    chart_ruler: WesternChartRulerInfo;
+  };
+  dignity_hierarchy: {
+    powerhouse_planets: Array<{
+      planet: string;
+      sign: string;
+      house: number;
+      dignity: string;
+      sect_alignment: string;
+      solar_condition: string;
+      strength_score: number;
+      why_dominant: string;
+    }>;
+    strained_planets: Array<{
+      planet: string;
+      sign: string;
+      house: number;
+      dignity: string;
+      vulnerability: string;
+      offset_or_protection: string;
+    }>;
+    mutual_receptions: WesternMutualReceptionItem[];
+    dispositor_backbone: {
+      traditional_finals: string[];
+      modern_finals: string[];
+      traditional_loops: string[][];
+      summary: string;
+    };
+  };
+  tight_structural_aspects: Array<{
+    bodyA: string;
+    aspect: string;
+    bodyB: string;
+    orb: number;
+    orbTier: string;
+    weightScore: number;
+  }>;
+  configurations: WesternAspectConfiguration[];
+  house_promises: Record<
+    string,
+    {
+      cusp_sign: string;
+      traditional_ruler: string;
+      modern_ruler: string;
+      occupants: string[];
+      verdict: 'supportive' | 'conditional' | 'mixed' | 'strained';
+      score: number;
+      note: string;
+    }
+  >;
+  domain_pre_audits: {
+    love_and_partnership: {
+      structural_verdict: string;
+      positive_weights_0_100: number;
+      friction_weights_0_100: number;
+      key_anchors: string[];
+    };
+    vocation_and_authority: {
+      structural_verdict: string;
+      positive_weights_0_100: number;
+      friction_weights_0_100: number;
+      key_anchors: string[];
+    };
+    resources_and_worth: {
+      structural_verdict: string;
+      positive_weights_0_100: number;
+      friction_weights_0_100: number;
+      key_anchors: string[];
+    };
+    mind_and_vitality: {
+      physical_resilience: string;
+      mental_pattern: string;
+      key_anchors: string[];
+    };
+    growth_and_relocation: {
+      promise_level: string;
+      key_anchors: string[];
+    };
+  };
+  unresolved_contradictions: string[];
+  narrative_kernel: string;
+}
+
 export interface NatalTruthDossierV1 {
   version: number;
   generated_at: string;
   layer_a: NatalTruthDossierLayerA;
   layer_b: NatalNarrativeKernel | null;
+  western_dossier?: WesternTruthDossierV1;
 }
 
 const PLANET_DOMAINS: Record<string, string[]> = {
@@ -1021,6 +1129,404 @@ ${JSON.stringify(compactInput)}`,
   }
 }
 
+export function buildWesternTruthDossier(
+  chart: CompiledChartData,
+  lifeContext?: LifeContextData | null
+): WesternTruthDossierV1 {
+  const enriched =
+    !chart.western || !chart.western.sect || !chart.western.configurations
+      ? enrichCompiledChart(chart).chartJson
+      : chart;
+  const w: WesternChartData = enriched.western!;
+
+  const findW = (name: string): WesternPlanetPosition | undefined =>
+    w.planets.find((p) => p.name === name);
+  const aspectsFor = (name: string): WesternAspectItem[] =>
+    w.aspects.filter((a) => a.bodyA === name || a.bodyB === name);
+
+  const mrSet = new Set<string>();
+  for (const mr of w.mutualReceptions || []) {
+    mrSet.add(mr.planetA);
+    mrSet.add(mr.planetB);
+  }
+
+  const sect: WesternSectInfo = w.sect || {
+    chartType: 'Diurnal',
+    sunHouse: 10,
+    sectLight: 'Sun',
+    beneficOfSect: 'Jupiter',
+    beneficContrary: 'Venus',
+    maleficOfSect: 'Saturn',
+    maleficContrary: 'Mars',
+    summary: 'Diurnal chart baseline.',
+  };
+
+  const chartRuler: WesternChartRulerInfo = w.chartRuler || {
+    ascSign: w.angles.ascendant.sign,
+    traditional: WESTERN_TRADITIONAL_RULERS[0],
+    modern: WESTERN_MODERN_RULERS[0],
+    traditionalHouse: 1,
+    traditionalDignity: 'Peregrine',
+    modernHouse: 1,
+    modernDignity: 'Peregrine',
+  };
+
+  const ascDeg = w.angles.ascendant.longitude % 30;
+  const angleSensitive = ascDeg <= 1.5 || ascDeg >= 28.5;
+
+  const corePlanets = w.planets.filter(
+    (p) => !['Ascendant', 'Midheaven', 'North Node', 'South Node', 'Lilith'].includes(p.name)
+  );
+
+  const scored = corePlanets.map((p) => {
+    const ess = p.essentialScore ?? 0;
+    const acc = p.accidentalScore ?? 0;
+    const sectBonus = p.sectAlignment === 'In Sect' ? 6 : p.sectAlignment === 'Contrary to Sect' ? -4 : 0;
+    const tightSoft = aspectsFor(p.name).filter(
+      (a) => a.orb <= 3.0 && ['Conjunction', 'Trine', 'Sextile'].includes(a.aspect)
+    ).length;
+    const tightHard = aspectsFor(p.name).filter(
+      (a) => a.orb <= 3.0 && ['Square', 'Opposition', 'Quincunx'].includes(a.aspect)
+    ).length;
+    const isMr = mrSet.has(p.name) ? 8 : 0;
+    const score = clamp(Math.round(52 + ess * 5 + acc * 4 + sectBonus + isMr + tightSoft * 4 - tightHard * 3), 10, 100);
+    return { p, score, tightSoft, tightHard };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+
+  const powerhouse_planets = scored.slice(0, 4).map(({ p, score }) => {
+    const reasons: string[] = [];
+    if (p.dignity !== 'Peregrine') reasons.push(p.dignity);
+    if (p.houseClass === 'Angular') reasons.push(`Angular H${p.house}`);
+    if (p.sectAlignment === 'In Sect') reasons.push('In Sect');
+    if (p.solarCondition === 'Cazimi') reasons.push('Cazimi');
+    if (mrSet.has(p.name)) reasons.push('Mutual Reception');
+    return {
+      planet: p.name,
+      sign: p.sign,
+      house: p.house,
+      dignity: p.dignity,
+      sect_alignment: p.sectAlignment || 'Neutral',
+      solar_condition: p.solarCondition || 'Free',
+      strength_score: score,
+      why_dominant: reasons.join(', ') || `Active in ${p.sign} H${p.house}`,
+    };
+  });
+
+  const strained_planets = scored
+    .filter(
+      ({ p, tightHard }) =>
+        p.dignity === 'Detriment' ||
+        p.dignity === 'Fall' ||
+        p.solarCondition === 'Combust' ||
+        (p.sectAlignment === 'Contrary to Sect' && (p.name === sect.maleficContrary || tightHard >= 1)) ||
+        tightHard >= 2
+    )
+    .slice(0, 4)
+    .map(({ p, tightHard }) => {
+      const vulns: string[] = [];
+      if (p.dignity === 'Detriment' || p.dignity === 'Fall') vulns.push(`${p.dignity} in ${p.sign}`);
+      if (p.solarCondition === 'Combust') vulns.push('Combust near Sun');
+      if (p.sectAlignment === 'Contrary to Sect') vulns.push('Contrary to Sect');
+      if (tightHard >= 1) vulns.push(`${tightHard} tight hard aspect(s)`);
+
+      const offsets: string[] = [];
+      if (mrSet.has(p.name)) offsets.push('Rescued via Mutual Reception');
+      if (p.houseClass === 'Angular') offsets.push('Angular visibility increases agency');
+      const beneficSupport = aspectsFor(p.name).some(
+        (a) =>
+          ['Trine', 'Sextile'].includes(a.aspect) &&
+          a.orb <= 4.0 &&
+          (a.bodyA === sect.beneficOfSect || a.bodyB === sect.beneficOfSect)
+      );
+      if (beneficSupport) offsets.push(`Supported by ${sect.beneficOfSect} (Benefic of Sect)`);
+
+      return {
+        planet: p.name,
+        sign: p.sign,
+        house: p.house,
+        dignity: p.dignity,
+        vulnerability: vulns.join(' · ') || 'Aspect tension',
+        offset_or_protection:
+          offsets.join(' · ') || 'Stabilized through conscious pacing and deliberate effort',
+      };
+    });
+
+  const tradFinals = w.dispositorTree?.traditional.finalDispositors || [];
+  const modFinals = w.dispositorTree?.modern.finalDispositors || [];
+  const tradLoops = w.dispositorTree?.traditional.loops || [];
+  const dispSummaryParts: string[] = [];
+  if (tradFinals.length > 0) dispSummaryParts.push(`Traditional final dispositor(s): ${tradFinals.join(', ')}`);
+  if (tradLoops.length > 0) dispSummaryParts.push(`Dispositor loop(s): ${tradLoops.map((l) => l.join('↔')).join('; ')}`);
+  if (modFinals.length > 0 && modFinals.join(',') !== tradFinals.join(',')) {
+    dispSummaryParts.push(`Modern final dispositor(s): ${modFinals.join(', ')}`);
+  }
+
+  const tight_structural_aspects = w.aspects
+    .filter((a) => a.orb <= 3.0)
+    .slice(0, 14)
+    .map((a) => ({
+      bodyA: a.bodyA,
+      aspect: a.aspect,
+      bodyB: a.bodyB,
+      orb: a.orb,
+      orbTier: a.orbTier || (a.orb <= 2.0 ? 'core_structural' : 'active'),
+      weightScore: a.weightScore ?? 60,
+    }));
+
+  const house_promises: WesternTruthDossierV1['house_promises'] = {};
+  for (let h = 1; h <= 12; h++) {
+    const cusp = w.cusps.find((c) => c.house === h);
+    const signIdx = cusp?.signIndex ?? (Math.floor(w.angles.ascendant.longitude / 30) + h - 1) % 12;
+    const tradRuler = WESTERN_TRADITIONAL_RULERS[signIdx];
+    const modRuler = WESTERN_MODERN_RULERS[signIdx];
+    const rulerObj = findW(tradRuler);
+    const occupants = w.planets
+      .filter((p) => !['Ascendant', 'Midheaven'].includes(p.name) && p.house === h)
+      .map((p) => p.name);
+
+    let score = 60;
+    if (rulerObj) {
+      score += (rulerObj.essentialScore ?? 0) * 3;
+      if (rulerObj.houseClass === 'Angular') score += 8;
+      if (rulerObj.sectAlignment === 'In Sect') score += 5;
+      if (mrSet.has(rulerObj.name)) score += 8;
+    }
+    for (const occName of occupants) {
+      const occ = findW(occName);
+      if (!occ) continue;
+      if (occ.name === sect.beneficOfSect) score += 12;
+      else if (occ.name === 'Venus' || occ.name === 'Jupiter' || occ.name === 'Sun') score += 6;
+      else if (occ.name === sect.maleficContrary || occ.name === 'Pluto') score -= 7;
+      else if (occ.name === sect.maleficOfSect) score -= 2;
+      score += (occ.essentialScore ?? 0) * 2;
+    }
+    const clampedScore = clamp(Math.round(score), 20, 96);
+    const verdict: 'supportive' | 'conditional' | 'mixed' | 'strained' =
+      clampedScore >= 72
+        ? 'supportive'
+        : clampedScore >= 58
+        ? 'conditional'
+        : clampedScore >= 44
+        ? 'mixed'
+        : 'strained';
+
+    house_promises[String(h)] = {
+      cusp_sign: cusp?.sign || 'Aries',
+      traditional_ruler: tradRuler,
+      modern_ruler: modRuler,
+      occupants,
+      verdict,
+      score: clampedScore,
+      note: `${HOUSE_NOTES[h] || `House ${h}`}; ${cusp?.sign || 'Sign'} cusp steered by ${tradRuler}${
+        rulerObj ? ` in H${rulerObj.house} (${rulerObj.dignity})` : ''
+      }.`,
+    };
+  }
+
+  // Domain pre-audits
+  const venus = findW('Venus');
+  const mars = findW('Mars');
+  const moon = findW('Moon');
+  const sun = findW('Sun');
+  const mercury = findW('Mercury');
+  const jupiter = findW('Jupiter');
+  const saturn = findW('Saturn');
+
+  const h7 = house_promises['7'];
+  const h5 = house_promises['5'];
+  const h10 = house_promises['10'];
+  const h6 = house_promises['6'];
+  const h2 = house_promises['2'];
+  const h8 = house_promises['8'];
+  const h11 = house_promises['11'];
+  const h1 = house_promises['1'];
+  const h9 = house_promises['9'];
+  const h12 = house_promises['12'];
+
+  const relPos = clamp(
+    Math.round(
+      (h7.score + h5.score) * 0.45 +
+        (venus ? (venus.essentialScore ?? 0) * 3 + (venus.sectAlignment === 'In Sect' ? 8 : 2) : 5)
+    ),
+    25,
+    95
+  );
+  const relHardCount = [venus, moon, findW(h7.traditional_ruler)]
+    .filter(Boolean)
+    .reduce(
+      (acc, p) =>
+        acc +
+        aspectsFor(p!.name).filter(
+          (a) =>
+            a.orb <= 3.5 &&
+            ['Square', 'Opposition', 'Quincunx'].includes(a.aspect) &&
+            ['Saturn', 'Uranus', 'Pluto', 'Mars', 'Neptune'].includes(a.bodyA === p!.name ? a.bodyB : a.bodyA)
+        ).length,
+      0
+    );
+  const relFric = clamp(22 + relHardCount * 12 + (h7.verdict === 'strained' ? 18 : 0), 10, 90);
+
+  const carPos = clamp(
+    Math.round(
+      (h10.score + h6.score) * 0.48 +
+        (saturn && saturn.sectAlignment === 'In Sect' ? 10 : 0) +
+        (sun && (sun.house === 10 || sun.house === 1) ? 8 : 0)
+    ),
+    25,
+    96
+  );
+  const carFric = clamp(
+    18 +
+      (h10.verdict === 'strained' ? 20 : 0) +
+      (saturn && saturn.sectAlignment === 'Contrary to Sect' && saturn.house === 10 ? 15 : 0),
+    10,
+    85
+  );
+
+  const wealthPos = clamp(Math.round((h2.score + h11.score + h8.score) * 0.34), 25, 95);
+  const wealthFric = clamp(20 + (h2.verdict === 'strained' ? 18 : 0) + (h8.verdict === 'strained' ? 14 : 0), 10, 85);
+
+  const contradictions: string[] = [];
+  for (const sp of strained_planets.slice(0, 2)) {
+    contradictions.push(`${sp.planet} in ${sp.sign} H${sp.house} (${sp.vulnerability}) — ${sp.offset_or_protection}`);
+  }
+  for (const cfg of (w.configurations || []).slice(0, 2)) {
+    if (cfg.type === 'T-Square' || cfg.type === 'Grand Cross' || cfg.type === 'Yod') {
+      contradictions.push(cfg.summary);
+    }
+  }
+  for (const mr of (w.mutualReceptions || []).slice(0, 2)) {
+    contradictions.push(mr.summary);
+  }
+  if (contradictions.length === 0 && tight_structural_aspects[0]) {
+    const ta = tight_structural_aspects[0];
+    contradictions.push(
+      `Core structural signature: ${ta.bodyA} ${ta.aspect} ${ta.bodyB} (${ta.orb.toFixed(1)}° orb)`
+    );
+  }
+
+  const narrative_kernel = `${sect.chartType} Tropical chart with ${w.angles.ascendant.sign} Rising (Chart Ruler: ${
+    chartRuler.traditional
+  } in H${chartRuler.traditionalHouse}, ${chartRuler.traditionalDignity}) and Midheaven in ${
+    w.angles.midheaven.sign
+  }. Dominant ${w.dominantElement} / ${w.dominantModality} temperament; ${
+    sect.beneficOfSect
+  } serves as Benefic of Sect while ${sect.maleficOfSect} structures discipline. Core anchor: ${
+    powerhouse_planets[0]
+      ? `${powerhouse_planets[0].planet} in ${powerhouse_planets[0].sign} H${powerhouse_planets[0].house}`
+      : 'balanced chart distribution'
+  }${
+    tight_structural_aspects[0]
+      ? `; tightest natal aspect is ${tight_structural_aspects[0].bodyA} ${tight_structural_aspects[0].aspect} ${tight_structural_aspects[0].bodyB} (${tight_structural_aspects[0].orb.toFixed(1)}°)`
+      : ''
+  }.${
+    lifeContext?.relationship_status ? ` Confirmed reality anchor: ${lifeContext.relationship_status}.` : ''
+  }`;
+
+  return {
+    schema_version: 'western_truth_v1',
+    sect_and_ruler: {
+      chart_type: sect.chartType,
+      sun_house: sect.sunHouse,
+      sect_light: sect.sectLight,
+      benefic_of_sect: sect.beneficOfSect,
+      malefic_of_sect: sect.maleficOfSect,
+      ascendant_sign: w.angles.ascendant.sign,
+      ascendant_dms: w.angles.ascendant.dms,
+      midheaven_sign: w.angles.midheaven.sign,
+      midheaven_dms: w.angles.midheaven.dms,
+      angle_cusp_minute_sensitive: angleSensitive,
+      dominant_element: w.dominantElement,
+      dominant_modality: w.dominantModality,
+      chart_ruler: chartRuler,
+    },
+    dignity_hierarchy: {
+      powerhouse_planets,
+      strained_planets,
+      mutual_receptions: w.mutualReceptions || [],
+      dispositor_backbone: {
+        traditional_finals: tradFinals,
+        modern_finals: modFinals,
+        traditional_loops: tradLoops,
+        summary: dispSummaryParts.join(' | ') || 'Chain dispositor flow without single terminal planet.',
+      },
+    },
+    tight_structural_aspects,
+    configurations: w.configurations || [],
+    house_promises,
+    domain_pre_audits: {
+      love_and_partnership: {
+        structural_verdict:
+          relPos >= 68 && relFric < 45
+            ? 'Strong relational capacity with natural warmth'
+            : relPos >= 55
+            ? 'Conditional partnership promise — grows stronger with emotional maturity'
+            : 'Requires conscious boundary pacing and honest selection',
+        positive_weights_0_100: relPos,
+        friction_weights_0_100: relFric,
+        key_anchors: [
+          `Descendant / 7H: ${h7.cusp_sign} (Ruler ${h7.traditional_ruler})`,
+          ...(venus ? [`Venus in ${venus.sign} H${venus.house} (${venus.dignity})`] : []),
+          ...(mars ? [`Mars in ${mars.sign} H${mars.house} (${mars.dignity})`] : []),
+        ],
+      },
+      vocation_and_authority: {
+        structural_verdict:
+          carPos >= 70
+            ? 'Strong vocational authority and durable public traction'
+            : carPos >= 56
+            ? 'Steady career build rewarding specialized craft and endurance'
+            : 'Non-linear career path favoring deliberate skill compounding',
+        positive_weights_0_100: carPos,
+        friction_weights_0_100: carFric,
+        key_anchors: [
+          `Midheaven / 10H: ${h10.cusp_sign} (Ruler ${h10.traditional_ruler})`,
+          ...(saturn ? [`Saturn in ${saturn.sign} H${saturn.house} (${saturn.sectAlignment})`] : []),
+          ...(sun ? [`Sun in ${sun.sign} H${sun.house}`] : []),
+        ],
+      },
+      resources_and_worth: {
+        structural_verdict:
+          wealthPos >= 68
+            ? 'Constructive resource accumulation across 2H/8H/11H'
+            : 'Earned steadiness favors structured budgeting over speculative leaps',
+        positive_weights_0_100: wealthPos,
+        friction_weights_0_100: wealthFric,
+        key_anchors: [
+          `2H Cusp: ${h2.cusp_sign} (${h2.traditional_ruler})`,
+          `8H Cusp: ${h8.cusp_sign} (${h8.traditional_ruler})`,
+          ...(jupiter ? [`Jupiter in ${jupiter.sign} H${jupiter.house} (${jupiter.dignity})`] : []),
+        ],
+      },
+      mind_and_vitality: {
+        physical_resilience: `1H ${h1.cusp_sign} + 6H ${h6.cusp_sign} (${h1.verdict} vitality baseline)`,
+        mental_pattern: `${moon ? `Moon in ${moon.sign} H${moon.house}` : 'Moon baseline'} · ${
+          mercury ? `Mercury in ${mercury.sign} H${mercury.house}` : 'Mercury baseline'
+        }`,
+        key_anchors: [
+          `Ascendant ${w.angles.ascendant.sign} ${w.angles.ascendant.dms}`,
+          ...(moon ? [`Moon in ${moon.sign} H${moon.house} (${moon.dignity})`] : []),
+          ...(mercury ? [`Mercury in ${mercury.sign} H${mercury.house}`] : []),
+        ],
+      },
+      growth_and_relocation: {
+        promise_level:
+          h9.score >= 68 || h12.score >= 68
+            ? 'Strong horizon expansion, travel, or cross-cultural resonance'
+            : 'Moderate travel/study signature activated cleanly during 9H/12H Profections',
+        key_anchors: [
+          `9H Cusp: ${h9.cusp_sign} (${h9.traditional_ruler})`,
+          `12H Cusp: ${h12.cusp_sign} (${h12.traditional_ruler})`,
+        ],
+      },
+    },
+    unresolved_contradictions: contradictions.slice(0, 4),
+    narrative_kernel,
+  };
+}
+
 export async function compileNatalTruthDossier(
   chart: CompiledChartData,
   options?: {
@@ -1029,6 +1535,7 @@ export async function compileNatalTruthDossier(
   }
 ): Promise<NatalTruthDossierV1> {
   const layerA = buildNatalTruthDossierLayerA(chart, options?.lifeContext);
+  const westernDossier = buildWesternTruthDossier(chart, options?.lifeContext);
   const layerB =
     options?.includeNarrativeKernel === false
       ? buildDeterministicNarrativeKernel(layerA)
@@ -1039,6 +1546,7 @@ export async function compileNatalTruthDossier(
     generated_at: new Date().toISOString(),
     layer_a: layerA,
     layer_b: layerB,
+    western_dossier: westernDossier,
   };
 }
 

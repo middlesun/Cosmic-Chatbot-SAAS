@@ -53,11 +53,11 @@ const PROFILE_SUMMARY_COLUMNS =
   'id, user_id, name, short_name, is_default, is_starred, tags, birth_date, birth_time, birth_city, birth_state, birth_country, current_city, current_state, current_country, current_timezone_offset, latitude, longitude, timezone_offset, gender, relationship, birth_chart_pdf_url, is_activated, activated_at, created_at, updated_at';
 
 // CRITICAL EGRESS GUARD: Summary columns NEVER select chart_json, chart_text_context, or natal_truth_dossier_json
-const SUTRA_PROFILE_SUMMARY_COLUMNS =
+const VEDIC_PROFILE_SUMMARY_COLUMNS =
   `${PROFILE_SUMMARY_COLUMNS}, life_context_json, life_context_completeness, natal_dossier_version`;
 
 const PROFILE_DETAIL_COLUMNS = `${PROFILE_SUMMARY_COLUMNS}, chart_json`;
-const SUTRA_PROFILE_DETAIL_COLUMNS = `${SUTRA_PROFILE_SUMMARY_COLUMNS}, chart_json, natal_truth_dossier_json`;
+const VEDIC_PROFILE_DETAIL_COLUMNS = `${VEDIC_PROFILE_SUMMARY_COLUMNS}, chart_json, natal_truth_dossier_json`;
 
 function withEmptyCurrentLocation<T extends Record<string, unknown>>(row: T): T & {
   current_city: null;
@@ -123,14 +123,14 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
   let rows: Array<Record<string, unknown>> = [];
 
-  const sutraPrimaryRes = await supabaseAdmin
+  const vedicPrimaryRes = await supabaseAdmin
     .from('profiles')
-    .select(SUTRA_PROFILE_SUMMARY_COLUMNS)
+    .select(VEDIC_PROFILE_SUMMARY_COLUMNS)
     .eq('user_id', req.appUser.id)
     .order('created_at', { ascending: false });
 
-  if (!sutraPrimaryRes.error && sutraPrimaryRes.data) {
-    rows = (sutraPrimaryRes.data || []).map((r) =>
+  if (!vedicPrimaryRes.error && vedicPrimaryRes.data) {
+    rows = (vedicPrimaryRes.data || []).map((r) =>
       withDefaultMetaFields(r as unknown as Record<string, unknown>)
     );
   } else {
@@ -335,20 +335,20 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 
   const includeChart = req.query.includeChart !== '0';
-  const sutraSelectColumns = includeChart ? SUTRA_PROFILE_DETAIL_COLUMNS : SUTRA_PROFILE_SUMMARY_COLUMNS;
+  const vedicSelectColumns = includeChart ? VEDIC_PROFILE_DETAIL_COLUMNS : VEDIC_PROFILE_SUMMARY_COLUMNS;
   const legacySelectColumns = includeChart ? PROFILE_DETAIL_COLUMNS : PROFILE_SUMMARY_COLUMNS;
 
-  const sutraQuery = await supabaseAdmin
+  const vedicQuery = await supabaseAdmin
     .from('profiles')
-    .select(sutraSelectColumns)
+    .select(vedicSelectColumns)
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
 
-  let rawProfile: Record<string, unknown> | null = sutraQuery.data
-    ? withDefaultMetaFields(sutraQuery.data as unknown as Record<string, unknown>)
+  let rawProfile: Record<string, unknown> | null = vedicQuery.data
+    ? withDefaultMetaFields(vedicQuery.data as unknown as Record<string, unknown>)
     : null;
-  let queryError = sutraQuery.error;
+  let queryError = vedicQuery.error;
 
   if (queryError) {
     const initialQuery = await supabaseAdmin
@@ -455,7 +455,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         updated_at: new Date().toISOString(),
       };
 
-      const sutraRes = await supabaseAdmin
+      const vedicRes = await supabaseAdmin
         .from('profiles')
         .update({
           ...baseUpdatePayload,
@@ -467,12 +467,12 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
             : {}),
         })
         .eq('id', String(profilePayload.id))
-        .select(SUTRA_PROFILE_DETAIL_COLUMNS)
+        .select(VEDIC_PROFILE_DETAIL_COLUMNS)
         .single();
 
-      if (!sutraRes.error && sutraRes.data) {
+      if (!vedicRes.error && vedicRes.data) {
         profilePayload = withDefaultMetaFields(
-          sutraRes.data as unknown as Record<string, unknown>
+          vedicRes.data as unknown as Record<string, unknown>
         );
       } else {
         const { data: updated } = await supabaseAdmin
@@ -799,7 +799,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     includeNarrativeKernel: true,
   }).catch(() => null);
 
-  const sutraInsertFields = initialDossier
+  const vedicInsertFields = initialDossier
     ? {
         natal_truth_dossier_json: initialDossier,
         natal_dossier_version: CURRENT_NATAL_DOSSIER_VERSION,
@@ -812,13 +812,13 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       ...basePayload,
       ...v2ExtraPayload,
       ...currentLocPayload,
-      ...sutraInsertFields,
+      ...vedicInsertFields,
     })
-    .select(SUTRA_PROFILE_SUMMARY_COLUMNS)
+    .select(VEDIC_PROFILE_SUMMARY_COLUMNS)
     .single();
 
   if (error) {
-    // Fallback if migration 011 (Sutradhara columns) hasn't been executed yet
+    // Fallback if migration 011 dossier columns haven't been executed yet
     const legacyPrimary = await supabaseAdmin
       .from('profiles')
       .insert({
@@ -1240,7 +1240,7 @@ router.post('/:id/activate', requireAuth, async (req: AuthenticatedRequest, res)
       updated_at: new Date().toISOString(),
     };
 
-    const sutraActivationFields = activationDossier
+    const vedicActivationFields = activationDossier
       ? {
           natal_truth_dossier_json: activationDossier,
           natal_dossier_version: CURRENT_NATAL_DOSSIER_VERSION,
@@ -1251,11 +1251,11 @@ router.post('/:id/activate', requireAuth, async (req: AuthenticatedRequest, res)
       .from('profiles')
       .update({
         ...activationPayload,
-        ...sutraActivationFields,
+        ...vedicActivationFields,
         ...(geoFingerprint ? { chart_fingerprint: geoFingerprint } : {}),
       })
       .eq('id', profile.id)
-      .select(SUTRA_PROFILE_DETAIL_COLUMNS)
+      .select(VEDIC_PROFILE_DETAIL_COLUMNS)
       .single();
 
     if (updateErr) {
@@ -1378,7 +1378,7 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
     })
     .eq('id', existing.id)
     .eq('user_id', req.appUser.id)
-    .select(SUTRA_PROFILE_SUMMARY_COLUMNS)
+    .select(VEDIC_PROFILE_SUMMARY_COLUMNS)
     .single();
 
   if (error || !updated) {
@@ -1401,7 +1401,7 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
   });
 });
 
-// Explicit Sutradhara NatalTruthDossierV1 recomputation (Layer A + Layer B)
+// Explicit Vedic NatalTruthDossierV1 recomputation (Layer A + Layer B)
 router.post('/:id/recompute-dossier', requireAuth, async (req: AuthenticatedRequest, res) => {
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin || !req.appUser) {

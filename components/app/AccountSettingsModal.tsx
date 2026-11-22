@@ -5,7 +5,11 @@ import { getSupabaseClient } from '../../lib/supabaseClient';
 import AstrologyModeToggle from './AstrologyModeToggle';
 import CustomSelect from './CustomSelect';
 import UserAvatar from './UserAvatar';
-import type { ChatCatalog } from './chatTypes';
+import {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  normalizeCouncilSlug,
+  type ChatCatalog,
+} from './chatTypes';
 import type { ChatFontSize } from './ChatSettingsModal';
 
 interface AccountSettingsModalProps {
@@ -14,7 +18,7 @@ interface AccountSettingsModalProps {
 }
 
 const FALLBACK_EXPERTS = [
-  { value: 'council_synthesis', label: 'Vedic Astrologer' },
+  { value: DEFAULT_COUNCIL_EXPERT_SLUG, label: 'Vedic Astrologer' },
   { value: 'western_astrologer', label: 'Western Astrologer' },
   { value: 'modern_astrologer', label: 'Modern Astrologer' },
   { value: 'tarot_reader', label: 'Tarot' },
@@ -45,7 +49,7 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
     appUser?.currency_pref || 'INR'
   );
   const [defaultExpert, setDefaultExpert] = useState(
-    appUser?.default_expert || 'council_synthesis'
+    normalizeCouncilSlug(appUser?.default_expert)
   );
   const [defaultLanguage, setDefaultLanguage] = useState(
     appUser?.default_language || 'English'
@@ -65,7 +69,7 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
         appUser.default_astrology_mode === 'western' ? 'western' : 'vedic'
       );
       setCurrencyPref(appUser.currency_pref || 'INR');
-      setDefaultExpert(appUser.default_expert || 'council_synthesis');
+      setDefaultExpert(normalizeCouncilSlug(appUser.default_expert));
       setDefaultLanguage(appUser.default_language || 'English');
       setError(null);
       setSaveMessage(null);
@@ -243,10 +247,10 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
               value={defaultAstrologyMode}
               onChange={(mode) => {
                 setDefaultAstrologyMode(mode);
-                if (mode === 'western' && defaultExpert === 'council_synthesis') {
+                if (mode === 'western' && normalizeCouncilSlug(defaultExpert) === DEFAULT_COUNCIL_EXPERT_SLUG) {
                   setDefaultExpert('western_astrologer');
                 } else if (mode === 'vedic' && defaultExpert === 'western_astrologer') {
-                  setDefaultExpert('council_synthesis');
+                  setDefaultExpert(DEFAULT_COUNCIL_EXPERT_SLUG);
                 }
               }}
               size="sm"

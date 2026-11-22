@@ -15,7 +15,7 @@ export const PREVIEW_APP_USER: AppUser = {
   tier: 'pro',
   credits_balance: 14500,
   currency_pref: 'INR',
-  default_expert: 'council_synthesis',
+  default_expert: 'vedic_astrologer',
   default_output: 'detailed',
   default_language: 'English',
   default_astrology_mode: 'vedic',
@@ -33,7 +33,7 @@ export const PREVIEW_APP_USER: AppUser = {
 export const PREVIEW_CHAT_CATALOG: ChatCatalog = {
   experts: [
     {
-      slug: 'council_synthesis',
+      slug: 'vedic_astrologer',
       category: 'expert',
       displayName: 'Vedic Astrologer',
       subtitle: 'Complete Jyotish synthesis across Parashari, KP Sub-Lords, Jaimini, Nadi & Vargas.',
@@ -321,7 +321,7 @@ Your **10th House and D10 Dasamsa** strongly favor structured autonomy over rigi
 - **Primary Alignment Window:** Active **Jupiter Antardasha** coupled with Jupiter transiting your 10th house from Lagna brings elevated visibility and higher-trust mandates.
 - **Practical Move:** Use the next 45 days to negotiate scope and milestone clarity while avoiding verbal-only commitments.`,
       word_count: 158,
-      expert_used: 'council_synthesis',
+      expert_used: 'vedic_astrologer',
       mode_used: 'career',
       output_format_used: 'detailed',
       language_used: 'English',
@@ -414,7 +414,7 @@ In **Krishnamurti Paddhati (KP)**, the Rashi sign and Nakshatra set the broad en
 
 > Think of the Rashi lord as the building, the Star lord as the department, and the Sub-Lord as the final signature on the decision.`,
       word_count: 102,
-      expert_used: 'council_synthesis',
+      expert_used: 'vedic_astrologer',
       mode_used: 'learn_astrology',
       output_format_used: 'detailed',
       language_used: 'English',

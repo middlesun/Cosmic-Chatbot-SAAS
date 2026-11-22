@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Brain, Check, Loader2, Lock, UserCheck, X } from 'lucide-react';
 import { useAuth, type AstrologyMode } from './AuthContext';
 import CustomSelect from './CustomSelect';
-import type {
-  ChatCatalog,
-  ChatProfile,
+import {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  type ChatCatalog,
+  type ChatProfile,
 } from './chatTypes';
 
 export type ChatFontSize = 'sm' | 'base' | 'lg';
@@ -127,7 +128,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
     setError(null);
 
     const savedDefaultExpert =
-      defaultCouncilMode === 'western' ? 'western_astrologer' : 'council_synthesis';
+      defaultCouncilMode === 'western' ? 'western_astrologer' : DEFAULT_COUNCIL_EXPERT_SLUG;
 
     if (isPreviewMode) {
       setAstrologyMode(defaultCouncilMode);
@@ -319,7 +320,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
               <div className="grid grid-cols-2 gap-2 rounded-2xl bg-[#F1ECE3] p-1 border border-[#3D3830]/10">
                 {(
                   [
-                    { id: 'vedic', label: 'Vedic Astrologer', expert: 'council_synthesis' },
+                    { id: 'vedic', label: 'Vedic Astrologer', expert: DEFAULT_COUNCIL_EXPERT_SLUG },
                     { id: 'western', label: 'Western Astrologer', expert: 'western_astrologer' },
                   ] as const
                 ).map((opt) => {

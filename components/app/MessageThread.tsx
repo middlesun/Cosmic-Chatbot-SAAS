@@ -21,18 +21,20 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import type {
-  AskLaterItem,
-  ChatCatalog,
-  ChatMessageRecord,
-  ChatPillar,
-  ChatProfile,
-  ClarificationChip,
-  CompanionPersona,
-  ConversationRecord,
-  PendingBirthProfileDraft,
-  SuggestionItem,
-  TimingProgressWidget,
+import {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  normalizeCouncilSlug,
+  type AskLaterItem,
+  type ChatCatalog,
+  type ChatMessageRecord,
+  type ChatPillar,
+  type ChatProfile,
+  type ClarificationChip,
+  type CompanionPersona,
+  type ConversationRecord,
+  type PendingBirthProfileDraft,
+  type SuggestionItem,
+  type TimingProgressWidget,
 } from './chatTypes';
 import type { ChatFontSize } from './ChatSettingsModal';
 import Tooltip from './Tooltip';
@@ -581,7 +583,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   enableWhatsappShare = true,
   enableFollowups = true,
   astrologyMode = 'vedic',
-  expertSlug = 'council_synthesis',
+  expertSlug = DEFAULT_COUNCIL_EXPERT_SLUG,
   onChangeExpert,
   onSelectClarificationChip,
   onSelectPartnerProfileForClarification,
@@ -590,14 +592,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   savedNoteMsgIds,
   savingNoteMsgId = null,
 }) => {
+  const normalizedExpertSlug = normalizeCouncilSlug(expertSlug);
   const isWesternSystem =
-    expertSlug === 'western_astrologer' ||
-    expertSlug === 'modern_astrologer' ||
+    normalizedExpertSlug === 'western_astrologer' ||
+    normalizedExpertSlug === 'modern_astrologer' ||
     (astrologyMode === 'western' &&
-      expertSlug !== 'council_synthesis' &&
-      expertSlug !== 'tarot_reader' &&
-      expertSlug !== 'numerologist' &&
-      expertSlug !== 'learn_astrology');
+      normalizedExpertSlug !== DEFAULT_COUNCIL_EXPERT_SLUG &&
+      normalizedExpertSlug !== 'tarot_reader' &&
+      normalizedExpertSlug !== 'numerologist' &&
+      normalizedExpertSlug !== 'learn_astrology');
   const [confirmDeleteMsgId, setConfirmDeleteMsgId] = useState<string | null>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [activeUserMsgId, setActiveUserMsgId] = useState<string | null>(null);
@@ -1756,14 +1759,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   <p className="text-[11px] font-medium text-[#8B8275]">Clarity</p>
                 )}
                 {activePillar === 'council' && msg.expert_used && (() => {
-                  const sutraMeta = msg.suggestions_json?.sutra_meta;
+                  const vedicMeta =
+                    msg.suggestions_json?.vedic_meta || msg.suggestions_json?.sutra_meta;
                   const showBadge =
-                    Boolean(sutraMeta) &&
-                    (sutraMeta!.isDeepAudit ||
-                      sutraMeta!.intent === 'HARD_DECISION' ||
-                      sutraMeta!.intent === 'TIMING' ||
-                      sutraMeta!.intent === 'SOFT_HORIZON' ||
-                      sutraMeta!.intent === 'PEER_AUDIT');
+                    Boolean(vedicMeta) &&
+                    (vedicMeta!.isDeepAudit ||
+                      vedicMeta!.intent === 'HARD_DECISION' ||
+                      vedicMeta!.intent === 'TIMING' ||
+                      vedicMeta!.intent === 'SOFT_HORIZON' ||
+                      vedicMeta!.intent === 'PEER_AUDIT');
                   return (
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-[11px] font-medium text-[#8B8275]">
@@ -1777,15 +1781,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                           ? 'Numerology'
                           : 'Vedic Astrologer (Vedic)'}
                       </p>
-                      {showBadge && sutraMeta && (
+                      {showBadge && vedicMeta && (
                         <Tooltip
                           content={
-                            sutraMeta.isDeepAudit
-                              ? `Deep Council Audit (${sutraMeta.lensesSucceeded ?? 4}/4 specialist checks adjudicated across ${sutraMeta.convergenceBandLabel})`
-                              : `Multi-system Observatory check (${sutraMeta.convergenceBandLabel}${
-                                  sutraMeta.cancellationsCount > 0
-                                    ? ` · ${sutraMeta.cancellationsCount} cancellation${
-                                        sutraMeta.cancellationsCount === 1 ? '' : 's'
+                            vedicMeta.isDeepAudit
+                              ? `Deep Council Audit (${vedicMeta.lensesSucceeded ?? 4}/4 specialist checks adjudicated across ${vedicMeta.convergenceBandLabel})`
+                              : `Multi-system Observatory check (${vedicMeta.convergenceBandLabel}${
+                                  vedicMeta.cancellationsCount > 0
+                                    ? ` · ${vedicMeta.cancellationsCount} cancellation${
+                                        vedicMeta.cancellationsCount === 1 ? '' : 's'
                                       } checked`
                                     : ''
                                 })`
@@ -1794,20 +1798,20 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                         >
                           <span
                             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide ${
-                              sutraMeta.isDeepAudit
+                              vedicMeta.isDeepAudit
                                 ? 'border-[#B8965A]/45 bg-[#292D36] text-[#F4EFE6]'
                                 : 'border-[#3D3830]/12 bg-[#F1ECE3] text-[#5C5449]'
                             }`}
                           >
                             <Sparkles
                               className={`h-2.5 w-2.5 ${
-                                sutraMeta.isDeepAudit ? 'text-[#B8965A]' : 'text-[#8B7355]'
+                                vedicMeta.isDeepAudit ? 'text-[#B8965A]' : 'text-[#8B7355]'
                               }`}
                             />
                             <span>
-                              {sutraMeta.isDeepAudit
-                                ? `Deep Council Audit · ${sutraMeta.convergenceBandLabel}`
-                                : sutraMeta.convergenceBandLabel}
+                              {vedicMeta.isDeepAudit
+                                ? `Deep Council Audit · ${vedicMeta.convergenceBandLabel}`
+                                : vedicMeta.convergenceBandLabel}
                             </span>
                           </span>
                         </Tooltip>
@@ -1947,7 +1951,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   </div>
                 )}
 
-                {/* Sutradhara Stage 1 Interactive Clarification Chips */}
+                {/* Vedic Astrologer Stage 1 Interactive Clarification Chips */}
                 {clarificationData && clarificationData.chips?.length > 0 && (
                   <div
                     className={`mt-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] p-3.5 sm:p-4 space-y-2.5 transition-opacity ${

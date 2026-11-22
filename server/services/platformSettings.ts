@@ -1,4 +1,8 @@
 import crypto from 'crypto';
+import {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  normalizeCouncilSlug,
+} from '../../lib/vedicTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import {
   ALL_GUIDE_CATALOG_META,
@@ -15,8 +19,8 @@ import {
   DEFAULT_STAGE1_ROUTER_PROMPT,
   DEFAULT_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
   DEFAULT_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
-  DEFAULT_SUTRA_ANTI_CLICHE_RULES,
-  DEFAULT_SUTRA_TIER1_REASONING_LAWS,
+  DEFAULT_VEDIC_ANTI_CLICHE_RULES,
+  DEFAULT_VEDIC_TIER1_REASONING_LAWS,
   getGuideCatalogMeta,
   GUIDE_SLUGS,
   isValidGuideSlug,
@@ -127,8 +131,8 @@ export interface EnginePromptOverrides {
   companion_archetypes?: DefaultCompanionArchetype[];
   companion_matcher_instructions?: string;
   clarity_helper_system_prompt?: string;
-  sutra_tier1_reasoning_laws?: string;
-  sutra_anti_cliche_rules?: string;
+  vedic_tier1_reasoning_laws?: string;
+  vedic_anti_cliche_rules?: string;
   intent_output_contracts?: Partial<Record<keyof typeof DEFAULT_INTENT_OUTPUT_CONTRACTS, string>>;
   fluency_instructions?: Partial<Record<keyof typeof DEFAULT_FLUENCY_INSTRUCTIONS, string>>;
   format_contracts?: Partial<Record<keyof typeof DEFAULT_FORMAT_CONTRACTS, string>>;
@@ -278,14 +282,14 @@ export const DEFAULT_CHATBOT_CONFIG: ChatbotConfig = {
   general_ready_message:
     "Great, I'm ready to answer any question you may have regarding Vedic Astrology.",
   composer_placeholder: 'Ask anything about your chart, timing, or Vedic astrology...',
-  default_expert: 'council_synthesis',
+  default_expert: DEFAULT_COUNCIL_EXPERT_SLUG,
   default_mode: 'general',
   default_output: 'detailed',
   default_language: 'English',
   default_tone: 'technical',
   default_response_length: 'detailed',
   expert_order: [
-    'council_synthesis',
+    DEFAULT_COUNCIL_EXPERT_SLUG,
     'western_astrologer',
     'modern_astrologer',
     'tarot_reader',
@@ -739,7 +743,7 @@ export async function getChatbotConfig(): Promise<ChatbotConfig> {
         : DEFAULT_CHATBOT_CONFIG.composer_placeholder,
     default_expert:
       typeof stored?.default_expert === 'string' && stored.default_expert.trim()
-        ? stored.default_expert.trim()
+        ? normalizeCouncilSlug(stored.default_expert)
         : DEFAULT_CHATBOT_CONFIG.default_expert,
     default_mode:
       typeof stored?.default_mode === 'string' && stored.default_mode.trim()
@@ -763,7 +767,7 @@ export async function getChatbotConfig(): Promise<ChatbotConfig> {
         : DEFAULT_CHATBOT_CONFIG.default_response_length,
     expert_order:
       Array.isArray(stored?.expert_order) && stored.expert_order.length > 0
-        ? stored.expert_order.map(String)
+        ? Array.from(new Set(stored.expert_order.map((s) => normalizeCouncilSlug(String(s)))))
         : DEFAULT_CHATBOT_CONFIG.expert_order,
     mode_order:
       Array.isArray(stored?.mode_order) && stored.mode_order.length > 0
@@ -817,12 +821,15 @@ export async function getPerGuideChatbotConfig(): Promise<PerGuideChatbotConfigM
     return perGuideConfigCache.value;
   }
 
-  const stored = await readSettingRow<PerGuideChatbotConfigMap>('per_guide_chatbot_config');
+  const stored = await readSettingRow<Record<string, GuideChatbotOverride>>('per_guide_chatbot_config');
   const cleaned: PerGuideChatbotConfigMap = {};
 
   if (stored && typeof stored === 'object') {
-    for (const slug of GUIDE_SLUGS) {
-      const entry = stored[slug];
+    for (const [rawKey, entry] of Object.entries(stored)) {
+      const normalized = normalizeCouncilSlug(rawKey);
+      if (!isValidGuideSlug(normalized)) continue;
+      // Preserve explicit canonical entry over legacy alias if both exist
+      if (cleaned[normalized] && rawKey !== normalized) continue;
       if (!entry || typeof entry !== 'object') continue;
       const sanitizedRules = Array.isArray(entry.modular_rules)
         ? entry.modular_rules
@@ -831,7 +838,7 @@ export async function getPerGuideChatbotConfig(): Promise<PerGuideChatbotConfigM
             .slice(0, 30)
         : undefined;
 
-      cleaned[slug] = {
+      cleaned[normalized] = {
         ...(typeof entry.welcome_title === 'string' ? { welcome_title: entry.welcome_title.trim().slice(0, 120) } : {}),
         ...(typeof entry.welcome_subtitle === 'string' ? { welcome_subtitle: entry.welcome_subtitle.trim().slice(0, 400) } : {}),
         ...(typeof entry.general_ready_message === 'string' ? { general_ready_message: entry.general_ready_message.trim().slice(0, 400) } : {}),
@@ -894,7 +901,10 @@ export function buildDefaultModularRulesForGuide(
 }
 
 export async function getResolvedGuideConfig(rawSlug: string): Promise<ResolvedGuideConfig> {
-  const slug: GuideSlug = isValidGuideSlug(rawSlug) ? rawSlug : 'council_synthesis';
+  const normalizedSlug = normalizeCouncilSlug(rawSlug);
+  const slug: GuideSlug = isValidGuideSlug(normalizedSlug)
+    ? normalizedSlug
+    : DEFAULT_COUNCIL_EXPERT_SLUG;
   const meta = getGuideCatalogMeta(slug);
   const [chatbotCfg, globalSug, perGuideMap] = await Promise.all([
     getChatbotConfig(),
@@ -920,14 +930,14 @@ export async function getResolvedGuideConfig(rawSlug: string): Promise<ResolvedG
   const generalReadyMessage =
     override?.general_ready_message !== undefined && override.general_ready_message !== ''
       ? override.general_ready_message
-      : slug === 'council_synthesis'
+      : slug === DEFAULT_COUNCIL_EXPERT_SLUG
       ? chatbotCfg.general_ready_message
       : meta.defaultGeneralReadyMessage;
 
   const composerPlaceholder =
     override?.composer_placeholder !== undefined && override.composer_placeholder !== ''
       ? override.composer_placeholder
-      : slug === 'council_synthesis'
+      : slug === DEFAULT_COUNCIL_EXPERT_SLUG
       ? chatbotCfg.composer_placeholder
       : meta.defaultComposerPlaceholder;
 
@@ -1025,8 +1035,17 @@ export async function getEnginePromptOverrides(): Promise<EnginePromptOverrides>
   if (enginePromptsCache && enginePromptsCache.expiresAt > now) {
     return enginePromptsCache.value;
   }
-  const stored = await readSettingRow<EnginePromptOverrides>('engine_prompt_overrides');
-  const cleaned: EnginePromptOverrides = stored && typeof stored === 'object' ? { ...stored } : {};
+  const stored = await readSettingRow<Record<string, unknown>>('engine_prompt_overrides');
+  const cleaned: EnginePromptOverrides =
+    stored && typeof stored === 'object' ? { ...(stored as EnginePromptOverrides) } : {};
+  if (stored && typeof stored === 'object') {
+    if (!cleaned.vedic_tier1_reasoning_laws && typeof stored.sutra_tier1_reasoning_laws === 'string') {
+      cleaned.vedic_tier1_reasoning_laws = stored.sutra_tier1_reasoning_laws;
+    }
+    if (!cleaned.vedic_anti_cliche_rules && typeof stored.sutra_anti_cliche_rules === 'string') {
+      cleaned.vedic_anti_cliche_rules = stored.sutra_anti_cliche_rules;
+    }
+  }
   enginePromptsCache = { value: cleaned, expiresAt: now + CACHE_TTL_MS };
   return cleaned;
 }
@@ -1038,8 +1057,8 @@ export function getEnginePromptDefaultsBundle() {
     companion_archetypes: DEFAULT_COMPANION_ARCHETYPES,
     companion_matcher_instructions: DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
     clarity_helper_system_prompt: DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
-    sutra_tier1_reasoning_laws: DEFAULT_SUTRA_TIER1_REASONING_LAWS,
-    sutra_anti_cliche_rules: DEFAULT_SUTRA_ANTI_CLICHE_RULES,
+    vedic_tier1_reasoning_laws: DEFAULT_VEDIC_TIER1_REASONING_LAWS,
+    vedic_anti_cliche_rules: DEFAULT_VEDIC_ANTI_CLICHE_RULES,
     intent_output_contracts: { ...DEFAULT_INTENT_OUTPUT_CONTRACTS },
     fluency_instructions: { ...DEFAULT_FLUENCY_INSTRUCTIONS },
     format_contracts: { ...DEFAULT_FORMAT_CONTRACTS },

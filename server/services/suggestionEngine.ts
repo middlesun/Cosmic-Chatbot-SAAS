@@ -1,10 +1,11 @@
 import type { MessageSuggestions, SuggestionItem } from '../../components/app/chatTypes';
-import type {
-  Stage1RouterResult,
-  SutraSynthesisMeta,
-  UserFluencyTier,
-} from '../../lib/sutraTypes';
-import { getPlaybookById } from './canonicalPlaybooks';
+import {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  type Stage1RouterResult,
+  type UserFluencyTier,
+  type VedicSynthesisMeta,
+} from '../../lib/vedicTypes';
+import { getPlaybookById, localizePlaybookForWestern } from './canonicalPlaybooks';
 import type { Stage2ContextPackage } from './contextSlicer';
 import type { NatalTruthDossierV1 } from './natalDossier';
 import {
@@ -16,6 +17,8 @@ import {
 import {
   DEFAULT_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
   DEFAULT_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
+  WESTERN_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
+  WESTERN_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
 } from './enginePromptDefaults';
 import {
   getEnginePromptOverrides,
@@ -26,7 +29,15 @@ import {
 export interface Stage4ContradictionSeed {
   title: string;
   mechanism: string;
-  kind: 'contradiction' | 'cancellation' | 'chalit_shift' | 'yoga' | 'dosha';
+  kind:
+    | 'contradiction'
+    | 'cancellation'
+    | 'chalit_shift'
+    | 'yoga'
+    | 'dosha'
+    | 'configuration'
+    | 'mutual_reception'
+    | 'tight_aspect';
 }
 
 export interface Stage4NextHopSeed {
@@ -37,6 +48,7 @@ export interface Stage4NextHopSeed {
 }
 
 export interface Stage4StructuredSeeds {
+  isWestern: boolean;
   playbookId: string;
   domain: string;
   unusedContradictions: Stage4ContradictionSeed[];
@@ -52,7 +64,7 @@ export interface GenerateAlignedStage4Params {
   stage2Pkg: Stage2ContextPackage;
   dossier?: NatalTruthDossierV1 | null;
   routerResult?: Stage1RouterResult | null;
-  sutraMeta: SutraSynthesisMeta;
+  vedicMeta: VedicSynthesisMeta;
   userQuestion: string;
   assistantAnswer: string;
   languageSlug: string;
@@ -71,8 +83,19 @@ function nextFluencyRung(current: UserFluencyTier): UserFluencyTier {
 
 function buildFluencyBridgeDirective(
   current: UserFluencyTier,
-  target: UserFluencyTier
+  target: UserFluencyTier,
+  isWestern = false
 ): string {
+  if (isWestern) {
+    if (current === 'beginner') {
+      return `Current fluency is "beginner": write "followups" in warm, everyday life language (zero unexplained jargon). Write "deeper_analysis" one rung deeper ("${target}") by gently introducing 1 specific named Western check (e.g., Annual Profection focus, Solar Return, or a tight natal aspect) with its plain-English meaning first.`;
+    }
+    if (current === 'guided_bridge') {
+      return `Current fluency is "guided_bridge": write "followups" as crisp life questions with light chart context. Write "deeper_analysis" one rung deeper ("${target}") by explicitly targeting Diurnal/Nocturnal Sect, Mutual Reception, Progressed Moon, or tight <2° natal aspects.`;
+    }
+    return `Current fluency is "practitioner": write "followups" cleanly at intermediate-to-peer clarity. Write "deeper_analysis" as rigorous Western falsification probes testing Contrary-to-Sect Malefic mitigation, Dispositor loops, Solar Return Midheaven, and tight outer transits.`;
+  }
+
   if (current === 'beginner') {
     return `Current fluency is "beginner": write "followups" in warm, everyday life language (zero unexplained jargon). Write "deeper_analysis" one rung deeper ("${target}") by gently introducing 1 specific named check (e.g., Navamsa / D9 inner strength, KP Sub-Lord support, or house-lord timing) with its plain-English meaning first.`;
   }
@@ -84,20 +107,21 @@ function buildFluencyBridgeDirective(
 
 /**
  * Pure deterministic Stage 4 seed extractor (0ms, $0 LLM cost).
- * Identifies unused dossier contradictions, Bhava-Chalit shifts, Playbook Next-Hops,
- * Cancellation/Low-Convergence Deep Audit escalation, and the +1 Fluency Ladder.
+ * Identifies unused dossier contradictions, Bhava-Chalit shifts / Western aspect patterns,
+ * Playbook Next-Hops, Cancellation/Low-Convergence Deep Audit escalation, and the +1 Fluency Ladder.
  */
 export function buildStage4StructuredSeeds(params: {
   stage2Pkg: Stage2ContextPackage;
   dossier?: NatalTruthDossierV1 | null;
   routerResult?: Stage1RouterResult | null;
-  sutraMeta: SutraSynthesisMeta;
+  vedicMeta: VedicSynthesisMeta;
   assistantAnswer: string;
   userFluency?: UserFluencyTier;
 }): Stage4StructuredSeeds {
+  const isWestern = params.stage2Pkg.tradition === 'western';
   const answerLower = String(params.assistantAnswer || '').toLowerCase();
   const currentFluency =
-    params.userFluency || params.sutraMeta.effectiveFluency || 'beginner';
+    params.userFluency || params.vedicMeta.effectiveFluency || 'beginner';
   const deeperTargetFluency = nextFluencyRung(currentFluency);
   const playbook = getPlaybookById(params.stage2Pkg.playbookId);
 
@@ -115,69 +139,134 @@ export function buildStage4StructuredSeeds(params: {
   };
 
   const unusedContradictions: Stage4ContradictionSeed[] = [];
-  const layerA = params.dossier?.layer_a;
 
-  if (layerA) {
-    for (const contradictionText of layerA.unresolved_contradictions || []) {
-      const clean = String(contradictionText || '').trim();
-      if (!clean) continue;
-      const keyTokens = clean.split(/[\s:,;()]+/).filter((w) => w.length >= 5).slice(0, 3);
-      if (!isAlreadyCovered(keyTokens)) {
-        const shortTitle = clean.split(/[—:(]/)[0].trim().slice(0, 68) || clean.slice(0, 68);
+  if (isWestern) {
+    const westernDossier = params.dossier?.western_dossier;
+    if (westernDossier) {
+      for (const contradictionText of westernDossier.unresolved_contradictions || []) {
+        const clean = String(contradictionText || '').trim();
+        if (!clean) continue;
+        const keyTokens = clean.split(/[\s:,;()]+/).filter((w) => w.length >= 5).slice(0, 3);
+        if (!isAlreadyCovered(keyTokens)) {
+          const shortTitle = clean.split(/[—:(]/)[0].trim().slice(0, 68) || clean.slice(0, 68);
+          unusedContradictions.push({
+            title: shortTitle,
+            mechanism: clean,
+            kind: 'contradiction',
+          });
+        }
+      }
+
+      for (const cfg of westernDossier.configurations || []) {
+        const title = `${cfg.type} (${cfg.planets.slice(0, 3).join(' / ')})`;
+        if (!answerLower.includes(cfg.type.toLowerCase())) {
+          unusedContradictions.push({
+            title,
+            mechanism: cfg.summary,
+            kind: 'configuration',
+          });
+        }
+      }
+
+      for (const mr of westernDossier.dignity_hierarchy?.mutual_receptions || []) {
+        const title = `Mutual Reception (${mr.planetA} ↔ ${mr.planetB})`;
+        if (!isAlreadyCovered([mr.planetA, mr.planetB, 'reception'])) {
+          unusedContradictions.push({
+            title,
+            mechanism: mr.summary,
+            kind: 'mutual_reception',
+          });
+        }
+      }
+
+      for (const asp of westernDossier.tight_structural_aspects || []) {
+        if (asp.orb > 2.0) continue;
+        const title = `${asp.bodyA} ${asp.aspect} ${asp.bodyB} (${asp.orb.toFixed(1)}°)`;
+        if (!isAlreadyCovered([asp.bodyA, asp.bodyB, asp.aspect])) {
+          unusedContradictions.push({
+            title,
+            mechanism: `Core structural <=2° aspect (weight ${asp.weightScore}) shaping baseline chart wiring`,
+            kind: 'tight_aspect',
+          });
+        }
+      }
+    }
+
+    for (const canc of params.stage2Pkg.triggeredCancellations || []) {
+      const titleWords = canc.title.split(/\s+/).slice(0, 3);
+      if (!isAlreadyCovered(titleWords)) {
         unusedContradictions.push({
-          title: shortTitle,
-          mechanism: clean,
-          kind: 'contradiction',
+          title: canc.title,
+          mechanism: canc.detail,
+          kind: 'cancellation',
+        });
+      }
+    }
+  } else {
+    const layerA = params.dossier?.layer_a;
+
+    if (layerA) {
+      for (const contradictionText of layerA.unresolved_contradictions || []) {
+        const clean = String(contradictionText || '').trim();
+        if (!clean) continue;
+        const keyTokens = clean.split(/[\s:,;()]+/).filter((w) => w.length >= 5).slice(0, 3);
+        if (!isAlreadyCovered(keyTokens)) {
+          const shortTitle = clean.split(/[—:(]/)[0].trim().slice(0, 68) || clean.slice(0, 68);
+          unusedContradictions.push({
+            title: shortTitle,
+            mechanism: clean,
+            kind: 'contradiction',
+          });
+        }
+      }
+
+      for (const shift of layerA.command_hierarchy?.dispositor_backbone?.bhava_chalit_shifts || []) {
+        const cleanShift = String(shift || '').trim();
+        if (!cleanShift) continue;
+        const planetWord = cleanShift.split(/\s+/)[0] || '';
+        if (
+          planetWord &&
+          !answerLower.includes('chalit') &&
+          !answerLower.includes(cleanShift.toLowerCase().slice(0, 18))
+        ) {
+          unusedContradictions.push({
+            title: `Bhava-Chalit shift (${planetWord})`,
+            mechanism: cleanShift,
+            kind: 'chalit_shift',
+          });
+        }
+      }
+    }
+
+    for (const canc of params.stage2Pkg.triggeredCancellations || []) {
+      const titleWords = canc.title.split(/\s+/).slice(0, 3);
+      if (!isAlreadyCovered(titleWords)) {
+        unusedContradictions.push({
+          title: canc.title,
+          mechanism: canc.detail,
+          kind: 'cancellation',
         });
       }
     }
 
-    for (const shift of layerA.command_hierarchy?.dispositor_backbone?.bhava_chalit_shifts || []) {
-      const cleanShift = String(shift || '').trim();
-      if (!cleanShift) continue;
-      const planetWord = cleanShift.split(/\s+/)[0] || '';
-      if (
-        planetWord &&
-        !answerLower.includes('chalit') &&
-        !answerLower.includes(cleanShift.toLowerCase().slice(0, 18))
-      ) {
-        unusedContradictions.push({
-          title: `Bhava-Chalit shift (${planetWord})`,
-          mechanism: cleanShift,
-          kind: 'chalit_shift',
-        });
+    if (layerA) {
+      for (const y of layerA.validated_yogas || []) {
+        if (!answerLower.includes(y.name.toLowerCase())) {
+          unusedContradictions.push({
+            title: `${y.name} (${y.status})`,
+            mechanism: `${y.formula_proof} — YSI ${y.ysi_score_0_110}/110`,
+            kind: 'yoga',
+          });
+        }
       }
-    }
-  }
-
-  for (const canc of params.stage2Pkg.triggeredCancellations || []) {
-    const titleWords = canc.title.split(/\s+/).slice(0, 3);
-    if (!isAlreadyCovered(titleWords)) {
-      unusedContradictions.push({
-        title: canc.title,
-        mechanism: canc.detail,
-        kind: 'cancellation',
-      });
-    }
-  }
-
-  if (layerA) {
-    for (const y of layerA.validated_yogas || []) {
-      if (!answerLower.includes(y.name.toLowerCase())) {
-        unusedContradictions.push({
-          title: `${y.name} (${y.status})`,
-          mechanism: `${y.formula_proof} — YSI ${y.ysi_score_0_110}/110`,
-          kind: 'yoga',
-        });
-      }
-    }
-    for (const d of layerA.doshas_and_hidden_risks || []) {
-      if (!answerLower.includes(d.name.toLowerCase())) {
-        unusedContradictions.push({
-          title: `${d.name} (Severity ${d.severity_0_10}/10)`,
-          mechanism: `${d.d1_trigger} | D9: ${d.d9_status} | Offset: ${d.offset_present}`,
-          kind: 'dosha',
-        });
+      for (const d of layerA.doshas_and_hidden_risks || []) {
+        if (!answerLower.includes(d.name.toLowerCase())) {
+          unusedContradictions.push({
+            title: `${d.name} (Severity ${d.severity_0_10}/10)`,
+            mechanism: `${d.d1_trigger} | D9: ${d.d9_status} | Offset: ${d.offset_present}`,
+            kind: 'dosha',
+          });
+        }
       }
     }
   }
@@ -198,31 +287,43 @@ export function buildStage4StructuredSeeds(params: {
   for (const hopId of playbook?.nextHops || []) {
     const hop = getPlaybookById(hopId);
     if (!hop || hop.id === params.stage2Pkg.playbookId) continue;
+    const localized = isWestern
+      ? localizePlaybookForWestern(hop)
+      : { shortLabel: hop.shortLabel, title: hop.title };
     nextHops.push({
       playbookId: hop.id,
-      shortLabel: hop.shortLabel,
-      title: hop.title,
+      shortLabel: localized.shortLabel,
+      title: localized.title,
       domain: hop.domain,
     });
   }
 
   // Input 3: Cancellation & Low-Convergence Escalation
-  const pivotalCodes = new Set([
-    'NEECHA_BHANGA',
-    'DASHA_SANDHI_WINDOW',
-    'SAV_LOW_BINDUS',
-    'D1_STRONG_D9_INVERSION',
-    'MARAKA_ACTIVE_DASHAS',
-    'KP_MINUTE_SENSITIVITY',
-  ]);
+  const pivotalCodes = isWestern
+    ? new Set([
+        'CONTRARY_TO_SECT_MALEFIC',
+        'ESSENTIAL_DIGNITY_CHECK',
+        'T_SQUARE',
+        'GRAND_CROSS',
+        'YOD',
+        'ANGLE_BOUNDARY_SENSITIVITY',
+      ])
+    : new Set([
+        'NEECHA_BHANGA',
+        'DASHA_SANDHI_WINDOW',
+        'SAV_LOW_BINDUS',
+        'D1_STRONG_D9_INVERSION',
+        'MARAKA_ACTIVE_DASHAS',
+        'KP_MINUTE_SENSITIVITY',
+      ]);
   const pivotalCancellation = (params.stage2Pkg.triggeredCancellations || []).find(
     (c) => c.severity === 'high' || pivotalCodes.has(c.code)
   );
-  const splitConvergence = params.sutraMeta.convergencePillarsAligned <= 3;
+  const splitConvergence = params.vedicMeta.convergencePillarsAligned <= 3;
   const highStakes = (params.routerResult?.complexity_intensity ?? 5) >= 8;
 
   const needsDeepAuditEscalation =
-    !params.sutraMeta.isDeepAudit &&
+    !params.vedicMeta.isDeepAudit &&
     (splitConvergence || highStakes || Boolean(pivotalCancellation));
 
   let escalationReason: string | null = null;
@@ -230,7 +331,7 @@ export function buildStage4StructuredSeeds(params: {
     const reasons: string[] = [];
     if (splitConvergence) {
       reasons.push(
-        `mixed pillar convergence (${params.sutraMeta.convergenceBandLabel})`
+        `mixed pillar convergence (${params.vedicMeta.convergenceBandLabel})`
       );
     }
     if (pivotalCancellation) {
@@ -243,6 +344,7 @@ export function buildStage4StructuredSeeds(params: {
   }
 
   return {
+    isWestern,
     playbookId: params.stage2Pkg.playbookId,
     domain: params.stage2Pkg.domain,
     unusedContradictions: dedupedContradictions,
@@ -253,7 +355,8 @@ export function buildStage4StructuredSeeds(params: {
     deeperTargetFluency,
     fluencyBridgeDirective: buildFluencyBridgeDirective(
       currentFluency,
-      deeperTargetFluency
+      deeperTargetFluency,
+      isWestern
     ),
   };
 }
@@ -364,16 +467,25 @@ export function buildDeterministicFallbackSuggestions(
 
   for (let i = 0; i < seeds.unusedContradictions.length && deeper.length < maxD; i++) {
     const c = seeds.unusedContradictions[i];
-    const text =
-      c.kind === 'chalit_shift'
-        ? `Check how ${c.title} changes real-world results vs. my Rashi chart`
+    const text = seeds.isWestern
+      ? c.kind === 'configuration'
+        ? `Explore how ${c.title} shapes this chapter in daily life`
+        : c.kind === 'mutual_reception'
+        ? `Check how ${c.title} turns friction into steady skill`
+        : c.kind === 'tight_aspect'
+        ? `Test how your tight ${c.title} wiring reacts to current transits`
         : c.kind === 'cancellation'
-        ? `Test whether ${c.title} softens or reverses the timing tension`
-        : c.kind === 'yoga'
-        ? `Check when ${c.title} actually activates in my upcoming Dasha`
-        : c.kind === 'dosha'
-        ? `Verify if ${c.title} affects this area or stays neutralized`
-        : `Resolve the chart tension around ${c.title}`;
+        ? `Examine whether ${c.title} softens or redirects this timing`
+        : `Resolve the chart tension around ${c.title}`
+      : c.kind === 'chalit_shift'
+      ? `Check how ${c.title} changes real-world results vs. my Rashi chart`
+      : c.kind === 'cancellation'
+      ? `Test whether ${c.title} softens or reverses the timing tension`
+      : c.kind === 'yoga'
+      ? `Check when ${c.title} actually activates in my upcoming Dasha`
+      : c.kind === 'dosha'
+      ? `Verify if ${c.title} affects this area or stays neutralized`
+      : `Resolve the chart tension around ${c.title}`;
     const key = text.toLowerCase();
     if (seenKeys.has(key)) continue;
     seenKeys.add(key);
@@ -381,7 +493,9 @@ export function buildDeterministicFallbackSuggestions(
       id: `da_s4_${i + 1}`,
       text,
       playbook_id: seeds.playbookId,
-      technical_directive: `Audit ${c.title} (${seeds.deeperTargetFluency}): verify KP Cuspal Sub-Lord, D9 endurance, Bhava-Chalit placement, and active MD/AD timing.`,
+      technical_directive: seeds.isWestern
+        ? `Audit ${c.title} (${seeds.deeperTargetFluency}): verify Sect polarity, Placidus cusp ruler, tight <=2° aspects, and Annual Profection/Transit timing.`
+        : `Audit ${c.title} (${seeds.deeperTargetFluency}): verify KP Cuspal Sub-Lord, D9 endurance, Bhava-Chalit placement, and active MD/AD timing.`,
     });
   }
 
@@ -406,7 +520,7 @@ export async function generateAlignedStage4Suggestions(
     stage2Pkg: params.stage2Pkg,
     dossier: params.dossier,
     routerResult: params.routerResult,
-    sutraMeta: params.sutraMeta,
+    vedicMeta: params.vedicMeta,
     assistantAnswer: params.assistantAnswer,
     userFluency: params.userFluency,
   });
@@ -417,17 +531,20 @@ export async function generateAlignedStage4Suggestions(
       .filter(Boolean)
   );
 
+  const isWestern = seeds.isWestern;
   let maxF = params.maxFollowupsOverride ?? 4;
   let maxD = params.maxDeeperOverride ?? 4;
   let followupsRules = '';
   let deeperRules = '';
   let utilityModel = getUtilityModel();
   let utilityMaxTokens = 750;
-  let stage4Template = DEFAULT_STAGE4_ALIGNED_SUGGESTIONS_PROMPT;
+  let stage4Template = isWestern
+    ? WESTERN_STAGE4_ALIGNED_SUGGESTIONS_PROMPT
+    : DEFAULT_STAGE4_ALIGNED_SUGGESTIONS_PROMPT;
 
   try {
     const [guideCfg, engineOverrides, runtime] = await Promise.all([
-      getResolvedGuideConfig(params.expertSlug || 'council_synthesis'),
+      getResolvedGuideConfig(params.expertSlug || DEFAULT_COUNCIL_EXPERT_SLUG),
       getEnginePromptOverrides(),
       getResolvedOpenRouterRuntime(),
     ]);
@@ -457,7 +574,7 @@ export async function generateAlignedStage4Suggestions(
     deeperRules = sugCfg.deeper_analysis_rules || '';
     utilityModel = runtime.utilityModel || utilityModel;
     utilityMaxTokens = Math.max(700, runtime.tokenLimits.utility || 750);
-    if (engineOverrides.stage4_aligned_suggestions_prompt?.trim()) {
+    if (!isWestern && engineOverrides.stage4_aligned_suggestions_prompt?.trim()) {
       stage4Template = engineOverrides.stage4_aligned_suggestions_prompt.trim();
     }
   } catch {
@@ -487,6 +604,8 @@ export async function generateAlignedStage4Suggestions(
       ? seeds.unusedContradictions
           .map((c) => `- (${c.kind}) ${c.title}: ${c.mechanism}`)
           .join('\n')
+      : isWestern
+      ? '- No unmentioned contradictions; check Annual Profection Lord of the Year, Progressed Moon sign shift, Sect polarity, and tight outer transits.'
       : '- No unmentioned contradictions; check D9 endurance vs. current Vimshottari Antardasha & SAV volume.';
 
   const dedupBlock =
@@ -510,7 +629,7 @@ ${followupsRules ? `\nADMIN FOLLOWUP STYLE:\n${followupsRules}` : ''}
 ${deeperRules ? `\nADMIN DEEPER ANALYSIS STYLE:\n${deeperRules}` : ''}
 ${dedupBlock}
 CONVERSATION CONTEXT:
-Playbook: ${seeds.playbookId} | Domain: ${seeds.domain} | Convergence: ${params.sutraMeta.convergenceBandLabel}
+Playbook: ${seeds.playbookId} | Domain: ${seeds.domain} | Convergence: ${params.vedicMeta.convergenceBandLabel}
 User Question: ${params.userQuestion.slice(0, 450)}
 Answer Summary: ${params.assistantAnswer.slice(0, 1200)}
 
@@ -614,17 +733,22 @@ export async function generateFastMoreStage4Suggestions(params: {
     });
   }
 
+  const isWestern =
+    params.expertSlug === 'western_astrologer' ||
+    params.expertSlug === 'modern_astrologer';
   const totalTarget = Math.max(2, Math.min(12, params.count || 8));
   let countF = Math.ceil(totalTarget / 2);
   let countD = Math.floor(totalTarget / 2);
   let followupsRules = '';
   let deeperRules = '';
   let utilityModel = getUtilityModel();
-  let fastMoreTemplate = DEFAULT_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT;
+  let fastMoreTemplate = isWestern
+    ? WESTERN_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT
+    : DEFAULT_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT;
 
   try {
     const [guideCfg, engineOverrides, runtime] = await Promise.all([
-      getResolvedGuideConfig(params.expertSlug || 'council_synthesis'),
+      getResolvedGuideConfig(params.expertSlug || DEFAULT_COUNCIL_EXPERT_SLUG),
       getEnginePromptOverrides(),
       getResolvedOpenRouterRuntime(),
     ]);
@@ -651,7 +775,7 @@ export async function generateFastMoreStage4Suggestions(params: {
     followupsRules = sugCfg.followups_rules || '';
     deeperRules = sugCfg.deeper_analysis_rules || '';
     utilityModel = runtime.utilityModel || utilityModel;
-    if (engineOverrides.stage4_fast_more_suggestions_prompt?.trim()) {
+    if (!isWestern && engineOverrides.stage4_fast_more_suggestions_prompt?.trim()) {
       fastMoreTemplate = engineOverrides.stage4_fast_more_suggestions_prompt.trim();
     }
   } catch {
@@ -663,7 +787,11 @@ export async function generateFastMoreStage4Suggestions(params: {
   );
 
   const deeperTargetFluency = nextFluencyRung(params.userFluency);
-  const fluencyDirective = buildFluencyBridgeDirective(params.userFluency, deeperTargetFluency);
+  const fluencyDirective = buildFluencyBridgeDirective(
+    params.userFluency,
+    deeperTargetFluency,
+    isWestern
+  );
 
   const openRouterReady = await isOpenRouterConfiguredAsync().catch(() =>
     isOpenRouterConfigured()

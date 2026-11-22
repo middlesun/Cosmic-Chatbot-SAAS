@@ -185,7 +185,7 @@ const AppDashboardHome: React.FC = () => {
       const westernPriority = [
         'expert-western_astrologer',
         'expert-modern_astrologer',
-        'expert-council_synthesis',
+        'expert-vedic_astrologer',
       ];
       return [...base].sort((a, b) => {
         const idxA = westernPriority.indexOf(a.id);
@@ -439,7 +439,7 @@ const AppDashboardHome: React.FC = () => {
                   ? `/app/chat/${guide.conversationId}`
                   : '/app/chat?pillar=companion'
                 : `/app/chat?pillar=council&expert=${encodeURIComponent(
-                    guide.expertSlug || 'council_synthesis'
+                    guide.expertSlug || 'vedic_astrologer'
                   )}`;
             return (
               <Link

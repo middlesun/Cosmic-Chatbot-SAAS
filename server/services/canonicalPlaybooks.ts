@@ -1,4 +1,4 @@
-import type { SutraIntentArchetype } from '../../lib/sutraTypes';
+import type { VedicIntentArchetype } from '../../lib/vedicTypes';
 
 export type PlaybookDomain =
   | 'marriage'
@@ -24,7 +24,7 @@ export interface CanonicalPlaybookDef {
   domain: PlaybookDomain;
   title: string;
   shortLabel: string;
-  defaultIntent: SutraIntentArchetype;
+  defaultIntent: VedicIntentArchetype;
   requiredHouses: number[];
   requiredVargas: string[];
   requiredKpCusps: number[];
@@ -43,7 +43,7 @@ interface PlaybookSeed {
   domain: PlaybookDomain;
   title: string;
   shortLabel: string;
-  defaultIntent: SutraIntentArchetype;
+  defaultIntent: VedicIntentArchetype;
   requiredHouses: number[];
   requiredVargas: string[];
   requiredKpCusps: number[];
@@ -1569,7 +1569,7 @@ const HEALTH_SEEDS: PlaybookSeed[] = [
 ];
 
 // HLT_11..26 constitutional/emotional sub-variants
-const HLT_EXTRA_VARIANTS: Array<[string, PlaybookDomain, string, string, SutraIntentArchetype, number[], string[]]> = [
+const HLT_EXTRA_VARIANTS: Array<[string, PlaybookDomain, string, string, VedicIntentArchetype, number[], string[]]> = [
   ['HLT_11', 'health', 'Digestive & metabolic stress patterns (6H / Mercury / Jupiter)?', 'Digestive & metabolic tendencies', 'CONVERSATIONAL', [1, 5, 6], ['F_PHYSICAL_VITALITY_AND_RECOVERY']],
   ['HLT_12', 'health', 'Heart, blood-pressure & heat-stress pacing (Sun / 4H / Mars)?', 'Cardio pacing & stress load', 'CONVERSATIONAL', [1, 4, 5], ['F_PHYSICAL_VITALITY_AND_RECOVERY']],
   ['HLT_13', 'health', 'Joint, spine & musculoskeletal wear patterns (Saturn / 10H / 6H)?', 'Structural & joint resilience', 'CONVERSATIONAL', [1, 6, 10], ['F_PHYSICAL_VITALITY_AND_RECOVERY']],
@@ -2764,7 +2764,7 @@ export interface PlaybookCatalogSummaryItem {
   domain: PlaybookDomain;
   title: string;
   shortLabel: string;
-  defaultIntent: SutraIntentArchetype;
+  defaultIntent: VedicIntentArchetype;
   requiredHouses: number[];
   requiredVargas: string[];
   requiresTimingStack: boolean;
@@ -2804,3 +2804,139 @@ export function getJevPlaybookCriteria(): Record<string, string> {
   }
   return criteria;
 }
+
+const WESTERN_PLAYBOOK_LABELS: Record<string, { title: string; shortLabel: string }> = {
+  MAR_21: {
+    title: 'Partnership Compatibility, Synastry & 7th House Dynamics Audit?',
+    shortLabel: 'Partnership synastry & 7th House audit',
+  },
+  CAR_13: {
+    title: 'Career Configurations, Midheaven & Essential Dignity Audit?',
+    shortLabel: 'Technical audit of Midheaven & 10th House dignity',
+  },
+  WLT_11: {
+    title: 'Wealth Configurations, 2nd/8th/11th Houses & Benefic Sect Audit?',
+    shortLabel: 'Technical audit of 2nd/8th/11th Houses & sect',
+  },
+  HLT_10: {
+    title: 'Vitality, Nervous System & 1st/6th/12th House Stress Audit?',
+    shortLabel: 'Technical audit of 1st/6th/12th House vitality',
+  },
+  HLT_25: {
+    title: 'Vitality Outlook During Heavy Saturn Transits & Saturn Return?',
+    shortLabel: 'Vitality during heavy Saturn transits',
+  },
+  TIM_01: {
+    title: 'What are my current Annual Profection & Secondary Progressions actually shaping?',
+    shortLabel: 'Current Annual Profection & Progressed Moon chapter',
+  },
+  TIM_03: {
+    title: 'Upcoming Annual Profection Birthday Shift & Progressed Sign Change?',
+    shortLabel: 'Upcoming Profection & Progressed sign transition',
+  },
+  TIM_04: {
+    title: 'How will current & upcoming Jupiter, Saturn & Nodal transits affect me?',
+    shortLabel: 'Jupiter, Saturn & Nodal transit impact',
+  },
+  TIM_05: {
+    title: 'Am I in a Saturn Return, Hard Saturn Transit, or Nodal Cycle — how tough is it really?',
+    shortLabel: 'Saturn Return, hard Saturn transit & Nodal cycle reality',
+  },
+  TIM_08: {
+    title: 'How will my North Node transit & Nodal Return / Reverse cycle play out?',
+    shortLabel: 'North Node cycle & developmental themes',
+  },
+  TIM_09: {
+    title: 'Navigating South Node release, 12th House transits & quiet clarity?',
+    shortLabel: 'South Node release & reflective alignment',
+  },
+  TIM_10: {
+    title: 'Navigating Saturn transits, Profection year discipline & earned rewards?',
+    shortLabel: 'Saturn cycle lessons & payoff timing',
+  },
+  TIM_14: {
+    title: 'Short-term 90-day Lunar / Progressed Moon & Solar Return momentum?',
+    shortLabel: 'Next 90 days momentum & tactical timing',
+  },
+  TIM_15: {
+    title: 'Venus, Sun, or Jupiter Profection / transit rewards & complacency watchouts?',
+    shortLabel: 'Benefic cycle gifts & watchouts',
+  },
+  TIM_16: {
+    title: 'Mars or Mercury Profection / transit acceleration & friction watchouts?',
+    shortLabel: 'Mars or Mercury cycle action & pitfalls',
+  },
+  REM_02: {
+    title: 'Evolutionary Nodal Axis, Chiron & 12th House Life-Lesson Synthesis?',
+    shortLabel: 'Evolutionary Nodal & Chiron life lessons',
+  },
+  REM_03: {
+    title: 'Which planetary strengths to lean into vs. over-amplified tensions to balance?',
+    shortLabel: 'Balancing strong vs. strained planetary patterns',
+  },
+  REM_05: {
+    title: 'Practical behavioral alignment during intense Saturn or outer-planet transits?',
+    shortLabel: 'Grounded habits during heavy transit cycles',
+  },
+  LRN_01: {
+    title: 'Explain my Ascendant, Chart Ruler, Sun & Moon Tropical core',
+    shortLabel: 'Explain my Big Three, Chart Ruler & angles',
+  },
+  LRN_02: {
+    title: 'Explain my Solar/Lunar Sect, North Node & Midheaven purpose themes',
+    shortLabel: 'Sect, North Node & Midheaven purpose themes',
+  },
+  LRN_03: {
+    title: 'Rank my chart’s strongest tight aspects, Aspect Configurations & dignified planets',
+    shortLabel: 'Strongest tight aspects & powerhouse planets',
+  },
+  LRN_04: {
+    title: 'Test my chart for mitigations: Mutual Reception, Sect & tight aspect rescues',
+    shortLabel: 'Test Mutual Receptions & sect mitigations',
+  },
+  LRN_05: {
+    title: 'Explain Placidus House Cusps, Chart Ruler & Angular emphasis in my chart',
+    shortLabel: 'Placidus cusps, Chart Ruler & angular planets',
+  },
+  LRN_06: {
+    title: 'Explain Natal promise vs. Secondary Progressed & Profection evolution over time',
+    shortLabel: 'Natal chart vs. Progressed & Profection evolution',
+  },
+  LRN_07: {
+    title: 'Explain a Western astrology concept or term (e.g. Sect, Profection, Mutual Reception)',
+    shortLabel: 'Learn how a Western astrology concept works',
+  },
+  LRN_08: {
+    title: 'Audit Essential/Accidental Dignity, Dispositor Tree, Mutual Receptions & tight orbs',
+    shortLabel: 'Technical audit: Dignity, Dispositor Tree & orbs',
+  },
+  LRN_10: {
+    title: 'Deep Single-Planet Profile (Tropical sign, house, dignity, sect & tight aspects)',
+    shortLabel: 'Deep dive into one specific planet',
+  },
+};
+
+export function localizePlaybookForWestern(pb: CanonicalPlaybookDef): {
+  title: string;
+  shortLabel: string;
+} {
+  const mapped = WESTERN_PLAYBOOK_LABELS[pb.id];
+  if (mapped) return mapped;
+
+  const scrub = (s: string): string =>
+    s
+      .replace(/\b(?:Mahadasha\s*(?:&|\/|and)\s*Antardasha|Mahadasha|Antardasha|Pratyantardasha|Dasha\s*Sandhi|Dasha)\b/gi, 'Profection & Progressed cycle')
+      .replace(/\b(?:Navamsa|D9|D10|D60|D45|D2|D1\s*Rashi|Varga)\b/gi, 'Tropical chart')
+      .replace(/\b(?:Ashtakavarga|SAV\/BAV|SAV|BAV|Shadbala|KP\s*Sub-?Lords?|Bhava\s*Chalit|Nakshatra|Sade\s*Sati|Ashtama\s*Shani|Atmakaraka|Amatyakaraka|Jaimini|Karakamsha|Neecha\s*Bhanga|Yogas?\s*(?:&|\/|and)\s*Doshas?|Yogas?|Doshas?)\b/gi, 'chart configurations & dignity')
+      .replace(/\b(?:Rahu-Ketu|Rahu|Ketu)\b/gi, 'Lunar Nodes')
+      .replace(/\bGochar\b/gi, 'Transits')
+      .replace(/\bLagna\b/gi, 'Ascendant')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+  return {
+    title: scrub(pb.title),
+    shortLabel: scrub(pb.shortLabel),
+  };
+}
+

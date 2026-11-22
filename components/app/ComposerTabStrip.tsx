@@ -428,7 +428,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
   const orderedCouncilExperts = useMemo(() => {
     const experts = [...(catalog?.experts || [])];
     const prioritySlug =
-      defaultAstrologyMode === 'western' ? 'western_astrologer' : 'council_synthesis';
+      defaultAstrologyMode === 'western' ? 'western_astrologer' : 'vedic_astrologer';
     experts.sort((a, b) => {
       if (a.slug === prioritySlug && b.slug !== prioritySlug) return -1;
       if (b.slug === prioritySlug && a.slug !== prioritySlug) return 1;

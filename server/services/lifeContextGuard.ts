@@ -13,7 +13,7 @@ import {
   type LocationContextStatus,
   type RelationshipContextStatus,
 } from '../../lib/lifeContextSchema';
-import type { ClarificationPayload } from '../../lib/sutraTypes';
+import type { ClarificationPayload } from '../../lib/vedicTypes';
 
 export type {
   BirthTimeAccuracy,
@@ -287,12 +287,13 @@ export function detectContextTrapMismatch(
   playbookId: string,
   lifeContext: LifeContextData | null | undefined,
   userPrompt: string,
-  options?: { isFollowUpTurn?: boolean }
+  options?: { isFollowUpTurn?: boolean; tradition?: 'vedic' | 'western' }
 ): ContextTrapCheckResult {
   const ctx = lifeContext || {};
   const prompt = (userPrompt || '').trim();
   const playbook = (playbookId || '').trim().toUpperCase();
   const isFollowUp = Boolean(options?.isFollowUpTurn);
+  const isWestern = options?.tradition === 'western';
 
   const hasMarriedAnchor = Boolean(
     ctx.marriage_year ||
@@ -325,22 +326,25 @@ export function detectContextTrapMismatch(
             id: 'verify_past_marriage',
             label: 'Verify my past marriage window',
             playbookId: 'TIM_11',
-            clarifiedQuestion:
-              'Please verify my past marriage window against my Vimshottari Dasha and transits to check chart timing accuracy.',
+            clarifiedQuestion: isWestern
+              ? 'Please verify my past marriage window against my Annual Profections, Secondary Progressions, and transits.'
+              : 'Please verify my past marriage window against my Vimshottari Dasha and transits to check chart timing accuracy.',
           },
           {
             id: 'current_marriage_evolution',
             label: 'Ask about current marriage evolution',
             playbookId: 'MAR_03',
-            clarifiedQuestion:
-              'How does my current married life and partnership harmony evolve over the coming Dasha and transit periods?',
+            clarifiedQuestion: isWestern
+              ? 'How does my current married life and partnership harmony evolve over the coming Profections and transit cycles?'
+              : 'How does my current married life and partnership harmony evolve over the coming Dasha and transit periods?',
           },
           {
             id: 'second_marriage_chapter',
             label: 'Second marriage / new chapter',
             playbookId: 'MAR_29',
-            clarifiedQuestion:
-              'Looking candidly at my chart, what do my Dashas and Navamsa indicate about separation or a second marriage / new chapter ahead?',
+            clarifiedQuestion: isWestern
+              ? 'Looking candidly at my Tropical chart, what do my 7th House, Venus, and transits indicate about separation or a new chapter ahead?'
+              : 'Looking candidly at my chart, what do my Dashas and Navamsa indicate about separation or a second marriage / new chapter ahead?',
           },
         ],
       },
@@ -401,15 +405,17 @@ export function detectContextTrapMismatch(
             id: 'progeny_second_child',
             label: 'Planning another child',
             playbookId: 'PRO_06',
-            clarifiedQuestion:
-              'What does my D1 and D7 Saptamsha suggest about planning another child and timing windows?',
+            clarifiedQuestion: isWestern
+              ? 'What does my 5th House, its ruler, and Jupiter/Saturn cycles suggest about planning another child and timing windows?'
+              : 'What does my D1 and D7 Saptamsha suggest about planning another child and timing windows?',
           },
           {
             id: 'progeny_verify_past',
             label: 'Verify past child timing',
             playbookId: 'TIM_11',
-            clarifiedQuestion:
-              'Can you cross-check the birth year(s) of my child(ren) against my 5th house, D7, and Dasha periods?',
+            clarifiedQuestion: isWestern
+              ? 'Can you cross-check the birth year(s) of my child(ren) against my 5th house, Profections, and transits?'
+              : 'Can you cross-check the birth year(s) of my child(ren) against my 5th house, D7, and Dasha periods?',
           },
         ],
       },
@@ -553,8 +559,9 @@ export function detectContextTrapMismatch(
       triggered: true,
       trapId: 'BIRTH_TIME_PRECISION_CAUTION',
       requiresClarificationPause: false,
-      promptNote:
-        'Birth time accuracy is approximate/unknown — anchor insights in Moon sign (Chandra Lagna), planetary strengths, and broader Vimshottari Mahadasha/Antardasha without over-claiming minute-sensitive KP Sub-Lords or borderline Varga Lagna shifts.',
+      promptNote: isWestern
+        ? 'Birth time accuracy is approximate/unknown — anchor insights in Sun, Moon sign, planetary aspects, and outer transits without over-claiming minute-sensitive Placidus Ascendant, Midheaven, or intermediate house cusps.'
+        : 'Birth time accuracy is approximate/unknown — anchor insights in Moon sign (Chandra Lagna), planetary strengths, and broader Vimshottari Mahadasha/Antardasha without over-claiming minute-sensitive KP Sub-Lords or borderline Varga Lagna shifts.',
     };
   }
 
@@ -566,12 +573,12 @@ export function detectContextTrapMismatch(
  */
 export function evaluateLifeContextGuardHints(
   lifeContext: LifeContextData | null | undefined,
-  opts?: { userPrompt?: string; playbookId?: string; isFollowUpTurn?: boolean }
+  opts?: { userPrompt?: string; playbookId?: string; isFollowUpTurn?: boolean; tradition?: 'vedic' | 'western' }
 ): ContextTrapCheckResult {
   return detectContextTrapMismatch(
     opts?.playbookId || '',
     lifeContext,
     opts?.userPrompt || '',
-    { isFollowUpTurn: opts?.isFollowUpTurn }
+    { isFollowUpTurn: opts?.isFollowUpTurn, tradition: opts?.tradition }
   );
 }

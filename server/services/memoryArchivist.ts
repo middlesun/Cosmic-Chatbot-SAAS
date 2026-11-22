@@ -7,7 +7,7 @@ import {
   VALID_CAREER_MODES,
   VALID_RELATIONSHIP_STATUSES,
 } from '../../lib/lifeContextSchema';
-import type { Stage1RouterResult, SutraUserProfile, UserFluencyTier } from '../../lib/sutraTypes';
+import type { Stage1RouterResult, UserFluencyTier, VedicUserProfile } from '../../lib/vedicTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { mergeExtractedLifeFacts } from './lifeContextGuard';
 import {
@@ -64,13 +64,13 @@ export function mergeCoreStressAreas(
 }
 
 /**
- * Pure helper computing the updated silent SutraUserProfile without network calls
+ * Pure helper computing the updated silent VedicUserProfile without network calls
  * so both runtime updates and CLI benchmarks can verify fluency & domain progression cleanly.
  */
-export function computeUpdatedSutraUserProfile(
-  existing: Partial<SutraUserProfile> | null | undefined,
+export function computeUpdatedVedicUserProfile(
+  existing: Partial<VedicUserProfile> | null | undefined,
   turnContext: ArchivistTurnContext
-): SutraUserProfile {
+): VedicUserProfile {
   const prevFluency: UserFluencyTier =
     existing?.inferred_fluency && existing.inferred_fluency in FLUENCY_ORDER
       ? existing.inferred_fluency
@@ -125,7 +125,7 @@ export function computeUpdatedSutraUserProfile(
   const compactWeights: Record<string, number> = Object.fromEntries(sortedEntries);
   const recurringDomains = sortedEntries.slice(0, 3).map(([k]) => k);
 
-  let preferredTradition: SutraUserProfile['preferred_tradition'] =
+  let preferredTradition: VedicUserProfile['preferred_tradition'] =
     existing?.preferred_tradition || turnContext.tradition || 'vedic';
   if (
     turnContext.tradition &&
@@ -320,8 +320,8 @@ async function updateSilentUserIntelligence(
       return;
     }
 
-    const existing = (userRow?.sutra_user_profile_json || null) as Partial<SutraUserProfile> | null;
-    const updated = computeUpdatedSutraUserProfile(existing, turnContext);
+    const existing = (userRow?.sutra_user_profile_json || null) as Partial<VedicUserProfile> | null;
+    const updated = computeUpdatedVedicUserProfile(existing, turnContext);
 
     await supabaseAdmin
       .from('users')

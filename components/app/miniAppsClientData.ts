@@ -684,10 +684,10 @@ export const PREVIEW_HOME_SUMMARY: HomeSummaryResponse = {
   recentGuides: [
     {
       kind: 'council',
-      id: 'expert-council_synthesis',
+      id: 'expert-vedic_astrologer',
       title: 'Vedic Astrologer',
       subtitle: 'Parashari, KP, Jaimini & Dasha synthesis',
-      expertSlug: 'council_synthesis',
+      expertSlug: 'vedic_astrologer',
       conversationId: 'preview-conv-1',
       lastActiveAt: '2026-11-17T18:30:00.000Z',
     },

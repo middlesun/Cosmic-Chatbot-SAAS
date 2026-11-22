@@ -1,6 +1,6 @@
 export type SeedPromptCategory = 'formula_cartridge' | 'priority_rule';
 
-export interface SutradharaPromptSeed {
+export interface VedicPromptSeed {
   slug: string;
   category: SeedPromptCategory;
   display_name: string;
@@ -20,7 +20,7 @@ export interface FormulaCartridgeMeta {
   basePriority: number;
 }
 
-export const FORMULA_CARTRIDGES_SEED: SutradharaPromptSeed[] = [
+export const FORMULA_CARTRIDGES_SEED: VedicPromptSeed[] = [
   // =========================================================================
   // GROUP A: Conflict, Cancellation & Modifying Principles (12)
   // =========================================================================
@@ -567,7 +567,7 @@ Pair this baseline with current Solar-year / Dasha themes and upcoming slow-plan
   },
 ];
 
-export const PRIORITY_RULES_SEED: SutradharaPromptSeed[] = [
+export const PRIORITY_RULES_SEED: VedicPromptSeed[] = [
   {
     slug: 'prio_marriage',
     category: 'priority_rule',

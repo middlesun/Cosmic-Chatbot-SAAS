@@ -3,10 +3,14 @@ import { Check, KeyRound, Save } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { getSupabaseClient } from '../../lib/supabaseClient';
 import CustomSelect from './CustomSelect';
-import type { ChatCatalog } from './chatTypes';
+import {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  normalizeCouncilSlug,
+  type ChatCatalog,
+} from './chatTypes';
 
 const FALLBACK_EXPERTS = [
-  { value: 'council_synthesis', label: 'Vedic Astrologer' },
+  { value: DEFAULT_COUNCIL_EXPERT_SLUG, label: 'Vedic Astrologer' },
   { value: 'western_astrologer', label: 'Western Astrologer' },
   { value: 'modern_astrologer', label: 'Modern Astrologer' },
   { value: 'tarot_reader', label: 'Tarot' },
@@ -29,7 +33,7 @@ const SettingsPage: React.FC = () => {
     appUser?.currency_pref || 'INR'
   );
   const [defaultExpert, setDefaultExpert] = useState(
-    appUser?.default_expert || 'council_synthesis'
+    normalizeCouncilSlug(appUser?.default_expert)
   );
   const [defaultLanguage, setDefaultLanguage] = useState(
     appUser?.default_language || 'English'
@@ -44,7 +48,7 @@ const SettingsPage: React.FC = () => {
     if (appUser) {
       setFullName(appUser.full_name || '');
       setCurrencyPref(appUser.currency_pref || 'INR');
-      setDefaultExpert(appUser.default_expert || 'council_synthesis');
+      setDefaultExpert(normalizeCouncilSlug(appUser.default_expert));
       setDefaultLanguage(appUser.default_language || 'English');
     }
   }, [appUser]);

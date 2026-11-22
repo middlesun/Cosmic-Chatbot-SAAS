@@ -24,6 +24,10 @@ import {
   invalidatePromptCache,
 } from '../services/promptDefaults';
 import {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  normalizeCouncilSlug,
+} from '../../lib/vedicTypes';
+import {
   ALL_GUIDE_CATALOG_META,
   DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
   DEFAULT_COMPANION_ARCHETYPES,
@@ -31,8 +35,8 @@ import {
   DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
   DEFAULT_CORE_COUNCIL_CONSTITUTION,
   DEFAULT_FORMAT_CONTRACTS,
-  DEFAULT_SUTRA_ANTI_CLICHE_RULES,
-  DEFAULT_SUTRA_TIER1_REASONING_LAWS,
+  DEFAULT_VEDIC_ANTI_CLICHE_RULES,
+  DEFAULT_VEDIC_TIER1_REASONING_LAWS,
   GUIDE_SLUGS,
   getGuideCatalogMeta,
   isValidGuideSlug,
@@ -2224,7 +2228,7 @@ router.put('/settings/chatbot', async (req: AuthenticatedRequest, res) => {
         : current.composer_placeholder,
     default_expert:
       typeof body.default_expert === 'string' && body.default_expert.trim()
-        ? body.default_expert.trim()
+        ? normalizeCouncilSlug(body.default_expert)
         : current.default_expert,
     default_mode:
       typeof body.default_mode === 'string' && body.default_mode.trim()
@@ -2247,7 +2251,7 @@ router.put('/settings/chatbot', async (req: AuthenticatedRequest, res) => {
         ? body.default_response_length
         : current.default_response_length,
     expert_order: Array.isArray(body.expert_order)
-      ? body.expert_order.map(String).filter(Boolean)
+      ? Array.from(new Set(body.expert_order.map((s) => normalizeCouncilSlug(String(s))).filter(Boolean)))
       : current.expert_order,
     mode_order: Array.isArray(body.mode_order)
       ? body.mode_order.map(String).filter(Boolean)
@@ -2282,7 +2286,7 @@ router.put('/settings/chatbot/guide/:guideSlug', async (req: AuthenticatedReques
     return;
   }
 
-  const rawSlug = String(req.params.guideSlug || '').trim();
+  const rawSlug = normalizeCouncilSlug(String(req.params.guideSlug || '').trim());
   if (!isValidGuideSlug(rawSlug)) {
     res.status(400).json({ error: 'Unknown guide slug.' });
     return;
@@ -2524,7 +2528,7 @@ router.post('/settings/chatbot/guide/:guideSlug/reset', async (req: Authenticate
     return;
   }
 
-  const rawSlug = String(req.params.guideSlug || '').trim();
+  const rawSlug = normalizeCouncilSlug(String(req.params.guideSlug || '').trim());
   if (!isValidGuideSlug(rawSlug)) {
     res.status(400).json({ error: 'Unknown guide slug.' });
     return;
@@ -2655,8 +2659,8 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     | 'companion_constitution'
     | 'companion_matcher_instructions'
     | 'clarity_helper_system_prompt'
-    | 'sutra_tier1_reasoning_laws'
-    | 'sutra_anti_cliche_rules'
+    | 'vedic_tier1_reasoning_laws'
+    | 'vedic_anti_cliche_rules'
     | 'stage1_router_prompt'
     | 'deep_audit_adjudicator_mandate'
     | 'stage4_aligned_suggestions_prompt'
@@ -2666,8 +2670,8 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     'companion_constitution',
     'companion_matcher_instructions',
     'clarity_helper_system_prompt',
-    'sutra_tier1_reasoning_laws',
-    'sutra_anti_cliche_rules',
+    'vedic_tier1_reasoning_laws',
+    'vedic_anti_cliche_rules',
     'stage1_router_prompt',
     'deep_audit_adjudicator_mandate',
     'stage4_aligned_suggestions_prompt',
@@ -2855,8 +2859,12 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
     return;
   }
 
-  const rawGuide = typeof req.query.guide === 'string' ? req.query.guide.trim() : 'council_synthesis';
-  const guideSlug: GuideSlug = isValidGuideSlug(rawGuide) ? rawGuide : 'council_synthesis';
+  const rawGuide = normalizeCouncilSlug(
+    typeof req.query.guide === 'string' ? req.query.guide.trim() : DEFAULT_COUNCIL_EXPERT_SLUG
+  );
+  const guideSlug: GuideSlug = isValidGuideSlug(rawGuide)
+    ? rawGuide
+    : DEFAULT_COUNCIL_EXPERT_SLUG;
   const guideMeta = getGuideCatalogMeta(guideSlug);
 
   const [
@@ -2920,10 +2928,15 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
   const effectiveUtilityModel = runtime.utilityModel;
   const jevModel = runtime.jevClassifierEnabled ? runtime.jevModel : runtime.utilityModel;
 
+  const isWesternManifestGuide =
+    guideSlug === 'western_astrologer' || guideSlug === 'modern_astrologer';
+  const isAstroPipelineManifestGuide =
+    guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG || isWesternManifestGuide;
+
   const runtimeFiles =
     guideMeta.pillar === 'council'
       ? [
-          ...(guideSlug === 'council_synthesis'
+          ...(isAstroPipelineManifestGuide
             ? [
                 {
                   step: 'Stage 1 — Intent & Playbook Router',
@@ -2932,10 +2945,16 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
                   notes: 'Classifies question into Canonical Playbook, 5-Tier Intent archetype, and user fluency.',
                 },
                 {
-                  step: 'Stage 2 — Vedic Context & Playbook Slicer',
-                  filePath: 'server/services/contextSlicer.ts',
+                  step: isWesternManifestGuide
+                    ? 'Stage 2 — Western Context & Playbook Slicer'
+                    : 'Stage 2 — Vedic Context & Playbook Slicer',
+                  filePath: isWesternManifestGuide
+                    ? 'server/services/westernContextSlicer.ts'
+                    : 'server/services/contextSlicer.ts',
                   modelResolved: 'Deterministic Node/TS + Database',
-                  notes: 'Selects relevant houses, Vargas, KP Sub-Lords, Formula Cartridges, Priority Rules, and Playbook overrides.',
+                  notes: isWesternManifestGuide
+                    ? 'Selects Placidus cusps, Sect, Dignity, Mutual Receptions, Tight <=2° Aspects, Profections, Progressions, Outer Transits & w_* Cartridges.'
+                    : 'Selects relevant houses, Vargas, KP Sub-Lords, Formula Cartridges, Priority Rules, and Playbook overrides.',
                 },
               ]
             : []),
@@ -2945,19 +2964,25 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
             modelResolved: effectiveConsultationModel,
             notes: 'Builds static + volatile system instructions, resolves guide rules, and streams SSE output.',
           },
-          ...(guideSlug === 'council_synthesis'
+          ...(isAstroPipelineManifestGuide
             ? [
                 {
-                  step: 'Stage 3 — Sutra Reasoner & Voice Synthesizer',
-                  filePath: 'server/services/sutraSynthesizer.ts',
+                  step: isWesternManifestGuide
+                    ? 'Stage 3 — Western Astrologer Reasoner & Voice Synthesizer'
+                    : 'Stage 3 — Vedic Astrologer Reasoner & Voice Synthesizer',
+                  filePath: 'server/services/vedicAstrologerEngine.ts',
                   modelResolved: effectiveConsultationModel,
                   notes: 'Enforces Tier-1 Adjudication Laws, Anti-Cliché Guardrails, Intent Contract, Fluency, and Format Contract.',
                 },
                 {
-                  step: 'Optional — Deep Multi-System Council Audit',
+                  step: isWesternManifestGuide
+                    ? 'Optional — Deep Multi-System Western Audit'
+                    : 'Optional — Deep Multi-System Council Audit',
                   filePath: 'server/services/deepCouncilAudit.ts',
                   modelResolved: effectiveConsultationModel,
-                  notes: 'Runs 4 parallel analytical lenses (Parashari, KP/Nadi, Multi-Clock Timing, Contrarian) + Adjudicator Mandate when toggled.',
+                  notes: isWesternManifestGuide
+                    ? 'Runs 4 parallel Western lenses (Sect & Dignity, Tight Aspects, Multi-Clock Timing, Contrarian) + Adjudicator Mandate when toggled.'
+                    : 'Runs 4 parallel analytical lenses (Parashari, KP/Nadi, Multi-Clock Timing, Contrarian) + Adjudicator Mandate when toggled.',
                 },
               ]
             : []),
@@ -3064,28 +3089,28 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
       )
     );
 
-    if (guideSlug === 'council_synthesis') {
-      const hasLawsOverride = Boolean(engineOverrides.sutra_tier1_reasoning_laws?.trim());
+    if (guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG) {
+      const hasLawsOverride = Boolean(engineOverrides.vedic_tier1_reasoning_laws?.trim());
       promptStack.push(
         makeStackItem(
           3,
           'Tier-1 Adjudication Laws & Truth Gate',
           hasLawsOverride ? 'Database' : 'Code Default',
-          hasLawsOverride ? 'platform_settings.engine_prompt_overrides.sutra_tier1_reasoning_laws' : 'enginePromptDefaults.ts',
+          hasLawsOverride ? 'platform_settings.engine_prompt_overrides.vedic_tier1_reasoning_laws' : 'enginePromptDefaults.ts',
           'Active',
-          engineOverrides.sutra_tier1_reasoning_laws?.trim() || DEFAULT_SUTRA_TIER1_REASONING_LAWS
+          engineOverrides.vedic_tier1_reasoning_laws?.trim() || DEFAULT_VEDIC_TIER1_REASONING_LAWS
         )
       );
 
-      const hasAntiCliche = Boolean(engineOverrides.sutra_anti_cliche_rules?.trim());
+      const hasAntiCliche = Boolean(engineOverrides.vedic_anti_cliche_rules?.trim());
       promptStack.push(
         makeStackItem(
           4,
           'Voice & Anti-Cliché Guardrails',
           hasAntiCliche ? 'Database' : 'Code Default',
-          hasAntiCliche ? 'platform_settings.engine_prompt_overrides.sutra_anti_cliche_rules' : 'enginePromptDefaults.ts',
+          hasAntiCliche ? 'platform_settings.engine_prompt_overrides.vedic_anti_cliche_rules' : 'enginePromptDefaults.ts',
           'Active',
-          engineOverrides.sutra_anti_cliche_rules?.trim() || DEFAULT_SUTRA_ANTI_CLICHE_RULES
+          engineOverrides.vedic_anti_cliche_rules?.trim() || DEFAULT_VEDIC_ANTI_CLICHE_RULES
         )
       );
 
@@ -3194,7 +3219,7 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
   }
   const rulesLower = guideCfg.combined_rules_text.toLowerCase();
   if (
-    guideSlug === 'council_synthesis' &&
+    guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG &&
     (rulesLower.includes('no table') ||
       rulesLower.includes('never use table') ||
       rulesLower.includes('no heading') ||

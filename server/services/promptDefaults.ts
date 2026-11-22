@@ -4,6 +4,10 @@ import {
   FORMULA_CARTRIDGES_SEED,
   PRIORITY_RULES_SEED,
 } from './formulaCartridgesSeed';
+import {
+  WESTERN_FORMULA_CARTRIDGES_SEED,
+  WESTERN_PRIORITY_RULES_SEED,
+} from './westernFormulaSeed';
 import { getChatbotConfig, getEnginePromptOverrides } from './platformSettings';
 
 export type PromptCategory =
@@ -47,7 +51,7 @@ export interface DefaultPromptSeed {
 
 export const EXPERT_OPTIONS: DefaultPromptSeed[] = [
   {
-    slug: 'council_synthesis',
+    slug: 'vedic_astrologer',
     category: 'expert',
     display_name: 'Vedic Astrologer',
     subtitle: 'Unified Parashari, KP, Jaimini & Nadi Jyotish synthesis and timing.',
@@ -328,7 +332,9 @@ export const ALL_DEFAULT_PROMPTS: DefaultPromptSeed[] = [
   ...LANGUAGE_OPTIONS,
   ...TOOL_PROMPTS,
   ...FORMULA_CARTRIDGES_SEED,
+  ...WESTERN_FORMULA_CARTRIDGES_SEED,
   ...PRIORITY_RULES_SEED,
+  ...WESTERN_PRIORITY_RULES_SEED,
 ];
 
 const PROMPT_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -801,7 +807,7 @@ async function resolveInternalRulesByCategory(
 }
 
 /**
- * Server-only cached lookup for all Sutradhara Vedic Formula Cartridges (`formula_cartridge`).
+ * Server-only cached lookup for all Vedic Formula Cartridges (`formula_cartridge`).
  * Reflects live Admin edits and active toggles; NEVER exposed to public `/api/chat/config`.
  */
 export async function getFormulaCartridgesCached(): Promise<
@@ -811,13 +817,16 @@ export async function getFormulaCartridgesCached(): Promise<
   if (formulaCartridgesCache && formulaCartridgesCache.expiresAt > now) {
     return formulaCartridgesCache.data;
   }
-  const data = await resolveInternalRulesByCategory('formula_cartridge', FORMULA_CARTRIDGES_SEED);
+  const data = await resolveInternalRulesByCategory('formula_cartridge', [
+    ...FORMULA_CARTRIDGES_SEED,
+    ...WESTERN_FORMULA_CARTRIDGES_SEED,
+  ]);
   formulaCartridgesCache = { data, expiresAt: now + PROMPT_CACHE_TTL_MS };
   return data;
 }
 
 /**
- * Server-only cached lookup for all 14 Sutradhara Context Priority Rules (`priority_rule`).
+ * Server-only cached lookup for all Vedic + Western Context Priority Rules (`priority_rule`).
  * Reflects live Admin edits and active toggles; NEVER exposed to public `/api/chat/config`.
  */
 export async function getPriorityRulesCached(): Promise<
@@ -827,7 +836,10 @@ export async function getPriorityRulesCached(): Promise<
   if (priorityRulesCache && priorityRulesCache.expiresAt > now) {
     return priorityRulesCache.data;
   }
-  const data = await resolveInternalRulesByCategory('priority_rule', PRIORITY_RULES_SEED);
+  const data = await resolveInternalRulesByCategory('priority_rule', [
+    ...PRIORITY_RULES_SEED,
+    ...WESTERN_PRIORITY_RULES_SEED,
+  ]);
   priorityRulesCache = { data, expiresAt: now + PROMPT_CACHE_TTL_MS };
   return data;
 }

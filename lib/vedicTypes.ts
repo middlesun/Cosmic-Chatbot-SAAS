@@ -1,6 +1,25 @@
 import type { LifeContextData } from './lifeContextSchema';
 
-export type SutraIntentArchetype =
+export const DEFAULT_COUNCIL_EXPERT_SLUG = 'vedic_astrologer';
+
+/**
+ * Normalizes legacy and current Vedic Astrologer expert slugs to the canonical
+ * `'vedic_astrologer'` identifier while preserving any other valid expert slug.
+ */
+export function normalizeCouncilSlug(slug?: string | null): string {
+  const cleaned = typeof slug === 'string' ? slug.trim() : '';
+  if (!cleaned) return DEFAULT_COUNCIL_EXPERT_SLUG;
+  if (cleaned.toLowerCase() === 'council_synthesis') {
+    return DEFAULT_COUNCIL_EXPERT_SLUG;
+  }
+  return cleaned;
+}
+
+export function isVedicAstrologerSlug(slug?: string | null): boolean {
+  return normalizeCouncilSlug(slug) === DEFAULT_COUNCIL_EXPERT_SLUG;
+}
+
+export type VedicIntentArchetype =
   | 'CONVERSATIONAL'
   | 'SOFT_HORIZON'
   | 'HARD_DECISION'
@@ -14,7 +33,7 @@ export type Stage1ProviderUsed = 'jev' | 'openrouter_fallback' | 'rule_guard';
 export interface Stage1RouterResult {
   playbook_id: string;
   playbook_confidence: number;
-  intent: SutraIntentArchetype;
+  intent: VedicIntentArchetype;
   intent_confidence: number;
   detected_user_fluency: UserFluencyTier;
   is_prompt_extraction: boolean;
@@ -47,8 +66,9 @@ export interface ClarificationPayload {
   chips: ClarificationChip[];
 }
 
-export interface SutraSynthesisMeta {
-  intent: SutraIntentArchetype;
+export interface VedicSynthesisMeta {
+  tradition?: 'vedic' | 'western';
+  intent: VedicIntentArchetype;
   playbookId: string;
   domain: string;
   convergencePillarsAligned: number;
@@ -60,7 +80,7 @@ export interface SutraSynthesisMeta {
   reductionPct?: number;
 }
 
-export interface SutraUserProfile {
+export interface VedicUserProfile {
   inferred_fluency: UserFluencyTier;
   recurring_domains: string[];
   domain_weights?: Record<string, number>;
@@ -69,7 +89,17 @@ export interface SutraUserProfile {
   last_updated_at: string;
 }
 
-export type TimingWidgetId = 'md' | 'ad' | 'pd' | 'saturn' | 'jupiter' | 'rahu_ketu';
+export type TimingWidgetId =
+  | 'md'
+  | 'ad'
+  | 'pd'
+  | 'saturn'
+  | 'jupiter'
+  | 'rahu_ketu'
+  | 'profection'
+  | 'progressed_moon'
+  | 'w_saturn'
+  | 'w_jupiter';
 
 export interface TimingProgressWidget {
   id: TimingWidgetId;

@@ -5,6 +5,7 @@ import {
   isSupabaseClientConfigured,
   loadSupabasePublicConfig,
 } from '../../lib/supabaseClient';
+import { normalizeCouncilSlug } from '../../lib/vedicTypes';
 import { PREVIEW_APP_USER } from './previewFixtures';
 
 export type AstrologyMode = 'vedic' | 'western';
@@ -155,7 +156,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setAppUser(null);
         } else {
           const data = await res.json();
-          setAppUser(data.user);
+          const hydratedUser = data.user
+            ? {
+                ...data.user,
+                default_expert: normalizeCouncilSlug(data.user.default_expert),
+              }
+            : null;
+          setAppUser(hydratedUser);
           setStats(data.stats || { savedProfiles: 0, successfulReferrals: 0 });
           setError(null);
           if (!sessionStorage.getItem(ASTROLOGY_MODE_STORAGE_KEY) && data.user?.default_astrology_mode) {

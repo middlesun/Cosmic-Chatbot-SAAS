@@ -2,13 +2,17 @@ import {
   containsInternalPromptLeak,
   PROMPT_EXTRACTION_REFUSAL,
   sanitizeAssistantOutput,
-  sanitizeSutraProse,
+  sanitizeVedicProse,
 } from './abuseGuard';
 import type { CompiledChartData } from './chartCompiler';
 import type { Stage2ContextPackage } from './contextSlicer';
 import {
   DEFAULT_DEEP_AUDIT_ADJUDICATOR_MANDATE,
   DEFAULT_DEEP_AUDIT_LENSES,
+  WESTERN_ANTI_CLICHE_RULES,
+  WESTERN_DEEP_AUDIT_ADJUDICATOR_MANDATE,
+  WESTERN_DEEP_AUDIT_LENSES,
+  WESTERN_TIER1_REASONING_LAWS,
 } from './enginePromptDefaults';
 import type { EnginePromptOverrides } from './platformSettings';
 import {
@@ -24,19 +28,27 @@ import {
   computeDeterministicPillarConvergence,
   extractTechBreakdown,
   resolveEffectiveFluency,
-  SUTRA_ANTI_CLICHE_RULES,
-  SUTRA_TIER1_REASONING_LAWS,
+  VEDIC_ANTI_CLICHE_RULES,
+  VEDIC_TIER1_REASONING_LAWS,
   type DeterministicConvergenceResult,
-  type SutraVoicePreset,
-} from './sutraSynthesizer';
+  type VedicVoicePreset,
+} from './vedicAstrologerEngine';
 import type {
-  SutraSynthesisMeta,
   TimingProgressWidget,
   UserFluencyTier,
-} from '../../lib/sutraTypes';
+  VedicSynthesisMeta,
+} from '../../lib/vedicTypes';
 
 export interface DeepAuditLensSpec {
-  id: 'parashari_divisional' | 'kp_nadi' | 'multi_clock_timing' | 'contrarian_auditor';
+  id:
+    | 'parashari_divisional'
+    | 'kp_nadi'
+    | 'multi_clock_timing'
+    | 'contrarian_auditor'
+    | 'sect_dignity_rulers'
+    | 'tight_aspects_patterns'
+    | 'western_multi_clock_timing'
+    | 'western_contrarian_auditor';
   name: string;
   systemPrompt: string;
   userPrompt: string;
@@ -68,6 +80,74 @@ export function buildDeepAuditLensPrompts(params: {
   const directiveNote = technicalDirective?.trim()
     ? `\nSpecific Audit Angle: ${technicalDirective.trim()}`
     : '';
+
+  if (pkg.tradition === 'western') {
+    const sectDignitySlice = {
+      profile: slice.profile,
+      domainAudit: slice.domainAudit,
+      cuspsFocus: slice.cuspsFocus,
+      planetsFocus: slice.planetsFocus,
+      dispositorTree: slice.dispositorTree,
+      mutualReceptions: slice.mutualReceptions,
+      ...(slice.partners ? { partners: slice.partners } : {}),
+    };
+
+    const tightAspectsSlice = {
+      profile: slice.profile,
+      tightAspects: slice.tightAspects,
+      configurations: slice.configurations,
+      truthGateSummary: pkg.truthGateResolution.map((r) => `H${r.house}(${r.sign}):${r.kpVerdict}`),
+    };
+
+    const westernTimingSlice = {
+      profile: slice.profile,
+      timing:
+        slice.timing ||
+        'Timing stack not required for this query; summarize current Profection and outer transit backdrop only.',
+      transitFeed: gocharFeedText ? gocharFeedText.slice(0, 1200) : undefined,
+    };
+
+    const westernContrarianSlice = {
+      profile: slice.profile,
+      priorityRule: pkg.priorityRule.title,
+      conditionalReordered: pkg.priorityRule.conditionalReordered,
+      triggeredCancellations: pkg.triggeredCancellations,
+      truthGateResolution: pkg.truthGateResolution.map((r) => r.summary),
+      lifeContextReality: pkg.lifeContextAnchorText,
+    };
+
+    const westernSharedRules = `STRICT ANALYTICAL RULES:
+- Cite ONLY Tropical facts present in your JSON slice. Never invent degrees, Placidus cusps, aspects, or timing dates.
+- Use strictly Western Tropical terminology — NEVER inject Vedic or Sanskrit astrology terms.
+- Return crisp, structured technical bullet notes (max ~320 words). Do not write conversational fluff.`;
+
+    return [
+      {
+        id: 'sect_dignity_rulers',
+        name: 'Sect, Dignity & Rulers Architect',
+        systemPrompt: `${WESTERN_DEEP_AUDIT_LENSES.sect_dignity_rulers}\n${westernSharedRules}`,
+        userPrompt: `Question: ${userPrompt}${directiveNote}\n\nSECT & DIGNITY SLICE:\n${JSON.stringify(sectDignitySlice)}`,
+      },
+      {
+        id: 'tight_aspects_patterns',
+        name: 'Tight Aspects & Configurations Verifier',
+        systemPrompt: `${WESTERN_DEEP_AUDIT_LENSES.tight_aspects_patterns}\n${westernSharedRules}`,
+        userPrompt: `Question: ${userPrompt}${directiveNote}\n\nASPECTS & CONFIGURATIONS SLICE:\n${JSON.stringify(tightAspectsSlice)}`,
+      },
+      {
+        id: 'western_multi_clock_timing',
+        name: 'Multi-Clock Western Timing Engine',
+        systemPrompt: `${WESTERN_DEEP_AUDIT_LENSES.western_multi_clock_timing}\n${westernSharedRules}`,
+        userPrompt: `Question: ${userPrompt}${directiveNote}\n\nWESTERN TIMING SLICE:\n${JSON.stringify(westernTimingSlice)}`,
+      },
+      {
+        id: 'western_contrarian_auditor',
+        name: 'Contrarian / Falsification Auditor',
+        systemPrompt: `${WESTERN_DEEP_AUDIT_LENSES.western_contrarian_auditor}\n${westernSharedRules}`,
+        userPrompt: `Question: ${userPrompt}${directiveNote}\n\nCONTRARIAN & REALITY SLICE:\n${JSON.stringify(westernContrarianSlice)}`,
+      },
+    ];
+  }
 
   // Lens 1: Parashari & Divisional Architect (ONLY D1, Vargas, Shadbala, SAV, Yogas, Special Points)
   const parashariSlice = {
@@ -159,7 +239,7 @@ export interface RunDeepCouncilAuditParams {
   responseLength: 'short' | 'detailed';
   outputSlug: string;
   languageSlug: string;
-  voicePreset?: SutraVoicePreset;
+  voicePreset?: VedicVoicePreset;
   gocharFeedText?: string | null;
   profileMemorySummary?: string | null;
   preferredCallName?: string | null;
@@ -185,7 +265,7 @@ export interface RunDeepCouncilAuditResult {
   leakIntercepted: boolean;
   lenses: DeepAuditLensResult[];
   convergence: DeterministicConvergenceResult;
-  meta: SutraSynthesisMeta;
+  meta: VedicSynthesisMeta;
 }
 
 function buildAdjudicatorSystemPrompt(params: {
@@ -195,6 +275,8 @@ function buildAdjudicatorSystemPrompt(params: {
   lensResults: DeepAuditLensResult[];
 }): string {
   const { base, convergence, effectiveFluency, lensResults } = params;
+  const tradition: 'vedic' | 'western' =
+    base.pkg.tradition === 'western' ? 'western' : 'vedic';
   const successfulLenses = lensResults.filter((l) => l.ok && l.output.trim().length > 0);
 
   const lensNotesBlock = successfulLenses
@@ -203,25 +285,34 @@ function buildAdjudicatorSystemPrompt(params: {
 
   const dualViewRule =
     base.responseLength === 'short'
-      ? buildShortReplyBreakdownInstruction(effectiveFluency, base.languageSlug)
+      ? buildShortReplyBreakdownInstruction(effectiveFluency, base.languageSlug, tradition)
       : effectiveFluency !== 'beginner' || base.outputSlug === 'marriage_master'
-      ? `TECHNICAL TRACE REQUIREMENT:
+      ? tradition === 'western'
+        ? `TECHNICAL TRACE REQUIREMENT:
+End cleanly with a concise, clearly labeled **System Convergence & Technical Trace** section showing how Sect, Essential/Accidental Dignity, Tight <=2° Aspects & Configurations, Placidus cusp rulers, and Multi-Clock Profection/Transit timing resolve any friction (keep bullet points crisp and mobile-readable).`
+        : `TECHNICAL TRACE REQUIREMENT:
 End cleanly with a concise, clearly labeled **System Convergence & Technical Trace** section showing how KP promise, D9 Navamsa endurance, Shadbala/SAV stamina, and active Dasha timing resolve any friction (keep bullet points crisp and mobile-readable).`
       : '';
 
   const adjudicatorTemplate =
-    base.engineOverrides?.deep_audit_adjudicator_mandate?.trim() ||
-    DEFAULT_DEEP_AUDIT_ADJUDICATOR_MANDATE;
+    tradition === 'western'
+      ? WESTERN_DEEP_AUDIT_ADJUDICATOR_MANDATE
+      : base.engineOverrides?.deep_audit_adjudicator_mandate?.trim() ||
+        DEFAULT_DEEP_AUDIT_ADJUDICATOR_MANDATE;
   const adjudicatorBlock = adjudicatorTemplate
     .replace(/\{\{TRUTH_GATE_HIERARCHY\}\}/g, base.pkg.truthGateHierarchy.join(' | '))
     .replace(/\{\{CONVERGENCE_BADGE\}\}/g, `**${convergence.bandLabel}** — ${convergence.tierLabel}`);
 
   const tier1Laws =
-    base.engineOverrides?.sutra_tier1_reasoning_laws?.trim() ||
-    SUTRA_TIER1_REASONING_LAWS;
+    tradition === 'western'
+      ? WESTERN_TIER1_REASONING_LAWS
+      : base.engineOverrides?.vedic_tier1_reasoning_laws?.trim() ||
+        VEDIC_TIER1_REASONING_LAWS;
   const antiCliche =
-    base.engineOverrides?.sutra_anti_cliche_rules?.trim() ||
-    SUTRA_ANTI_CLICHE_RULES;
+    tradition === 'western'
+      ? WESTERN_ANTI_CLICHE_RULES
+      : base.engineOverrides?.vedic_anti_cliche_rules?.trim() ||
+        VEDIC_ANTI_CLICHE_RULES;
 
   const sections = [
     base.constitutionPrompt,
@@ -236,7 +327,8 @@ End cleanly with a concise, clearly labeled **System Convergence & Technical Tra
       convergence,
       base.responseLength,
       Boolean(base.pkg.requiresTimingStack),
-      base.engineOverrides
+      base.engineOverrides,
+      tradition
     ),
     buildVoiceAndFormatInstructions({
       voicePreset: base.voicePreset,
@@ -245,6 +337,7 @@ End cleanly with a concise, clearly labeled **System Convergence & Technical Tra
       responseLength: base.responseLength,
       effectiveFluency,
       engineOverrides: base.engineOverrides,
+      tradition,
     }),
     dualViewRule,
     base.preferredCallName?.trim()
@@ -253,7 +346,9 @@ End cleanly with a concise, clearly labeled **System Convergence & Technical Tra
     base.turnCount > 0
       ? `THREAD CONTINUITY (Message #${base.turnCount + 1}): Continue seamlessly from earlier turns without re-introducing yourself.`
       : '',
-    `REAL-WORLD LIFE CONTEXT ANCHORS (Desh-Kaal-Patra):\n${base.pkg.lifeContextAnchorText}`,
+    tradition === 'western'
+      ? `REAL-WORLD LIFE CONTEXT ANCHORS:\n${base.pkg.lifeContextAnchorText}`
+      : `REAL-WORLD LIFE CONTEXT ANCHORS (Desh-Kaal-Patra):\n${base.pkg.lifeContextAnchorText}`,
     `PRIORITY ORDERING:\n${base.pkg.priorityRule.body}`,
     `SCOPED CHART & TIMING DATA:\n${JSON.stringify(base.pkg.chartSlice)}`,
     `SYNTHESIS INPUTS TO ADJUDICATE:\n${lensNotesBlock}`,
@@ -287,14 +382,25 @@ export async function runDeepCouncilAudit(
     engineOverrides: params.engineOverrides,
   });
 
+  const tradition: 'vedic' | 'western' =
+    params.pkg.tradition === 'western' ? 'western' : 'vedic';
+
   const lensShortLabels: Record<DeepAuditLensSpec['id'], string> = {
     parashari_divisional: 'Parashari & Vargas',
     kp_nadi: 'KP & Nadi',
     multi_clock_timing: 'Timing',
     contrarian_auditor: 'Contrarian Audit',
+    sect_dignity_rulers: 'Sect & Dignity',
+    tight_aspects_patterns: 'Tight Aspects',
+    western_multi_clock_timing: 'Timing',
+    western_contrarian_auditor: 'Contrarian Audit',
   };
   const completedLabels: string[] = [];
-  params.onStatus?.('Running 4-system council audit (Parashari, KP, Timing, Contrarian)…');
+  params.onStatus?.(
+    tradition === 'western'
+      ? 'Running 4-system Western audit (Sect & Dignity, Aspects, Timing, Contrarian)…'
+      : 'Running 4-system council audit (Parashari, KP, Timing, Contrarian)…'
+  );
 
   // Step 1: 4 Parallel Isolated Lens Calls via Promise.allSettled
   const settled = await Promise.allSettled(
@@ -350,6 +456,7 @@ export async function runDeepCouncilAudit(
       lenses: lensResults,
       convergence,
       meta: {
+        tradition,
         intent: params.pkg.intent,
         playbookId: params.pkg.playbookId,
         domain: params.pkg.domain,
@@ -417,7 +524,7 @@ export async function runDeepCouncilAudit(
         const breakdownIdx = rawAccumulated.search(/<<<TECH_BREAKDOWN/i);
         if (breakdownIdx !== -1) {
           if (breakdownIdx > flushedLength) {
-            const beforeTag = sanitizeSutraProse(
+            const beforeTag = sanitizeVedicProse(
               rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, ''),
               allowedTimingWidgetIds
             );
@@ -438,7 +545,7 @@ export async function runDeepCouncilAudit(
             safeEnd -= trailingMatch[0].length;
           }
           if (safeEnd > flushedLength) {
-            const toEmit = sanitizeSutraProse(
+            const toEmit = sanitizeVedicProse(
               rawAccumulated.slice(flushedLength, safeEnd),
               allowedTimingWidgetIds
             );
@@ -454,7 +561,8 @@ export async function runDeepCouncilAudit(
     const totalTokensIn = lensTokensIn + streamResult.tokensIn;
     const totalTokensOut = lensTokensOut + streamResult.tokensOut;
 
-    const meta: SutraSynthesisMeta = {
+    const meta: VedicSynthesisMeta = {
+      tradition,
       intent: params.pkg.intent,
       playbookId: params.pkg.playbookId,
       domain: params.pkg.domain,
@@ -483,7 +591,7 @@ export async function runDeepCouncilAudit(
 
     const extractedAccumulated = extractTechBreakdown(rawAccumulated);
     if (!hiddenBreakdownHoldStarted && extractedAccumulated.mainText.length > flushedLength) {
-      const remaining = sanitizeSutraProse(
+      const remaining = sanitizeVedicProse(
         extractedAccumulated.mainText.slice(flushedLength),
         allowedTimingWidgetIds
       );

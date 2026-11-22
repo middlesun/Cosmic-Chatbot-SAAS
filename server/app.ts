@@ -12,6 +12,7 @@ import notesRouter from './routes/notes';
 import favouritesRouter from './routes/favourites';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './services/astrologyApi';
 import { fetchSanityBlogPosts, isSanityConfigured } from '../lib/sanity';
+import { normalizeCouncilSlug } from '../lib/vedicTypes';
 
 export function createExpressApp(): Express {
   const app = express();
@@ -123,7 +124,7 @@ export function createExpressApp(): Express {
       updates.currency_pref = currency_pref;
     }
     if (typeof default_expert === 'string' && default_expert.trim()) {
-      updates.default_expert = default_expert.trim();
+      updates.default_expert = normalizeCouncilSlug(default_expert);
     }
     if (typeof default_output === 'string' && default_output.trim()) {
       updates.default_output = default_output.trim();
@@ -474,7 +475,7 @@ export function createExpressApp(): Express {
         preferred_call_name: req.appUser.preferred_call_name ?? null,
         chat_font_size: req.appUser.chat_font_size ?? 'base',
         currency_pref: req.appUser.currency_pref,
-        default_expert: req.appUser.default_expert,
+        default_expert: normalizeCouncilSlug(req.appUser.default_expert),
         default_output: req.appUser.default_output,
         default_language: req.appUser.default_language,
         default_astrology_mode: req.appUser.default_astrology_mode ?? 'vedic',
@@ -526,7 +527,7 @@ export function createExpressApp(): Express {
         prefUpdates.currency_pref = p.currency_pref;
       }
       if (typeof p.default_expert === 'string' && p.default_expert.trim()) {
-        prefUpdates.default_expert = p.default_expert.trim();
+        prefUpdates.default_expert = normalizeCouncilSlug(p.default_expert);
       }
       if (typeof p.default_output === 'string' && p.default_output.trim()) {
         prefUpdates.default_output = p.default_output.trim();

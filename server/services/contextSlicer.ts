@@ -1,9 +1,9 @@
 import type { LifeContextData } from '../../lib/lifeContextSchema';
 import type {
   Stage1RouterResult,
-  SutraIntentArchetype,
   TimingProgressWidget,
-} from '../../lib/sutraTypes';
+  VedicIntentArchetype,
+} from '../../lib/vedicTypes';
 import {
   applyPlaybookOverride,
   type CanonicalPlaybookDef,
@@ -26,6 +26,7 @@ import {
   type DoubleTransitHouseRow,
   type PlanetPosition,
   type SlowPlanetTransitPair,
+  type WesternPlanetPosition,
 } from './jyotishMath';
 import {
   buildNatalTruthDossierLayerA,
@@ -37,6 +38,7 @@ import {
   getPriorityRulesCached,
   type ResolvedInternalRuleRecord,
 } from './promptDefaults';
+import { compileWesternStage2ContextPackage } from './westernContextSlicer';
 
 export const TRUTH_GATE_CONFLICT_HIERARCHY = [
   '1. KP Cuspal Sub-Lord (CSL) — Final promise & 1-6-8-10-12 negation gate',
@@ -50,6 +52,7 @@ export interface DailyTransitSliceInput {
   transitDate: string;
   planets: PlanetPosition[];
   slowTransitPairs?: SlowPlanetTransitPair[];
+  westernPlanets?: WesternPlanetPosition[];
 }
 
 export interface ExtraProfileSliceInput {
@@ -59,6 +62,7 @@ export interface ExtraProfileSliceInput {
 }
 
 export interface Stage2CompileInput {
+  tradition?: 'vedic' | 'western';
   routerResult: Stage1RouterResult;
   playbook: CanonicalPlaybookDef;
   chart: CompiledChartData;
@@ -71,11 +75,11 @@ export interface Stage2CompileInput {
 }
 
 const TIMING_SIGNAL_RE =
-  /\b(?:when|timing|year|years|month|months|202[4-9]|203\d|transit|transits|gochar|dasha|mahadasha|antardasha|pratyantardasha|windfall|window|windows|soon|next|future|period|periods|forecast|upcoming)\b/i;
+  /\b(?:when|timing|year|years|month|months|202[4-9]|203\d|transit|transits|gochar|dasha|mahadasha|antardasha|pratyantardasha|profection|profections|solar return|progressed|progression|saturn return|windfall|window|windows|soon|next|future|period|periods|forecast|upcoming)\b/i;
 
 export function hasTimingSignal(
   userPrompt?: string | null,
-  intent?: SutraIntentArchetype | null
+  intent?: VedicIntentArchetype | null
 ): boolean {
   if (intent === 'TIMING') return true;
   if (!userPrompt) return false;
@@ -107,9 +111,10 @@ export interface TruthGateHouseResolution {
 }
 
 export interface Stage2ContextPackage {
+  tradition?: 'vedic' | 'western';
   playbookId: string;
   domain: string;
-  intent: SutraIntentArchetype;
+  intent: VedicIntentArchetype;
   requiresTimingStack?: boolean;
   timingWidgets?: TimingProgressWidget[];
   priorityRule: {
@@ -346,6 +351,10 @@ export async function compileStage2ContextPackage(
     ...rawInput,
     playbook: effectivePlaybook,
   };
+
+  if (input.tradition === 'western') {
+    return compileWesternStage2ContextPackage(input);
+  }
 
   const enriched =
     input.chart.planetaryHealth &&
@@ -1121,6 +1130,7 @@ export async function compileStage2ContextPackage(
     : undefined;
 
   return {
+    tradition: 'vedic',
     playbookId: input.playbook.id,
     domain: input.playbook.domain,
     intent: input.routerResult.intent,

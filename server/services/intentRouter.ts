@@ -1,9 +1,9 @@
 import type {
   ClarificationPayload,
   Stage1RouterResult,
-  SutraIntentArchetype,
   UserFluencyTier,
-} from '../../lib/sutraTypes';
+  VedicIntentArchetype,
+} from '../../lib/vedicTypes';
 import type { LifeContextData } from '../../lib/lifeContextSchema';
 import {
   detectPromptExtractionAttempt,
@@ -33,7 +33,7 @@ import {
 } from './platformSettings';
 import { DEFAULT_STAGE1_ROUTER_PROMPT } from './enginePromptDefaults';
 
-const VALID_INTENTS = new Set<SutraIntentArchetype>([
+const VALID_INTENTS = new Set<VedicIntentArchetype>([
   'CONVERSATIONAL',
   'SOFT_HORIZON',
   'HARD_DECISION',
@@ -47,7 +47,7 @@ const VALID_FLUENCIES = new Set<UserFluencyTier>([
   'practitioner',
 ]);
 
-const INTENT_CRITERIA: Record<SutraIntentArchetype, string> = {
+const INTENT_CRITERIA: Record<VedicIntentArchetype, string> = {
   CONVERSATIONAL: 'Narrative traits, emotional patterns, or supportive guidance without strict Yes/No or date prediction.',
   SOFT_HORIZON: 'Broad 10-40 year life arc, suitability, or multi-decade potential without a binary verdict.',
   HARD_DECISION: 'Clear Yes/No verdict, compare two options (love vs arranged, job vs business, stay vs quit), or risk adjudication.',
@@ -313,8 +313,8 @@ export class JevClassifier implements IntentClassifier {
       const resolvedPlaybook = getPlaybookById(rawPlaybookId);
       const playbookConfidence = clampProb(playbookParsed.confidence, 0.72);
 
-      const rawIntent = intentParsed.choice as SutraIntentArchetype | null;
-      const resolvedIntent: SutraIntentArchetype =
+      const rawIntent = intentParsed.choice as VedicIntentArchetype | null;
+      const resolvedIntent: VedicIntentArchetype =
         rawIntent && VALID_INTENTS.has(rawIntent) ? rawIntent : resolvedPlaybook.defaultIntent;
       const intentConfidence = clampProb(intentParsed.confidence, 0.75);
 
@@ -413,8 +413,8 @@ ${getCompactPlaybookMenu()}`;
 
     const rawPlaybookId = typeof parsed.playbook_id === 'string' ? parsed.playbook_id : '';
     const resolvedPlaybook = PLAYBOOKS_BY_ID[rawPlaybookId.toUpperCase()] || PLAYBOOKS_BY_ID.OPEN_ENDED_SYNTHESIS;
-    const rawIntent = typeof parsed.intent === 'string' ? (parsed.intent as SutraIntentArchetype) : null;
-    const resolvedIntent: SutraIntentArchetype =
+    const rawIntent = typeof parsed.intent === 'string' ? (parsed.intent as VedicIntentArchetype) : null;
+    const resolvedIntent: VedicIntentArchetype =
       rawIntent && VALID_INTENTS.has(rawIntent) ? rawIntent : resolvedPlaybook.defaultIntent;
     const rawFluency =
       typeof parsed.detected_user_fluency === 'string'
@@ -452,14 +452,14 @@ ${getCompactPlaybookMenu()}`;
 function inferUserFluencyFromPrompt(prompt: string): UserFluencyTier {
   const q = (prompt || '').toLowerCase();
   if (
-    /\b(?:navamsa|d9|d10|d7|d4|sub[- ]?lord|ashtakavarga|shadbala|atmakaraka|darakaraka|kp\s+cusp|bindu|vargottama|bhava\s+chalit|badhaka|kendradhipati)\b/i.test(
+    /\b(?:navamsa|d9|d10|d7|d4|sub[- ]?lord|ashtakavarga|shadbala|atmakaraka|darakaraka|kp\s+cusp|bindu|vargottama|bhava\s+chalit|badhaka|kendradhipati|profection|profections|solar\s+return|secondary\s+progression|progressed\s+moon|mutual\s+reception|diurnal\s+sect|nocturnal\s+sect|t-square|grand\s+trine|yod|placidus|cazimi|combust|quincunx)\b/i.test(
       q
     )
   ) {
     return 'practitioner';
   }
   if (
-    /\b(?:dasha|mahadasha|antardasha|transit|gochar|lagna|ascendant|nakshatra|saturn|jupiter|rahu|ketu|venus|mars|mercury)\b/i.test(
+    /\b(?:dasha|mahadasha|antardasha|transit|gochar|lagna|ascendant|rising\s+sign|midheaven|nakshatra|saturn\s+return|natal\s+aspect|orb|saturn|jupiter|rahu|ketu|venus|mars|mercury|uranus|neptune|pluto|chiron)\b/i.test(
       q
     )
   ) {
@@ -470,7 +470,7 @@ function inferUserFluencyFromPrompt(prompt: string): UserFluencyTier {
 
 interface PlaybookHeuristicMatch {
   playbookId: string;
-  intent: SutraIntentArchetype;
+  intent: VedicIntentArchetype;
   requiresSynastry: boolean;
   requestsRemedy: boolean;
   domainBucketCount: number;
@@ -509,10 +509,10 @@ function matchPlaybookHeuristic(
   ].filter(Boolean).length;
 
   let playbookId = 'OPEN_ENDED_SYNTHESIS';
-  let intent: SutraIntentArchetype = 'CONVERSATIONAL';
+  let intent: VedicIntentArchetype = 'CONVERSATIONAL';
   let requiresSynastry = false;
 
-  if (/\b(?:compare|synastry|kundli\s*milan|ashtakoot|compatibility\s+with|partner'?s?\s+chart)\b/i.test(q)) {
+  if (/\b(?:compare|synastry|kundli\s*milan|ashtakoot|compatibility\s+with|are\s+we\s+compatible|compatible\s+for|partner'?s?\s+chart)\b/i.test(q)) {
     playbookId = 'MAR_21';
     intent = 'HARD_DECISION';
     requiresSynastry = true;
@@ -564,7 +564,7 @@ function matchPlaybookHeuristic(
   } else if (/\b(?:health|illness|vitality|disease|surgery)\b/i.test(q) || modeSlug === 'health') {
     playbookId = 'HLT_01';
     intent = 'SOFT_HORIZON';
-  } else if (/\b(?:next\s+12\s+months|upcoming\s+year|mahadasha|antardasha|dasha|transit|gochar)\b/i.test(q)) {
+  } else if (/\b(?:next\s+12\s+months|upcoming\s+year|mahadasha|antardasha|dasha|transit|gochar|profection|solar\s+return|progressed\s+moon|saturn\s+return)\b/i.test(q)) {
     playbookId = 'TIM_02';
     intent = 'TIMING';
   } else if (hasMarriageSignals || modeSlug === 'marriage') {
@@ -724,8 +724,10 @@ export async function classifyStage1Intent(
 }
 
 function buildAmbiguousIntentClarification(
-  playbook: CanonicalPlaybookDef
+  playbook: CanonicalPlaybookDef,
+  tradition: 'vedic' | 'western' = 'vedic'
 ): ClarificationPayload {
+  const isWestern = tradition === 'western';
   if (playbook.domain === 'career') {
     return {
       kind: 'ambiguous_intent',
@@ -770,7 +772,9 @@ function buildAmbiguousIntentClarification(
           id: 'clarify_mar_quality',
           label: 'Partnership harmony & dynamics',
           playbookId: 'MAR_03',
-          clarifiedQuestion: 'What does my D1 and Navamsa show about partnership harmony and dynamics?',
+          clarifiedQuestion: isWestern
+            ? 'What does my 7th House, Venus, and Tropical chart show about partnership harmony and dynamics?'
+            : 'What does my D1 and Navamsa show about partnership harmony and dynamics?',
         },
         {
           id: 'clarify_mar_partner',
@@ -784,8 +788,9 @@ function buildAmbiguousIntentClarification(
 
   return {
     kind: 'ambiguous_intent',
-    message:
-      'Which area of your life would you like to look at first so I can pull the exact houses and Dasha timing?',
+    message: isWestern
+      ? 'Which area of your life would you like to explore first so I can pull the exact houses, aspects, and timing cycles?'
+      : 'Which area of your life would you like to look at first so I can pull the exact houses and Dasha timing?',
     chips: [
       {
         id: 'focus_career',
@@ -809,13 +814,16 @@ function buildAmbiguousIntentClarification(
         id: 'focus_timing',
         label: 'Next 12 Months Timing',
         playbookId: 'TIM_02',
-        clarifiedQuestion: 'How do my current Mahadasha, Antardasha, and transits shape the next 12 months?',
+        clarifiedQuestion: isWestern
+          ? 'How do my current Annual Profection, Progressions, Solar Return, and transits shape the next 12 months?'
+          : 'How do my current Mahadasha, Antardasha, and transits shape the next 12 months?',
       },
     ],
   };
 }
 
 export interface EvaluateStage1Options {
+  tradition?: 'vedic' | 'western';
   userPrompt: string;
   historySummary?: string;
   lifeContext?: LifeContextData | null;
@@ -949,11 +957,15 @@ export async function evaluateStage1Routing(
     ((routerResult.synastry_prob ?? (routerResult.requires_synastry_partner ? 0.85 : 0)) >= 0.75 ||
       playbook.requiresSynastry);
 
+  const tradition: 'vedic' | 'western' = options.tradition === 'western' ? 'western' : 'vedic';
+
   if (synastryNeeded) {
     const clarification: ClarificationPayload = {
       kind: 'partner_required',
       message:
-        'To compare two charts accurately for synastry and relationship timing, please attach or add the second person’s birth chart — or I can read your own 7th House and Navamsa tendencies alone.',
+        tradition === 'western'
+          ? 'To compare two charts accurately for Western Synastry and relationship timing, please attach or add the second person’s birth chart — or I can read your own 7th House and Venus/Mars patterns alone.'
+          : 'To compare two charts accurately for synastry and relationship timing, please attach or add the second person’s birth chart — or I can read your own 7th House and Navamsa tendencies alone.',
       originalQuestion: prompt,
       chips: [
         {
@@ -966,7 +978,10 @@ export async function evaluateStage1Routing(
           id: 'solo_chart_love_read',
           label: 'Read My Own Chart Alone',
           playbookId: 'MAR_05',
-          clarifiedQuestion: `${prompt} (Focus strictly on what my own birth chart and Navamsa indicate without a second chart.)`,
+          clarifiedQuestion:
+            tradition === 'western'
+              ? `${prompt} (Focus strictly on what my own Tropical birth chart, 7th House, and Venus/Mars indicate without a second chart.)`
+              : `${prompt} (Focus strictly on what my own birth chart and Navamsa indicate without a second chart.)`,
         },
       ],
     };
@@ -985,6 +1000,7 @@ export async function evaluateStage1Routing(
   const trapCheck = options.hasPrimaryProfile
     ? detectContextTrapMismatch(playbook.id, options.lifeContext, prompt, {
         isFollowUpTurn: options.isFollowUpTurn,
+        tradition,
       })
     : ({ triggered: false, trapId: null, requiresClarificationPause: false } as ContextTrapCheckResult);
 
@@ -1021,7 +1037,7 @@ export async function evaluateStage1Routing(
     (clarifyProb >= 0.72 || routerResult.playbook_confidence < 0.5);
 
   if (shouldPauseForAmbiguity) {
-    const clarification = buildAmbiguousIntentClarification(playbook);
+    const clarification = buildAmbiguousIntentClarification(playbook, tradition);
     clarification.originalQuestion = prompt;
     return {
       action: 'clarify',

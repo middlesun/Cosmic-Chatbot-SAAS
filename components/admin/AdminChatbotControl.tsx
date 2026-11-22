@@ -142,8 +142,8 @@ interface EnginePromptBundle {
   companion_archetypes: CompanionArchetypeState[];
   companion_matcher_instructions: string;
   clarity_helper_system_prompt: string;
-  sutra_tier1_reasoning_laws: string;
-  sutra_anti_cliche_rules: string;
+  vedic_tier1_reasoning_laws: string;
+  vedic_anti_cliche_rules: string;
   intent_output_contracts: Record<string, string>;
   fluency_instructions: Record<string, string>;
   format_contracts: Record<string, string>;
@@ -160,8 +160,8 @@ interface EnginePromptOverridesState {
   companion_archetypes?: CompanionArchetypeState[];
   companion_matcher_instructions?: string;
   clarity_helper_system_prompt?: string;
-  sutra_tier1_reasoning_laws?: string;
-  sutra_anti_cliche_rules?: string;
+  vedic_tier1_reasoning_laws?: string;
+  vedic_anti_cliche_rules?: string;
   intent_output_contracts?: Record<string, string>;
   fluency_instructions?: Record<string, string>;
   format_contracts?: Record<string, string>;
@@ -346,8 +346,8 @@ const SUB_TABS: Array<{
 const ENGINE_SCALAR_FIELDS: Array<{
   key:
     | 'core_council_constitution'
-    | 'sutra_tier1_reasoning_laws'
-    | 'sutra_anti_cliche_rules'
+    | 'vedic_tier1_reasoning_laws'
+    | 'vedic_anti_cliche_rules'
     | 'stage1_router_prompt'
     | 'deep_audit_adjudicator_mandate'
     | 'stage4_aligned_suggestions_prompt'
@@ -366,13 +366,13 @@ const ENGINE_SCALAR_FIELDS: Array<{
     rows: 6,
   },
   {
-    key: 'sutra_tier1_reasoning_laws',
+    key: 'vedic_tier1_reasoning_laws',
     title: 'Tier-1 Adjudication Laws',
     subtitle: '8-Tier Judgment Scale, Independent Evidence rule, D1-vs-D9 boundary, and 5-Tier Truth Gate hierarchy.',
     rows: 9,
   },
   {
-    key: 'sutra_anti_cliche_rules',
+    key: 'vedic_anti_cliche_rules',
     title: 'Voice & Anti-Cliché Guardrails',
     subtitle: 'Banned AI phrases, direct "you" address, and calm "sitting across the table" cadence.',
     rows: 6,
@@ -447,7 +447,7 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
   const [guidesMeta, setGuidesMeta] = useState<GuideCatalogMetaItem[]>([]);
   const [perGuideConfigs, setPerGuideConfigs] = useState<Record<string, ResolvedGuideConfigState>>({});
   const [guideSystemPrompts, setGuideSystemPrompts] = useState<Record<string, GuideSystemPromptState>>({});
-  const [selectedGuide, setSelectedGuide] = useState<string>('council_synthesis');
+  const [selectedGuide, setSelectedGuide] = useState<string>('vedic_astrologer');
   const [sectionTab, setSectionTab] = useState<GuideSubTab>('system_prompt');
 
   // Rules stack UI state
@@ -2693,7 +2693,7 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                         Underlying Engine Prompts, Laws &amp; Contracts
                       </h3>
                       <p className="text-xs text-[#8B8275] mt-0.5 max-w-2xl">
-                        Every hardcoded prompt across the Council, Sutradhara Stages 1–4, Deep Audit, Companion, and Clarity engines is editable here with instant code-default fallback.
+                        Every hardcoded prompt across the Council, Vedic Astrologer Stages 1–4, Deep Audit, Companion, and Clarity engines is editable here with instant code-default fallback.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">

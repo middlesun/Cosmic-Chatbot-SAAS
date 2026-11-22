@@ -47,14 +47,16 @@ import {
   containsInternalPromptLeak,
   detectPromptExtractionAttempt,
   sanitizeAssistantOutput,
-  sanitizeSutraProse,
+  sanitizeVedicProse,
 } from './abuseGuard';
 import type { LifeContextData } from '../../lib/lifeContextSchema';
-import type {
-  SutraSynthesisMeta,
-  TimingProgressWidget,
-  UserFluencyTier,
-} from '../../lib/sutraTypes';
+import {
+  DEFAULT_COUNCIL_EXPERT_SLUG,
+  normalizeCouncilSlug,
+  type TimingProgressWidget,
+  type UserFluencyTier,
+  type VedicSynthesisMeta,
+} from '../../lib/vedicTypes';
 import {
   compileStage2ContextPackage,
   type DailyTransitSliceInput,
@@ -68,11 +70,14 @@ import {
 } from './intentRouter';
 import type { NatalTruthDossierV1 } from './natalDossier';
 import {
+  WESTERN_CORE_COUNCIL_CONSTITUTION,
+} from './enginePromptDefaults';
+import {
   buildShortReplyBreakdownInstruction,
-  buildSutraPathAPrompt,
+  buildVedicPathAPrompt,
   extractTechBreakdown,
-  type SutraVoicePreset,
-} from './sutraSynthesizer';
+  type VedicVoicePreset,
+} from './vedicAstrologerEngine';
 
 export {
   getConsultationModel,
@@ -183,7 +188,7 @@ export interface StreamConsultationParams {
   stage1Decision?: Stage1RoutingDecision | null;
   userPriorFluency?: UserFluencyTier | null;
   deepAudit?: boolean;
-  voicePreset?: SutraVoicePreset;
+  voicePreset?: VedicVoicePreset;
   dailyTransitsOverride?: DailyTransitSliceInput | null;
   abortSignal: AbortSignal;
   onStatus?: (statusText: string) => void;
@@ -215,7 +220,7 @@ export interface StreamConsultationResult {
   leakIntercepted?: boolean;
   pendingProfile?: PendingBirthProfileDraft | null;
   suggestions?: MessageSuggestions | null;
-  sutraMeta?: SutraSynthesisMeta | null;
+  vedicMeta?: VedicSynthesisMeta | null;
   stage2Pkg?: Stage2ContextPackage | null;
   timingWidgets?: TimingProgressWidget[];
 }
@@ -486,22 +491,24 @@ async function buildStaticSystemInstruction(params: {
     (isLearnAstrology ? promptBodies['learn_astrology'] : '') ||
     '';
 
+  const isWesternOrModern =
+    params.expertSlug === 'western_astrologer' || params.expertSlug === 'modern_astrologer';
+  const isTarot = params.expertSlug === 'tarot_reader';
+  const isNumerology = params.expertSlug === 'numerologist';
+
   const sections: string[] = [
-    coreConstitution,
+    isWesternOrModern ? WESTERN_CORE_COUNCIL_CONSTITUTION : coreConstitution,
     guideCfg.combined_rules_text || '',
     primaryExpertPrompt,
     ...recipeBlocks,
     promptBodies[params.languageSlug] || '',
   ].filter(Boolean);
 
-  const isWesternOrModern =
-    params.expertSlug === 'western_astrologer' || params.expertSlug === 'modern_astrologer';
-  const isTarot = params.expertSlug === 'tarot_reader';
-  const isNumerology = params.expertSlug === 'numerologist';
-
   if (params.toneMode === 'friendly') {
     sections.push(
-      `COMMUNICATION DEPTH — FRIENDLY MODE (NON-TECHNICAL): Perform all analytical synthesis silently behind the scenes, then explain your answer in warm, clear, everyday conversational language. Avoid overwhelming technical jargon, raw planetary degrees, Nakshatra pada math, or dense chains unless the user explicitly asks to see the technical breakdown. Translate factors directly into relatable life guidance and clear calendar timing windows.`
+      isWesternOrModern
+        ? `COMMUNICATION DEPTH — FRIENDLY MODE (NON-TECHNICAL): Perform all analytical synthesis silently behind the scenes, then explain your answer in warm, clear, everyday conversational language. Avoid overwhelming technical jargon, raw degrees, or dense aspect chains unless the user explicitly asks to see the technical breakdown. Translate factors directly into relatable life guidance and clear calendar timing windows.`
+        : `COMMUNICATION DEPTH — FRIENDLY MODE (NON-TECHNICAL): Perform all analytical synthesis silently behind the scenes, then explain your answer in warm, clear, everyday conversational language. Avoid overwhelming technical jargon, raw planetary degrees, Nakshatra pada math, or dense chains unless the user explicitly asks to see the technical breakdown. Translate factors directly into relatable life guidance and clear calendar timing windows.`
     );
   } else if (isWesternOrModern) {
     sections.push(
@@ -521,7 +528,8 @@ async function buildStaticSystemInstruction(params: {
       sections.push(
         buildShortReplyBreakdownInstruction(
           params.toneMode === 'friendly' ? 'beginner' : 'guided_bridge',
-          params.languageSlug
+          params.languageSlug,
+          isWesternOrModern ? 'western' : 'vedic'
         )
       );
     }
@@ -773,36 +781,54 @@ User's specific question: ${finalUserText}`;
   }
 
   // =========================================================================
-  // SUTRADHARA STAGE 2 -> STAGE 3 DUAL SYNTHESIS (Vedic Council Reading Path)
-  // Keeps Companion, Clarity, Tarot, Numerology, Western/Modern,
-  // learn_astrology, report_followup, attachments, & birth intake isolated.
+  // ASTROLOGY STAGE 2 -> STAGE 3 DUAL SYNTHESIS (Vedic + Western/Modern Council)
+  // Keeps Companion, Clarity, Tarot, Numerology, learn_astrology,
+  // report_followup, attachments, & birth intake cleanly isolated.
   // =========================================================================
-  const isVedicCouncilSutradharaTurn =
+  const normalizedExpertSlug = normalizeCouncilSlug(params.expertSlug);
+  const isWesternCouncilTurn =
     activePillar === 'council' &&
-    params.expertSlug !== 'western_astrologer' &&
-    params.expertSlug !== 'modern_astrologer' &&
-    params.expertSlug !== 'tarot_reader' &&
-    params.expertSlug !== 'numerologist' &&
-    params.expertSlug !== 'learn_astrology' &&
+    (normalizedExpertSlug === 'western_astrologer' ||
+      normalizedExpertSlug === 'modern_astrologer') &&
+    params.modeSlug !== 'learn_astrology' &&
+    params.conversation.mode_type !== 'learn_astrology' &&
+    params.conversation.mode_type !== 'report_followup' &&
+    (!params.attachments || params.attachments.length === 0) &&
+    Boolean(params.profile?.chart_json);
+  const isVedicCouncilTurn =
+    activePillar === 'council' &&
+    !isWesternCouncilTurn &&
+    normalizedExpertSlug !== 'western_astrologer' &&
+    normalizedExpertSlug !== 'modern_astrologer' &&
+    normalizedExpertSlug !== 'tarot_reader' &&
+    normalizedExpertSlug !== 'numerologist' &&
+    normalizedExpertSlug !== 'learn_astrology' &&
     params.modeSlug !== 'learn_astrology' &&
     params.conversation.mode_type !== 'learn_astrology' &&
     params.conversation.mode_type !== 'report_followup' &&
     (!params.attachments || params.attachments.length === 0) &&
     Boolean(params.profile?.chart_json);
 
-  if (isVedicCouncilSutradharaTurn && params.profile?.chart_json) {
+  const isStructuredAstrologyTurn = isVedicCouncilTurn || isWesternCouncilTurn;
+  const astroTradition: 'vedic' | 'western' = isWesternCouncilTurn ? 'western' : 'vedic';
+
+  if (isStructuredAstrologyTurn && params.profile?.chart_json) {
     const [guideCfg, coreConstitution, engineOverrides, activeModeRecipe] = await Promise.all([
-      getResolvedGuideConfig(params.expertSlug),
+      getResolvedGuideConfig(normalizedExpertSlug),
       getCoreCouncilConstitutionAsync(),
       getEnginePromptOverrides(),
       getActiveRecipeForTarget('mode', params.modeSlug),
     ]);
 
+    const effectiveConstitution = isWesternCouncilTurn
+      ? WESTERN_CORE_COUNCIL_CONSTITUTION
+      : coreConstitution;
+
     const recipeSteps = activeModeRecipe
       ? (activeModeRecipe.steps_json || []).filter((s) => s && s.enabled !== false && s.prompt_slug)
       : [];
     const slugsToResolve = Array.from(
-      new Set([params.expertSlug, ...recipeSteps.map((s) => s.prompt_slug)])
+      new Set([normalizedExpertSlug, ...recipeSteps.map((s) => s.prompt_slug)])
     );
 
     const [{ bodies: promptBodies, models: promptModels }, dailyTransitData, resolvedDecision] =
@@ -819,8 +845,9 @@ User's specific question: ${finalUserText}`;
                 transitDate: daily.transitDate,
                 planets: daily.planets,
                 slowTransitPairs: daily.slowTransitPairs,
+                westernPlanets: daily.westernPlanets,
               },
-              feedText: daily.transitsText,
+              feedText: isWesternCouncilTurn ? daily.westernTransitsText : daily.transitsText,
             };
           } catch {
             return { slice: null, feedText: null };
@@ -838,15 +865,16 @@ User's specific question: ${finalUserText}`;
               isFollowUpTurn: activeHistory.some((m) => m.role === 'user'),
               bypassClarification: true,
               technicalDirective: params.technicalDirective,
+              tradition: astroTradition,
             }),
       ]);
 
-    const sutraModelOverride =
+    const astroModelOverride =
       activeModeRecipe?.model_id ||
-      promptModels[params.expertSlug] ||
+      promptModels[normalizedExpertSlug] ||
       guideCfg.model_id ||
       null;
-    const sutraModel = sutraModelOverride || runtime.consultationModel || getConsultationModel();
+    const vedicModel = astroModelOverride || runtime.consultationModel || getConsultationModel();
 
     const modeRecipeBlocks: string[] = [];
     for (const step of recipeSteps) {
@@ -868,6 +896,7 @@ User's specific question: ${finalUserText}`;
       }));
 
     const stage2Pkg = await compileStage2ContextPackage({
+      tradition: astroTradition,
       routerResult: resolvedDecision.routerResult,
       playbook: resolvedDecision.playbook,
       chart: params.profile.chart_json,
@@ -883,7 +912,7 @@ User's specific question: ${finalUserText}`;
       params.onTimingWidgets?.(stage2Pkg.timingWidgets);
     }
 
-    const sutraBaseTokens =
+    const vedicBaseTokens =
       responseLength === 'short'
         ? Math.max(runtime.tokenLimits.chat_short + 350, 900)
         : runtime.tokenLimits.chat_detailed;
@@ -912,10 +941,10 @@ User's specific question: ${finalUserText}`;
     // Path B: Explicit 4-Lens Parallel Deep Council Audit + Adjudicator
     if (params.deepAudit) {
       const deepRes = await runDeepCouncilAudit({
-        model: sutraModel,
-        constitutionPrompt: coreConstitution,
+        model: vedicModel,
+        constitutionPrompt: effectiveConstitution,
         conversationalRules: guideCfg.combined_rules_text,
-        expertDirective: promptBodies[params.expertSlug] || '',
+        expertDirective: promptBodies[normalizedExpertSlug] || '',
         modeRecipeBlocks,
         engineOverrides,
         pkg: stage2Pkg,
@@ -934,7 +963,7 @@ User's specific question: ${finalUserText}`;
         finalUserText,
         technicalDirective: params.technicalDirective,
         priorInferredFluency: params.userPriorFluency,
-        maxOutputTokens: sutraBaseTokens,
+        maxOutputTokens: vedicBaseTokens,
         abortSignal: params.abortSignal,
         onStatus: params.onStatus,
         onChunk: params.onChunk,
@@ -962,16 +991,16 @@ User's specific question: ${finalUserText}`;
         leakIntercepted: deepRes.leakIntercepted,
         pendingProfile: null,
         suggestions: null,
-        sutraMeta: deepRes.meta,
+        vedicMeta: deepRes.meta,
         stage2Pkg,
       };
     }
 
     // Path A: Fast Focused Stage 3 Synthesis
-    const pathAPrompt = buildSutraPathAPrompt({
-      constitutionPrompt: coreConstitution,
+    const pathAPrompt = buildVedicPathAPrompt({
+      constitutionPrompt: effectiveConstitution,
       conversationalRules: guideCfg.combined_rules_text,
-      expertDirective: promptBodies[params.expertSlug] || '',
+      expertDirective: promptBodies[normalizedExpertSlug] || '',
       modeRecipeBlocks,
       engineOverrides,
       pkg: stage2Pkg,
@@ -1009,13 +1038,13 @@ User's specific question: ${finalUserText}`;
 
     try {
       const streamResult = await streamOpenRouterCompletion({
-        model: sutraModel,
+        model: vedicModel,
         system: pathAPrompt.systemInstruction,
         messages: [
           ...historyOpenRouterMessages,
           { role: 'user', content: finalUserText },
         ],
-        maxTokens: sutraBaseTokens,
+        maxTokens: vedicBaseTokens,
         abortSignal: pathAAbortController.signal,
         onChunk: (chunkText) => {
           if (leakIntercepted) return;
@@ -1030,7 +1059,7 @@ User's specific question: ${finalUserText}`;
           const breakdownIdx = rawAccumulated.search(/<<<TECH_BREAKDOWN/i);
           if (breakdownIdx !== -1) {
             if (breakdownIdx > flushedLength) {
-              const beforeTag = sanitizeSutraProse(
+              const beforeTag = sanitizeVedicProse(
                 rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, ''),
                 allowedTimingWidgetIds
               );
@@ -1056,7 +1085,7 @@ User's specific question: ${finalUserText}`;
               }
             }
             if (safeEnd > flushedLength) {
-              const toEmit = sanitizeSutraProse(
+              const toEmit = sanitizeVedicProse(
                 rawAccumulated.slice(flushedLength, safeEnd),
                 allowedTimingWidgetIds
               );
@@ -1078,13 +1107,13 @@ User's specific question: ${finalUserText}`;
           leakIntercepted: true,
           pendingProfile: null,
           suggestions: null,
-          sutraMeta: pathAPrompt.meta,
+          vedicMeta: pathAPrompt.meta,
         };
       }
 
       const extractedAccumulated = extractTechBreakdown(rawAccumulated);
       if (!hiddenBreakdownHoldStarted && extractedAccumulated.mainText.length > flushedLength) {
-        const remaining = sanitizeSutraProse(
+        const remaining = sanitizeVedicProse(
           extractedAccumulated.mainText.slice(flushedLength),
           allowedTimingWidgetIds
         );
@@ -1108,7 +1137,7 @@ User's specific question: ${finalUserText}`;
           leakIntercepted: true,
           pendingProfile: null,
           suggestions: null,
-          sutraMeta: pathAPrompt.meta,
+          vedicMeta: pathAPrompt.meta,
         };
       }
 
@@ -1138,7 +1167,7 @@ User's specific question: ${finalUserText}`;
         leakIntercepted: false,
         pendingProfile: null,
         suggestions: null,
-        sutraMeta: pathAPrompt.meta,
+        vedicMeta: pathAPrompt.meta,
         stage2Pkg,
       };
     } finally {
@@ -1328,7 +1357,7 @@ User's specific question: ${finalUserText}`;
         const tagIndex = findEarliestHiddenTagIndex(rawAccumulated);
         if (tagIndex !== -1) {
           if (tagIndex > flushedLength) {
-            const beforeTag = sanitizeSutraProse(
+            const beforeTag = sanitizeVedicProse(
               rawAccumulated.slice(flushedLength, tagIndex).replace(/\s+$/, '')
             );
             if (beforeTag) {
@@ -1355,7 +1384,7 @@ User's specific question: ${finalUserText}`;
             }
           }
           if (safeEnd > flushedLength) {
-            const toEmit = sanitizeSutraProse(rawAccumulated.slice(flushedLength, safeEnd));
+            const toEmit = sanitizeVedicProse(rawAccumulated.slice(flushedLength, safeEnd));
             flushedLength = safeEnd;
             if (toEmit) params.onChunk(toEmit);
           }
@@ -1378,7 +1407,7 @@ User's specific question: ${finalUserText}`;
 
     const extractedFromAccumulated = extractHiddenDirectives(rawAccumulated, activeSuggestionsSpec);
     if (!hiddenBlockHoldStarted && extractedFromAccumulated.cleanText.length > flushedLength) {
-      params.onChunk(sanitizeSutraProse(extractedFromAccumulated.cleanText.slice(flushedLength)));
+      params.onChunk(sanitizeVedicProse(extractedFromAccumulated.cleanText.slice(flushedLength)));
       flushedLength = extractedFromAccumulated.cleanText.length;
     }
 
@@ -1438,7 +1467,7 @@ export async function generateStructuredSuggestions(params: {
 }): Promise<MessageSuggestions> {
   try {
     const [guideCfg, runtime] = await Promise.all([
-      getResolvedGuideConfig(params.expertSlug || 'council_synthesis'),
+      getResolvedGuideConfig(normalizeCouncilSlug(params.expertSlug)),
       getResolvedOpenRouterRuntime(),
     ]);
     const suggestionsConfig = guideCfg.suggestions;
@@ -1519,7 +1548,7 @@ export async function generateMoreStructuredSuggestions(params: {
 }): Promise<MessageSuggestions> {
   try {
     const [guideCfg, runtime] = await Promise.all([
-      getResolvedGuideConfig(params.expertSlug || 'council_synthesis'),
+      getResolvedGuideConfig(normalizeCouncilSlug(params.expertSlug)),
       getResolvedOpenRouterRuntime(),
     ]);
     const suggestionsConfig = guideCfg.suggestions;
@@ -1629,7 +1658,7 @@ export async function generateFollowUpQuestions(params: {
 }): Promise<string[]> {
   const structured = await generateStructuredSuggestions({
     ...params,
-    expertSlug: 'council_synthesis',
+    expertSlug: DEFAULT_COUNCIL_EXPERT_SLUG,
   });
   return structured.followups.map((item) => item.text);
 }
