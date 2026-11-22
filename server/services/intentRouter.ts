@@ -55,10 +55,24 @@ const INTENT_CRITERIA: Record<VedicIntentArchetype, string> = {
   PEER_AUDIT: 'Asks to verify or audit specific Vedic technical placements, Yogas, Doshas, Vargas, KP Sub-Lords, or past dates.',
 };
 
+const WESTERN_INTENT_CRITERIA: Record<VedicIntentArchetype, string> = {
+  CONVERSATIONAL: 'Narrative traits, emotional patterns, or supportive guidance without strict Yes/No or date prediction.',
+  SOFT_HORIZON: 'Broad 10-40 year life arc, vocation, or multi-year potential without a binary verdict.',
+  HARD_DECISION: 'Clear Yes/No verdict, compare two options (stay vs quit, job vs venture, relationship commitment), or risk adjudication.',
+  TIMING: 'Asks When something will happen, dates, upcoming months/years, Annual Profection, Progressions, Solar Return, or transit windows.',
+  PEER_AUDIT: 'Asks to verify or audit specific Tropical technical placements, Placidus cusps, tight aspects, Sect, Mutual Reception, or past transit dates.',
+};
+
 const FLUENCY_CRITERIA: Record<UserFluencyTier, string> = {
   beginner: 'Plain everyday language with zero astrology terminology.',
   guided_bridge: 'Mixes plain language with basic terms like zodiac sign, transit, or dasha.',
   practitioner: 'Uses technical Jyotish terms like Navamsa, D10, Sub-Lord, Ashtakavarga, Shadbala, or Atmakaraka.',
+};
+
+const WESTERN_FLUENCY_CRITERIA: Record<UserFluencyTier, string> = {
+  beginner: 'Plain everyday language with zero astrology terminology.',
+  guided_bridge: 'Mixes plain language with basic terms like Rising sign, Sun sign, Saturn return, or transit.',
+  practitioner: 'Uses technical Western terms like Sect, Placidus, Mutual Reception, Annual Profection, Progressed Moon, T-Square, or Cazimi.',
 };
 
 const COMPLEXITY_SCORE_CRITERIA: string[] = [
@@ -77,6 +91,7 @@ const JEV_TIMEOUT_MS = 1200;
 const OPENROUTER_DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
 
 export interface IntentClassificationInput {
+  tradition?: 'vedic' | 'western';
   userPrompt: string;
   historySummary?: string;
   lifeContext?: LifeContextData | null;
@@ -213,6 +228,7 @@ export class JevClassifier implements IntentClassifier {
       throw new Error('OpenRouter API key not configured for Jev Decisions');
     }
 
+    const isWestern = input.tradition === 'western';
     const playbookCriteria = getJevPlaybookCriteria();
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), JEV_TIMEOUT_MS);
@@ -228,21 +244,23 @@ export class JevClassifier implements IntentClassifier {
           questions: {
             playbook: {
               type: 'choice',
-              instructions:
-                'Which single Vedic astrology canonical consultation playbook ID best matches the user message?',
+              instructions: isWestern
+                ? 'Which single canonical astrology consultation playbook ID best matches the user message?'
+                : 'Which single Vedic astrology canonical consultation playbook ID best matches the user message?',
               criteria: playbookCriteria,
             },
             intent: {
               type: 'choice',
               instructions:
                 'Which response structure intent best fits what the user is asking for?',
-              criteria: INTENT_CRITERIA,
+              criteria: isWestern ? WESTERN_INTENT_CRITERIA : INTENT_CRITERIA,
             },
             fluency: {
               type: 'choice',
-              instructions:
-                'What level of Vedic astrology terminology does the user show in their message?',
-              criteria: FLUENCY_CRITERIA,
+              instructions: isWestern
+                ? 'What level of Western Tropical astrology terminology does the user show in their message?'
+                : 'What level of Vedic astrology terminology does the user show in their message?',
+              criteria: isWestern ? WESTERN_FLUENCY_CRITERIA : FLUENCY_CRITERIA,
             },
             is_prompt_extraction: {
               type: 'noul',
@@ -381,9 +399,13 @@ export class OpenRouterStructuredClassifier implements IntentClassifier {
       getEnginePromptOverrides().catch(() => ({} as Record<string, never>)),
     ]);
 
+    const isWestern = input.tradition === 'western';
     const routerHeader =
       engineOverrides?.stage1_router_prompt?.trim() || DEFAULT_STAGE1_ROUTER_PROMPT;
-    const systemPrompt = `${routerHeader}
+    const westernOverrideNote = isWestern
+      ? `\n\nTRADITION MODE — WESTERN TROPICAL:\n- Detect fluency across Western Tropical terms (Rising/Midheaven/Saturn return -> guided_bridge; Sect/Placidus/Annual Profection/Progressed Moon/Mutual Reception/Cazimi -> practitioner).\n- Match TIMING for Annual Profections, Secondary Progressions, Solar Return, or Outer Transits.`
+      : '';
+    const systemPrompt = `${routerHeader}${westernOverrideNote}
 
 PLAYBOOK CATALOG:
 ${getCompactPlaybookMenu()}`;
@@ -917,6 +939,7 @@ export async function evaluateStage1Routing(
   } else {
     routerResult = await classifyStage1Intent(
       {
+        tradition: options.tradition,
         userPrompt: prompt,
         historySummary: options.historySummary,
         lifeContext: options.lifeContext,

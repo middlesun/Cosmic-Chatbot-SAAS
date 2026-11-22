@@ -52,8 +52,8 @@ interface PopoverCoords {
 }
 
 const MOBILE_MAX_VISIBLE_TABS = 3;
-const TAB_LABEL_MAX_CHARS = 11;
-const FIXED_DESKTOP_TAB_WIDTH = 148;
+const TAB_LABEL_MAX_CHARS = 9;
+const FIXED_DESKTOP_TAB_WIDTH = 108;
 
 function formatFixedTabLabel(label: string): string {
   const clean = label.trim();
@@ -959,7 +959,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                   }
                 }}
                 className={`group relative flex items-center gap-1 h-[31px] text-[11px] transition-colors duration-150 ${
-                  isMobile ? 'flex-1 basis-0 min-w-0' : 'w-[148px] shrink-0'
+                  isMobile ? 'flex-1 basis-0 min-w-0' : 'w-[108px] shrink-0'
                 } ${
                   isActive
                     ? `bg-[#FDFBF7] text-[#3D3830] font-semibold ${
@@ -968,7 +968,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                     : 'bg-transparent text-[#5C5449] font-medium hover:bg-[#FDFBF7]/50 hover:text-[#3D3830]'
                 } ${isBeingDragged ? 'opacity-45' : ''} ${
                   isDropTarget ? 'ring-1 ring-inset ring-[#B8965A] bg-[#FDFBF7]/85' : ''
-                } px-2 sm:px-2.5`}
+                } px-2`}
               >
                 {isEditing ? (
                   <div className="inline-flex items-center gap-1 min-w-0 w-full">
@@ -1020,62 +1020,76 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                   </Tooltip>
                 )}
 
-                {!isEditing && canCustomizeTab && (
-                  <button
-                    type="button"
-                    data-tab-action="true"
-                    data-tab-customize-trigger="true"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowOverflowMenu(false);
-                      if (customizeTabId === tab.tabId) {
-                        closeCustomizeMenu();
-                        return;
-                      }
-                      const tabCard = (e.currentTarget.closest('[data-tab-id]') as HTMLElement) || e.currentTarget;
-                      if (tab.tabId !== activeTabId) {
-                        onSelectTab(tab.tabId);
-                      }
-                      setPickerTab('council');
-                      setCustomizeAnchorEl(tabCard);
-                      setCustomizeTabId(tab.tabId);
-                    }}
-                    aria-expanded={customizeTabId === tab.tabId}
-                    aria-label={`Customize ${tab.label} tab`}
-                    className={`inline-flex items-center justify-center p-0.5 rounded-md transition-colors cursor-pointer shrink-0 ${
-                      customizeTabId === tab.tabId
-                        ? 'bg-[#3D3830]/12 text-[#3D3830]'
-                        : 'text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/10'
-                    }`}
-                  >
-                    <ChevronDown
-                      className={`h-2.5 w-2.5 transition-transform duration-150 ${
-                        customizeTabId === tab.tabId ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </button>
-                )}
-
-                {!isEditing && isClosable && (
-                  <button
-                    type="button"
-                    data-tab-action="true"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (customizeTabId === tab.tabId) {
-                        closeCustomizeMenu();
-                      }
-                      onCloseTab(tab.tabId);
-                    }}
-                    aria-label={`Close ${tab.label} tab`}
-                    className={`p-0.5 rounded-full text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/10 cursor-pointer shrink-0 ${
+                {!isEditing && (canCustomizeTab || isClosable) && (
+                  <div
+                    className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex items-center gap-0.5 rounded-full pl-1.5 pr-0.5 py-0.5 transition-opacity ${
                       isActive
-                        ? 'inline-flex opacity-75 hover:opacity-100'
-                        : 'hidden sm:group-hover:inline-flex opacity-70 hover:opacity-100'
+                        ? 'bg-gradient-to-l from-[#FDFBF7] via-[#FDFBF7]/92 to-transparent'
+                        : 'bg-gradient-to-l from-[#EFE9DF] via-[#EFE9DF]/92 to-transparent'
+                    } ${
+                      canCustomizeTab || isActive
+                        ? 'opacity-100'
+                        : 'opacity-0 pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto'
                     }`}
                   >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
+                    {canCustomizeTab && (
+                      <button
+                        type="button"
+                        data-tab-action="true"
+                        data-tab-customize-trigger="true"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowOverflowMenu(false);
+                          if (customizeTabId === tab.tabId) {
+                            closeCustomizeMenu();
+                            return;
+                          }
+                          const tabCard = (e.currentTarget.closest('[data-tab-id]') as HTMLElement) || e.currentTarget;
+                          if (tab.tabId !== activeTabId) {
+                            onSelectTab(tab.tabId);
+                          }
+                          setPickerTab('council');
+                          setCustomizeAnchorEl(tabCard);
+                          setCustomizeTabId(tab.tabId);
+                        }}
+                        aria-expanded={customizeTabId === tab.tabId}
+                        aria-label={`Customize ${tab.label} tab`}
+                        className={`inline-flex items-center justify-center p-0.5 rounded-md transition-colors cursor-pointer shrink-0 ${
+                          customizeTabId === tab.tabId
+                            ? 'bg-[#3D3830]/12 text-[#3D3830]'
+                            : 'text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/10'
+                        }`}
+                      >
+                        <ChevronDown
+                          className={`h-2.5 w-2.5 transition-transform duration-150 ${
+                            customizeTabId === tab.tabId ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </button>
+                    )}
+
+                    {isClosable && (
+                      <button
+                        type="button"
+                        data-tab-action="true"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (customizeTabId === tab.tabId) {
+                            closeCustomizeMenu();
+                          }
+                          onCloseTab(tab.tabId);
+                        }}
+                        aria-label={`Close ${tab.label} tab`}
+                        className={`p-0.5 rounded-full text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/10 cursor-pointer shrink-0 ${
+                          isActive
+                            ? 'inline-flex opacity-75 hover:opacity-100'
+                            : 'hidden sm:group-hover:inline-flex opacity-70 hover:opacity-100'
+                        }`}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 

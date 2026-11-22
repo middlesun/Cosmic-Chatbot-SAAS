@@ -503,10 +503,10 @@ let dailyTransitsMemoryCache: {
 
 function buildUpcomingTransitionsText(pairs: SlowPlanetTransitPair[]): string {
   return [
-    'UPCOMING SLOW-PLANET SIGN CHANGES (Estimated Sidereal Lahiri):',
+    'SLOW-PLANET SIGN TRANSIT WINDOWS (Estimated Sidereal Lahiri):',
     ...pairs.map(
       (p) =>
-        `- ${p.planet}: currently ${p.currentSign} (${p.currentDegreeInSign.toFixed(1)}°${p.isRetrograde ? ' Rx' : ''}) -> next enters ${p.nextSign} (${p.direction}) around ${p.nextIngressApproxDate} (~${p.daysUntilIngress}d)`
+        `- ${p.planet}: currently ${p.currentSign} (${p.currentDegreeInSign.toFixed(1)}°${p.isRetrograde ? ' Rx' : ''}${p.currentSignEntryApproxDate ? `, entered ~${p.currentSignEntryApproxDate}` : ''}) -> next enters ${p.nextSign} (${p.direction}) around ${p.nextIngressApproxDate} (~${p.daysUntilIngress}d)`
     ),
   ].join('\n');
 }

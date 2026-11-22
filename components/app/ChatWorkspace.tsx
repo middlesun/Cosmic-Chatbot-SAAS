@@ -26,11 +26,16 @@ import CompanionSetupView from './CompanionSetupView';
 import Tooltip from './Tooltip';
 import UserAvatar from './UserAvatar';
 import MyPromptsModal from './MyPromptsModal';
-import ChatSettingsModal, { type ChatFontSize } from './ChatSettingsModal';
+import ChatSettingsModal, {
+  CHAT_NUMERIC_FONT_STORAGE_KEY,
+  type ChatFontSize,
+  type UserNumericFontChoice,
+} from './ChatSettingsModal';
 import BirthChartModal from './BirthChartModal';
 import AskLaterDrawer from './AskLaterDrawer';
 import { getUserProfileDisplayLabel, isAffirmativeReply } from './chatUtilities';
 import {
+  CHAT_NUMERIC_FONT_OPTIONS,
   DEFAULT_COUNCIL_EXPERT_SLUG,
   normalizeCouncilSlug,
   type ActiveChatTab,
@@ -38,6 +43,7 @@ import {
   type ChatAttachmentInput,
   type ChatCatalog,
   type ChatMessageRecord,
+  type ChatNumericFont,
   type ChatPillar,
   type ChatProfile,
   type ChatResponseLength,
@@ -347,9 +353,24 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   };
   const [pendingMemory, setPendingMemory] = useState<boolean>(true);
   const [chatFontSize, setChatFontSize] = useState<ChatFontSize>(appUser?.chat_font_size || 'base');
+  const [userNumericFont, setUserNumericFont] = useState<UserNumericFontChoice>(() => {
+    const valid = new Set<string>(CHAT_NUMERIC_FONT_OPTIONS.map((o) => o.value));
+    if (appUser?.chat_numeric_font && valid.has(appUser.chat_numeric_font)) {
+      return appUser.chat_numeric_font;
+    }
+    const stored =
+      typeof window !== 'undefined' ? localStorage.getItem(CHAT_NUMERIC_FONT_STORAGE_KEY) : null;
+    return stored && valid.has(stored) ? (stored as ChatNumericFont) : 'default';
+  });
   const [suggestionsAutoExpand, setSuggestionsAutoExpand] = useState<boolean>(
     appUser?.suggestions_auto_expand ?? true
   );
+
+  useEffect(() => {
+    if (appUser?.chat_numeric_font) {
+      setUserNumericFont(appUser.chat_numeric_font);
+    }
+  }, [appUser?.chat_numeric_font]);
 
   const [draftText, setDraftText] = useState('');
   const [pendingTechnicalDirective, setPendingTechnicalDirective] = useState<{
@@ -2008,41 +2029,89 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   };
 
   const handleDeleteConversation = async (convId: string) => {
-    const token = await getAccessToken();
-    if (!token) return;
-    const res = await fetch(`/api/chat/conversations/${convId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      setConversations((prev) => prev.filter((c) => c.id !== convId));
-      setTabs((prev) => {
-        const filtered = prev.filter((t) => t.conversationId !== convId);
-        if (filtered.length > 0) return filtered;
-        const first = prev[0];
-        if (!first) return [DEFAULT_CORE_TABS[0]];
-        return [
-          {
-            ...first,
-            conversationId: null,
-            label:
-              first.pillar === 'companion'
-                ? 'Companion'
-                : first.pillar === 'clarity'
-                ? 'Clarity'
-                : defaultCouncilMode === 'western'
-                ? 'Western Astrologer'
-                : 'Vedic Astrologer',
-          },
-        ];
-      });
-      if (activeConversation?.id === convId) {
-        setActiveConversation(null);
-        setMessages([]);
-        if (!embeddedPreview) {
-          navigate('/app/chat', { replace: true });
-        }
+    setErrorBanner(null);
+
+    if (isPreviewMode) {
+      delete previewConvStoreRef.current[convId];
+      delete previewMsgStoreRef.current[convId];
+    } else {
+      const token = await getAccessToken();
+      if (!token) {
+        setErrorBanner('Please sign in again to delete this chat.');
+        return;
       }
+      try {
+        const res = await fetch(`/api/chat/conversations/${convId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          setErrorBanner(errData.error || 'Could not delete this chat. Please try again.');
+          return;
+        }
+      } catch {
+        setErrorBanner('Network error while deleting chat. Please try again.');
+        return;
+      }
+    }
+
+    // Abort if currently streaming on a tab linked to this conversation
+    if (
+      streamingTabId &&
+      tabs.some((t) => t.tabId === streamingTabId && t.conversationId === convId)
+    ) {
+      abortControllerRef.current?.abort();
+    }
+
+    // Clear tab cache entries holding this conversation
+    for (const [tabKey, cached] of Object.entries(tabCacheRef.current)) {
+      if (cached?.conversation?.id === convId) {
+        delete tabCacheRef.current[tabKey];
+      }
+    }
+
+    setConversations((prev) => prev.filter((c) => c.id !== convId));
+
+    const remainingTabs = tabs.filter((t) => t.conversationId !== convId);
+    const activeWasDeleted = tabs.some(
+      (t) => t.tabId === activeTabId && t.conversationId === convId
+    );
+
+    if (remainingTabs.length > 0) {
+      setTabs(remainingTabs);
+      if (activeWasDeleted) {
+        const fallbackTab = remainingTabs[0];
+        activateTab(fallbackTab, { skipSnapshot: true });
+      }
+    } else {
+      const first = tabs[0] || DEFAULT_CORE_TABS[0];
+      const resetTab: ActiveChatTab = {
+        ...first,
+        conversationId: null,
+        label:
+          first.pillar === 'companion'
+            ? 'Companion'
+            : first.pillar === 'clarity'
+            ? 'Clarity'
+            : defaultCouncilMode === 'western'
+            ? 'Western Astrologer'
+            : 'Vedic Astrologer',
+      };
+      delete tabCacheRef.current[resetTab.tabId];
+      setTabs([resetTab]);
+      activateTab(resetTab, { skipSnapshot: true });
+    }
+
+    if (activeConversation?.id === convId) {
+      setActiveConversation(null);
+      setMessages([]);
+      setAskLaterItems([]);
+      setHasMoreMessages(false);
+    }
+
+    if (!embeddedPreview && routeConversationId === convId) {
+      navigate('/app/chat', { replace: true });
     }
   };
 
@@ -2508,6 +2577,177 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       let buffer = '';
       let accumulated = '';
 
+      const processSseEventBlock = (rawEvent: string) => {
+        const line = rawEvent.trim();
+        if (!line.startsWith('data:')) return;
+        const jsonText = line.slice(5).trim();
+        if (!jsonText) return;
+
+        const evt = JSON.parse(jsonText) as {
+          type: string;
+          message?: ChatMessageRecord;
+          assistantMessage?: ChatMessageRecord;
+          messageId?: string | null;
+          conversationId?: string;
+          followups?: string[];
+          suggestions?: MessageSuggestions | null;
+          techBreakdown?: string | null;
+          timingWidgets?: TimingProgressWidget[];
+          title?: string;
+          conversation?: ConversationRecord;
+          pendingProfile?: PendingBirthProfileDraft | null;
+          text?: string;
+          error?: string;
+        };
+
+        const isCurrentStreamOwner = abortControllerRef.current === controller;
+
+        if (evt.type === 'user_message' && evt.message) {
+          serverUserMsgId = evt.message.id;
+          setMessages((prev) => [...prev, evt.message!]);
+        } else if (evt.type === 'status' && evt.text) {
+          if (isCurrentStreamOwner) {
+            setStreamingStatus(evt.text);
+          }
+        } else if (evt.type === 'timing_widgets' && Array.isArray(evt.timingWidgets)) {
+          if (isCurrentStreamOwner) {
+            setStreamingTimingWidgets(evt.timingWidgets);
+          }
+        } else if (evt.type === 'chunk' && evt.text) {
+          hasReceivedAssistantChunk = true;
+          accumulated += evt.text;
+          if (isCurrentStreamOwner) {
+            setStreamingStatus(null);
+            setStreamingText(accumulated);
+          }
+        } else if (evt.type === 'aborted') {
+          if (!hasReceivedAssistantChunk) {
+            rollbackAbortedPreReplyTurn();
+          }
+        } else if (evt.type === 'done') {
+          if (evt.assistantMessage) {
+            const baseSuggestions =
+              evt.assistantMessage.suggestions_json ?? evt.suggestions ?? null;
+            const eventTimingWidgets =
+              Array.isArray(evt.timingWidgets) && evt.timingWidgets.length > 0
+                ? evt.timingWidgets
+                : undefined;
+            const mergedSuggestions =
+              sendPillar === 'council' && baseSuggestions
+                ? {
+                    ...baseSuggestions,
+                    ...(evt.techBreakdown && !baseSuggestions.tech_breakdown
+                      ? { tech_breakdown: evt.techBreakdown }
+                      : {}),
+                    ...(eventTimingWidgets && !baseSuggestions.timing_widgets?.length
+                      ? { timing_widgets: eventTimingWidgets }
+                      : {}),
+                  }
+                : sendPillar === 'council' && (evt.techBreakdown || eventTimingWidgets)
+                ? {
+                    followups: [],
+                    deeper_analysis: [],
+                    ...(evt.techBreakdown ? { tech_breakdown: evt.techBreakdown } : {}),
+                    ...(eventTimingWidgets ? { timing_widgets: eventTimingWidgets } : {}),
+                  }
+                : null;
+            const enrichedAssistant: ChatMessageRecord = {
+              ...evt.assistantMessage,
+              suggestions_json: sendPillar === 'council' ? mergedSuggestions : null,
+            };
+            setMessages((prev) => [...prev, enrichedAssistant]);
+            if (sendPillar === 'council' && evt.pendingProfile) {
+              setPendingProfileConfirm({
+                messageId: enrichedAssistant.id,
+                draft: evt.pendingProfile,
+              });
+            } else {
+              setPendingProfileConfirm(null);
+            }
+          }
+          if (evt.conversation) {
+            const mergedConv = enrichConversationWithLocalMeta({
+              ...evt.conversation,
+              pillar: sendPillar,
+              companion_persona_json:
+                evt.conversation.companion_persona_json ||
+                targetConversation.companion_persona_json ||
+                null,
+            });
+            setActiveConversation((prev) => ({
+              ...mergedConv,
+              ask_later_json:
+                mergedConv.ask_later_json ?? prev?.ask_later_json ?? askLaterItems,
+            }));
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === mergedConv.id
+                  ? { ...c, title: mergedConv.title, updated_at: mergedConv.updated_at }
+                  : c
+              )
+            );
+            setTabs((prev) =>
+              prev.map((t) =>
+                t.tabId === sendTabId
+                  ? {
+                      ...t,
+                      conversationId: mergedConv.id,
+                      label: t.customLabel
+                        ? t.label
+                        : deriveTabLabelForConversation(mergedConv, profiles),
+                    }
+                  : t
+              )
+            );
+          }
+          if (isCurrentStreamOwner) {
+            setStreamingText('');
+            setStreamingStatus(null);
+            setStreamingTimingWidgets([]);
+            setIsStreaming(false);
+            setStreamingTabId(null);
+            abortControllerRef.current = null;
+          }
+          void Promise.all([loadConversations(), refreshUser()]);
+        } else if (evt.type === 'post_meta') {
+          if (evt.messageId) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === evt.messageId
+                  ? {
+                      ...m,
+                      followups_json: Array.isArray(evt.followups)
+                        ? evt.followups
+                        : m.followups_json,
+                      suggestions_json:
+                        evt.suggestions !== undefined ? evt.suggestions : m.suggestions_json,
+                    }
+                  : m
+              )
+            );
+          }
+          if (evt.title && evt.conversationId) {
+            const nextTitle = evt.title;
+            const targetConvId = evt.conversationId;
+            setActiveConversation((prev) =>
+              prev && prev.id === targetConvId ? { ...prev, title: nextTitle } : prev
+            );
+            setConversations((prev) =>
+              prev.map((c) => (c.id === targetConvId ? { ...c, title: nextTitle } : c))
+            );
+            setTabs((prev) =>
+              prev.map((t) =>
+                t.conversationId === targetConvId && !t.customLabel
+                  ? { ...t, label: nextTitle }
+                  : t
+              )
+            );
+          }
+        } else if (evt.type === 'error') {
+          throw new Error(evt.error || 'Consultation interrupted');
+        }
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -2517,174 +2757,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         buffer = events.pop() || '';
 
         for (const rawEvent of events) {
-          const line = rawEvent.trim();
-          if (!line.startsWith('data:')) continue;
-          const jsonText = line.slice(5).trim();
-          if (!jsonText) continue;
+          processSseEventBlock(rawEvent);
+        }
+      }
 
-          const evt = JSON.parse(jsonText) as {
-            type: string;
-            message?: ChatMessageRecord;
-            assistantMessage?: ChatMessageRecord;
-            messageId?: string | null;
-            conversationId?: string;
-            followups?: string[];
-            suggestions?: MessageSuggestions | null;
-            techBreakdown?: string | null;
-            timingWidgets?: TimingProgressWidget[];
-            title?: string;
-            conversation?: ConversationRecord;
-            pendingProfile?: PendingBirthProfileDraft | null;
-            text?: string;
-            error?: string;
-          };
-
-          const isCurrentStreamOwner = abortControllerRef.current === controller;
-
-          if (evt.type === 'user_message' && evt.message) {
-            serverUserMsgId = evt.message.id;
-            setMessages((prev) => [...prev, evt.message!]);
-          } else if (evt.type === 'status' && evt.text) {
-            if (isCurrentStreamOwner) {
-              setStreamingStatus(evt.text);
-            }
-          } else if (evt.type === 'timing_widgets' && Array.isArray(evt.timingWidgets)) {
-            if (isCurrentStreamOwner) {
-              setStreamingTimingWidgets(evt.timingWidgets);
-            }
-          } else if (evt.type === 'chunk' && evt.text) {
-            hasReceivedAssistantChunk = true;
-            accumulated += evt.text;
-            if (isCurrentStreamOwner) {
-              setStreamingStatus(null);
-              setStreamingText(accumulated);
-            }
-          } else if (evt.type === 'aborted') {
-            if (!hasReceivedAssistantChunk) {
-              rollbackAbortedPreReplyTurn();
-            }
-          } else if (evt.type === 'done') {
-            if (evt.assistantMessage) {
-              const baseSuggestions =
-                evt.assistantMessage.suggestions_json ?? evt.suggestions ?? null;
-              const eventTimingWidgets =
-                Array.isArray(evt.timingWidgets) && evt.timingWidgets.length > 0
-                  ? evt.timingWidgets
-                  : undefined;
-              const mergedSuggestions =
-                sendPillar === 'council' && baseSuggestions
-                  ? {
-                      ...baseSuggestions,
-                      ...(evt.techBreakdown && !baseSuggestions.tech_breakdown
-                        ? { tech_breakdown: evt.techBreakdown }
-                        : {}),
-                      ...(eventTimingWidgets && !baseSuggestions.timing_widgets?.length
-                        ? { timing_widgets: eventTimingWidgets }
-                        : {}),
-                    }
-                  : sendPillar === 'council' && (evt.techBreakdown || eventTimingWidgets)
-                  ? {
-                      followups: [],
-                      deeper_analysis: [],
-                      ...(evt.techBreakdown ? { tech_breakdown: evt.techBreakdown } : {}),
-                      ...(eventTimingWidgets ? { timing_widgets: eventTimingWidgets } : {}),
-                    }
-                  : null;
-              const enrichedAssistant: ChatMessageRecord = {
-                ...evt.assistantMessage,
-                suggestions_json: sendPillar === 'council' ? mergedSuggestions : null,
-              };
-              setMessages((prev) => [...prev, enrichedAssistant]);
-              if (sendPillar === 'council' && evt.pendingProfile) {
-                setPendingProfileConfirm({
-                  messageId: enrichedAssistant.id,
-                  draft: evt.pendingProfile,
-                });
-              } else {
-                setPendingProfileConfirm(null);
-              }
-            }
-            if (evt.conversation) {
-              const mergedConv = enrichConversationWithLocalMeta({
-                ...evt.conversation,
-                pillar: sendPillar,
-                companion_persona_json:
-                  evt.conversation.companion_persona_json ||
-                  targetConversation.companion_persona_json ||
-                  null,
-              });
-              setActiveConversation((prev) => ({
-                ...mergedConv,
-                ask_later_json:
-                  mergedConv.ask_later_json ?? prev?.ask_later_json ?? askLaterItems,
-              }));
-              setConversations((prev) =>
-                prev.map((c) =>
-                  c.id === mergedConv.id
-                    ? { ...c, title: mergedConv.title, updated_at: mergedConv.updated_at }
-                    : c
-                )
-              );
-              setTabs((prev) =>
-                prev.map((t) =>
-                  t.tabId === sendTabId
-                    ? {
-                        ...t,
-                        conversationId: mergedConv.id,
-                        label: t.customLabel
-                          ? t.label
-                          : deriveTabLabelForConversation(mergedConv, profiles),
-                      }
-                    : t
-                )
-              );
-            }
-            if (isCurrentStreamOwner) {
-              setStreamingText('');
-              setStreamingStatus(null);
-              setStreamingTimingWidgets([]);
-              setIsStreaming(false);
-              setStreamingTabId(null);
-              abortControllerRef.current = null;
-            }
-            void Promise.all([loadConversations(), refreshUser()]);
-          } else if (evt.type === 'post_meta') {
-            if (evt.messageId) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === evt.messageId
-                    ? {
-                        ...m,
-                        followups_json: Array.isArray(evt.followups)
-                          ? evt.followups
-                          : m.followups_json,
-                        suggestions_json:
-                          evt.suggestions !== undefined ? evt.suggestions : m.suggestions_json,
-                      }
-                    : m
-                )
-              );
-            }
-            if (evt.title && evt.conversationId) {
-              const nextTitle = evt.title;
-              const targetConvId = evt.conversationId;
-              setActiveConversation((prev) =>
-                prev && prev.id === targetConvId ? { ...prev, title: nextTitle } : prev
-              );
-              setConversations((prev) =>
-                prev.map((c) => (c.id === targetConvId ? { ...c, title: nextTitle } : c))
-              );
-              setTabs((prev) =>
-                prev.map((t) =>
-                  t.conversationId === targetConvId && !t.customLabel
-                    ? { ...t, label: nextTitle }
-                    : t
-                )
-              );
-            }
-          } else if (evt.type === 'error') {
-            throw new Error(evt.error || 'Consultation interrupted');
-          }
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        for (const rawEvent of buffer.split('\n\n')) {
+          processSseEventBlock(rawEvent);
         }
       }
     } catch (err) {
@@ -4043,6 +4123,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             isStreaming={isStreaming}
             catalog={catalog}
             fontSize={chatFontSize}
+            numericFont={
+              userNumericFont === 'default'
+                ? chatbotConfig?.chat_numeric_font || 'dm_sans'
+                : userNumericFont
+            }
             languageSlug={languageSlug}
             responseMode={responseMode}
             searchQuery={inChatQuery}
@@ -4281,6 +4366,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         languageSlug={languageSlug}
         isThreadLocked={isThreadLocked}
         initialFontSize={chatFontSize}
+        initialNumericFont={userNumericFont}
+        platformNumericFont={chatbotConfig?.chat_numeric_font || 'dm_sans'}
         initialSuggestionsAutoExpand={suggestionsAutoExpand}
         getAccessToken={getAccessToken}
         onSwitchProfile={handleSwitchProfileBeforeStart}
@@ -4292,6 +4379,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         onToggleMemory={handleToggleMemory}
         onSaved={(updated) => {
           setChatFontSize(updated.chatFontSize);
+          setUserNumericFont(updated.chatNumericFont);
           setSuggestionsAutoExpand(updated.suggestionsAutoExpand);
           if (!isThreadLocked) {
             seededExpertRef.current = true;

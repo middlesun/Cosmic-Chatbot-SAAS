@@ -22,11 +22,13 @@ import {
   VolumeX,
 } from 'lucide-react';
 import {
+  CHAT_NUMERIC_FONT_CLASSES,
   DEFAULT_COUNCIL_EXPERT_SLUG,
   normalizeCouncilSlug,
   type AskLaterItem,
   type ChatCatalog,
   type ChatMessageRecord,
+  type ChatNumericFont,
   type ChatPillar,
   type ChatProfile,
   type ClarificationChip,
@@ -71,6 +73,7 @@ interface MessageThreadProps {
   isStreaming: boolean;
   catalog: ChatCatalog | null;
   fontSize?: ChatFontSize;
+  numericFont?: ChatNumericFont;
   languageSlug?: string;
   responseMode?: 'simple' | 'detailed';
   searchQuery?: string;
@@ -157,6 +160,7 @@ const stripInlineTechBreakdown = (text: string): string => {
   working = working
     .replace(/^[ \t]*:::[a-zA-Z0-9_-]*[ \t]*(?:\r?\n|$)/gm, '')
     .replace(/:::(?:prediction|analysis)\b[ \t]*/gi, '')
+    .replace(/^(?:prediction|ediction)\s*[:\-]?\s+/i, '')
     .replace(/[ \t]*:::[ \t]*$/gm, '')
     .replace(/\[CONFIDENCE\s*:[^\]]*\][ \t]*/gi, '')
     .replace(/^[ \t]*\[FOLLOWUP\][^\n]*(?:\r?\n|$)/gim, '')
@@ -228,7 +232,8 @@ const splitMarkdownWithTimingWidgets = (
 const TimingProgressBar: React.FC<{
   widget: TimingProgressWidget;
   inCard: boolean;
-}> = ({ widget, inCard }) => {
+  numericFontClass: string;
+}> = ({ widget, inCard, numericFontClass }) => {
   const pct = Math.max(0, Math.min(100, Math.round(widget.current.percentElapsed)));
   const daysLeft = Math.max(0, Math.round(widget.current.daysLeft));
 
@@ -267,7 +272,7 @@ const TimingProgressBar: React.FC<{
               {widget.current.label}
             </span>
           </div>
-          <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[10px] text-[#5C5449] leading-tight mt-0.5 truncate max-w-full">
+          <span className={`${numericFontClass} text-[10px] text-[#5C5449] leading-tight mt-0.5 truncate max-w-full`}>
             {widget.current.startDisplay}
           </span>
         </div>
@@ -298,7 +303,7 @@ const TimingProgressBar: React.FC<{
       </div>
 
       {/* Bottom Metadata Row */}
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 font-['JetBrains_Mono',monospace] tabular-nums text-[11px] text-[#5C5449]">
+      <div className={`mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 ${numericFontClass} text-[11px] text-[#5C5449]`}>
         <span>
           {widget.current.startDisplay} · {pct}% complete
         </span>
@@ -337,15 +342,18 @@ const highlightString = (text: string, query: string): React.ReactNode => {
   );
 };
 
-// Matches planetary degrees (14°22', 14°22'10", 14.5°), SAV/BAV bindus (SAV 34, BAV 5), and dates (2026-11-21, Nov 2026, 14 Jan 2027)
-const TELEMETRY_TOKEN_RE =
-  /(\b(?:SAV|BAV)(?:\s*:?\s*\d{1,2}(?:\/\d{1,2})?)\b|\b\d{1,2}°\d{1,2}'(?:\d{1,2}")?|\b\d{1,2}(?:\.\d+)?°|\b\d{4}-\d{2}-\d{2}\b|\b(?:\d{1,2}\s+)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}\b)/g;
+const NUMERIC_FONT_CLASSES: Record<ChatNumericFont, string> = CHAT_NUMERIC_FONT_CLASSES;
+
+// Matches ISO dates (2026-11-21), planetary degrees (14°22', 14°22'10", 14.5°), and standalone numeric tokens (2028, 10th, 5/5, 82%, 14:30, 2-3) without altering month words or chart codes (D9, H7)
+const NUMERIC_TELEMETRY_TOKEN_RE =
+  /(\b\d{4}-\d{2}-\d{2}\b|(?<![A-Za-z0-9_])(?:[+-]?\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)(?:°(?:\d{1,2}'(?:\d{1,2}")?)?|%|st|nd|rd|th|\/\d+|:\d{2}(?::\d{2})?|[-–—]\d+(?:\.\d+)?(?:°|%|st|nd|rd|th)?)?(?![A-Za-z0-9_]))/g;
 
 const formatStringWithTelemetryAndHighlight = (
   text: string,
-  query: string
+  query: string,
+  numericFontClass: string
 ): React.ReactNode => {
-  const parts = text.split(TELEMETRY_TOKEN_RE);
+  const parts = text.split(NUMERIC_TELEMETRY_TOKEN_RE);
   if (parts.length <= 1) {
     return highlightString(text, query);
   }
@@ -353,10 +361,7 @@ const formatStringWithTelemetryAndHighlight = (
     if (!part) return null;
     if (idx % 2 === 1) {
       return (
-        <span
-          key={idx}
-          className="font-['JetBrains_Mono',monospace] tabular-nums text-[0.9em] font-medium text-[#3D3830]"
-        >
+        <span key={idx} className={numericFontClass}>
           {highlightString(part, query)}
         </span>
       );
@@ -367,16 +372,17 @@ const formatStringWithTelemetryAndHighlight = (
 
 const formatTelemetryAndHighlightNodes = (
   children: React.ReactNode,
-  query: string
+  query: string,
+  numericFontClass: string
 ): React.ReactNode => {
   return React.Children.map(children, (child) => {
     if (typeof child === 'string') {
-      return formatStringWithTelemetryAndHighlight(child, query);
+      return formatStringWithTelemetryAndHighlight(child, query, numericFontClass);
     }
     if (React.isValidElement<{ children?: React.ReactNode }>(child) && child.props.children) {
       return React.cloneElement(child, {
         ...child.props,
-        children: formatTelemetryAndHighlightNodes(child.props.children, query),
+        children: formatTelemetryAndHighlightNodes(child.props.children, query, numericFontClass),
       });
     }
     return child;
@@ -551,6 +557,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   isStreaming,
   catalog,
   fontSize = 'base',
+  numericFont = 'dm_sans',
   languageSlug = 'English',
   responseMode = 'detailed',
   searchQuery = '',
@@ -624,6 +631,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
   const speechSupported = useMemo(() => isSpeechSynthesisSupported(), []);
   const sizeTokens = FONT_SIZE_STYLES[fontSize] || FONT_SIZE_STYLES.base;
+  const numericFontClass = NUMERIC_FONT_CLASSES[numericFont] || NUMERIC_FONT_CLASSES.dm_sans;
 
   // Stop active voice playback when switching threads or unmounting
   useEffect(() => {
@@ -856,22 +864,22 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     (inCard: boolean) => ({
       h1: ({ children }: { children?: React.ReactNode }) => (
         <h2 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h1} font-medium text-[#3D3830] pt-1`}>
-          {formatTelemetryAndHighlightNodes(children, searchQuery)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
         </h2>
       ),
       h2: ({ children }: { children?: React.ReactNode }) => (
         <h3 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h2} font-medium text-[#3D3830] pt-1`}>
-          {formatTelemetryAndHighlightNodes(children, searchQuery)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
         </h3>
       ),
       h3: ({ children }: { children?: React.ReactNode }) => (
         <h4 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h3} font-medium text-[#3D3830] pt-1.5`}>
-          {formatTelemetryAndHighlightNodes(children, searchQuery)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
         </h4>
       ),
       p: ({ children }: { children?: React.ReactNode }) => (
         <p className={`${sizeTokens.body} text-[#5C5449]`}>
-          {formatTelemetryAndHighlightNodes(children, searchQuery)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
         </p>
       ),
       ul: ({ children }: { children?: React.ReactNode }) => (
@@ -886,21 +894,21 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       ),
       li: ({ children }: { children?: React.ReactNode }) => (
         <li className="leading-[1.68]">
-          {formatTelemetryAndHighlightNodes(children, searchQuery)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
         </li>
       ),
       strong: ({ children }: { children?: React.ReactNode }) => (
         <strong className="font-semibold text-[#3D3830]">
-          {formatTelemetryAndHighlightNodes(children, searchQuery)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
         </strong>
       ),
       blockquote: ({ children }: { children?: React.ReactNode }) => (
         <blockquote className={`border-l-2 border-[#B8965A]/70 pl-4 py-1 ${sizeTokens.body} text-[#5C5449] italic`}>
-          {formatTelemetryAndHighlightNodes(children, searchQuery)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
         </blockquote>
       ),
       code: ({ children }: { children?: React.ReactNode }) => (
-        <code className="font-['JetBrains_Mono',monospace] tabular-nums text-[0.86em] bg-[#F1ECE3] px-1.5 py-0.5 rounded text-[#3D3830]">
+        <code className={`${numericFontClass} text-[0.9em] bg-[#F1ECE3] px-1.5 py-0.5 rounded text-[#3D3830]`}>
           {children}
         </code>
       ),
@@ -920,16 +928,16 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       ),
       th: ({ children }: { children?: React.ReactNode }) => (
         <th className="px-3 sm:px-3.5 py-2 text-[11px] sm:text-xs font-semibold text-[#3D3830] border-b border-[#3D3830]/12 whitespace-nowrap">
-          {formatTelemetryAndHighlightNodes(children, searchQuery)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
         </th>
       ),
       td: ({ children }: { children?: React.ReactNode }) => (
         <td className="px-3 sm:px-3.5 py-2 text-xs text-[#5C5449] border-b border-[#3D3830]/8 align-top leading-relaxed">
-          {formatTelemetryAndHighlightNodes(children, searchQuery)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
         </td>
       ),
     }),
-    [searchQuery, sizeTokens]
+    [numericFontClass, searchQuery, sizeTokens]
   );
 
   const markdownComponents = useMemo(
@@ -960,6 +968,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 key={`tw-${seg.widget.id}-${idx}`}
                 widget={seg.widget}
                 inCard={inCard}
+                numericFontClass={numericFontClass}
               />
             ) : (
               <ReactMarkdown
@@ -974,7 +983,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         </div>
       );
     },
-    []
+    [numericFontClass]
   );
 
   const renderEditorialContent = useCallback(
@@ -1030,7 +1039,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               <h3
                 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h2} font-medium text-[#3D3830] pb-2 mb-2.5 border-b border-[#3D3830]/10`}
               >
-                {formatStringWithTelemetryAndHighlight(sec.title, searchQuery)}
+                {formatStringWithTelemetryAndHighlight(sec.title, searchQuery, numericFontClass)}
               </h3>
               {sec.body &&
                 renderMarkdownWithWidgets(
@@ -1048,6 +1057,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     [
       cardMarkdownComponents,
       markdownComponents,
+      numericFontClass,
       renderMarkdownWithWidgets,
       searchQuery,
       sizeTokens,

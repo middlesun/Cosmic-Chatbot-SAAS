@@ -2,10 +2,19 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Compass, CalendarClock, Sparkles } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import { PREVIEW_RADAR_SNAPSHOT } from './previewFixtures';
+import {
+  PREVIEW_RADAR_SNAPSHOT,
+  PREVIEW_WESTERN_RADAR_SNAPSHOT,
+} from './previewFixtures';
 
 interface DashaProgressItem {
-  level: 'Mahadasha' | 'Antardasha' | 'Pratyantardasha';
+  level:
+    | 'Mahadasha'
+    | 'Antardasha'
+    | 'Pratyantardasha'
+    | 'Annual Profection'
+    | 'Progressed Moon'
+    | 'Solar Return';
   lord: string;
   startDate: string;
   endDate: string;
@@ -35,13 +44,14 @@ interface ConvergenceWindow {
 }
 
 interface TimingRadarSnapshot {
+  mode?: 'vedic' | 'western';
   profileId: string;
   profileName: string;
   ascendantSign: string;
   moonSign: string;
   dashaLadder: DashaProgressItem[];
   upcomingShift: {
-    type: 'Antardasha' | 'Pratyantardasha';
+    type: 'Antardasha' | 'Pratyantardasha' | 'Profection' | 'Progressed Moon';
     fromLord: string;
     toLord: string;
     transitionDate: string;
@@ -77,10 +87,13 @@ const DASHA_LEVEL_HINTS: Record<DashaProgressItem['level'], string> = {
   Mahadasha: 'Major life chapter',
   Antardasha: 'Active sub-phase',
   Pratyantardasha: 'Current micro-window',
+  'Annual Profection': 'Current year house lord',
+  'Progressed Moon': '2.5-year emotional chapter',
+  'Solar Return': 'Birthday-to-birthday focus',
 };
 
 const TimingRadarDashboard: React.FC = () => {
-  const { isPreviewMode, getAccessToken } = useAuth();
+  const { isPreviewMode, getAccessToken, astrologyMode } = useAuth();
   const [profiles, setProfiles] = useState<ProfileOption[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   const [radar, setRadar] = useState<TimingRadarSnapshot | null>(null);
@@ -91,17 +104,19 @@ const TimingRadarDashboard: React.FC = () => {
   const fetchRadar = useCallback(
     async (profileId?: string) => {
       if (isPreviewMode) {
+        const previewSnap =
+          astrologyMode === 'western' ? PREVIEW_WESTERN_RADAR_SNAPSHOT : PREVIEW_RADAR_SNAPSHOT;
         setHasActivated(true);
         setProfiles([
           {
-            id: PREVIEW_RADAR_SNAPSHOT.profileId,
-            name: PREVIEW_RADAR_SNAPSHOT.profileName,
+            id: previewSnap.profileId,
+            name: previewSnap.profileName,
             short_name: 'Aarav',
             is_default: true,
           },
         ]);
-        setRadar(PREVIEW_RADAR_SNAPSHOT);
-        setSelectedProfileId(PREVIEW_RADAR_SNAPSHOT.profileId);
+        setRadar(previewSnap);
+        setSelectedProfileId(previewSnap.profileId);
         setIsLoading(false);
         return;
       }
@@ -112,8 +127,10 @@ const TimingRadarDashboard: React.FC = () => {
           setIsLoading(false);
           return;
         }
-        const query = profileId ? `?profileId=${encodeURIComponent(profileId)}` : '';
-        const res = await fetch(`/api/radar${query}`, {
+        const params = new URLSearchParams();
+        params.set('mode', astrologyMode);
+        if (profileId) params.set('profileId', profileId);
+        const res = await fetch(`/api/radar?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
@@ -131,19 +148,23 @@ const TimingRadarDashboard: React.FC = () => {
         setIsLoading(false);
       }
     },
-    [getAccessToken, isPreviewMode]
+    [astrologyMode, getAccessToken, isPreviewMode]
   );
 
   useEffect(() => {
     void fetchRadar();
   }, [fetchRadar]);
 
+  const isWesternView = (radar?.mode || astrologyMode) === 'western';
+
   if (isLoading) {
     return (
       <section className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-7 md:p-9 text-[#F4EFE6]">
         <p className="text-xs text-[#F4EFE6]/60">Observatory Timing Radar</p>
         <p className="mt-2 font-serif text-2xl font-medium">
-          Aligning Dasha progression & Gochar transits...
+          {isWesternView
+            ? 'Aligning Profections, Progressions & Tropical transits...'
+            : 'Aligning Dasha progression & Gochar transits...'}
         </p>
       </section>
     );
@@ -162,7 +183,9 @@ const TimingRadarDashboard: React.FC = () => {
               Add Birth Details to Unlock Live Planetary Timing
             </h2>
             <p className="text-sm text-[#F4EFE6]/70 leading-relaxed">
-              Once you save a birth chart, this observatory radar tracks your active Mahadasha, Antardasha, and Pratyantardasha progress bars alongside live Gochar transits and daily briefs.
+              {isWesternView
+                ? 'Once you save a birth chart, this observatory radar tracks your Annual Profection, Progressed Moon, and Solar Return progress bars alongside live Tropical transits and daily briefs.'
+                : 'Once you save a birth chart, this observatory radar tracks your active Mahadasha, Antardasha, and Pratyantardasha progress bars alongside live Gochar transits and daily briefs.'}
             </p>
           </div>
           <Link
@@ -179,15 +202,35 @@ const TimingRadarDashboard: React.FC = () => {
 
   const maha = radar.dashaLadder.find((d) => d.level === 'Mahadasha')?.lord;
   const antar = radar.dashaLadder.find((d) => d.level === 'Antardasha')?.lord;
-  const phaseSummary = [maha, antar].filter(Boolean).join('–');
-  const seededChatPrompt = phaseSummary
+  const profection = radar.dashaLadder.find((d) => d.level === 'Annual Profection')?.lord;
+  const progMoon = radar.dashaLadder.find((d) => d.level === 'Progressed Moon')?.lord;
+  const phaseSummary = isWesternView
+    ? [profection, progMoon].filter(Boolean).join(' + ')
+    : [maha, antar].filter(Boolean).join('–');
+  const seededChatPrompt = isWesternView
+    ? phaseSummary
+      ? `What do my current ${phaseSummary} cycles point toward for my priorities right now?`
+      : `How should I navigate my current Tropical timing cycle and outer transits?`
+    : phaseSummary
     ? `What does my current ${phaseSummary} phase mean for my priorities right now?`
     : `How should I navigate my current planetary timing phase?`;
   const chatParams = new URLSearchParams();
   if (radar.profileId) chatParams.set('profileId', radar.profileId);
+  if (isWesternView) {
+    chatParams.set('system', 'western');
+    chatParams.set('expert', 'western_astrologer');
+  }
   chatParams.set('prompt', seededChatPrompt);
   if (isPreviewMode) chatParams.set('preview', '1');
   const discussPhaseUrl = `/app/chat?${chatParams.toString()}`;
+
+  const nextShiftLabel = radar.upcomingShift
+    ? radar.upcomingShift.type === 'Profection'
+      ? 'Next Profection'
+      : radar.upcomingShift.type === 'Progressed Moon'
+      ? 'Next Prog. Moon'
+      : `Next ${radar.upcomingShift.type.slice(0, 2)}`
+    : '';
 
   return (
     <section className="space-y-5">
@@ -197,8 +240,13 @@ const TimingRadarDashboard: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#F4EFE6]/10 pb-5">
           <div>
             <p className="text-xs text-[#F4EFE6]/60 mb-1">
-              Timing Radar · {radar.ascendantSign} Lagna · {radar.moonSign} Moon
-              {radar.transitsDate ? ` · Gochar ${radar.transitsDate}` : ''}
+              Timing Radar · {radar.ascendantSign}{' '}
+              {isWesternView ? 'Rising (Tropical)' : 'Lagna'} · {radar.moonSign} Moon
+              {radar.transitsDate
+                ? isWesternView
+                  ? ` · Transits ${radar.transitsDate}`
+                  : ` · Gochar ${radar.transitsDate}`
+                : ''}
             </p>
             <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#F4EFE6]">
               Quick overview for {radar.profileName}
@@ -247,22 +295,24 @@ const TimingRadarDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Row 1: Active Vimshottari Dasha Progress Ladder + Daily/Monthly Cached Brief */}
+        {/* Row 1: Active Cycle Progress Ladder + Daily/Monthly Cached Brief */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-7">
-          {/* Active Dasha Progress Bars */}
+          {/* Active Cycle Progress Bars */}
           <div className="lg:col-span-6 space-y-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <div>
                 <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
-                  Vimshottari Dasha Progression
+                  {isWesternView ? 'Multi-Clock Cycle Progression' : 'Vimshottari Dasha Progression'}
                 </h3>
                 <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
-                  Planetary life cycles active in your chart right now
+                  {isWesternView
+                    ? 'Annual Profection, Progressed Moon & Solar Return active now'
+                    : 'Planetary life cycles active in your chart right now'}
                 </p>
               </div>
               {radar.upcomingShift && (
                 <span className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#B8965A]">
-                  Next {radar.upcomingShift.type.slice(0, 2)}: {radar.upcomingShift.toLord} ({radar.upcomingShift.transitionDate})
+                  {nextShiftLabel}: {radar.upcomingShift.toLord} ({radar.upcomingShift.transitionDate})
                 </span>
               )}
             </div>
@@ -376,10 +426,14 @@ const TimingRadarDashboard: React.FC = () => {
         <div className="space-y-3 pt-2 border-t border-[#F4EFE6]/10">
           <div>
             <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
-              Dasha & Gochar Convergence Windows
+              {isWesternView
+                ? 'Progression & Transit Convergence Windows'
+                : 'Dasha & Gochar Convergence Windows'}
             </h3>
             <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
-              Dates when your personal life cycle aligns with current sky transits
+              {isWesternView
+                ? 'Windows when your progressions & profections align with outer transits'
+                : 'Dates when your personal life cycle aligns with current sky transits'}
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -403,15 +457,19 @@ const TimingRadarDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Row 3: Live Slow-Planet Gochar Relative to Natal Lagna & Moon */}
+        {/* Row 3: Live Slow-Planet Transits Relative to Natal Houses */}
         {radar.slowPlanetShifts.length > 0 && (
           <div className="space-y-3 pt-2 border-t border-[#F4EFE6]/10">
             <div>
               <h3 className="text-xs font-medium text-[#F4EFE6]/75 uppercase tracking-wider">
-                Live Gochar Alignment Over Natal Houses
+                {isWesternView
+                  ? 'Live Tropical Transits Over Natal Houses'
+                  : 'Live Gochar Alignment Over Natal Houses'}
               </h3>
               <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
-                Current sky positions (Gochar) relative to your birth Ascendant (Lagna)
+                {isWesternView
+                  ? 'Current sky positions relative to your Tropical Ascendant & natal houses'
+                  : 'Current sky positions (Gochar) relative to your birth Ascendant (Lagna)'}
               </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -426,7 +484,7 @@ const TimingRadarDashboard: React.FC = () => {
                       {t.isRetrograde ? ' (R)' : ''}
                     </span>
                     <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#F4EFE6]/75">
-                      {t.sign} · H{t.houseFromLagna} Lagna
+                      {t.sign} · H{t.houseFromLagna} {isWesternView ? 'Tropical' : 'Lagna'}
                     </span>
                   </div>
                   <p className="text-[11px] text-[#F4EFE6]/65">{t.note}</p>

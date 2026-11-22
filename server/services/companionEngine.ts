@@ -11,6 +11,7 @@ import {
   isOpenRouterConfiguredAsync,
   safeExtractJson,
 } from './openrouter';
+import { sanitizeHumanCallName } from './abuseGuard';
 import {
   getEnginePromptOverrides,
   getResolvedGuideConfig,
@@ -675,9 +676,10 @@ ${persona.system_prompt}`);
     );
   }
 
-  if (params.preferredCallName?.trim()) {
+  const safeCallName = sanitizeHumanCallName(params.preferredCallName);
+  if (safeCallName && params.turnCount === 0) {
     sections.push(
-      `USER NAME CONTEXT: The person you are speaking with goes by "${params.preferredCallName.trim()}". Use their name only occasionally and naturally—never open with stiff email greetings.`
+      `OPTIONAL USER NAME (Use with restraint): The user's first name is "${safeCallName}". You do not need to say their name often — speak naturally like a real friend without repeating names across turns.`
     );
   }
 
@@ -739,11 +741,7 @@ export function buildClaritySystemPrompt(params: {
     sections.push(`LANGUAGE: Respond clearly and naturally in ${params.languageSlug}.`);
   }
 
-  if (params.preferredCallName?.trim()) {
-    sections.push(
-      `USER NAME: ${params.preferredCallName.trim()} (do not use email-style greetings; answer directly).`
-    );
-  }
+  // Clarity answers directly as "you/your" without repeating names or greetings
 
   if (params.turnCount > 0) {
     sections.push(

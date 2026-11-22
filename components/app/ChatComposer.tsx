@@ -576,6 +576,11 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
           modeSlug: expertSlug === 'learn_astrology' ? 'learn_astrology' : 'general',
           languageSlug,
           profileId: activeProfileId,
+          expertSlug,
+          tradition:
+            expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer'
+              ? 'western'
+              : 'vedic',
         }),
       });
 
@@ -625,6 +630,11 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
           modeSlug: expertSlug === 'learn_astrology' ? 'learn_astrology' : 'general',
           languageSlug,
           profileId: activeProfileId,
+          expertSlug,
+          tradition:
+            expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer'
+              ? 'western'
+              : 'vedic',
         }),
       });
 

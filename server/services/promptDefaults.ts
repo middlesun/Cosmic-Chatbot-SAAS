@@ -1,5 +1,8 @@
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
-import { DEFAULT_CORE_COUNCIL_CONSTITUTION } from './enginePromptDefaults';
+import {
+  DEFAULT_CORE_COUNCIL_CONSTITUTION,
+  WESTERN_CORE_COUNCIL_CONSTITUTION,
+} from './enginePromptDefaults';
 import {
   FORMULA_CARTRIDGES_SEED,
   PRIORITY_RULES_SEED,
@@ -322,6 +325,18 @@ export async function getCoreCouncilConstitutionAsync(): Promise<string> {
     // Fallback to code default
   }
   return DEFAULT_CORE_COUNCIL_CONSTITUTION;
+}
+
+export async function getWesternCoreCouncilConstitutionAsync(): Promise<string> {
+  try {
+    const overrides = await getEnginePromptOverrides();
+    if (overrides.western_core_council_constitution && overrides.western_core_council_constitution.trim()) {
+      return overrides.western_core_council_constitution.trim();
+    }
+  } catch {
+    // Fallback to code default
+  }
+  return WESTERN_CORE_COUNCIL_CONSTITUTION;
 }
 
 export const ALL_DEFAULT_PROMPTS: DefaultPromptSeed[] = [

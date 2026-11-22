@@ -44,6 +44,12 @@ interface ChatbotFeaturesConfig {
   memory_summary: boolean;
 }
 
+import {
+  CHAT_NUMERIC_FONT_CLASSES,
+  CHAT_NUMERIC_FONT_OPTIONS,
+  type ChatNumericFont,
+} from '../app/chatTypes';
+
 interface ChatbotConfigState {
   welcome_title: string;
   welcome_subtitle: string;
@@ -55,6 +61,7 @@ interface ChatbotConfigState {
   default_language: string;
   default_tone: 'friendly' | 'technical';
   default_response_length: 'short' | 'detailed';
+  chat_numeric_font?: ChatNumericFont;
   expert_order: string[];
   mode_order: string[];
   language_order: string[];
@@ -152,6 +159,16 @@ interface EnginePromptBundle {
   deep_audit_adjudicator_mandate: string;
   stage4_aligned_suggestions_prompt: string;
   stage4_fast_more_suggestions_prompt: string;
+  western_core_council_constitution: string;
+  western_tier1_reasoning_laws: string;
+  western_anti_cliche_rules: string;
+  western_intent_output_contracts: Record<string, string>;
+  western_fluency_instructions: Record<string, string>;
+  western_format_contracts: Record<string, string>;
+  western_deep_audit_lenses: Record<string, string>;
+  western_deep_audit_adjudicator_mandate: string;
+  western_stage4_aligned_suggestions_prompt: string;
+  western_stage4_fast_more_suggestions_prompt: string;
 }
 
 interface EnginePromptOverridesState {
@@ -170,6 +187,16 @@ interface EnginePromptOverridesState {
   deep_audit_adjudicator_mandate?: string;
   stage4_aligned_suggestions_prompt?: string;
   stage4_fast_more_suggestions_prompt?: string;
+  western_core_council_constitution?: string;
+  western_tier1_reasoning_laws?: string;
+  western_anti_cliche_rules?: string;
+  western_intent_output_contracts?: Record<string, string>;
+  western_fluency_instructions?: Record<string, string>;
+  western_format_contracts?: Record<string, string>;
+  western_deep_audit_lenses?: Record<string, string>;
+  western_deep_audit_adjudicator_mandate?: string;
+  western_stage4_aligned_suggestions_prompt?: string;
+  western_stage4_fast_more_suggestions_prompt?: string;
 }
 
 interface PlaybookCatalogItem {
@@ -421,6 +448,56 @@ const ENGINE_SCALAR_FIELDS: Array<{
   },
 ];
 
+const WESTERN_ENGINE_SCALAR_FIELDS: Array<{
+  key:
+    | 'western_core_council_constitution'
+    | 'western_tier1_reasoning_laws'
+    | 'western_anti_cliche_rules'
+    | 'western_deep_audit_adjudicator_mandate'
+    | 'western_stage4_aligned_suggestions_prompt'
+    | 'western_stage4_fast_more_suggestions_prompt';
+  title: string;
+  subtitle: string;
+  rows: number;
+}> = [
+  {
+    key: 'western_core_council_constitution',
+    title: 'Western Council Constitution',
+    subtitle: 'Tropical Placidus grounding, calm strategic counsel, and strict anti-extraction security directives.',
+    rows: 6,
+  },
+  {
+    key: 'western_tier1_reasoning_laws',
+    title: 'Western Tier-1 Adjudication Laws',
+    subtitle: 'Sect (Day/Night), Essential Dignity, Chart Ruler, Tight Aspect Orbs (<=2°), and 5-Tier Truth Gate hierarchy.',
+    rows: 9,
+  },
+  {
+    key: 'western_anti_cliche_rules',
+    title: 'Western Voice & Anti-Cliché Guardrails',
+    subtitle: 'Zero Vedic/Sidereal drift, zero astrology clichés, and grounded Western Psychological/Hellenistic cadence.',
+    rows: 6,
+  },
+  {
+    key: 'western_deep_audit_adjudicator_mandate',
+    title: 'Western Deep Audit Adjudicator Mandate',
+    subtitle: 'Synthesizes the 4 parallel Western lenses cleanly without mentioning internal machinery.',
+    rows: 6,
+  },
+  {
+    key: 'western_stage4_aligned_suggestions_prompt',
+    title: 'Western Stage 4 Aligned Suggestions Prompt',
+    subtitle: 'Generates Tropical chart-aligned Follow-Ups and Deeper Analysis cards seeded from localized playbooks.',
+    rows: 7,
+  },
+  {
+    key: 'western_stage4_fast_more_suggestions_prompt',
+    title: 'Western Stage 4 "Load More" Fast Suggestions Prompt',
+    subtitle: 'Prompt template used when Western consultation users click "Load more" under Suggestions.',
+    rows: 5,
+  },
+];
+
 const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
   getAccessToken,
   modelOptions = [],
@@ -458,8 +535,10 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
   // Engine & Playbook state
   const [engineDefaults, setEngineDefaults] = useState<EnginePromptBundle | null>(null);
   const [engineOverrides, setEngineOverrides] = useState<EnginePromptOverridesState>({});
+  const [engineTraditionTab, setEngineTraditionTab] = useState<'vedic' | 'western'>('vedic');
   const [expandedEngineSection, setExpandedEngineSection] = useState<Record<string, boolean>>({
     core_council_constitution: true,
+    western_core_council_constitution: true,
   });
   const [savingEngine, setSavingEngine] = useState(false);
 
@@ -1844,6 +1923,43 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                             ]}
                           />
                         </div>
+
+                        <div className="space-y-1.5 sm:col-span-2">
+                          <span className="text-xs font-medium text-[#5C5449]">
+                            Chat Numeric &amp; Telemetry Font
+                          </span>
+                          <CustomSelect
+                            value={config.chat_numeric_font || 'dm_sans'}
+                            onChange={(val) =>
+                              setConfig({
+                                ...config,
+                                chat_numeric_font: val as ChatNumericFont,
+                              })
+                            }
+                            ariaLabel="Chat numeric and telemetry font"
+                            surface="canvas"
+                            className="w-full"
+                            options={CHAT_NUMERIC_FONT_OPTIONS.map((o) => ({
+                              value: o.value,
+                              label: o.label,
+                            }))}
+                          />
+                          {(() => {
+                            const selectedFont = config.chat_numeric_font || 'dm_sans';
+                            const cls =
+                              CHAT_NUMERIC_FONT_CLASSES[selectedFont] ||
+                              CHAT_NUMERIC_FONT_CLASSES.dm_sans;
+                            return (
+                              <p className="rounded-xl border border-[#3D3830]/10 bg-[#FAF7F2] px-3 py-1.5 text-xs text-[#5C5449]">
+                                Live preview: Until December{' '}
+                                <span className={`${cls} text-[#3D3830]`}>2028</span> (started February{' '}
+                                <span className={`${cls} text-[#3D3830]`}>2026</span>) ·{' '}
+                                <span className={`${cls} text-[#3D3830]`}>14°22&apos;</span> ·{' '}
+                                <span className={`${cls} text-[#3D3830]`}>5/5</span>
+                              </p>
+                            );
+                          })()}
+                        </div>
                       </div>
 
                       {/* Ordering Lists */}
@@ -2206,7 +2322,7 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                       </span>
                     </div>
                     <p className="text-xs text-[#8B8275] mt-0.5 max-w-2xl">
-                      Drag cards to reorder priority. All enabled blocks combine automatically as <span className="font-mono">RULE #1, RULE #2...</span> at runtime for this guide.
+                      Drag cards to reorder priority. All enabled blocks combine automatically as <span className="font-mono">RULE #1, RULE #2...</span> at runtime for this guide. For global Vedic/Western rules across all modes, you can also edit <span className="font-medium text-[#5C5449]">Tier 1 Laws</span> or <span className="font-medium text-[#5C5449]">Format Contracts</span> in the Engine Contracts tab.
                     </p>
                   </div>
 
@@ -2693,10 +2809,34 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                         Underlying Engine Prompts, Laws &amp; Contracts
                       </h3>
                       <p className="text-xs text-[#8B8275] mt-0.5 max-w-2xl">
-                        Every hardcoded prompt across the Council, Vedic Astrologer Stages 1–4, Deep Audit, Companion, and Clarity engines is editable here with instant code-default fallback.
+                        Every hardcoded prompt across the Council, Vedic &amp; Western Tropical Stages 1–4, Deep Audit, Companion, and Clarity engines is editable here with instant code-default fallback.
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="inline-flex items-center rounded-xl bg-[#F1ECE3] p-1">
+                        <button
+                          type="button"
+                          onClick={() => setEngineTraditionTab('vedic')}
+                          className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                            engineTraditionTab === 'vedic'
+                              ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                              : 'text-[#5C5449] hover:text-[#3D3830]'
+                          }`}
+                        >
+                          Vedic &amp; Shared Engine
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEngineTraditionTab('western')}
+                          className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                            engineTraditionTab === 'western'
+                              ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                              : 'text-[#5C5449] hover:text-[#3D3830]'
+                          }`}
+                        >
+                          Western Tropical Engine
+                        </button>
+                      </div>
                       <button
                         type="button"
                         disabled={savingEngine}
@@ -2720,7 +2860,10 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
 
                   {/* Scalar Engine Prompt Accordions */}
                   <div className="space-y-2.5">
-                    {ENGINE_SCALAR_FIELDS.map((field) => {
+                    {(engineTraditionTab === 'western'
+                      ? WESTERN_ENGINE_SCALAR_FIELDS
+                      : ENGINE_SCALAR_FIELDS
+                    ).map((field) => {
                       const overrideVal = engineOverrides[field.key];
                       const isCustomized = Boolean(
                         typeof overrideVal === 'string' &&
@@ -2810,34 +2953,59 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                     })}
 
                     {/* Nested Record Groups: Intent Contracts, Fluency Instructions, Format Contracts, Deep Audit Lenses */}
-                    {(
-                      [
-                        {
-                          key: 'intent_output_contracts' as const,
-                          title: '5 Intent Output Contracts',
-                          subtitle:
-                            'CONVERSATIONAL, SOFT_HORIZON, HARD_DECISION, TIMING, and PEER_AUDIT structural contracts.',
-                        },
-                        {
-                          key: 'fluency_instructions' as const,
-                          title: '6 Fluency Ladder Instructions',
-                          subtitle:
-                            'Simple/Detailed x Beginner/Guided Bridge/Practitioner calibration directives.',
-                        },
-                        {
-                          key: 'format_contracts' as const,
-                          title: '3 Response Format Contracts',
-                          subtitle: 'dual_view, short, and detailed Observatory cards/tables formatting.',
-                        },
-                        {
-                          key: 'deep_audit_lenses' as const,
-                          title: '4 Deep Council Audit Lenses',
-                          subtitle:
-                            'parashari_divisional, kp_nadi, multi_clock_timing, and contrarian_auditor personas.',
-                        },
-                      ] as const
+                    {(engineTraditionTab === 'western'
+                      ? ([
+                          {
+                            key: 'western_intent_output_contracts' as const,
+                            title: '5 Western Intent Output Contracts',
+                            subtitle:
+                              'CONVERSATIONAL, SOFT_HORIZON, HARD_DECISION, TIMING, and PEER_AUDIT structural contracts for Western readings.',
+                          },
+                          {
+                            key: 'western_fluency_instructions' as const,
+                            title: '6 Western Fluency Ladder Instructions',
+                            subtitle:
+                              'Simple/Detailed x Beginner/Guided Bridge/Practitioner calibration directives for Tropical astrology.',
+                          },
+                          {
+                            key: 'western_format_contracts' as const,
+                            title: '3 Western Response Format Contracts',
+                            subtitle: 'dual_view, short, and detailed Western Observatory cards/tables formatting.',
+                          },
+                          {
+                            key: 'western_deep_audit_lenses' as const,
+                            title: '4 Western Deep Audit Lenses',
+                            subtitle:
+                              'hellenistic_sect_dignity, modern_psychological_aspects, multi_clock_western_timing, and contrarian_auditor personas.',
+                          },
+                        ] as const)
+                      : ([
+                          {
+                            key: 'intent_output_contracts' as const,
+                            title: '5 Intent Output Contracts',
+                            subtitle:
+                              'CONVERSATIONAL, SOFT_HORIZON, HARD_DECISION, TIMING, and PEER_AUDIT structural contracts.',
+                          },
+                          {
+                            key: 'fluency_instructions' as const,
+                            title: '6 Fluency Ladder Instructions',
+                            subtitle:
+                              'Simple/Detailed x Beginner/Guided Bridge/Practitioner calibration directives.',
+                          },
+                          {
+                            key: 'format_contracts' as const,
+                            title: '3 Response Format Contracts',
+                            subtitle: 'dual_view, short, and detailed Observatory cards/tables formatting.',
+                          },
+                          {
+                            key: 'deep_audit_lenses' as const,
+                            title: '4 Deep Council Audit Lenses',
+                            subtitle:
+                              'parashari_divisional, kp_nadi, multi_clock_timing, and contrarian_auditor personas.',
+                          },
+                        ] as const)
                     ).map((group) => {
-                      const defaultsMap = engineDefaults[group.key];
+                      const defaultsMap = engineDefaults[group.key] || {};
                       const overridesMap = engineOverrides[group.key] || {};
                       const subKeys = Object.keys(defaultsMap);
                       const customCount = subKeys.filter(

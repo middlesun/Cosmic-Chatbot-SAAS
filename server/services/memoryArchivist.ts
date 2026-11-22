@@ -430,7 +430,7 @@ export async function rebuildProfileMemory(
           content: `Summarize the longitudinal consultation memory for profile "${profile.name}" from these recent active consultation excerpts.
 Focus strictly on:
 - Key life events, goals, or decisions the user shared (e.g., marriage, career change, relocation, health focus).
-- Major astrological themes and Dasha/transit periods already explored so future sessions remain coherent without repeating basics.
+- Major astrological themes and active timing cycles (Dasha, Annual Profection, Progressions, or Transit periods) already explored so future sessions remain coherent without repeating basics.
 Keep the summary under 220 words in concise bullet points.
 
 TRANSCRIPT EXCERPTS:

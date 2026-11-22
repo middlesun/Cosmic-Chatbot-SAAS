@@ -73,7 +73,7 @@ function buildWesternTestChart(name = 'Western QA Chart'): CompiledChartData {
   // - Diurnal chart (Sun in H10)
   // - Cazimi Mercury (within 0.2° of Sun)
   // - Mutual Reception (Venus in Aries <-> Mars in Taurus)
-  // - T-Square (Sun 105.2° Cancer opp Saturn 285.5° Capricorn, apex Uranus 15.4° Aries)
+  // - Grand Cross (Sun 105.2° Cancer opp Saturn 285.5° Capricorn, Uranus 15.4° Aries opp Pluto 195.2° Libra)
   // - Grand Trine Air (Moon 75.3° Gemini, Jupiter 315.4° Aquarius, Pluto 195.2° Libra)
   const birthDateISO = '1992-07-07';
   const birthTimeStr = '12:45:00';
@@ -256,8 +256,13 @@ async function runWesternBenchmark() {
     const coreAspects = w.aspects.filter((a) => a.orbTier === 'core_structural');
     assert.ok(coreAspects.length >= 2, 'Expected tight <=2.0° core_structural aspects');
     assert.ok(
-      (w.configurations || []).some((c) => c.type === 'T-Square'),
-      'Expected T-Square configuration (Sun-Saturn-Uranus)'
+      (w.configurations || []).some((c) => c.type === 'Grand Cross'),
+      'Expected Cardinal Grand Cross configuration (Sun-Saturn-Uranus-Pluto)'
+    );
+    assert.equal(
+      (w.configurations || []).filter((c) => c.type === 'T-Square').length,
+      0,
+      'Grand Cross planets must not emit 4 redundant T-Squares'
     );
     assert.ok(
       (w.configurations || []).some((c) => c.type === 'Grand Trine'),
@@ -430,6 +435,7 @@ async function runWesternBenchmark() {
     assert.ok(pkg.priorityRule.slug.startsWith('w_prio_'));
     assert.ok(Array.isArray(pkg.chartSlice.partners));
     assert.ok(pkg.timingWidgets && pkg.timingWidgets.length === 4);
+    assert.ok(pkg.metrics.reductionPct > 0, `Expected positive Western reductionPct, got ${pkg.metrics.reductionPct}`);
     assertZeroVedicLeakage(pkg.renderedPromptContext, 'Stage 2 renderedPromptContext');
     assertZeroVedicLeakage(JSON.stringify(pkg.chartSlice), 'Stage 2 chartSlice');
 

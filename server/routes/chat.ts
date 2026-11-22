@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Router } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
+import { sanitizeHumanCallName } from '../services/abuseGuard';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import {
   PROMPT_EXTRACTION_REFUSAL,
@@ -15,7 +16,7 @@ import {
   type MessageSuggestions,
 } from '../services/geminiOrchestrator';
 import { isAstrologyApiConfigured } from '../services/astrologyApi';
-import { compileBirthChart, type CompiledChartData } from '../services/chartCompiler';
+import { compileBirthChart, enrichCompiledChart, type CompiledChartData } from '../services/chartCompiler';
 import {
   rebuildProfileMemory,
   updateProfileMemoryAfterTurn,
@@ -43,7 +44,12 @@ import {
   mergeLifeContextPatch,
   type LifeContextData,
 } from '../services/lifeContextGuard';
-import type { NatalTruthDossierV1 } from '../services/natalDossier';
+import {
+  buildNatalTruthDossierLayerA,
+  buildWesternTruthDossier,
+  CURRENT_NATAL_DOSSIER_VERSION,
+  type NatalTruthDossierV1,
+} from '../services/natalDossier';
 import {
   generateAlignedStage4Suggestions,
   generateFastMoreStage4Suggestions,
@@ -683,7 +689,10 @@ router.post('/companions/match', requireAuth, async (req: AuthenticatedRequest, 
       : [],
     userAgeHint,
     userGenderHint,
-    preferredCallName: req.appUser.preferred_call_name || req.appUser.full_name || null,
+    preferredCallName:
+      sanitizeHumanCallName(req.appUser.preferred_call_name) ||
+      sanitizeHumanCallName(req.appUser.full_name) ||
+      null,
   });
 
   res.json({ companions });
@@ -822,18 +831,51 @@ router.delete('/conversations/:id', requireAuth, async (req: AuthenticatedReques
     return;
   }
 
-  const { error } = await supabaseAdmin
+  const convId = String(req.params.id || '').trim();
+  if (!convId) {
+    res.status(400).json({ error: 'Consultation ID is required' });
+    return;
+  }
+
+  const { data: existingConv, error: lookupError } = await supabaseAdmin
+    .from('conversations')
+    .select('id')
+    .eq('id', convId)
+    .eq('user_id', req.appUser.id)
+    .maybeSingle();
+
+  if (lookupError) {
+    res.status(500).json({ error: 'Failed to verify consultation ownership' });
+    return;
+  }
+
+  if (!existingConv) {
+    res.status(404).json({ error: 'Consultation not found' });
+    return;
+  }
+
+  // Clear self-referencing parent_message_id links before deleting child messages to avoid FK trigger edge cases
+  await supabaseAdmin
+    .from('messages')
+    .update({ parent_message_id: null })
+    .eq('conversation_id', convId);
+
+  await supabaseAdmin.from('messages').delete().eq('conversation_id', convId);
+  await supabaseAdmin.from('chatbot_pipeline_logs').delete().eq('conversation_id', convId);
+
+  const { data: deletedRows, error } = await supabaseAdmin
     .from('conversations')
     .delete()
-    .eq('id', req.params.id)
-    .eq('user_id', req.appUser.id);
+    .eq('id', convId)
+    .eq('user_id', req.appUser.id)
+    .select('id');
 
-  if (error) {
+  if (error || !deletedRows || deletedRows.length === 0) {
     res.status(500).json({ error: 'Failed to delete consultation' });
     return;
   }
 
-  res.json({ deleted: true });
+  res.json({ deleted: true, id: convId });
 });
 
 // 6. Get paginated messages for a conversation (supports ?limit=40&before=<ISO>)
@@ -1429,6 +1471,61 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       }
     }
 
+    if (
+      prof &&
+      isWesternCouncilTurn &&
+      prof.chart_json &&
+      !prof.natal_truth_dossier_json?.western_dossier
+    ) {
+      try {
+        const enriched = enrichCompiledChart(prof.chart_json);
+        const existingDossier =
+          prof.natal_truth_dossier_json && typeof prof.natal_truth_dossier_json === 'object'
+            ? prof.natal_truth_dossier_json
+            : null;
+        const layerA =
+          existingDossier?.layer_a ||
+          buildNatalTruthDossierLayerA(
+            enriched.chartJson,
+            (prof.life_context_json as LifeContextData) || undefined
+          );
+        const westernDossier = buildWesternTruthDossier(
+          enriched.chartJson,
+          (prof.life_context_json as LifeContextData) || undefined
+        );
+        const nextDossier: NatalTruthDossierV1 = {
+          version: CURRENT_NATAL_DOSSIER_VERSION,
+          generated_at: existingDossier?.generated_at || new Date().toISOString(),
+          layer_a: layerA,
+          layer_b: existingDossier?.layer_b ?? null,
+          western_dossier: westernDossier,
+        };
+        prof.chart_json = enriched.chartJson;
+        prof.natal_truth_dossier_json = nextDossier;
+
+        const profileIdToPatch = prof.id;
+        const userIdToPatch = req.appUser.id;
+        const bgPatch: Record<string, unknown> = {
+          natal_truth_dossier_json: nextDossier,
+          natal_dossier_version: CURRENT_NATAL_DOSSIER_VERSION,
+          updated_at: new Date().toISOString(),
+        };
+        if (enriched.wasEnriched) {
+          bgPatch.chart_json = enriched.chartJson;
+          bgPatch.chart_text_context = enriched.chartTextContext;
+        }
+        scheduleBackgroundTask(async () => {
+          await supabaseAdmin
+            .from('profiles')
+            .update(bgPatch)
+            .eq('id', profileIdToPatch)
+            .eq('user_id', userIdToPatch);
+        });
+      } catch {
+        // Proceed gracefully even if lazy dossier enrichment fails
+      }
+    }
+
     profileData = prof || null;
   } else if (activePillar === 'council' && conversation.use_full_profile_memory) {
     const targetModeType =
@@ -1966,7 +2063,10 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       languageSlug,
       toneMode: normalizedToneMode,
       responseLength: normalizedResponseLength,
-      preferredCallName: req.appUser.preferred_call_name || req.appUser.full_name || null,
+      preferredCallName:
+        sanitizeHumanCallName(req.appUser.preferred_call_name) ||
+        sanitizeHumanCallName(req.appUser.full_name) ||
+        null,
       stage1Decision,
       userPriorFluency: req.appUser.sutra_user_profile_json?.inferred_fluency || null,
       deepAudit: useDeepAudit,
@@ -2749,7 +2849,8 @@ router.post('/tools', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const { toolSlug, inputText, modeSlug, languageSlug, profileId } = req.body || {};
+  const { toolSlug, inputText, modeSlug, languageSlug, profileId, expertSlug, tradition } =
+    req.body || {};
   if (
     toolSlug !== 'question_generator' &&
     toolSlug !== 'prompt_expander' &&
@@ -2764,6 +2865,17 @@ router.post('/tools', requireAuth, async (req: AuthenticatedRequest, res) => {
     return;
   }
 
+  const safeExpertSlug =
+    typeof expertSlug === 'string' && expertSlug.trim()
+      ? normalizeCouncilSlug(expertSlug.trim())
+      : undefined;
+  const safeTradition: 'vedic' | 'western' | undefined =
+    tradition === 'western' || tradition === 'vedic'
+      ? tradition
+      : safeExpertSlug === 'western_astrologer' || safeExpertSlug === 'modern_astrologer'
+      ? 'western'
+      : undefined;
+
   try {
     const result = await runQuickTool({
       toolSlug,
@@ -2772,6 +2884,8 @@ router.post('/tools', requireAuth, async (req: AuthenticatedRequest, res) => {
       languageSlug: typeof languageSlug === 'string' ? languageSlug : req.appUser.default_language,
       profileId: typeof profileId === 'string' ? profileId : null,
       userId: req.appUser.id,
+      expertSlug: safeExpertSlug,
+      tradition: safeTradition,
     });
     res.json(result);
   } catch (err) {

@@ -2564,37 +2564,13 @@ function detectWesternAspectConfigurations(
         ((asp.bodyA === a && asp.bodyB === b) || (asp.bodyA === b && asp.bodyB === a))
     );
 
-  // 1. T-Squares (Opposition + two Squares to Apex)
   const oppositions = aspects.filter(
     (a) => a.aspect === 'Opposition' && a.bodyA !== 'North Node' && a.bodyB !== 'North Node'
   );
-  const tSquareKeys = new Set<string>();
-  for (const opp of oppositions) {
-    for (const candidate of coreBodies) {
-      if (candidate.name === opp.bodyA || candidate.name === opp.bodyB) continue;
-      const sq1 = hasAspect(opp.bodyA, candidate.name, 'Square');
-      const sq2 = hasAspect(opp.bodyB, candidate.name, 'Square');
-      if (sq1 && sq2) {
-        const trio = [opp.bodyA, opp.bodyB, candidate.name];
-        const key = `${[...trio].sort().join('+')}:${candidate.name}`;
-        if (tSquareKeys.has(key)) continue;
-        tSquareKeys.add(key);
-        const maxOrb = Math.max(opp.orb, sq1.orb, sq2.orb);
-        configs.push({
-          type: 'T-Square',
-          planets: trio,
-          apex: candidate.name,
-          elementOrModality: candidate.modality,
-          houseOrSign: `${candidate.sign} H${candidate.house}`,
-          maxOrb: Number(maxOrb.toFixed(2)),
-          summary: `${candidate.modality} T-Square: ${opp.bodyA} opposite ${opp.bodyB} squaring apex ${candidate.name} (${candidate.sign} H${candidate.house}, max orb ${maxOrb.toFixed(1)}°).`,
-        });
-      }
-    }
-  }
 
-  // 2. Grand Crosses (2 Oppositions mutually Square)
+  // 1. Grand Crosses first (2 Oppositions mutually Square) so overlapping 3-planet T-Squares are not emitted redundantly
   const gcKeys = new Set<string>();
+  const grandCrossSets: Array<Set<string>> = [];
   for (let i = 0; i < oppositions.length; i++) {
     for (let j = i + 1; j < oppositions.length; j++) {
       const o1 = oppositions[i];
@@ -2609,6 +2585,7 @@ function detectWesternAspectConfigurations(
         const key = [...four].sort().join('+');
         if (gcKeys.has(key)) continue;
         gcKeys.add(key);
+        grandCrossSets.push(new Set(four));
         const mod = planetByName.get(o1.bodyA)?.modality || 'Cardinal';
         const maxOrb = Math.max(o1.orb, o2.orb, s1.orb, s2.orb, s3.orb, s4.orb);
         configs.push({
@@ -2617,6 +2594,39 @@ function detectWesternAspectConfigurations(
           elementOrModality: mod,
           maxOrb: Number(maxOrb.toFixed(2)),
           summary: `${mod} Grand Cross linking ${four.join(', ')} (max orb ${maxOrb.toFixed(1)}°).`,
+        });
+      }
+    }
+  }
+
+  // 2. T-Squares (Opposition + two Squares to Apex, skipping trios already contained in a Grand Cross)
+  const tSquareKeys = new Set<string>();
+  for (const opp of oppositions) {
+    for (const candidate of coreBodies) {
+      if (candidate.name === opp.bodyA || candidate.name === opp.bodyB) continue;
+      const sq1 = hasAspect(opp.bodyA, candidate.name, 'Square');
+      const sq2 = hasAspect(opp.bodyB, candidate.name, 'Square');
+      if (sq1 && sq2) {
+        if (
+          grandCrossSets.some(
+            (gc) => gc.has(opp.bodyA) && gc.has(opp.bodyB) && gc.has(candidate.name)
+          )
+        ) {
+          continue;
+        }
+        const trio = [opp.bodyA, opp.bodyB, candidate.name];
+        const key = `${[...trio].sort().join('+')}:${candidate.name}`;
+        if (tSquareKeys.has(key)) continue;
+        tSquareKeys.add(key);
+        const maxOrb = Math.max(opp.orb, sq1.orb, sq2.orb);
+        configs.push({
+          type: 'T-Square',
+          planets: trio,
+          apex: candidate.name,
+          elementOrModality: candidate.modality,
+          houseOrSign: `${candidate.sign} H${candidate.house}`,
+          maxOrb: Number(maxOrb.toFixed(2)),
+          summary: `${candidate.modality} T-Square: ${opp.bodyA} opposite ${opp.bodyB} squaring apex ${candidate.name} (${candidate.sign} H${candidate.house}, max orb ${maxOrb.toFixed(1)}°).`,
         });
       }
     }
@@ -3207,6 +3217,7 @@ export interface SlowPlanetTransitPair {
   currentSign: string;
   currentDegreeInSign: number;
   isRetrograde: boolean;
+  currentSignEntryApproxDate?: string;
   nextSignIndex: number;
   nextSign: string;
   nextIngressApproxDate: string;
@@ -4276,8 +4287,30 @@ export function computeSlowPlanetTransitPairs(
       daysUntilIngress = foundDay;
     }
 
+    // Also locate when the planet most recently entered its current sign (stepping backward)
+    let daysSinceEntry: number | null = null;
+    for (let day = 7; day <= maxDays; day += 7) {
+      const lon = computeSiderealSlowLongitudesAtJD(baseJd - day)[pName];
+      const sIdx = Math.floor(lon / 30) % 12;
+      if (sIdx !== currentSignIndex) {
+        for (let fine = Math.max(1, day - 7); fine <= day; fine++) {
+          const fineLon = computeSiderealSlowLongitudesAtJD(baseJd - fine)[pName];
+          const fineSign = Math.floor(fineLon / 30) % 12;
+          if (fineSign !== currentSignIndex) {
+            daysSinceEntry = Math.max(1, fine - 1);
+            break;
+          }
+        }
+        break;
+      }
+    }
+
     const baseMs = Date.parse(`${transitDateISO}T12:00:00Z`) || Date.now();
     const ingressDate = new Date(baseMs + daysUntilIngress * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const entryDate =
+      daysSinceEntry !== null
+        ? new Date(baseMs - daysSinceEntry * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        : undefined;
 
     return {
       planet: pName,
@@ -4285,6 +4318,7 @@ export function computeSlowPlanetTransitPairs(
       currentSign: SIGNS[currentSignIndex],
       currentDegreeInSign: Number(currentDegreeInSign.toFixed(2)),
       isRetrograde,
+      ...(entryDate ? { currentSignEntryApproxDate: entryDate } : {}),
       nextSignIndex,
       nextSign: SIGNS[nextSignIndex],
       nextIngressApproxDate: ingressDate,

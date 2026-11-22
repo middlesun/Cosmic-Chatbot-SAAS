@@ -21,6 +21,16 @@ import {
   DEFAULT_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
   DEFAULT_VEDIC_ANTI_CLICHE_RULES,
   DEFAULT_VEDIC_TIER1_REASONING_LAWS,
+  WESTERN_ANTI_CLICHE_RULES,
+  WESTERN_CORE_COUNCIL_CONSTITUTION,
+  WESTERN_DEEP_AUDIT_ADJUDICATOR_MANDATE,
+  WESTERN_DEEP_AUDIT_LENSES,
+  WESTERN_FLUENCY_INSTRUCTIONS,
+  WESTERN_FORMAT_CONTRACTS,
+  WESTERN_INTENT_OUTPUT_CONTRACTS,
+  WESTERN_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
+  WESTERN_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
+  WESTERN_TIER1_REASONING_LAWS,
   getGuideCatalogMeta,
   GUIDE_SLUGS,
   isValidGuideSlug,
@@ -71,6 +81,30 @@ export interface ChatbotFeaturesConfig {
   memory_summary: boolean;
 }
 
+export type ChatNumericFont =
+  | 'dm_sans'
+  | 'inter'
+  | 'plus_jakarta'
+  | 'roboto'
+  | 'cormorant'
+  | 'jetbrains_mono';
+
+export const ALLOWED_CHAT_NUMERIC_FONTS: readonly ChatNumericFont[] = [
+  'dm_sans',
+  'inter',
+  'plus_jakarta',
+  'roboto',
+  'cormorant',
+  'jetbrains_mono',
+] as const;
+
+export function normalizeChatNumericFont(raw: unknown): ChatNumericFont {
+  if (typeof raw === 'string' && (ALLOWED_CHAT_NUMERIC_FONTS as readonly string[]).includes(raw)) {
+    return raw as ChatNumericFont;
+  }
+  return 'dm_sans';
+}
+
 export interface ChatbotConfig {
   welcome_title: string;
   welcome_subtitle: string;
@@ -82,6 +116,7 @@ export interface ChatbotConfig {
   default_language: string;
   default_tone: 'friendly' | 'technical';
   default_response_length: 'short' | 'detailed';
+  chat_numeric_font: ChatNumericFont;
   expert_order: string[];
   mode_order: string[];
   language_order: string[];
@@ -141,6 +176,16 @@ export interface EnginePromptOverrides {
   deep_audit_adjudicator_mandate?: string;
   stage4_aligned_suggestions_prompt?: string;
   stage4_fast_more_suggestions_prompt?: string;
+  western_core_council_constitution?: string;
+  western_tier1_reasoning_laws?: string;
+  western_anti_cliche_rules?: string;
+  western_intent_output_contracts?: Partial<Record<keyof typeof WESTERN_INTENT_OUTPUT_CONTRACTS, string>>;
+  western_fluency_instructions?: Partial<Record<keyof typeof WESTERN_FLUENCY_INSTRUCTIONS, string>>;
+  western_format_contracts?: Partial<Record<keyof typeof WESTERN_FORMAT_CONTRACTS, string>>;
+  western_deep_audit_lenses?: Partial<Record<keyof typeof WESTERN_DEEP_AUDIT_LENSES, string>>;
+  western_deep_audit_adjudicator_mandate?: string;
+  western_stage4_aligned_suggestions_prompt?: string;
+  western_stage4_fast_more_suggestions_prompt?: string;
 }
 
 export interface PlaybookOverrideEntry {
@@ -253,9 +298,9 @@ export const BUILTIN_MODEL_SUGGESTIONS: CustomModelEntry[] = [
 
 export const DEFAULT_CONVERSATIONAL_RULES = `CONVERSATIONAL NATURALNESS & CONTINUITY:
 - Respond like an attentive, warm Vedic astrologer in a live 1-on-1 conversation — NEVER like a formal email or templated letter.
-- NEVER begin messages with letter salutations such as "Hello [Name],", "Hi [Name],", "Dear [Name],", or "Namaste [Name]," at the top of your reply.
+- NEVER begin messages with "Prediction", "Prediction:", ":::prediction", ":::analysis", or letter salutations such as "Yes, [Name],", "Hello [Name],", "Hi [Name],", "Dear [Name],", or "Namaste [Name]," at the top of your reply.
+- NEVER address or repeat the user's name, email ID, or company/account name across turns — speak naturally directly with "you" and "your".
 - Jump directly into answering the user's question with calm clarity. On follow-up turns, pick up the thread seamlessly without re-introducing yourself or repeating prior framing.
-- If you know the user's preferred name, weave it in only occasionally and organically inside a sentence (at most once across several turns, and never as an opening greeting header).
 - Avoid rigid corporate phrasing ("Executive Synthesis", "In conclusion", "As an AI"). Keep headings clean and natural when structured sections genuinely help readability.`;
 
 export const DEFAULT_AI_SETTINGS: AiSettingsConfig = {
@@ -268,13 +313,18 @@ export const DEFAULT_AI_SETTINGS: AiSettingsConfig = {
   chatbot_pipeline_logging_enabled: false,
   custom_models: [],
   token_limits: {
-    chat_short: 600,
-    chat_detailed: 2600,
-    report_pass: 4500,
+    chat_short: 800,
+    chat_detailed: 4800,
+    report_pass: 4800,
     utility: 800,
     max_history_turns: 24,
   },
 };
+
+export const DEFAULT_TIMING_BRACKET_DATES_RULE = `TIMING DATE RANGE RULE (STRICT — BIDIRECTIONAL & SAME FORMAT):
+- Whenever you mention the END date of ANY Dasha (Mahadasha, Chara Dasha), Antardasha, Pratyantardasha, or Transit (Gochar / Profection / Progression) — in prose, bullets, or tables — ALWAYS mention its starting date in brackets immediately beside the end date (e.g., "until December 2028 (started February 2026)", "until Dec 2028 (started Feb 2026)", or "ends 30th March 2027 (started 28th Jan 2026)").
+- Whenever you mention the START date of ANY Dasha, Antardasha, Pratyantardasha, or Transit — ALWAYS mention its ending date in brackets immediately beside the start date (e.g., "started 28th Jan 2026 (ends 30th March 2027)", "started Feb 2026 (ends Dec 2028)", or "started November 2025 (ends December 2028)").
+- ALWAYS format the date inside the brackets in the EXACT SAME date format as the date you wrote in that sentence or table (Month YYYY <-> Month YYYY, Mon YYYY <-> Mon YYYY, DDth Mon YYYY <-> DDth Mon YYYY, DD Mon YYYY <-> DD Mon YYYY, YYYY-MM-DD <-> YYYY-MM-DD). Never mix formats or cite an unbracketed start/end date alone.`;
 
 export const DEFAULT_CHATBOT_CONFIG: ChatbotConfig = {
   welcome_title: "I'm ready",
@@ -288,6 +338,7 @@ export const DEFAULT_CHATBOT_CONFIG: ChatbotConfig = {
   default_language: 'English',
   default_tone: 'technical',
   default_response_length: 'detailed',
+  chat_numeric_font: 'dm_sans',
   expert_order: [
     DEFAULT_COUNCIL_EXPERT_SLUG,
     'western_astrologer',
@@ -312,21 +363,23 @@ export const DEFAULT_CHATBOT_CONFIG: ChatbotConfig = {
 };
 
 export const DEFAULT_FOLLOWUPS_RULES = `FOLLOW-UP SUGGESTIONS ("followups"):
-- Generate natural, plain-English next questions that directly continue the user's real-life curiosity from this exact exchange.
+- Generate natural, plain-English next questions that stay TIGHTLY anchored to the user's LAST question and your just-delivered answer.
+- NEVER jump to unrelated life areas (e.g., marriage, job promotion, contracts) unless the user asked about them in this exact exchange.
 - Keep each question crisp (8–16 words), conversational, and genuinely helpful to an everyday non-technical user.
 - Match the active conversation language strictly (English, Hindi, or Hinglish).
 - Never number them, never repeat what was already answered, and avoid fear-based phrasing.`;
 
 export const DEFAULT_DEEPER_ANALYSIS_RULES = `DEEPER ANALYSIS SUGGESTIONS ("deeper_analysis"):
 - Act as an autonomous Grandmaster specialist in the active Council discipline (Vedic Jyotish, Tropical Western, Modern Psychological Astrology, Tarot, or Numerology).
-- Look beyond what was just answered and identify 3–4 high-value, distinct analytical layers that would stress-test, cross-verify, or unlock precision on the user's exact topic:
-  • For Vedic Astrologer: autonomously draw from KP Cuspal Sub-Lords & ABCD significators, Divisional Charts (D9 Navamsa, D10 Dasamsa, D2/D4/D7/D12/D16/D24/D30/D60), Jaimini Chara Karakas / Upapada / Karakamsha, Ashtakavarga bindu validation (BAV/SAV), Yoga strengths & cancellations (Neecha Bhanga, Combustion, Retrograde, Kemadruma cancellation), Argala/Nadi karakatwa linkages, or Vimshottari Pratyantardasha + Gochar double-transit timing windows.
-  • For Western / Modern Astrologer: aspect geometry & tight orbs, house rulership chains, secondary progressions / transit timing windows, Nodal / Saturn / Chiron evolutionary themes, or relocation angles (using Current Location if present).
-  • For Tarot: clarifying card pull on a specific card or tension, shadow/subconscious dynamics, or practical action check.
-  • For Numerology: Karmic Debt / Master Number dynamics, Personal Year/Month/Day timing alignment, or Name Expression vs Life Path friction.
+- Stay STRICTLY focused on the exact planet, Dasha/transit window, house promise, or life question from this turn — go one analytical layer deeper into THIS topic rather than pivoting to unrelated chart features.
+- Draw 3–4 high-value verification probes that stress-test THIS exact conclusion:
+  • For Vedic Astrologer: check the relevant house's KP Cuspal Sub-Lord, Divisional confirmation (D9/D10/etc.), dispositor / Neecha Bhanga / cancellation strength, Ashtakavarga SAV/BAV bindus for that house, or upcoming Antardasha / Gochar triggers on that specific theme.
+  • For Western / Modern Astrologer: check tight aspect geometry, Placidus ruler & Sect role, Mutual Reception, or upcoming Profection / Progression / Transit timing for that exact theme.
+  • For Tarot: clarifying card pull on a specific card or tension, shadow/subconscious dynamics, or practical action check on the same question.
+  • For Numerology: Karmic Debt / Master Number dynamics, Personal Year/Month timing, or Name Expression interaction on the same question.
 - For EACH deeper_analysis item, provide:
-  1. "text": a clear, intriguing user-facing question (10–18 words) in the active language that pairs plain English with the specific lens (so beginners aren't intimidated while advanced users see immediate depth).
-  2. "technical_directive": a concise internal analytical directive (1–2 sentences in English) specifying the exact charts, rules, cancellations, or timing checks to perform if the user clicks it.`;
+  1. "text": a clear, intriguing user-facing question (10–18 words) in the active language directly tied to this question's topic.
+  2. "technical_directive": a concise internal analytical directive (1–2 sentences in English) specifying the exact charts, rules, cancellations, or timing checks to perform for THIS question.`;
 
 export const DEFAULT_SUGGESTIONS_CONFIG: SuggestionsConfig = {
   followups_enabled: true,
@@ -765,6 +818,7 @@ export async function getChatbotConfig(): Promise<ChatbotConfig> {
       stored?.default_response_length === 'short' || stored?.default_response_length === 'detailed'
         ? stored.default_response_length
         : DEFAULT_CHATBOT_CONFIG.default_response_length,
+    chat_numeric_font: normalizeChatNumericFont(stored?.chat_numeric_font),
     expert_order:
       Array.isArray(stored?.expert_order) && stored.expert_order.length > 0
         ? Array.from(new Set(stored.expert_order.map((s) => normalizeCouncilSlug(String(s)))))
@@ -889,7 +943,7 @@ export function buildDefaultModularRulesForGuide(
       },
     ];
   }
-  return [
+  const baseRules: ModularRuleBlock[] = [
     {
       id: 'default_conversational_naturalness',
       title: 'Conversational Naturalness & Continuity',
@@ -898,6 +952,21 @@ export function buildDefaultModularRulesForGuide(
       source_slug: null,
     },
   ];
+  if (
+    slug === DEFAULT_COUNCIL_EXPERT_SLUG ||
+    slug === 'western_astrologer' ||
+    slug === 'modern_astrologer' ||
+    slug === 'learn_astrology'
+  ) {
+    baseRules.push({
+      id: 'default_timing_bracket_dates',
+      title: 'Dasha, Antardasha & Transit Paired Bracket Dates',
+      body: DEFAULT_TIMING_BRACKET_DATES_RULE,
+      enabled: true,
+      source_slug: null,
+    });
+  }
+  return baseRules;
 }
 
 export async function getResolvedGuideConfig(rawSlug: string): Promise<ResolvedGuideConfig> {
@@ -1067,6 +1136,16 @@ export function getEnginePromptDefaultsBundle() {
     deep_audit_adjudicator_mandate: DEFAULT_DEEP_AUDIT_ADJUDICATOR_MANDATE,
     stage4_aligned_suggestions_prompt: DEFAULT_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
     stage4_fast_more_suggestions_prompt: DEFAULT_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
+    western_core_council_constitution: WESTERN_CORE_COUNCIL_CONSTITUTION,
+    western_tier1_reasoning_laws: WESTERN_TIER1_REASONING_LAWS,
+    western_anti_cliche_rules: WESTERN_ANTI_CLICHE_RULES,
+    western_intent_output_contracts: { ...WESTERN_INTENT_OUTPUT_CONTRACTS },
+    western_fluency_instructions: { ...WESTERN_FLUENCY_INSTRUCTIONS },
+    western_format_contracts: { ...WESTERN_FORMAT_CONTRACTS },
+    western_deep_audit_lenses: { ...WESTERN_DEEP_AUDIT_LENSES },
+    western_deep_audit_adjudicator_mandate: WESTERN_DEEP_AUDIT_ADJUDICATOR_MANDATE,
+    western_stage4_aligned_suggestions_prompt: WESTERN_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
+    western_stage4_fast_more_suggestions_prompt: WESTERN_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
   };
 }
 
@@ -1165,6 +1244,7 @@ export async function getPublicChatbotUiConfig() {
     default_language: cfg.default_language,
     default_tone: cfg.default_tone,
     default_response_length: cfg.default_response_length,
+    chat_numeric_font: cfg.chat_numeric_font,
     features: cfg.features,
     guide_overrides,
     companion_archetypes: publicCompanionArchetypes,

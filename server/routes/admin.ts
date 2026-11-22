@@ -37,6 +37,10 @@ import {
   DEFAULT_FORMAT_CONTRACTS,
   DEFAULT_VEDIC_ANTI_CLICHE_RULES,
   DEFAULT_VEDIC_TIER1_REASONING_LAWS,
+  WESTERN_ANTI_CLICHE_RULES,
+  WESTERN_CORE_COUNCIL_CONSTITUTION,
+  WESTERN_FORMAT_CONTRACTS,
+  WESTERN_TIER1_REASONING_LAWS,
   GUIDE_SLUGS,
   getGuideCatalogMeta,
   isValidGuideSlug,
@@ -2250,6 +2254,13 @@ router.put('/settings/chatbot', async (req: AuthenticatedRequest, res) => {
       body.default_response_length === 'short' || body.default_response_length === 'detailed'
         ? body.default_response_length
         : current.default_response_length,
+    chat_numeric_font:
+      typeof body.chat_numeric_font === 'string' &&
+      ['dm_sans', 'inter', 'plus_jakarta', 'roboto', 'cormorant', 'jetbrains_mono'].includes(
+        body.chat_numeric_font
+      )
+        ? body.chat_numeric_font
+        : current.chat_numeric_font,
     expert_order: Array.isArray(body.expert_order)
       ? Array.from(new Set(body.expert_order.map((s) => normalizeCouncilSlug(String(s))).filter(Boolean)))
       : current.expert_order,
@@ -2665,6 +2676,12 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     | 'deep_audit_adjudicator_mandate'
     | 'stage4_aligned_suggestions_prompt'
     | 'stage4_fast_more_suggestions_prompt'
+    | 'western_core_council_constitution'
+    | 'western_tier1_reasoning_laws'
+    | 'western_anti_cliche_rules'
+    | 'western_deep_audit_adjudicator_mandate'
+    | 'western_stage4_aligned_suggestions_prompt'
+    | 'western_stage4_fast_more_suggestions_prompt'
   > = [
     'core_council_constitution',
     'companion_constitution',
@@ -2676,6 +2693,12 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     'deep_audit_adjudicator_mandate',
     'stage4_aligned_suggestions_prompt',
     'stage4_fast_more_suggestions_prompt',
+    'western_core_council_constitution',
+    'western_tier1_reasoning_laws',
+    'western_anti_cliche_rules',
+    'western_deep_audit_adjudicator_mandate',
+    'western_stage4_aligned_suggestions_prompt',
+    'western_stage4_fast_more_suggestions_prompt',
   ];
 
   for (const key of scalarKeys) {
@@ -2690,12 +2713,23 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
   }
 
   const recordKeys: Array<
-    'intent_output_contracts' | 'fluency_instructions' | 'format_contracts' | 'deep_audit_lenses'
+    | 'intent_output_contracts'
+    | 'fluency_instructions'
+    | 'format_contracts'
+    | 'deep_audit_lenses'
+    | 'western_intent_output_contracts'
+    | 'western_fluency_instructions'
+    | 'western_format_contracts'
+    | 'western_deep_audit_lenses'
   > = [
     'intent_output_contracts',
     'fluency_instructions',
     'format_contracts',
     'deep_audit_lenses',
+    'western_intent_output_contracts',
+    'western_fluency_instructions',
+    'western_format_contracts',
+    'western_deep_audit_lenses',
   ];
 
   for (const rKey of recordKeys) {
@@ -3061,19 +3095,42 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
 
   const promptStack: Array<ReturnType<typeof makeStackItem>> = [];
   if (guideMeta.pillar === 'council') {
-    const hasCustomConst = Boolean(engineOverrides.core_council_constitution?.trim());
-    const constText =
-      engineOverrides.core_council_constitution?.trim() || DEFAULT_CORE_COUNCIL_CONSTITUTION;
-    promptStack.push(
-      makeStackItem(
-        1,
-        'Core Council Constitution (Anti-Extraction & Grounding)',
-        hasCustomConst ? 'Database' : 'Code Default',
-        hasCustomConst ? 'platform_settings.engine_prompt_overrides.core_council_constitution' : 'enginePromptDefaults.ts',
-        'Active',
-        constText
-      )
-    );
+    if (isWesternManifestGuide) {
+      const hasCustomWesternConst = Boolean(
+        engineOverrides.western_core_council_constitution?.trim()
+      );
+      const westernConstText =
+        engineOverrides.western_core_council_constitution?.trim() ||
+        WESTERN_CORE_COUNCIL_CONSTITUTION;
+      promptStack.push(
+        makeStackItem(
+          1,
+          'Western Council Constitution (Anti-Extraction & Tropical Grounding)',
+          hasCustomWesternConst ? 'Database' : 'Code Default',
+          hasCustomWesternConst
+            ? 'platform_settings.engine_prompt_overrides.western_core_council_constitution'
+            : 'enginePromptDefaults.ts',
+          'Active',
+          westernConstText
+        )
+      );
+    } else {
+      const hasCustomConst = Boolean(engineOverrides.core_council_constitution?.trim());
+      const constText =
+        engineOverrides.core_council_constitution?.trim() || DEFAULT_CORE_COUNCIL_CONSTITUTION;
+      promptStack.push(
+        makeStackItem(
+          1,
+          'Core Council Constitution (Anti-Extraction & Grounding)',
+          hasCustomConst ? 'Database' : 'Code Default',
+          hasCustomConst
+            ? 'platform_settings.engine_prompt_overrides.core_council_constitution'
+            : 'enginePromptDefaults.ts',
+          'Active',
+          constText
+        )
+      );
+    }
 
     const expertBody = systemPromptRow?.prompt_body || seedPrompt?.prompt_body || '';
     const isExpertModifiedFromSeed =
@@ -3089,7 +3146,52 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
       )
     );
 
-    if (guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG) {
+    if (isWesternManifestGuide) {
+      const hasWesternLaws = Boolean(engineOverrides.western_tier1_reasoning_laws?.trim());
+      promptStack.push(
+        makeStackItem(
+          3,
+          'Western Tier-1 Adjudication Laws & Truth Gate',
+          hasWesternLaws ? 'Database' : 'Code Default',
+          hasWesternLaws
+            ? 'platform_settings.engine_prompt_overrides.western_tier1_reasoning_laws'
+            : 'enginePromptDefaults.ts',
+          'Active',
+          engineOverrides.western_tier1_reasoning_laws?.trim() || WESTERN_TIER1_REASONING_LAWS
+        )
+      );
+
+      const hasWesternAntiCliche = Boolean(engineOverrides.western_anti_cliche_rules?.trim());
+      promptStack.push(
+        makeStackItem(
+          4,
+          'Western Voice & Anti-Cliché Guardrails',
+          hasWesternAntiCliche ? 'Database' : 'Code Default',
+          hasWesternAntiCliche
+            ? 'platform_settings.engine_prompt_overrides.western_anti_cliche_rules'
+            : 'enginePromptDefaults.ts',
+          'Active',
+          engineOverrides.western_anti_cliche_rules?.trim() || WESTERN_ANTI_CLICHE_RULES
+        )
+      );
+
+      const formatKey = (chatbotCfg.default_output === 'short' ? 'short' : 'detailed') as keyof typeof WESTERN_FORMAT_CONTRACTS;
+      const hasWesternFormat = Boolean(engineOverrides.western_format_contracts?.[formatKey]?.trim());
+      promptStack.push(
+        makeStackItem(
+          5,
+          `Western Format Contract (${chatbotCfg.default_output})`,
+          hasWesternFormat ? 'Database' : 'Code Default',
+          hasWesternFormat
+            ? 'platform_settings.engine_prompt_overrides.western_format_contracts'
+            : 'enginePromptDefaults.ts',
+          'Active',
+          engineOverrides.western_format_contracts?.[formatKey]?.trim() ||
+            WESTERN_FORMAT_CONTRACTS[formatKey] ||
+            WESTERN_FORMAT_CONTRACTS.detailed
+        )
+      );
+    } else if (guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG) {
       const hasLawsOverride = Boolean(engineOverrides.vedic_tier1_reasoning_laws?.trim());
       promptStack.push(
         makeStackItem(
@@ -3219,7 +3321,7 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
   }
   const rulesLower = guideCfg.combined_rules_text.toLowerCase();
   if (
-    guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG &&
+    isAstroPipelineManifestGuide &&
     (rulesLower.includes('no table') ||
       rulesLower.includes('never use table') ||
       rulesLower.includes('no heading') ||

@@ -30,6 +30,7 @@ import {
 } from './openrouter';
 import {
   getCoreCouncilConstitutionAsync,
+  getWesternCoreCouncilConstitutionAsync,
   resolvePromptModules,
 } from './promptDefaults';
 import {
@@ -69,9 +70,6 @@ import {
   type Stage1RoutingDecision,
 } from './intentRouter';
 import type { NatalTruthDossierV1 } from './natalDossier';
-import {
-  WESTERN_CORE_COUNCIL_CONSTITUTION,
-} from './enginePromptDefaults';
 import {
   buildShortReplyBreakdownInstruction,
   buildVedicPathAPrompt,
@@ -495,9 +493,12 @@ async function buildStaticSystemInstruction(params: {
     params.expertSlug === 'western_astrologer' || params.expertSlug === 'modern_astrologer';
   const isTarot = params.expertSlug === 'tarot_reader';
   const isNumerology = params.expertSlug === 'numerologist';
+  const westernConstitution = isWesternOrModern
+    ? await getWesternCoreCouncilConstitutionAsync()
+    : coreConstitution;
 
   const sections: string[] = [
-    isWesternOrModern ? WESTERN_CORE_COUNCIL_CONSTITUTION : coreConstitution,
+    isWesternOrModern ? westernConstitution : coreConstitution,
     guideCfg.combined_rules_text || '',
     primaryExpertPrompt,
     ...recipeBlocks,
@@ -539,12 +540,7 @@ async function buildStaticSystemInstruction(params: {
     );
   }
 
-  if (params.preferredCallName?.trim()) {
-    const safeName = params.preferredCallName.trim();
-    sections.push(
-      `USER NAME CONTEXT: The person you are speaking with goes by "${safeName}". NEVER start your message with "Hello ${safeName},", "Hi ${safeName},", "Dear ${safeName},", or any email-style salutation header. Respond directly to their question in natural conversation, and only weave their name in sparingly inside a sentence if it feels genuinely organic.`
-    );
-  }
+  // Speak naturally with "you/your" directly rather than addressing the user by name or account handle.
 
   if (params.turnCount > 0) {
     sections.push(
@@ -821,7 +817,8 @@ User's specific question: ${finalUserText}`;
     ]);
 
     const effectiveConstitution = isWesternCouncilTurn
-      ? WESTERN_CORE_COUNCIL_CONSTITUTION
+      ? engineOverrides.western_core_council_constitution?.trim() ||
+        (await getWesternCoreCouncilConstitutionAsync())
       : coreConstitution;
 
     const recipeSteps = activeModeRecipe
@@ -914,8 +911,8 @@ User's specific question: ${finalUserText}`;
 
     const vedicBaseTokens =
       responseLength === 'short'
-        ? Math.max(runtime.tokenLimits.chat_short + 350, 900)
-        : runtime.tokenLimits.chat_detailed;
+        ? Math.max(runtime.tokenLimits.chat_short + 400, 1200)
+        : Math.max(runtime.tokenLimits.chat_detailed, 4800);
 
     const currentLocationLabel = [
       params.profile.current_city,
@@ -1037,6 +1034,56 @@ User's specific question: ${finalUserText}`;
     );
 
     try {
+      const handlePathAChunk = (chunkText: string) => {
+        if (leakIntercepted) return;
+        rawAccumulated += chunkText;
+        if (containsInternalPromptLeak(rawAccumulated)) {
+          leakIntercepted = true;
+          pathAAbortController.abort();
+          return;
+        }
+        if (hiddenBreakdownHoldStarted) return;
+
+        const breakdownIdx = rawAccumulated.search(/<<<TECH_BREAKDOWN/i);
+        if (breakdownIdx !== -1) {
+          if (breakdownIdx > flushedLength) {
+            const beforeTag = sanitizeVedicProse(
+              rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, ''),
+              allowedTimingWidgetIds
+            );
+            if (beforeTag) params.onChunk(beforeTag);
+            flushedLength = breakdownIdx;
+          }
+          hiddenBreakdownHoldStarted = true;
+          return;
+        }
+
+        let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
+        if (safeEnd > flushedLength) {
+          const tentative = rawAccumulated.slice(flushedLength, safeEnd);
+          const trailingNative = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
+          if (trailingNative) {
+            safeEnd -= trailingNative[0].length;
+          } else {
+            const trailingMarker =
+              /(?:^|\r?\n)[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|(?:prediction|ediction|analysis)\b[ \t]*[:\-]?|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*)|\[\[?TIMING_BAR[^\]]*$/i.exec(
+                tentative
+              );
+            if (trailingMarker) {
+              safeEnd -= trailingMarker[0].length;
+            }
+          }
+          if (safeEnd > flushedLength) {
+            const toEmit = sanitizeVedicProse(
+              rawAccumulated.slice(flushedLength, safeEnd),
+              allowedTimingWidgetIds
+            );
+            flushedLength = safeEnd;
+            if (toEmit) params.onChunk(toEmit);
+          }
+        }
+      };
+
       const streamResult = await streamOpenRouterCompletion({
         model: vedicModel,
         system: pathAPrompt.systemInstruction,
@@ -1046,62 +1093,51 @@ User's specific question: ${finalUserText}`;
         ],
         maxTokens: vedicBaseTokens,
         abortSignal: pathAAbortController.signal,
-        onChunk: (chunkText) => {
-          if (leakIntercepted) return;
-          rawAccumulated += chunkText;
-          if (containsInternalPromptLeak(rawAccumulated)) {
-            leakIntercepted = true;
-            pathAAbortController.abort();
-            return;
-          }
-          if (hiddenBreakdownHoldStarted) return;
-
-          const breakdownIdx = rawAccumulated.search(/<<<TECH_BREAKDOWN/i);
-          if (breakdownIdx !== -1) {
-            if (breakdownIdx > flushedLength) {
-              const beforeTag = sanitizeVedicProse(
-                rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, ''),
-                allowedTimingWidgetIds
-              );
-              if (beforeTag) params.onChunk(beforeTag);
-              flushedLength = breakdownIdx;
-            }
-            hiddenBreakdownHoldStarted = true;
-            return;
-          }
-
-          let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
-          if (safeEnd > flushedLength) {
-            const tentative = rawAccumulated.slice(flushedLength, safeEnd);
-            const trailingNative = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
-            if (trailingNative) {
-              safeEnd -= trailingNative[0].length;
-            } else {
-              const trailingMarker = /(?:\r?\n[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*)|\[\[?TIMING_BAR[^\]]*)$/i.exec(
-                tentative
-              );
-              if (trailingMarker) {
-                safeEnd -= trailingMarker[0].length;
-              }
-            }
-            if (safeEnd > flushedLength) {
-              const toEmit = sanitizeVedicProse(
-                rawAccumulated.slice(flushedLength, safeEnd),
-                allowedTimingWidgetIds
-              );
-              flushedLength = safeEnd;
-              if (toEmit) params.onChunk(toEmit);
-            }
-          }
-        },
+        onChunk: handlePathAChunk,
       });
 
-      if (leakIntercepted || containsInternalPromptLeak(streamResult.fullText)) {
+      let contTokensIn = 0;
+      let contTokensOut = 0;
+      let contAborted = false;
+      if (
+        streamResult.finishReason === 'length' &&
+        !streamResult.aborted &&
+        !leakIntercepted &&
+        !hiddenBreakdownHoldStarted &&
+        rawAccumulated.trim().length > 0 &&
+        !/[.!?)"'\]\*\`]\s*$/.test(rawAccumulated)
+      ) {
+        const contResult = await streamOpenRouterCompletion({
+          model: vedicModel,
+          system: pathAPrompt.systemInstruction,
+          messages: [
+            ...historyOpenRouterMessages,
+            { role: 'user', content: finalUserText },
+            { role: 'assistant', content: rawAccumulated },
+            {
+              role: 'user',
+              content:
+                'Continue seamlessly from your exact last word to finish this sentence and complete your reading cleanly without repeating anything already written.',
+            },
+          ],
+          maxTokens: 1800,
+          abortSignal: pathAAbortController.signal,
+          onChunk: handlePathAChunk,
+        });
+        contTokensIn = contResult.tokensIn;
+        contTokensOut = contResult.tokensOut;
+        contAborted = contResult.aborted;
+      }
+
+      const totalTokensIn = streamResult.tokensIn + contTokensIn;
+      const totalTokensOut = streamResult.tokensOut + contTokensOut;
+
+      if (leakIntercepted || containsInternalPromptLeak(rawAccumulated)) {
         return {
           fullText: PROMPT_EXTRACTION_REFUSAL,
           techBreakdown: null,
-          tokensIn: streamResult.tokensIn,
-          tokensOut: streamResult.tokensOut,
+          tokensIn: totalTokensIn,
+          tokensOut: totalTokensOut,
           creditsCharged: 0,
           aborted: false,
           leakIntercepted: true,
@@ -1121,7 +1157,7 @@ User's specific question: ${finalUserText}`;
         if (remaining) params.onChunk(remaining);
       }
 
-      const extractedFinal = extractTechBreakdown(streamResult.fullText.trim());
+      const extractedFinal = extractTechBreakdown(rawAccumulated.trim());
       const sanitized = sanitizeAssistantOutput(
         extractedFinal.mainText,
         allowedTimingWidgetIds
@@ -1130,8 +1166,8 @@ User's specific question: ${finalUserText}`;
         return {
           fullText: sanitized.text,
           techBreakdown: null,
-          tokensIn: streamResult.tokensIn,
-          tokensOut: streamResult.tokensOut,
+          tokensIn: totalTokensIn,
+          tokensOut: totalTokensOut,
           creditsCharged: 0,
           aborted: false,
           leakIntercepted: true,
@@ -1150,8 +1186,8 @@ User's specific question: ${finalUserText}`;
       }
 
       const creditsCharged = calculateCreditsFromUsage(
-        streamResult.tokensIn,
-        streamResult.tokensOut,
+        totalTokensIn,
+        totalTokensOut,
         sanitized.text,
         pricingConfig.chat_billing
       );
@@ -1160,10 +1196,10 @@ User's specific question: ${finalUserText}`;
         fullText: sanitized.text,
         techBreakdown: safeBreakdown,
         timingWidgets: stage2Pkg.timingWidgets,
-        tokensIn: streamResult.tokensIn,
-        tokensOut: streamResult.tokensOut,
+        tokensIn: totalTokensIn,
+        tokensOut: totalTokensOut,
         creditsCharged,
-        aborted: streamResult.aborted && !leakIntercepted,
+        aborted: (streamResult.aborted || contAborted) && !leakIntercepted,
         leakIntercepted: false,
         pendingProfile: null,
         suggestions: null,
@@ -1271,12 +1307,12 @@ User's specific question: ${finalUserText}`;
   const model = modelOverride || runtime.consultationModel || getConsultationModel();
   const baseOutputTokens =
     activePillar === 'companion'
-      ? Math.min(runtime.tokenLimits.chat_detailed, 1100)
+      ? Math.max(Math.min(runtime.tokenLimits.chat_detailed, 1400), 1100)
       : activePillar === 'clarity'
-      ? Math.min(runtime.tokenLimits.chat_detailed, 1400)
+      ? Math.max(Math.min(runtime.tokenLimits.chat_detailed, 1800), 1400)
       : responseLength === 'short'
-      ? Math.max(runtime.tokenLimits.chat_short + 350, 900)
-      : runtime.tokenLimits.chat_detailed;
+      ? Math.max(runtime.tokenLimits.chat_short + 400, 1200)
+      : Math.max(runtime.tokenLimits.chat_detailed, 4800);
   // Reserve headroom for compact single-turn suggestions JSON so prose is never clipped
   const maxOutputTokens = wantsSuggestions ? baseOutputTokens + 420 : baseOutputTokens;
 
@@ -1338,65 +1374,103 @@ User's specific question: ${finalUserText}`;
   };
 
   try {
+    const handlePathBChunk = (chunkText: string) => {
+      if (leakIntercepted) return;
+      rawAccumulated += chunkText;
+      if (containsInternalPromptLeak(rawAccumulated)) {
+        leakIntercepted = true;
+        internalAbortController.abort();
+        return;
+      }
+      if (hiddenBlockHoldStarted) return;
+
+      const tagIndex = findEarliestHiddenTagIndex(rawAccumulated);
+      if (tagIndex !== -1) {
+        if (tagIndex > flushedLength) {
+          const beforeTag = sanitizeVedicProse(
+            rawAccumulated.slice(flushedLength, tagIndex).replace(/\s+$/, '')
+          );
+          if (beforeTag) {
+            params.onChunk(beforeTag);
+          }
+          flushedLength = tagIndex;
+        }
+        hiddenBlockHoldStarted = true;
+        return;
+      }
+
+      let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
+      if (safeEnd > flushedLength) {
+        const tentative = rawAccumulated.slice(flushedLength, safeEnd);
+        const trailingNative = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
+        if (trailingNative) {
+          safeEnd -= trailingNative[0].length;
+        } else {
+          const trailingMarker =
+            /(?:^|\r?\n)[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|(?:prediction|ediction|analysis)\b[ \t]*[:\-]?|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*)$/i.exec(
+              tentative
+            );
+          if (trailingMarker) {
+            safeEnd -= trailingMarker[0].length;
+          }
+        }
+        if (safeEnd > flushedLength) {
+          const toEmit = sanitizeVedicProse(rawAccumulated.slice(flushedLength, safeEnd));
+          flushedLength = safeEnd;
+          if (toEmit) params.onChunk(toEmit);
+        }
+      }
+    };
+
     const streamResult = await streamOpenRouterCompletion({
       model,
       system: systemInstructionWithDynamic,
       messages,
       maxTokens: maxOutputTokens,
       abortSignal: internalAbortController.signal,
-      onChunk: (chunkText) => {
-        if (leakIntercepted) return;
-        rawAccumulated += chunkText;
-        if (containsInternalPromptLeak(rawAccumulated)) {
-          leakIntercepted = true;
-          internalAbortController.abort();
-          return;
-        }
-        if (hiddenBlockHoldStarted) return;
-
-        const tagIndex = findEarliestHiddenTagIndex(rawAccumulated);
-        if (tagIndex !== -1) {
-          if (tagIndex > flushedLength) {
-            const beforeTag = sanitizeVedicProse(
-              rawAccumulated.slice(flushedLength, tagIndex).replace(/\s+$/, '')
-            );
-            if (beforeTag) {
-              params.onChunk(beforeTag);
-            }
-            flushedLength = tagIndex;
-          }
-          hiddenBlockHoldStarted = true;
-          return;
-        }
-
-        let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
-        if (safeEnd > flushedLength) {
-          const tentative = rawAccumulated.slice(flushedLength, safeEnd);
-          const trailingNative = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
-          if (trailingNative) {
-            safeEnd -= trailingNative[0].length;
-          } else {
-            const trailingMarker = /(?:\r?\n[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*))$/i.exec(
-              tentative
-            );
-            if (trailingMarker) {
-              safeEnd -= trailingMarker[0].length;
-            }
-          }
-          if (safeEnd > flushedLength) {
-            const toEmit = sanitizeVedicProse(rawAccumulated.slice(flushedLength, safeEnd));
-            flushedLength = safeEnd;
-            if (toEmit) params.onChunk(toEmit);
-          }
-        }
-      },
+      onChunk: handlePathBChunk,
     });
 
-    if (leakIntercepted || containsInternalPromptLeak(streamResult.fullText)) {
+    let contTokensIn = 0;
+    let contTokensOut = 0;
+    let contAborted = false;
+    if (
+      streamResult.finishReason === 'length' &&
+      !streamResult.aborted &&
+      !leakIntercepted &&
+      !hiddenBlockHoldStarted &&
+      rawAccumulated.trim().length > 0 &&
+      !/[.!?)"'\]\*\`]\s*$/.test(rawAccumulated)
+    ) {
+      const contResult = await streamOpenRouterCompletion({
+        model,
+        system: systemInstructionWithDynamic,
+        messages: [
+          ...messages,
+          { role: 'assistant', content: rawAccumulated },
+          {
+            role: 'user',
+            content:
+              'Continue seamlessly from your exact last word to finish this sentence and complete your response cleanly without repeating anything already written.',
+          },
+        ],
+        maxTokens: 1600,
+        abortSignal: internalAbortController.signal,
+        onChunk: handlePathBChunk,
+      });
+      contTokensIn = contResult.tokensIn;
+      contTokensOut = contResult.tokensOut;
+      contAborted = contResult.aborted;
+    }
+
+    const totalTokensIn = streamResult.tokensIn + contTokensIn;
+    const totalTokensOut = streamResult.tokensOut + contTokensOut;
+
+    if (leakIntercepted || containsInternalPromptLeak(rawAccumulated)) {
       return {
         fullText: PROMPT_EXTRACTION_REFUSAL,
-        tokensIn: streamResult.tokensIn,
-        tokensOut: streamResult.tokensOut,
+        tokensIn: totalTokensIn,
+        tokensOut: totalTokensOut,
         creditsCharged: 0,
         aborted: false,
         leakIntercepted: true,
@@ -1411,13 +1485,13 @@ User's specific question: ${finalUserText}`;
       flushedLength = extractedFromAccumulated.cleanText.length;
     }
 
-    const extractedFinal = extractHiddenDirectives(streamResult.fullText, activeSuggestionsSpec);
+    const extractedFinal = extractHiddenDirectives(rawAccumulated, activeSuggestionsSpec);
     const sanitized = sanitizeAssistantOutput(extractedFinal.cleanText);
     if (sanitized.leaked) {
       return {
         fullText: sanitized.text,
-        tokensIn: streamResult.tokensIn,
-        tokensOut: streamResult.tokensOut,
+        tokensIn: totalTokensIn,
+        tokensOut: totalTokensOut,
         creditsCharged: 0,
         aborted: false,
         leakIntercepted: true,
@@ -1427,14 +1501,14 @@ User's specific question: ${finalUserText}`;
     }
 
     const creditsCharged = calculateCreditsFromUsage(
-      streamResult.tokensIn,
-      streamResult.tokensOut,
+      totalTokensIn,
+      totalTokensOut,
       sanitized.text,
       pricingConfig.chat_billing
     );
 
     let safeLegacyBreakdown: string | null = null;
-    if (!streamResult.aborted && extractedFinal.techBreakdown) {
+    if (!streamResult.aborted && !contAborted && extractedFinal.techBreakdown) {
       const bdSanitized = sanitizeAssistantOutput(extractedFinal.techBreakdown);
       if (!bdSanitized.leaked && bdSanitized.text.trim()) {
         safeLegacyBreakdown = bdSanitized.text.trim();
@@ -1444,13 +1518,13 @@ User's specific question: ${finalUserText}`;
     return {
       fullText: sanitized.text,
       techBreakdown: safeLegacyBreakdown,
-      tokensIn: streamResult.tokensIn,
-      tokensOut: streamResult.tokensOut,
+      tokensIn: totalTokensIn,
+      tokensOut: totalTokensOut,
       creditsCharged,
-      aborted: streamResult.aborted && !leakIntercepted,
+      aborted: (streamResult.aborted || contAborted) && !leakIntercepted,
       leakIntercepted: false,
-      pendingProfile: streamResult.aborted ? null : extractedFinal.pendingProfile,
-      suggestions: streamResult.aborted ? null : extractedFinal.suggestions,
+      pendingProfile: streamResult.aborted || contAborted ? null : extractedFinal.pendingProfile,
+      suggestions: streamResult.aborted || contAborted ? null : extractedFinal.suggestions,
     };
   } finally {
     params.abortSignal.removeEventListener('abort', forwardAbort);
@@ -1496,11 +1570,17 @@ export async function generateStructuredSuggestions(params: {
       messages: [
         {
           role: 'user',
-          content: `Generate structured two-tier suggestions for this Cosmic Council consultation exchange.
+          content: `Generate structured two-tier suggestions STRICTLY anchored to the user's LAST question and the answer just given.
 Active Council Guide: ${params.expertSlug}
 Topic Mode: ${params.modeSlug}
 Language: ${params.languageSlug}
 Chart Attached: ${params.hasProfile ? 'Yes' : 'No'}
+
+USER QUESTION (PRIMARY ANCHOR — NEVER DRIFT TO UNRELATED LIFE AREAS):
+${params.userQuestion.slice(0, 600)}
+
+COUNCIL ANSWER EXCERPT:
+${params.assistantAnswer.slice(0, 1800)}
 
 ${maxF > 0 ? `TIER 1 — "followups" (${Math.min(3, maxF)}–${maxF} items):\n${suggestionsConfig.followups_rules}\n` : ''}
 ${maxD > 0 ? `TIER 2 — "deeper_analysis" (${Math.min(3, maxD)}–${maxD} items):\n${suggestionsConfig.deeper_analysis_rules}\n` : ''}
@@ -1509,13 +1589,7 @@ Return STRICTLY JSON with shape:
 {
   "followups": ${maxF > 0 ? '[{ "text": "..." }]' : '[]'},
   "deeper_analysis": ${maxD > 0 ? '[{ "text": "...", "technical_directive": "..." }]' : '[]'}
-}
-
-USER QUESTION:
-${params.userQuestion.slice(0, 600)}
-
-COUNCIL ANSWER EXCERPT:
-${params.assistantAnswer.slice(0, 1800)}`,
+}`,
         },
       ],
     });
@@ -1589,11 +1663,17 @@ export async function generateMoreStructuredSuggestions(params: {
       messages: [
         {
           role: 'user',
-          content: `Generate ${totalTarget} BRAND-NEW structured suggestions for this Cosmic Council consultation exchange.
+          content: `Generate ${totalTarget} BRAND-NEW structured suggestions tightly anchored to the USER QUESTION and COUNCIL ANSWER EXCERPT below. Do NOT drift into unrelated topics (e.g. marriage, promotion, contracts) unless the user asked about them.
 Active Council Guide: ${params.expertSlug}
 Topic Mode: ${params.modeSlug}
 Language: ${params.languageSlug}
 Chart Attached: ${params.hasProfile ? 'Yes' : 'No'}
+
+USER QUESTION (PRIMARY ANCHOR):
+${params.userQuestion.slice(0, 600)}
+
+COUNCIL ANSWER EXCERPT:
+${params.assistantAnswer.slice(0, 1800)}
 
 ${countF > 0 ? `TIER 1 — "followups" (EXACTLY ${countF} new items):\n${suggestionsConfig.followups_rules}\n` : ''}
 ${countD > 0 ? `TIER 2 — "deeper_analysis" (EXACTLY ${countD} new items):\n${suggestionsConfig.deeper_analysis_rules}\n` : ''}
@@ -1606,13 +1686,7 @@ Return STRICTLY JSON with shape:
 {
   "followups": ${countF > 0 ? '[{ "text": "..." }]' : '[]'},
   "deeper_analysis": ${countD > 0 ? '[{ "text": "...", "technical_directive": "..." }]' : '[]'}
-}
-
-USER QUESTION:
-${params.userQuestion.slice(0, 600)}
-
-COUNCIL ANSWER EXCERPT:
-${params.assistantAnswer.slice(0, 1800)}`,
+}`,
         },
       ],
     });
@@ -1685,29 +1759,59 @@ export async function runQuickTool(params: {
   modeSlug?: string;
   languageSlug?: string;
   profileId?: string | null;
+  expertSlug?: string | null;
+  tradition?: 'vedic' | 'western';
   userId: string;
 }): Promise<{ items?: string[]; resultText: string }> {
   const supabaseAdmin = getSupabaseAdmin();
+  const isWestern =
+    params.tradition === 'western' ||
+    params.expertSlug === 'western_astrologer' ||
+    params.expertSlug === 'modern_astrologer';
   const [{ bodies: promptBodies, models: promptModels }, runtime] = await Promise.all([
     resolvePromptModules([params.toolSlug]),
     getResolvedOpenRouterRuntime(),
   ]);
-  const toolInstruction = promptBodies[params.toolSlug] || '';
+  const baseToolInstruction = promptBodies[params.toolSlug] || '';
+  const toolInstruction = isWestern
+    ? `${baseToolInstruction}\n\nTRADITION OVERRIDE — WESTERN TROPICAL ASTROLOGY: Frame every question or refined prompt strictly using Western Tropical astrology concepts (Tropical zodiac, Placidus houses, tight aspects, Day/Night Sect, Annual Profections, Secondary Progressions, Solar Return, Outer Transits). NEVER include Vedic or Sanskrit terminology (no Lagna, D9/D10, Nakshatra, Dasha, Gochar, KP Sub-Lord, or Ashtakavarga).`
+    : baseToolInstruction;
   const toolModel = promptModels[params.toolSlug] || runtime.utilityModel || getUtilityModel();
 
   let profileContext = '';
   if (params.profileId && supabaseAdmin) {
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('name, is_activated, chart_text_context')
+      .select(
+        isWestern
+          ? 'name, is_activated, birth_date, chart_text_context, chart_json'
+          : 'name, is_activated, chart_text_context'
+      )
       .eq('id', params.profileId)
       .eq('user_id', params.userId)
       .maybeSingle();
 
     if (profile) {
-      profileContext = profile.chart_text_context
-        ? `PROFILE CONTEXT (${profile.name}):\n${profile.chart_text_context.slice(0, 2800)}`
-        : `PROFILE NAME: ${profile.name}`;
+      const profRec = profile as unknown as {
+        name: string;
+        birth_date?: string;
+        chart_text_context?: string | null;
+        chart_json?: CompiledChartData | null;
+      };
+      if (isWestern && profRec.chart_json) {
+        const tropicalText = formatTropicalWesternContext({
+          chartJson: profRec.chart_json,
+          birthDate: profRec.birth_date || '1990-01-01',
+          profileName: profRec.name,
+        });
+        profileContext = tropicalText
+          ? `TROPICAL WESTERN PROFILE CONTEXT (${profRec.name}):\n${tropicalText.slice(0, 2800)}`
+          : `PROFILE NAME: ${profRec.name}`;
+      } else {
+        profileContext = profRec.chart_text_context
+          ? `PROFILE CONTEXT (${profRec.name}):\n${profRec.chart_text_context.slice(0, 2800)}`
+          : `PROFILE NAME: ${profRec.name}`;
+      }
     }
   }
 

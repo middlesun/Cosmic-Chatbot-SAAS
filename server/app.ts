@@ -13,6 +13,7 @@ import favouritesRouter from './routes/favourites';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './services/astrologyApi';
 import { fetchSanityBlogPosts, isSanityConfigured } from '../lib/sanity';
 import { normalizeCouncilSlug } from '../lib/vedicTypes';
+import { ALLOWED_CHAT_NUMERIC_FONTS } from './services/platformSettings';
 
 export function createExpressApp(): Express {
   const app = express();
@@ -113,6 +114,7 @@ export function createExpressApp(): Express {
       default_astrology_mode,
       preferred_call_name,
       chat_font_size,
+      chat_numeric_font,
       suggestions_auto_expand,
     } = req.body || {};
     const updates: Record<string, string | boolean | null> = {};
@@ -141,6 +143,14 @@ export function createExpressApp(): Express {
     if (['sm', 'base', 'lg'].includes(chat_font_size)) {
       updates.chat_font_size = chat_font_size;
     }
+    if (chat_numeric_font === null || chat_numeric_font === 'default') {
+      updates.chat_numeric_font = null;
+    } else if (
+      typeof chat_numeric_font === 'string' &&
+      (ALLOWED_CHAT_NUMERIC_FONTS as readonly string[]).includes(chat_numeric_font)
+    ) {
+      updates.chat_numeric_font = chat_numeric_font;
+    }
     if (typeof suggestions_auto_expand === 'boolean') {
       updates.suggestions_auto_expand = suggestions_auto_expand;
     }
@@ -158,8 +168,32 @@ export function createExpressApp(): Express {
       .single();
 
     if (error) {
-      // Safe fallback if migration 008 / 005 / 002 columns aren't migrated yet
-      const v7Updates = { ...updates };
+      // Safe fallback if newer columns aren't migrated yet
+      const withoutNumericFont = { ...updates };
+      delete withoutNumericFont.chat_numeric_font;
+
+      if (Object.keys(withoutNumericFont).length > 0 && 'chat_numeric_font' in updates) {
+        const nfFallback = await supabaseAdmin
+          .from('users')
+          .update({ ...withoutNumericFont, updated_at: new Date().toISOString() })
+          .eq('id', req.appUser.id)
+          .select('*')
+          .single();
+
+        if (!nfFallback.error && nfFallback.data) {
+          res.json({
+            user: {
+              ...nfFallback.data,
+              ...(updates.chat_numeric_font !== undefined
+                ? { chat_numeric_font: updates.chat_numeric_font }
+                : {}),
+            },
+          });
+          return;
+        }
+      }
+
+      const v7Updates = { ...withoutNumericFont };
       delete v7Updates.default_astrology_mode;
 
       if (Object.keys(v7Updates).length > 0) {
@@ -175,6 +209,9 @@ export function createExpressApp(): Express {
             user: {
               ...v7Fallback.data,
               ...(default_astrology_mode ? { default_astrology_mode } : {}),
+              ...(updates.chat_numeric_font !== undefined
+                ? { chat_numeric_font: updates.chat_numeric_font }
+                : {}),
             },
           });
           return;
@@ -200,6 +237,9 @@ export function createExpressApp(): Express {
                 ? { suggestions_auto_expand }
                 : {}),
               ...(default_astrology_mode ? { default_astrology_mode } : {}),
+              ...(updates.chat_numeric_font !== undefined
+                ? { chat_numeric_font: updates.chat_numeric_font }
+                : {}),
             },
           });
           return;
@@ -227,13 +267,17 @@ export function createExpressApp(): Express {
       // If only newer-migration fields were sent before migration ran, return non-blocking success
       if (
         (Object.keys(updates).length === 1 && typeof suggestions_auto_expand === 'boolean') ||
-        (Object.keys(updates).length === 1 && Boolean(default_astrology_mode))
+        (Object.keys(updates).length === 1 && Boolean(default_astrology_mode)) ||
+        (Object.keys(updates).length === 1 && 'chat_numeric_font' in updates)
       ) {
         res.json({
           user: {
             ...req.appUser,
             ...(typeof suggestions_auto_expand === 'boolean' ? { suggestions_auto_expand } : {}),
             ...(default_astrology_mode ? { default_astrology_mode } : {}),
+            ...(updates.chat_numeric_font !== undefined
+              ? { chat_numeric_font: updates.chat_numeric_font }
+              : {}),
           },
           persisted: false,
         });

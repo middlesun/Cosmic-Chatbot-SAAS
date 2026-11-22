@@ -267,6 +267,36 @@ export interface PublicGuideUiConfig {
   suggestions: PublicSuggestionsUiConfig & { enabled: boolean };
 }
 
+export type ChatNumericFont =
+  | 'dm_sans'
+  | 'inter'
+  | 'plus_jakarta'
+  | 'roboto'
+  | 'cormorant'
+  | 'jetbrains_mono';
+
+export const CHAT_NUMERIC_FONT_CLASSES: Record<ChatNumericFont, string> = {
+  dm_sans: "font-['DM_Sans',sans-serif] tabular-nums text-[1.04em]",
+  inter: "font-['Inter',sans-serif] tabular-nums text-[1.02em]",
+  plus_jakarta: "font-['Plus_Jakarta_Sans',sans-serif] tabular-nums",
+  roboto: "font-['Roboto',sans-serif] tabular-nums text-[1.03em]",
+  cormorant: "font-['Cormorant_Garamond',serif] tabular-nums text-[1.08em]",
+  jetbrains_mono: "font-['JetBrains_Mono',monospace] tabular-nums text-[0.94em]",
+};
+
+export const CHAT_NUMERIC_FONT_OPTIONS: Array<{
+  value: ChatNumericFont;
+  label: string;
+  description: string;
+}> = [
+  { value: 'dm_sans', label: 'DM Sans — Clean Tabular (Default)', description: 'Crisp geometric numerals' },
+  { value: 'plus_jakarta', label: 'Plus Jakarta Sans — Match Body Font', description: 'Seamless match with chat text' },
+  { value: 'inter', label: 'Inter — Crisp Modern Sans', description: 'Balanced modern UI digits' },
+  { value: 'roboto', label: 'Roboto — Classic Geometric', description: 'Clean technical clarity' },
+  { value: 'cormorant', label: 'Cormorant Garamond — Editorial Serif', description: 'Journal serif figures' },
+  { value: 'jetbrains_mono', label: 'JetBrains Mono — Technical Monospace', description: 'Observatory telemetry mono' },
+];
+
 export interface PublicChatbotUiConfig {
   welcome_title: string;
   welcome_subtitle: string;
@@ -278,6 +308,7 @@ export interface PublicChatbotUiConfig {
   default_language: string;
   default_tone: ChatToneMode;
   default_response_length: ChatResponseLength;
+  chat_numeric_font?: ChatNumericFont;
   features: ChatbotFeaturesUiConfig;
   guide_overrides?: Record<string, PublicGuideUiConfig>;
   companion_archetypes?: CompanionArchetypeConfigItem[];

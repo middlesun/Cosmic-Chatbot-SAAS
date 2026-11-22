@@ -121,22 +121,24 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editingConvTitle, setEditingConvTitle] = useState<string>('');
   const [favFilterProfile, setFavFilterProfile] = useState<string>('');
   const [showNewMenu, setShowNewMenu] = useState(false);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (!editingConvId) return;
+    if (!editingRowId) return;
     const raf = window.requestAnimationFrame(() => {
       renameInputRef.current?.focus();
       renameInputRef.current?.select();
     });
     return () => window.cancelAnimationFrame(raf);
-  }, [editingConvId]);
+  }, [editingRowId]);
 
-  const startRenameConversation = (convId: string, currentTitle: string) => {
+  const startRenameConversation = (rowId: string, convId: string, currentTitle: string) => {
     setConfirmDeleteId(null);
+    setEditingRowId(rowId);
     setEditingConvId(convId);
     setEditingConvTitle(currentTitle);
   };
@@ -148,11 +150,13 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
       onRenameConversation(editingConvId, clean);
     }
     setEditingConvId(null);
+    setEditingRowId(null);
     setEditingConvTitle('');
   };
 
   const cancelRenameConversation = () => {
     setEditingConvId(null);
+    setEditingRowId(null);
     setEditingConvTitle('');
   };
 
@@ -192,6 +196,20 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return { general, companions, byProfile };
   }, [conversations, profiles]);
 
+  const recentConversations = useMemo(() => {
+    return conversations
+      .filter((conv) => {
+        if (conv.pillar === 'clarity') return false;
+        const isComp = conv.pillar === 'companion' || Boolean(conv.companion_persona_json);
+        if (pillarFilter === 'companion' && !isComp) return false;
+        if (pillarFilter === 'council' && isComp) return false;
+        return true;
+      })
+      .slice()
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 5);
+  }, [conversations, pillarFilter]);
+
   const handleOpenFavoritesTab = () => {
     setSidebarTab('favorites');
     onLoadFavorites(favFilterProfile || undefined);
@@ -201,10 +219,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return null;
   }
 
-  const renderConversationRow = (conv: ConversationRecord) => {
+  const renderConversationRow = (conv: ConversationRecord, rowKeyPrefix = '') => {
+    const rowId = `${rowKeyPrefix}${conv.id}`;
     const isActive = conv.id === activeConversationId;
-    const isConfirming = confirmDeleteId === conv.id;
-    const isEditing = editingConvId === conv.id;
+    const isConfirming = confirmDeleteId === rowId;
+    const isEditing = editingRowId === rowId;
     const isPinnedTab = activeTabConversationIds.includes(conv.id);
     const isCompanion = conv.pillar === 'companion' || Boolean(conv.companion_persona_json);
     const companionName = conv.companion_persona_json?.name;
@@ -220,7 +239,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
     return (
       <div
-        key={conv.id}
+        key={rowId}
         className={`group flex items-start justify-between gap-1.5 rounded-xl px-2.5 py-2 text-left transition-all ${
           isActive
             ? 'bg-[#FAF7F2] text-[#3D3830] shadow-xs border border-[#3D3830]/12'
@@ -260,7 +279,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             onDoubleClick={(e) => {
               if (!onRenameConversation) return;
               e.stopPropagation();
-              startRenameConversation(conv.id, displayTitle);
+              startRenameConversation(rowId, conv.id, displayTitle);
             }}
             className="flex-1 min-w-0 text-left cursor-pointer"
           >
@@ -287,7 +306,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onDeleteConversation(conv.id);
                     setConfirmDeleteId(null);
                   }}
@@ -297,26 +317,32 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setConfirmDeleteId(null)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmDeleteId(null);
+                  }}
                   className="rounded px-1 py-0.5 text-[10px] text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
                 >
                   No
                 </button>
               </div>
             ) : (
-              <>
+              <div className="flex items-center gap-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity">
                 <Tooltip
                   content={isPinnedTab ? 'Remove from chat' : 'Add to chat'}
                   placement="top"
                 >
                   <button
                     type="button"
-                    onClick={() => onToggleActiveTab(conv)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleActiveTab(conv);
+                    }}
                     aria-label={isPinnedTab ? 'Remove from chat' : 'Add to chat'}
-                    className={`p-1 rounded hover:bg-[#3D3830]/10 transition-all cursor-pointer ${
+                    className={`p-1 rounded hover:bg-[#3D3830]/10 transition-colors cursor-pointer ${
                       isPinnedTab
-                        ? 'opacity-100 text-[#B8965A] bg-[#B8965A]/12'
-                        : 'opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275] hover:text-[#3D3830]'
+                        ? 'text-[#B8965A] bg-[#B8965A]/12'
+                        : 'text-[#8B8275] hover:text-[#3D3830]'
                     }`}
                   >
                     <Layers className="h-3 w-3" />
@@ -328,10 +354,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        startRenameConversation(conv.id, displayTitle);
+                        startRenameConversation(rowId, conv.id, displayTitle);
                       }}
                       aria-label={`Rename ${displayTitle}`}
-                      className="p-1 rounded hover:bg-[#3D3830]/10 opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275] hover:text-[#3D3830] transition-opacity cursor-pointer"
+                      className="p-1 rounded hover:bg-[#3D3830]/10 text-[#8B8275] hover:text-[#3D3830] transition-colors cursor-pointer"
                     >
                       <Pencil className="h-3 w-3" />
                     </button>
@@ -339,25 +365,31 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 )}
                 <button
                   type="button"
-                  onClick={() => onToggleBookmark(conv)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleBookmark(conv);
+                  }}
                   aria-label={conv.is_bookmarked ? 'Remove bookmark' : 'Pin to top'}
-                  className={`p-1 rounded hover:bg-[#3D3830]/10 transition-opacity cursor-pointer ${
+                  className={`p-1 rounded hover:bg-[#3D3830]/10 transition-colors cursor-pointer ${
                     conv.is_bookmarked
-                      ? 'opacity-100 text-[#8B7355]'
-                      : 'opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275]'
+                      ? 'text-[#8B7355]'
+                      : 'text-[#8B8275] hover:text-[#3D3830]'
                   }`}
                 >
                   <Bookmark className={`h-3 w-3 ${conv.is_bookmarked ? 'fill-current' : ''}`} />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setConfirmDeleteId(conv.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmDeleteId(rowId);
+                  }}
                   aria-label="Delete chat"
-                  className="p-1 rounded text-[#8B8275] hover:text-[#7A3E36] hover:bg-[#3D3830]/10 opacity-55 sm:opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                  className="p-1 rounded text-[#8B8275] hover:text-[#7A3E36] hover:bg-[#3D3830]/10 transition-colors cursor-pointer"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
-              </>
+              </div>
             )}
           </div>
         )}
@@ -617,8 +649,34 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             </div>
           </div>
 
-          {/* Profile-Grouped Folders & Companions Library */}
+          {/* Root Recent 5 Chats + Profile-Grouped Folders & Companions Library */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+            {/* Last 5 Recent Chats in Root */}
+            {recentConversations.length > 0 && (
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => toggleFolder('recent')}
+                  className="flex items-center gap-1.5 w-full px-1.5 py-0.5 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
+                >
+                  {isFolderOpen('recent') ? (
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3 shrink-0" />
+                  )}
+                  <span>Recent</span>
+                  <span className="text-[10px] font-medium font-['DM_Sans',sans-serif] tabular-nums">
+                    ({recentConversations.length})
+                  </span>
+                </button>
+                {isFolderOpen('recent') && (
+                  <div className="space-y-1">
+                    {recentConversations.map((conv) => renderConversationRow(conv, 'recent-'))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Companions Folder (shown in All & Companion filters) */}
             {(pillarFilter === 'all' || pillarFilter === 'companion') && (
               <div className="rounded-2xl bg-[#EAE3D7]/60 border border-[#3D3830]/10 p-2 space-y-1.5">
@@ -671,7 +729,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                         </button>
                       </div>
                     ) : (
-                      groupedConversations.companions.map(renderConversationRow)
+                      groupedConversations.companions.map((conv) =>
+                        renderConversationRow(conv, 'folder-comp-')
+                      )
                     )}
                   </div>
                 )}
@@ -762,7 +822,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                               No consultations yet.
                             </p>
                           ) : (
-                            items.map(renderConversationRow)
+                            items.map((conv) => renderConversationRow(conv, `folder-prof-${profile.id}-`))
                           )}
                         </div>
                       )}
@@ -808,7 +868,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                           Start a general reading or Jyotish lesson.
                         </p>
                       ) : (
-                        groupedConversations.general.map(renderConversationRow)
+                        groupedConversations.general.map((conv) =>
+                          renderConversationRow(conv, 'folder-gen-')
+                        )
                       )}
                     </div>
                   )}

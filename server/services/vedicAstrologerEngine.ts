@@ -405,14 +405,23 @@ export function buildFluencyInstruction(
   tradition: 'vedic' | 'western' = 'vedic'
 ): string {
   if (tradition === 'western') {
+    const wCustom = engineOverrides?.western_fluency_instructions;
     if (responseLength === 'short') {
-      if (effectiveFluency === 'beginner') return WESTERN_FLUENCY_INSTRUCTIONS.short_beginner;
-      if (effectiveFluency === 'guided_bridge') return WESTERN_FLUENCY_INSTRUCTIONS.short_guided_bridge;
-      return WESTERN_FLUENCY_INSTRUCTIONS.short_practitioner;
+      if (effectiveFluency === 'beginner') {
+        return wCustom?.short_beginner?.trim() || WESTERN_FLUENCY_INSTRUCTIONS.short_beginner;
+      }
+      if (effectiveFluency === 'guided_bridge') {
+        return wCustom?.short_guided_bridge?.trim() || WESTERN_FLUENCY_INSTRUCTIONS.short_guided_bridge;
+      }
+      return wCustom?.short_practitioner?.trim() || WESTERN_FLUENCY_INSTRUCTIONS.short_practitioner;
     }
-    if (effectiveFluency === 'beginner') return WESTERN_FLUENCY_INSTRUCTIONS.detailed_beginner;
-    if (effectiveFluency === 'guided_bridge') return WESTERN_FLUENCY_INSTRUCTIONS.detailed_guided_bridge;
-    return WESTERN_FLUENCY_INSTRUCTIONS.detailed_practitioner;
+    if (effectiveFluency === 'beginner') {
+      return wCustom?.detailed_beginner?.trim() || WESTERN_FLUENCY_INSTRUCTIONS.detailed_beginner;
+    }
+    if (effectiveFluency === 'guided_bridge') {
+      return wCustom?.detailed_guided_bridge?.trim() || WESTERN_FLUENCY_INSTRUCTIONS.detailed_guided_bridge;
+    }
+    return wCustom?.detailed_practitioner?.trim() || WESTERN_FLUENCY_INSTRUCTIONS.detailed_practitioner;
   }
 
   const custom = engineOverrides?.fluency_instructions;
@@ -460,12 +469,13 @@ export function buildIntentOutputContract(
     .join(', ')})`;
 
   if (tradition === 'western') {
+    const wContracts = engineOverrides?.western_intent_output_contracts;
     const rawWesternTemplate =
-      (intent === 'SOFT_HORIZON' && WESTERN_INTENT_OUTPUT_CONTRACTS.SOFT_HORIZON) ||
-      (intent === 'HARD_DECISION' && WESTERN_INTENT_OUTPUT_CONTRACTS.HARD_DECISION) ||
-      (intent === 'TIMING' && WESTERN_INTENT_OUTPUT_CONTRACTS.TIMING) ||
-      (intent === 'PEER_AUDIT' && WESTERN_INTENT_OUTPUT_CONTRACTS.PEER_AUDIT) ||
-      WESTERN_INTENT_OUTPUT_CONTRACTS.CONVERSATIONAL;
+      (intent === 'SOFT_HORIZON' && (wContracts?.SOFT_HORIZON?.trim() || WESTERN_INTENT_OUTPUT_CONTRACTS.SOFT_HORIZON)) ||
+      (intent === 'HARD_DECISION' && (wContracts?.HARD_DECISION?.trim() || WESTERN_INTENT_OUTPUT_CONTRACTS.HARD_DECISION)) ||
+      (intent === 'TIMING' && (wContracts?.TIMING?.trim() || WESTERN_INTENT_OUTPUT_CONTRACTS.TIMING)) ||
+      (intent === 'PEER_AUDIT' && (wContracts?.PEER_AUDIT?.trim() || WESTERN_INTENT_OUTPUT_CONTRACTS.PEER_AUDIT)) ||
+      (wContracts?.CONVERSATIONAL?.trim() || WESTERN_INTENT_OUTPUT_CONTRACTS.CONVERSATIONAL);
 
     return rawWesternTemplate
       .replace(/\{\{LENGTH_HINT\}\}/g, lengthHint)
@@ -510,12 +520,13 @@ export function buildVoiceAndFormatInstructions(params: {
 
   let outputShape = '';
   if (tradition === 'western') {
+    const wFormatOverrides = params.engineOverrides?.western_format_contracts;
     if (params.outputSlug === 'marriage_master' || params.outputSlug === 'dual_view') {
-      outputShape = WESTERN_FORMAT_CONTRACTS.dual_view;
+      outputShape = wFormatOverrides?.dual_view?.trim() || WESTERN_FORMAT_CONTRACTS.dual_view;
     } else if (params.responseLength === 'short') {
-      outputShape = WESTERN_FORMAT_CONTRACTS.short;
+      outputShape = wFormatOverrides?.short?.trim() || WESTERN_FORMAT_CONTRACTS.short;
     } else {
-      outputShape = WESTERN_FORMAT_CONTRACTS.detailed;
+      outputShape = wFormatOverrides?.detailed?.trim() || WESTERN_FORMAT_CONTRACTS.detailed;
     }
   } else {
     const formatOverrides = params.engineOverrides?.format_contracts;
@@ -612,12 +623,14 @@ export function buildVedicPathAPrompt(params: BuildVedicPathAParams): BuiltVedic
 
   const tier1Laws =
     tradition === 'western'
-      ? WESTERN_TIER1_REASONING_LAWS
+      ? params.engineOverrides?.western_tier1_reasoning_laws?.trim() ||
+        WESTERN_TIER1_REASONING_LAWS
       : params.engineOverrides?.vedic_tier1_reasoning_laws?.trim() ||
         VEDIC_TIER1_REASONING_LAWS;
   const antiCliche =
     tradition === 'western'
-      ? WESTERN_ANTI_CLICHE_RULES
+      ? params.engineOverrides?.western_anti_cliche_rules?.trim() ||
+        WESTERN_ANTI_CLICHE_RULES
       : params.engineOverrides?.vedic_anti_cliche_rules?.trim() ||
         VEDIC_ANTI_CLICHE_RULES;
 
@@ -647,12 +660,7 @@ export function buildVedicPathAPrompt(params: BuildVedicPathAParams): BuiltVedic
     }),
   ];
 
-  if (params.preferredCallName?.trim()) {
-    const safeName = params.preferredCallName.trim();
-    sections.push(
-      `USER ADDRESS CONTEXT: The person consulting with you goes by "${safeName}". Address them directly as "you". Never open with a letter salutation ("Hello ${safeName},"); at most weave their name organically once mid-sentence if natural.`
-    );
-  }
+  // Always address the user naturally with "you/your" rather than repeating names or account handles every turn.
 
   if (params.turnCount > 0) {
     sections.push(
