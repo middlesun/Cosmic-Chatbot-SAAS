@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import type { MiniAppDefinition } from '../../components/app/miniAppsTypes';
-import { MINI_APPS_BY_SLUG } from '../services/miniAppsCatalog';
 import { getDynamicMiniAppsPublicCatalog } from '../services/miniAppsRegistry';
 
 const router = Router();
@@ -131,7 +130,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   const apps = (!favAppsRes.error && favAppsRes.data ? favAppsRes.data : [])
     .map((row) => {
       const slugKey = String(row.app_slug);
-      const def = dynamicBySlug.get(slugKey) || MINI_APPS_BY_SLUG[slugKey];
+      const def = dynamicBySlug.get(slugKey);
       if (!def) return null;
       return {
         slug: def.slug,

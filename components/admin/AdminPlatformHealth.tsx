@@ -39,6 +39,8 @@ interface PlatformHealthResponse {
     companions?: boolean;
     companion_bonds?: boolean;
     user_custom_companions?: boolean;
+    mini_app_categories?: boolean;
+    mini_apps?: boolean;
   };
   migration004Ready: boolean;
   migration005Ready?: boolean;
@@ -46,6 +48,7 @@ interface PlatformHealthResponse {
   migration007Ready?: boolean;
   migration012Ready?: boolean;
   migration015Ready?: boolean;
+  migration016Ready?: boolean;
   timestamp: string;
 }
 
@@ -212,6 +215,16 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
           ok: Boolean(health.tables.user_custom_companions),
           group: 'Companions v2 (015)',
         },
+        {
+          name: 'public.mini_app_categories',
+          ok: Boolean(health.tables.mini_app_categories),
+          group: 'Mini-Apps Manager (016)',
+        },
+        {
+          name: 'public.mini_apps',
+          ok: Boolean(health.tables.mini_apps),
+          group: 'Mini-Apps Manager (016)',
+        },
       ]
     : [];
 
@@ -268,6 +281,15 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
                 id: '015',
                 file: 'supabase/migrations/015_companions_v2_and_chat_styles.sql',
                 summary: 'Preset Companions Roster, Shared Companion Bonds, Reactions & Chat Styles',
+              },
+            ]
+          : []),
+        ...(health.migration016Ready === false
+          ? [
+              {
+                id: '016',
+                file: 'supabase/migrations/016_mini_apps_manager.sql',
+                summary: 'Dynamic Mini-Apps & Categories Manager (CRUD, prompts, and display ordering)',
               },
             ]
           : []),

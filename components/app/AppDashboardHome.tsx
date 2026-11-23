@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   Compass,
@@ -49,6 +49,7 @@ const formatRelativeDate = (iso: string): string => {
 };
 
 const AppDashboardHome: React.FC = () => {
+  const navigate = useNavigate();
   const { appUser, stats, isPreviewMode, getAccessToken, astrologyMode, setAstrologyMode } = useAuth();
   const [summary, setSummary] = useState<HomeSummaryResponse | null>(() =>
     isPreviewMode ? PREVIEW_HOME_SUMMARY : null
@@ -653,10 +654,18 @@ const AppDashboardHome: React.FC = () => {
             {displayedApps.map((app) => {
               const isFav = favoriteSlugs.includes(app.slug);
               return (
-                <Link
+                <div
                   key={app.slug}
-                  to={`/app/apps/${app.slug}`}
-                  className="group flex flex-col justify-between gap-5 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/app/apps/${app.slug}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(`/app/apps/${app.slug}`);
+                    }
+                  }}
+                  className="group flex flex-col justify-between gap-5 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A]"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="h-10 w-10 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/8 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors shrink-0">
@@ -681,7 +690,7 @@ const AppDashboardHome: React.FC = () => {
                     </h3>
                     <ArrowRight className="h-4 w-4 text-[#8B7355] group-hover:translate-x-0.5 transition-transform shrink-0" />
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>

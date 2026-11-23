@@ -103,6 +103,7 @@ import {
   invalidateMiniAppsRegistryCache,
   reorderDynamicCategories,
   reorderDynamicMiniApps,
+  syncMiniAppsConfigOverridesToRegistry,
   updateDynamicCategory,
   updateDynamicMiniApp,
   type MiniAppMutationPayload,
@@ -4332,6 +4333,7 @@ router.put('/apps/config', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
+  await syncMiniAppsConfigOverridesToRegistry(nextOverrides, req.appUser.id);
   invalidateMiniAppsRegistryCache();
   res.json({ saved: true, config: nextConfig });
 });
@@ -4427,6 +4429,14 @@ router.delete('/apps/items/:slug', async (req: AuthenticatedRequest, res) => {
     return;
   }
   clearMiniAppsMemoryCache(slug);
+  const supabaseAdmin = getSupabaseAdmin();
+  if (supabaseAdmin) {
+    try {
+      await supabaseAdmin.from('app_cache').delete().eq('app_slug', slug);
+    } catch {
+      // Non-fatal
+    }
+  }
   res.json({ deleted: true });
 });
 
@@ -4557,6 +4567,8 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     hasCompanionsTable,
     hasCompanionBondsTable,
     hasCustomCompanionsTable,
+    hasMiniAppCategoriesTable,
+    hasMiniAppsTable,
   ] = await Promise.all([
     checkTable('users'),
     checkTable('profiles'),
@@ -4574,6 +4586,8 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     checkTable('companions'),
     checkTable('companion_bonds'),
     checkTable('user_custom_companions'),
+    checkTable('mini_app_categories', 'slug'),
+    checkTable('mini_apps', 'slug'),
   ]);
 
   const migration004Ready = hasPlatformSettings && hasPromptRecipes && hasSupportTickets;
@@ -4582,6 +4596,7 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
   const migration007Ready = hasAppCache && hasAppUsageLogs && hasUserFavoriteApps;
   const migration012Ready = hasPipelineLogs;
   const migration015Ready = hasCompanionsTable && hasCompanionBondsTable && hasCustomCompanionsTable;
+  const migration016Ready = hasMiniAppCategoriesTable && hasMiniAppsTable;
 
   res.json({
     integrations: {
@@ -4613,6 +4628,8 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
       companions: hasCompanionsTable,
       companion_bonds: hasCompanionBondsTable,
       user_custom_companions: hasCustomCompanionsTable,
+      mini_app_categories: hasMiniAppCategoriesTable,
+      mini_apps: hasMiniAppsTable,
     },
     migration004Ready,
     migration005Ready,
@@ -4620,6 +4637,7 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     migration007Ready,
     migration012Ready,
     migration015Ready,
+    migration016Ready,
     timestamp: new Date().toISOString(),
   });
 });

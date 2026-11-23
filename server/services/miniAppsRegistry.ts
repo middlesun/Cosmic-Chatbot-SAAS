@@ -458,6 +458,77 @@ async function syncOverrideFieldsToMiniAppsConfig(
   }
 }
 
+async function cleanupOverrideFromMiniAppsConfig(
+  slug: string,
+  adminUserId?: string | null
+): Promise<void> {
+  try {
+    const cfg = await getMiniAppsConfig();
+    if (!cfg.overrides || !Object.prototype.hasOwnProperty.call(cfg.overrides, slug)) {
+      return;
+    }
+    const nextOverrides = { ...cfg.overrides };
+    delete nextOverrides[slug];
+    await savePlatformSetting(
+      'mini_apps_config',
+      {
+        ...cfg,
+        overrides: nextOverrides,
+      },
+      adminUserId
+    );
+  } catch {
+    // Non-fatal
+  }
+}
+
+export async function syncMiniAppsConfigOverridesToRegistry(
+  overrides: MiniAppsGovernanceConfig['overrides'],
+  adminUserId?: string | null
+): Promise<void> {
+  try {
+    const current = await loadResolvedRegistry();
+    const supabaseAdmin = getSupabaseAdmin();
+    if (current.source === 'tables' && supabaseAdmin) {
+      const nowIso = new Date().toISOString();
+      const updates = current.apps
+        .filter((a) => Boolean(overrides[a.slug]))
+        .map((a) => {
+          const ov = overrides[a.slug];
+          return supabaseAdmin
+            .from('mini_apps')
+            .update({
+              is_active: typeof ov.enabled === 'boolean' ? ov.enabled : a.isActive,
+              featured_on_home:
+                typeof ov.featured_on_home === 'boolean' ? ov.featured_on_home : a.featuredOnHome,
+              model_id: ov.model_id !== undefined ? ov.model_id : a.modelId,
+              updated_at: nowIso,
+            })
+            .eq('slug', a.slug);
+        });
+      if (updates.length > 0) {
+        await Promise.all(updates);
+      }
+    } else if (current.source === 'settings') {
+      const nextApps = current.apps.map((a) => {
+        const ov = overrides[a.slug];
+        if (!ov) return a;
+        return {
+          ...a,
+          isActive: typeof ov.enabled === 'boolean' ? ov.enabled : a.isActive,
+          featuredOnHome:
+            typeof ov.featured_on_home === 'boolean' ? ov.featured_on_home : a.featuredOnHome,
+          modelId: ov.model_id !== undefined ? ov.model_id : a.modelId,
+        };
+      });
+      await persistSettingsRegistrySnapshot(current.categories, nextApps, adminUserId);
+    }
+    invalidateMiniAppsRegistryCache();
+  } catch {
+    // Non-fatal
+  }
+}
+
 export async function getDynamicMiniAppsPublicCatalog(): Promise<{
   categories: MiniAppCategoryRecord[];
   apps: MiniAppDefinition[];
@@ -817,6 +888,7 @@ export async function deleteDynamicMiniApp(
     }
   }
 
+  await cleanupOverrideFromMiniAppsConfig(cleanSlug, adminUserId);
   invalidateMiniAppsRegistryCache();
   return { ok: true };
 }

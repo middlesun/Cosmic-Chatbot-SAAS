@@ -114,9 +114,8 @@ const MiniAppRunner: React.FC = () => {
   const appDef = useMemo(
     () =>
       dynamicApps.find((a) => a.slug === appSlug) ||
-      CLIENT_MINI_APPS.find((a) => a.slug === appSlug) ||
-      null,
-    [dynamicApps, appSlug]
+      (!catalogLoaded ? CLIENT_MINI_APPS.find((a) => a.slug === appSlug) || null : null),
+    [dynamicApps, appSlug, catalogLoaded]
   );
 
   const [profiles, setProfiles] = useState<ProfileOption[]>(() =>

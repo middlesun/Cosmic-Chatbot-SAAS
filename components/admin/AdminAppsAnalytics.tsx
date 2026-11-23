@@ -182,13 +182,21 @@ interface AdminAppsAnalyticsProps {
 }
 
 const PROMPT_PLACEHOLDERS: Array<{ token: string; hint: string }> = [
-  { token: '{{date}}', hint: 'ISO date (YYYY-MM-DD)' },
-  { token: '{{formatted_date}}', hint: 'Readable date (e.g. 22 November 2026)' },
+  { token: '{{date}}', hint: 'Full readable date (e.g. Sunday, November 22, 2026)' },
+  { token: '{{formatted_date}}', hint: 'Day-Month-Year (e.g. 22 November 2026)' },
   { token: '{{month_year}}', hint: 'Current month & year' },
   { token: '{{year}}', hint: 'Current 4-digit year' },
   { token: '{{profile_name}}', hint: 'Selected profile name' },
   { token: '{{mode}}', hint: 'Vedic or Western' },
-  { token: '{{user_inputs}}', hint: 'Form fields entered by user' },
+  { token: '{{user_inputs}}', hint: 'Form text or prompt entered by user' },
+  { token: '{{app_title}}', hint: 'Current app title' },
+  { token: '{{app_description}}', hint: 'Current app description' },
+  { token: '{{partner_name}}', hint: 'Partner name (for compatibility / matching)' },
+  { token: '{{partner_dob}}', hint: 'Partner birth date' },
+  { token: '{{relationship_intent}}', hint: 'Relationship matching focus' },
+  { token: '{{planet}}', hint: 'Selected planet (for guided quiz)' },
+  { token: '{{domain_title}}', hint: 'Selected domain (for breakdown explorer)' },
+  { token: '{{topic_label}}', hint: 'Selected topic (for breakdown explorer)' },
 ];
 
 const TEMPLATE_OPTIONS: Array<{ value: MiniAppTemplate; label: string }> = [
@@ -196,6 +204,11 @@ const TEMPLATE_OPTIONS: Array<{ value: MiniAppTemplate; label: string }> = [
   { value: 'form_reading', label: 'Form Reading (User Prompt + Chart)' },
   { value: 'domain_explorer', label: 'Domain Explorer (Multi-Topic)' },
   { value: 'guided_quiz', label: 'Guided Quiz (Assessment)' },
+];
+
+const CUSTOM_APP_TEMPLATE_OPTIONS: Array<{ value: MiniAppTemplate; label: string }> = [
+  { value: 'auto_brief', label: 'Auto Brief (Instant Reading)' },
+  { value: 'form_reading', label: 'Form Reading (User Prompt + Chart)' },
 ];
 
 const CACHE_SCOPE_OPTIONS: Array<{
@@ -211,14 +224,14 @@ const CACHE_SCOPE_OPTIONS: Array<{
 
 const BUILTIN_INTERACTIVE_SLUGS = new Set([
   'birth-chart-breakdown',
-  'compatibility-match',
-  'relationship-timelines',
-  'planetary-periods-match',
-  'numerology-reading',
-  'planet-strength-quiz',
-  'baby-name-nakshatra',
+  'planet-strength-tester',
+  'love-compatibility',
   'dream-interpreter',
-  'muhurta-finder',
+  'affirmations-generator',
+  'salary-negotiator',
+  'birth-chart-matching',
+  'breakup-clarity',
+  'relationship-patterns',
   'pet-bond',
 ]);
 
@@ -1421,7 +1434,14 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
                                 template: val as MiniAppTemplate,
                               })
                             }
-                            options={TEMPLATE_OPTIONS}
+                            options={
+                              isCreatingNew ||
+                              (selectedApp &&
+                                selectedApp.template !== 'domain_explorer' &&
+                                selectedApp.template !== 'guided_quiz')
+                                ? CUSTOM_APP_TEMPLATE_OPTIONS
+                                : TEMPLATE_OPTIONS
+                            }
                             ariaLabel="Select app template"
                             surface="canvas"
                           />

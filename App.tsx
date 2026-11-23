@@ -13,6 +13,7 @@ import type { SanityArticleItem } from './lib/sanity';
 import AppRoutes from './components/app/AppRoutes';
 import NewLandingPage from './components/NewLandingPage';
 import BlogPage from './components/BlogPage';
+import ComingSoonPage from './components/ComingSoonPage';
 
 const ClassicApp = React.lazy(() => import('./components/classic/ClassicApp'));
 
@@ -24,6 +25,24 @@ const NavigateToBlogSlug: React.FC = () => {
 const App: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [siteUnlocked, setSiteUnlocked] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem('cc_coming_soon_unlocked') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleUnlockSite = () => {
+    try {
+      localStorage.setItem('cc_coming_soon_unlocked', 'true');
+    } catch {
+      // Ignore storage errors
+    }
+    setSiteUnlocked(true);
+  };
 
   const isClassicSubdomain =
     typeof window !== 'undefined' &&
@@ -97,6 +116,10 @@ const App: React.FC = () => {
       const target = hasError ? '/app/login' : '/app/chat';
       return <Navigate to={`${target}${location.search}${location.hash}`} replace />;
     }
+  }
+
+  if (!siteUnlocked) {
+    return <ComingSoonPage onUnlock={handleUnlockSite} />;
   }
 
   if (location.pathname.startsWith('/app')) {
