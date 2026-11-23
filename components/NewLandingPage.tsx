@@ -358,7 +358,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
               onClick={() => scrollToSection('tarot-styles-showcase')}
               className="text-sm font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors duration-200 whitespace-nowrap shrink-0 py-1 border-b border-transparent hover:border-[#3D3830]/40 cursor-pointer"
             >
-              Visual Tarot
+              Tarot
             </button>
           </nav>
 
@@ -427,7 +427,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                 onClick={() => scrollToSection('tarot-styles-showcase')}
                 className="text-left font-medium text-[#3D3830] py-1.5"
               >
-                Visual Tarot
+                Tarot
               </button>
               <Link
                 to="/app/chat?preview=1"
