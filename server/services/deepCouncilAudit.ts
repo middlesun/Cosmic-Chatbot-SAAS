@@ -38,6 +38,8 @@ import type {
   UserFluencyTier,
   VedicSynthesisMeta,
 } from '../../lib/vedicTypes';
+import type { ChatStyle } from '../../components/app/chatTypes';
+import { buildChatStyleInstruction } from './companionEngine';
 
 export interface DeepAuditLensSpec {
   id:
@@ -121,29 +123,31 @@ export function buildDeepAuditLensPrompts(params: {
 - Use strictly Western Tropical terminology — NEVER inject Vedic or Sanskrit astrology terms.
 - Return crisp, structured technical bullet notes (max ~320 words). Do not write conversational fluff.`;
 
+    const wLensOv = engineOverrides?.western_deep_audit_lenses;
+
     return [
       {
         id: 'sect_dignity_rulers',
         name: 'Sect, Dignity & Rulers Architect',
-        systemPrompt: `${WESTERN_DEEP_AUDIT_LENSES.sect_dignity_rulers}\n${westernSharedRules}`,
+        systemPrompt: `${wLensOv?.sect_dignity_rulers?.trim() || WESTERN_DEEP_AUDIT_LENSES.sect_dignity_rulers}\n${westernSharedRules}`,
         userPrompt: `Question: ${userPrompt}${directiveNote}\n\nSECT & DIGNITY SLICE:\n${JSON.stringify(sectDignitySlice)}`,
       },
       {
         id: 'tight_aspects_patterns',
         name: 'Tight Aspects & Configurations Verifier',
-        systemPrompt: `${WESTERN_DEEP_AUDIT_LENSES.tight_aspects_patterns}\n${westernSharedRules}`,
+        systemPrompt: `${wLensOv?.tight_aspects_patterns?.trim() || WESTERN_DEEP_AUDIT_LENSES.tight_aspects_patterns}\n${westernSharedRules}`,
         userPrompt: `Question: ${userPrompt}${directiveNote}\n\nASPECTS & CONFIGURATIONS SLICE:\n${JSON.stringify(tightAspectsSlice)}`,
       },
       {
         id: 'western_multi_clock_timing',
         name: 'Multi-Clock Western Timing Engine',
-        systemPrompt: `${WESTERN_DEEP_AUDIT_LENSES.western_multi_clock_timing}\n${westernSharedRules}`,
+        systemPrompt: `${wLensOv?.western_multi_clock_timing?.trim() || WESTERN_DEEP_AUDIT_LENSES.western_multi_clock_timing}\n${westernSharedRules}`,
         userPrompt: `Question: ${userPrompt}${directiveNote}\n\nWESTERN TIMING SLICE:\n${JSON.stringify(westernTimingSlice)}`,
       },
       {
         id: 'western_contrarian_auditor',
         name: 'Contrarian / Falsification Auditor',
-        systemPrompt: `${WESTERN_DEEP_AUDIT_LENSES.western_contrarian_auditor}\n${westernSharedRules}`,
+        systemPrompt: `${wLensOv?.western_contrarian_auditor?.trim() || WESTERN_DEEP_AUDIT_LENSES.western_contrarian_auditor}\n${westernSharedRules}`,
         userPrompt: `Question: ${userPrompt}${directiveNote}\n\nCONTRARIAN & REALITY SLICE:\n${JSON.stringify(westernContrarianSlice)}`,
       },
     ];
@@ -250,6 +254,7 @@ export interface RunDeepCouncilAuditParams {
   priorInferredFluency?: UserFluencyTier | null;
   maxOutputTokens: number;
   engineOverrides?: EnginePromptOverrides | null;
+  chatStyle?: ChatStyle;
   abortSignal: AbortSignal;
   onStatus?: (statusText: string) => void;
   onChunk: (chunkText: string) => void;
@@ -296,7 +301,8 @@ End cleanly with a concise, clearly labeled **System Convergence & Technical Tra
 
   const adjudicatorTemplate =
     tradition === 'western'
-      ? WESTERN_DEEP_AUDIT_ADJUDICATOR_MANDATE
+      ? base.engineOverrides?.western_deep_audit_adjudicator_mandate?.trim() ||
+        WESTERN_DEEP_AUDIT_ADJUDICATOR_MANDATE
       : base.engineOverrides?.deep_audit_adjudicator_mandate?.trim() ||
         DEFAULT_DEEP_AUDIT_ADJUDICATOR_MANDATE;
   const adjudicatorBlock = adjudicatorTemplate
@@ -305,12 +311,14 @@ End cleanly with a concise, clearly labeled **System Convergence & Technical Tra
 
   const tier1Laws =
     tradition === 'western'
-      ? WESTERN_TIER1_REASONING_LAWS
+      ? base.engineOverrides?.western_tier1_reasoning_laws?.trim() ||
+        WESTERN_TIER1_REASONING_LAWS
       : base.engineOverrides?.vedic_tier1_reasoning_laws?.trim() ||
         VEDIC_TIER1_REASONING_LAWS;
   const antiCliche =
     tradition === 'western'
-      ? WESTERN_ANTI_CLICHE_RULES
+      ? base.engineOverrides?.western_anti_cliche_rules?.trim() ||
+        WESTERN_ANTI_CLICHE_RULES
       : base.engineOverrides?.vedic_anti_cliche_rules?.trim() ||
         VEDIC_ANTI_CLICHE_RULES;
 
@@ -339,10 +347,8 @@ End cleanly with a concise, clearly labeled **System Convergence & Technical Tra
       engineOverrides: base.engineOverrides,
       tradition,
     }),
+    base.chatStyle ? buildChatStyleInstruction(base.chatStyle, { isCouncil: true }) : '',
     dualViewRule,
-    base.preferredCallName?.trim()
-      ? `USER ADDRESS CONTEXT: Address "${base.preferredCallName.trim()}" as "you/your" directly in conversation — never start with a letter salutation.`
-      : '',
     base.turnCount > 0
       ? `THREAD CONTINUITY (Message #${base.turnCount + 1}): Continue seamlessly from earlier turns without re-introducing yourself.`
       : '',
@@ -501,6 +507,53 @@ export async function runDeepCouncilAudit(
   );
 
   try {
+    let finalFinishReason = 'stop';
+    const handleStreamChunk = (chunkText: string) => {
+      if (leakIntercepted) return;
+      rawAccumulated += chunkText;
+      if (containsInternalPromptLeak(rawAccumulated)) {
+        leakIntercepted = true;
+        internalAbortController.abort();
+        return;
+      }
+      if (hiddenBreakdownHoldStarted) return;
+
+      const breakdownIdx = rawAccumulated.search(/<<<TECH_BREAKDOWN/i);
+      if (breakdownIdx !== -1) {
+        if (breakdownIdx > flushedLength) {
+          const beforeTag = sanitizeVedicProse(
+            rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, ''),
+            allowedTimingWidgetIds
+          );
+          if (beforeTag) params.onChunk(beforeTag);
+          flushedLength = breakdownIdx;
+        }
+        hiddenBreakdownHoldStarted = true;
+        return;
+      }
+
+      let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
+      if (safeEnd > flushedLength) {
+        const tentative = rawAccumulated.slice(flushedLength, safeEnd);
+        // Avoid splitting leading :::prediction markers, trailing "the native", or partial TIMING_BAR tokens
+        const trailingMatch =
+          /(?:^|\r?\n)[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|(?:prediction|ediction|analysis)\b[ \t]*[:\-]?|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*)|(?:\b(?:the|a)(?:\s+native['’]?s?)?|\[\[?TIMING_BAR[^\]]*)$/i.exec(
+            tentative
+          );
+        if (trailingMatch) {
+          safeEnd -= trailingMatch[0].length;
+        }
+        if (safeEnd > flushedLength) {
+          const toEmit = sanitizeVedicProse(
+            rawAccumulated.slice(flushedLength, safeEnd),
+            allowedTimingWidgetIds
+          );
+          flushedLength = safeEnd;
+          if (toEmit) params.onChunk(toEmit);
+        }
+      }
+    };
+
     const streamResult = await streamOpenRouterCompletion({
       model: params.model,
       system: adjudicatorSystem,
@@ -509,57 +562,50 @@ export async function runDeepCouncilAudit(
         { role: 'user', content: params.finalUserText },
       ],
       temperature: 0.35,
-      maxTokens: Math.max(params.maxOutputTokens, 2400),
+      maxTokens: Math.max(params.maxOutputTokens, 4800),
       abortSignal: internalAbortController.signal,
-      onChunk: (chunkText) => {
-        if (leakIntercepted) return;
-        rawAccumulated += chunkText;
-        if (containsInternalPromptLeak(rawAccumulated)) {
-          leakIntercepted = true;
-          internalAbortController.abort();
-          return;
-        }
-        if (hiddenBreakdownHoldStarted) return;
-
-        const breakdownIdx = rawAccumulated.search(/<<<TECH_BREAKDOWN/i);
-        if (breakdownIdx !== -1) {
-          if (breakdownIdx > flushedLength) {
-            const beforeTag = sanitizeVedicProse(
-              rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, ''),
-              allowedTimingWidgetIds
-            );
-            if (beforeTag) params.onChunk(beforeTag);
-            flushedLength = breakdownIdx;
-          }
-          hiddenBreakdownHoldStarted = true;
-          return;
-        }
-
-        let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
-        if (safeEnd > flushedLength) {
-          const tentative = rawAccumulated.slice(flushedLength, safeEnd);
-          // Avoid splitting trailing "the native" or partial TIMING_BAR token mid-phrase across stream chunks
-          const trailingMatch =
-            /(?:\b(?:the|a)(?:\s+native['’]?s?)?|\[\[?TIMING_BAR[^\]]*)$/i.exec(tentative);
-          if (trailingMatch) {
-            safeEnd -= trailingMatch[0].length;
-          }
-          if (safeEnd > flushedLength) {
-            const toEmit = sanitizeVedicProse(
-              rawAccumulated.slice(flushedLength, safeEnd),
-              allowedTimingWidgetIds
-            );
-            flushedLength = safeEnd;
-            if (toEmit) params.onChunk(toEmit);
-          }
-        }
-      },
+      onChunk: handleStreamChunk,
     });
+    finalFinishReason = streamResult.finishReason || 'stop';
+
+    let contTokensIn = 0;
+    let contTokensOut = 0;
+    let contAborted = false;
+    if (
+      finalFinishReason === 'length' &&
+      !streamResult.aborted &&
+      !leakIntercepted &&
+      !hiddenBreakdownHoldStarted &&
+      rawAccumulated.trim().length > 0 &&
+      !/[.!?)"'\]\*\`]\s*$/.test(rawAccumulated)
+    ) {
+      const contResult = await streamOpenRouterCompletion({
+        model: params.model,
+        system: adjudicatorSystem,
+        messages: [
+          ...params.historyMessages,
+          { role: 'user', content: params.finalUserText },
+          { role: 'assistant', content: rawAccumulated },
+          {
+            role: 'user',
+            content:
+              'Continue seamlessly from your exact last word to finish this sentence and complete your reading cleanly without repeating anything already written.',
+          },
+        ],
+        temperature: 0.35,
+        maxTokens: 1800,
+        abortSignal: internalAbortController.signal,
+        onChunk: handleStreamChunk,
+      });
+      contTokensIn = contResult.tokensIn;
+      contTokensOut = contResult.tokensOut;
+      contAborted = contResult.aborted;
+    }
 
     const lensTokensIn = lensResults.reduce((s, r) => s + r.tokensIn, 0);
     const lensTokensOut = lensResults.reduce((s, r) => s + r.tokensOut, 0);
-    const totalTokensIn = lensTokensIn + streamResult.tokensIn;
-    const totalTokensOut = lensTokensOut + streamResult.tokensOut;
+    const totalTokensIn = lensTokensIn + streamResult.tokensIn + contTokensIn;
+    const totalTokensOut = lensTokensOut + streamResult.tokensOut + contTokensOut;
 
     const meta: VedicSynthesisMeta = {
       tradition,
@@ -575,7 +621,7 @@ export async function runDeepCouncilAudit(
       reductionPct: params.pkg.metrics.reductionPct,
     };
 
-    if (leakIntercepted || containsInternalPromptLeak(streamResult.fullText)) {
+    if (leakIntercepted || containsInternalPromptLeak(rawAccumulated)) {
       return {
         fullText: PROMPT_EXTRACTION_REFUSAL,
         techBreakdown: null,
@@ -599,7 +645,7 @@ export async function runDeepCouncilAudit(
       if (remaining) params.onChunk(remaining);
     }
 
-    const extractedFinal = extractTechBreakdown(streamResult.fullText.trim());
+    const extractedFinal = extractTechBreakdown(rawAccumulated.trim());
     const sanitized = sanitizeAssistantOutput(
       extractedFinal.mainText,
       allowedTimingWidgetIds
@@ -632,7 +678,7 @@ export async function runDeepCouncilAudit(
       timingWidgets: params.pkg.timingWidgets,
       tokensIn: totalTokensIn,
       tokensOut: totalTokensOut,
-      aborted: streamResult.aborted && !leakIntercepted,
+      aborted: (streamResult.aborted || contAborted) && !leakIntercepted,
       leakIntercepted: false,
       lenses: lensResults,
       convergence,

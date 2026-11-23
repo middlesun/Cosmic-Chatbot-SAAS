@@ -6,6 +6,7 @@ interface QuickToolsModalProps {
   isOpen: boolean;
   initialDraft: string;
   modeSlug?: string;
+  expertSlug?: string;
   languageSlug: string;
   profileId: string | null;
   toolsCatalog?: ChatCatalogOption[];
@@ -20,6 +21,7 @@ const QuickToolsModal: React.FC<QuickToolsModalProps> = ({
   isOpen,
   initialDraft,
   modeSlug = 'general',
+  expertSlug = 'vedic_astrologer',
   languageSlug,
   profileId,
   toolsCatalog,
@@ -73,6 +75,13 @@ const QuickToolsModal: React.FC<QuickToolsModalProps> = ({
           modeSlug,
           languageSlug,
           profileId,
+          expertSlug,
+          tradition:
+            expertSlug === 'western_astrologer' ||
+            expertSlug === 'modern_astrologer' ||
+            expertSlug === 'hellenistic_astrologer'
+              ? 'western'
+              : 'vedic',
         }),
       });
 

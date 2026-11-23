@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import {
   Coins,
   Database,
+  HeartHandshake,
   Home,
   LayoutGrid,
   LifeBuoy,
@@ -28,6 +29,7 @@ import AccountSettingsModal from './AccountSettingsModal';
 import FloatingScrollControls from '../FloatingScrollControls';
 import Tooltip from './Tooltip';
 import UserAvatar from './UserAvatar';
+import PendingOnboardingHydrator from './PendingOnboardingHydrator';
 import { getUserProfileDisplayLabel } from './chatUtilities';
 
 const APP_SIDEBAR_LOCK_KEY = 'cc_app_sidebar_locked';
@@ -226,6 +228,11 @@ const AppLayout: React.FC = () => {
               {isDesktopSidebarOpen && <span>Chat</span>}
             </NavLink>
 
+            <NavLink to="/app/companions" aria-label="Companions" className={desktopNavLinkClass}>
+              <HeartHandshake className="h-4 w-4 shrink-0 text-[#8B7355]" />
+              {isDesktopSidebarOpen && <span>Companions</span>}
+            </NavLink>
+
             <NavLink to="/app/notes" aria-label="Notes" className={desktopNavLinkClass}>
               <NotebookPen className="h-4 w-4 shrink-0 text-[#8B7355]" />
               {isDesktopSidebarOpen && <span>Notes</span>}
@@ -278,7 +285,7 @@ const AppLayout: React.FC = () => {
               )}
             </NavLink>
 
-            {appUser?.is_admin && (
+            {appUser?.is_admin && !isPreviewMode && (
               <div className="pt-2 mt-2 border-t border-[#3D3830]/10">
                 <Tooltip
                   content={!isDesktopSidebarOpen ? 'Admin panel' : undefined}
@@ -486,6 +493,14 @@ const AppLayout: React.FC = () => {
                     <span>Chat</span>
                   </NavLink>
                   <NavLink
+                    to="/app/companions"
+                    onClick={() => setShowMobileNavDrawer(false)}
+                    className={mobileNavLinkClass}
+                  >
+                    <HeartHandshake className="h-4 w-4 text-[#8B7355]" />
+                    <span>Companions</span>
+                  </NavLink>
+                  <NavLink
                     to="/app/notes"
                     onClick={() => setShowMobileNavDrawer(false)}
                     className={mobileNavLinkClass}
@@ -545,7 +560,7 @@ const AppLayout: React.FC = () => {
                       {appUser ? appUser.credits_balance.toLocaleString() : '0'}
                     </span>
                   </NavLink>
-                  {appUser?.is_admin && (
+                  {appUser?.is_admin && !isPreviewMode && (
                     <div className="pt-2 mt-2 border-t border-[#3D3830]/10">
                       <NavLink
                         to="/app/admin"
@@ -674,6 +689,7 @@ const AppLayout: React.FC = () => {
         )}
 
         {!isChatRoute && <FloatingScrollControls scrollContainerRef={mainScrollRef} />}
+        <PendingOnboardingHydrator />
       </div>
     </AppShellContext.Provider>
   );

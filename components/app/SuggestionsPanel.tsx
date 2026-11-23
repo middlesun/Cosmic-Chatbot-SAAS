@@ -33,6 +33,9 @@ interface SuggestionsPanelProps {
   ) => void;
   onLoadMoreSuggestions?: (messageId: string) => Promise<void> | void;
   utilityBar?: React.ReactNode;
+  triggerLabel?: string;
+  followupHeading?: string;
+  actionVerb?: string;
 }
 
 interface SelectedEntry {
@@ -59,6 +62,9 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
   onBookmarkSuggestions,
   onLoadMoreSuggestions,
   utilityBar,
+  triggerLabel = 'Suggestions',
+  followupHeading = 'Followup',
+  actionVerb = 'Ask',
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -143,7 +149,7 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
   if (totalCount === 0) {
     if (!utilityBar) return null;
     return (
-      <div className="mt-2 border-t border-[#3D3830]/[0.08] pt-2.5 flex flex-wrap items-center justify-end gap-2">
+      <div className="mt-2 border-t border-[#3D3830]/[0.08] pt-2.5 flex flex-wrap items-center justify-center sm:justify-end gap-2">
         {utilityBar}
       </div>
     );
@@ -342,7 +348,7 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
             onClick={() => onSubmitSuggestion(item)}
             className="inline-flex items-center gap-1 text-[11px] font-medium text-[#8B8275] group-hover:text-[#3D3830] transition-colors disabled:opacity-40 cursor-pointer"
           >
-            <span>Ask</span>
+            <span>{actionVerb}</span>
             <ArrowUpRight className="h-3 w-3 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </button>
 
@@ -413,27 +419,31 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
       className="mt-2 border-t border-[#3D3830]/[0.08] pt-2.5"
       aria-label="Suggestions and message actions"
     >
-      {/* Unified Option-A Footer: Suggestions (Left) + Utility Icons (Right) */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* Unified Option-A Footer: Mobile stacks Utility Icons centered above Suggestions; Desktop keeps Suggestions Left + Utility Icons Right */}
+      <div className="flex flex-col items-center gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
+        {utilityBar ? (
+          <div className="order-1 sm:order-2 w-full sm:w-auto flex justify-center sm:justify-end sm:ml-auto">
+            {utilityBar}
+          </div>
+        ) : null}
+
         <button
           type="button"
           onClick={toggleExpand}
           aria-expanded={isExpanded}
-          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-left text-xs font-medium active:scale-[0.98] transition-all cursor-pointer ${
+          className={`order-2 sm:order-1 inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-left text-xs font-medium active:scale-[0.98] transition-all cursor-pointer ${
             isExpanded
               ? 'border-[#3D3830]/22 bg-[#F1ECE3] text-[#3D3830] shadow-xs'
               : 'border-[#3D3830]/14 bg-[#FDFBF7] text-[#3D3830] hover:bg-[#F1ECE3] hover:border-[#3D3830]/22'
           }`}
         >
-          <span>Suggestions</span>
+          <span>{triggerLabel}</span>
           <ChevronDown
             className={`h-3.5 w-3.5 text-[#5C5449] transition-transform duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
               isExpanded ? 'rotate-180' : ''
             }`}
           />
         </button>
-
-        {utilityBar ? <div className="ml-auto">{utilityBar}</div> : null}
       </div>
 
       {/* Smoothly Animated Expandable Suggestions Body */}
@@ -538,7 +548,7 @@ const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
             {hasFollowups && (
               <div className="space-y-2">
                 <h4 className="px-0.5 text-xs font-medium text-[#8B8275]">
-                  Followup
+                  {followupHeading}
                 </h4>
                 <div className="space-y-2">
                   {normalized.followups.map((item, idx) =>

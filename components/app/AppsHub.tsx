@@ -10,8 +10,9 @@ import {
   renderMiniAppIcon,
 } from './miniAppsClientData';
 import {
-  MINI_APP_CATEGORIES,
+  DEFAULT_MINI_APP_CATEGORY_RECORDS,
   type MiniAppCategory,
+  type MiniAppCategoryRecord,
   type MiniAppDefinition,
 } from './miniAppsTypes';
 import { PREVIEW_PROFILES } from './previewFixtures';
@@ -31,6 +32,9 @@ const AppsHub: React.FC = () => {
   const navigate = useNavigate();
 
   const [apps, setApps] = useState<MiniAppDefinition[]>(CLIENT_MINI_APPS);
+  const [categories, setCategories] = useState<MiniAppCategoryRecord[]>(
+    DEFAULT_MINI_APP_CATEGORY_RECORDS
+  );
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>(() => {
     if (isPreviewMode) return PREVIEW_HOME_SUMMARY.favoriteAppSlugs;
     try {
@@ -80,6 +84,9 @@ const AppsHub: React.FC = () => {
 
     if (catRes.ok) {
       const data = await catRes.json();
+      if (Array.isArray(data.categories)) {
+        setCategories(data.categories);
+      }
       if (Array.isArray(data.apps)) {
         setApps(data.apps);
       }
@@ -113,6 +120,27 @@ const AppsHub: React.FC = () => {
   useEffect(() => {
     void loadHubData();
   }, [loadHubData]);
+
+  useEffect(() => {
+    if (activeCategory === 'favorites' && favoriteSlugs.length === 0) {
+      setActiveCategory('all');
+    }
+  }, [activeCategory, favoriteSlugs.length]);
+
+  const categoryTabs = useMemo(() => {
+    const tabs: Array<{ id: 'all' | 'popular' | MiniAppCategory | 'favorites'; label: string }> = [
+      { id: 'all', label: 'All' },
+      { id: 'popular', label: 'Most Popular' },
+    ];
+    if (favoriteSlugs.length > 0) {
+      tabs.push({ id: 'favorites', label: `Favourites (${favoriteSlugs.length})` });
+    }
+    for (const cat of categories) {
+      if (!cat.isActive) continue;
+      tabs.push({ id: cat.slug, label: cat.label });
+    }
+    return tabs;
+  }, [categories, favoriteSlugs.length]);
 
   const handleToggleFavorite = async (e: React.MouseEvent, appSlug: string) => {
     e.preventDefault();
@@ -251,12 +279,8 @@ const AppsHub: React.FC = () => {
           aria-label="Filter apps by category"
           className="flex items-center gap-1 overflow-x-auto no-scrollbar p-1 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/8"
         >
-          {MINI_APP_CATEGORIES.map((cat) => {
+          {categoryTabs.map((cat) => {
             const isActive = activeCategory === cat.id;
-            const favSuffix =
-              cat.id === 'favorites' && favoriteSlugs.length > 0
-                ? ` (${favoriteSlugs.length})`
-                : '';
             return (
               <button
                 key={cat.id}
@@ -271,7 +295,6 @@ const AppsHub: React.FC = () => {
                 }`}
               >
                 {cat.label}
-                {favSuffix}
               </button>
             );
           })}
@@ -308,7 +331,6 @@ const AppsHub: React.FC = () => {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-[#3D3830] truncate">{app.title}</p>
-                    <p className="text-[11px] text-[#8B8275] truncate">{app.categoryLabel}</p>
                   </div>
                 </div>
                 <ArrowRight className="h-4 w-4 text-[#8B8275] group-hover:text-[#3D3830] group-hover:translate-x-0.5 transition-all shrink-0" />
@@ -318,7 +340,7 @@ const AppsHub: React.FC = () => {
         </section>
       )}
 
-      {/* Main Editorial Mini-Apps Grid */}
+      {/* Minimalist Mini-Apps Grid (Icon, Heart, App Name, Arrow) */}
       {filteredApps.length === 0 ? (
         <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-10 text-center space-y-3">
           <p className="font-serif text-2xl text-[#3D3830]">
@@ -358,44 +380,32 @@ const AppsHub: React.FC = () => {
                     navigate(buildAppUrl(app.slug));
                   }
                 }}
-                className="group flex flex-col justify-between rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 transition-all hover:bg-[#F1ECE3]/55 hover:border-[#3D3830]/22 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A]"
+                className="group flex flex-col justify-between gap-6 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-6 transition-all hover:bg-[#F1ECE3]/55 hover:border-[#3D3830]/22 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A]"
               >
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="h-11 w-11 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/10 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors shrink-0">
-                      {renderMiniAppIcon(app.iconKey, 'h-5 w-5')}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={(e) => void handleToggleFavorite(e, app.slug)}
-                      aria-label={isFav ? `Remove ${app.title} from saved` : `Save ${app.title}`}
-                      className={`p-2 rounded-full transition-colors cursor-pointer ${
-                        isFav
-                          ? 'text-[#B8965A] bg-[#B8965A]/12'
-                          : 'text-[#8B8275] hover:text-[#3D3830] hover:bg-[#EAE3D7]/60'
-                      }`}
-                    >
-                      <Heart className={`h-4 w-4 ${isFav ? 'fill-current' : ''}`} />
-                    </button>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="h-11 w-11 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/10 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors shrink-0">
+                    {renderMiniAppIcon(app.iconKey, 'h-5 w-5')}
                   </div>
 
-                  <div>
-                    <p className="text-[11px] text-[#8B8275]">
-                      {app.categoryLabel} · {app.estimatedRead}
-                    </p>
-                    <h2 className="mt-1 font-serif text-2xl font-medium text-[#3D3830] tracking-tight">
-                      {app.title}
-                    </h2>
-                    <p className="mt-2 text-xs text-[#5C5449] leading-relaxed">
-                      {app.description}
-                    </p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => void handleToggleFavorite(e, app.slug)}
+                    aria-label={isFav ? `Remove ${app.title} from saved` : `Save ${app.title}`}
+                    className={`p-2 rounded-full transition-colors cursor-pointer ${
+                      isFav
+                        ? 'text-[#B8965A] bg-[#B8965A]/12'
+                        : 'text-[#8B8275] hover:text-[#3D3830] hover:bg-[#EAE3D7]/60'
+                    }`}
+                  >
+                    <Heart className={`h-4 w-4 ${isFav ? 'fill-current' : ''}`} />
+                  </button>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-[#3D3830]/8 flex items-center justify-between text-xs font-medium text-[#3D3830]">
-                  <span>Open App</span>
-                  <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-1 transition-transform" />
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="font-serif text-2xl font-medium text-[#3D3830] tracking-tight leading-snug">
+                    {app.title}
+                  </h2>
+                  <ArrowRight className="h-4 w-4 text-[#8B7355] group-hover:translate-x-1 transition-transform shrink-0" />
                 </div>
               </div>
             );

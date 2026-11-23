@@ -17,8 +17,6 @@ import type { PlanetPosition, WesternPlanetPosition } from '../services/jyotishM
 import {
   BIRTH_CHART_DOMAINS,
   FALLBACK_PLANET_QUIZ,
-  MINI_APPS_BY_SLUG,
-  MINI_APPS_CATALOG,
   PLANET_STRENGTH_PLANETS,
   buildFallbackMarkdownForApp,
   buildMiniAppPrompt,
@@ -26,7 +24,13 @@ import {
   buildStructuredHeaderForApp,
   computeAppCacheKey,
 } from '../services/miniAppsCatalog';
-import { getMiniAppsConfig, type MiniAppsGovernanceConfig } from '../services/platformSettings';
+import {
+  getDynamicAppBySlug,
+  getDynamicMiniAppsPublicCatalog,
+} from '../services/miniAppsRegistry';
+import { getMiniAppsConfig } from '../services/platformSettings';
+import { getPublicCompanionsCatalogCached } from '../services/companionPresets';
+import type { PublicCompanionCard } from '../../components/app/chatTypes';
 import type {
   MiniAppDefinition,
   MiniAppStructuredHeader,
@@ -62,19 +66,7 @@ export function clearMiniAppsMemoryCache(appSlug?: string): number {
   return removed;
 }
 
-function resolveEffectiveCatalog(cfg: MiniAppsGovernanceConfig): MiniAppDefinition[] {
-  const result: MiniAppDefinition[] = [];
-  for (const app of MINI_APPS_CATALOG) {
-    const ov = cfg.overrides[app.slug];
-    if (ov && ov.enabled === false) continue;
-    result.push({
-      ...app,
-      featuredOnHome:
-        typeof ov?.featured_on_home === 'boolean' ? ov.featured_on_home : app.featuredOnHome,
-    });
-  }
-  return result;
-}
+// Helper removed in favor of getDynamicMiniAppsPublicCatalog() from miniAppsRegistry.ts
 
 const EXPERT_META: Record<string, { title: string; subtitle: string }> = {
   [DEFAULT_COUNCIL_EXPERT_SLUG]: {
@@ -96,6 +88,10 @@ const EXPERT_META: Record<string, { title: string; subtitle: string }> = {
   numerologist: {
     title: 'Numerology',
     subtitle: 'Pythagorean Life Path & timing cycles',
+  },
+  hellenistic_astrologer: {
+    title: 'Hellenistic Astrologer',
+    subtitle: 'Whole Sign houses, Sect, Hermetic Lots & Profections',
   },
 };
 
@@ -228,11 +224,11 @@ router.get('/catalog', requireAuth, async (req: AuthenticatedRequest, res) => {
     // Graceful pre-migration fallback
   }
 
-  const miniAppsCfg = await getMiniAppsConfig();
-  const effectiveCatalog = resolveEffectiveCatalog(miniAppsCfg);
+  const publicCatalog = await getDynamicMiniAppsPublicCatalog();
 
   res.json({
-    apps: effectiveCatalog,
+    categories: publicCatalog.categories,
+    apps: publicCatalog.apps,
     breakdownDomains: BIRTH_CHART_DOMAINS.map((d) => ({
       id: d.id,
       title: d.title,
@@ -311,10 +307,14 @@ router.get('/usage-summary', requireAuth, async (req: AuthenticatedRequest, res)
           existing.runs += 1;
         }
       }
+      const { apps: catalogApps } = await getDynamicMiniAppsPublicCatalog();
+      const titleLookup = new Map<string, string>(
+        catalogApps.map((a) => [a.slug, a.shortTitle || a.title])
+      );
       topApps = Array.from(bySlug.entries())
         .map(([slug, info]) => ({
           slug,
-          title: MINI_APPS_BY_SLUG[slug]?.shortTitle || MINI_APPS_BY_SLUG[slug]?.title || slug,
+          title: titleLookup.get(slug) || slug,
           runs: info.runs,
           lastUsedAt: info.lastUsedAt,
         }))
@@ -368,7 +368,8 @@ router.post('/favorites/toggle', requireAuth, async (req: AuthenticatedRequest, 
   }
 
   const appSlug = typeof req.body?.appSlug === 'string' ? req.body.appSlug.trim() : '';
-  if (!appSlug || !MINI_APPS_BY_SLUG[appSlug]) {
+  const matchedApp = appSlug ? await getDynamicAppBySlug(appSlug) : null;
+  if (!appSlug || !matchedApp) {
     res.status(400).json({ error: 'Unknown mini-app slug' });
     return;
   }
@@ -511,79 +512,120 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     title: string;
     profile_id: string | null;
     pillar?: string | null;
-    companion_persona_json?: { name?: string; role_label?: string } | null;
+    companion_slug?: string | null;
+    companion_persona_json?: {
+      slug?: string;
+      name?: string;
+      role_label?: string;
+      avatar_url?: string | null;
+      monogram_palette?: { bg: string; ring: string; ink: string } | null;
+    } | null;
     updated_at: string;
   }
 
   let convRows: RawConvRow[] = [];
-  const convV6 = await supabaseAdmin
+  const convV7 = await supabaseAdmin
     .from('conversations')
-    .select('id, title, profile_id, pillar, companion_persona_json, updated_at')
+    .select('id, title, profile_id, pillar, companion_slug, companion_persona_json, updated_at')
     .eq('user_id', req.appUser.id)
     .order('updated_at', { ascending: false })
-    .limit(12);
+    .limit(20);
 
-  if (!convV6.error && convV6.data) {
-    convRows = convV6.data as RawConvRow[];
+  if (!convV7.error && convV7.data) {
+    convRows = convV7.data as RawConvRow[];
   } else {
-    const convBase = await supabaseAdmin
+    const convV6 = await supabaseAdmin
       .from('conversations')
-      .select('id, title, profile_id, updated_at')
+      .select('id, title, profile_id, pillar, companion_persona_json, updated_at')
       .eq('user_id', req.appUser.id)
       .order('updated_at', { ascending: false })
-      .limit(12);
-    convRows = (convBase.data || []) as RawConvRow[];
+      .limit(20);
+
+    if (!convV6.error && convV6.data) {
+      convRows = convV6.data as RawConvRow[];
+    } else {
+      const convBase = await supabaseAdmin
+        .from('conversations')
+        .select('id, title, profile_id, updated_at')
+        .eq('user_id', req.appUser.id)
+        .order('updated_at', { ascending: false })
+        .limit(20);
+      convRows = (convBase.data || []) as RawConvRow[];
+    }
+  }
+
+  const companionCatalog = await getPublicCompanionsCatalogCached().catch(
+    (): PublicCompanionCard[] => []
+  );
+  const companionBySlug = new Map<string, PublicCompanionCard>(
+    companionCatalog.map((c): [string, PublicCompanionCard] => [c.slug.toLowerCase(), c])
+  );
+  const lastConvIdBySlug = new Map<string, string>();
+  for (const c of convRows) {
+    const slugKey = String(
+      c.companion_slug || c.companion_persona_json?.slug || ''
+    )
+      .trim()
+      .toLowerCase();
+    if (slugKey && !lastConvIdBySlug.has(slugKey)) {
+      lastConvIdBySlug.set(slugKey, c.id);
+    }
   }
 
   const visibleConvs = convRows.filter((c) => c.pillar !== 'clarity');
   const recentConversations = visibleConvs.slice(0, 4).map((c) => {
     const isCompanion = c.pillar === 'companion' || Boolean(c.companion_persona_json?.name);
+    const resolvedSlug = String(
+      c.companion_slug || c.companion_persona_json?.slug || ''
+    )
+      .trim()
+      .toLowerCase();
+    const matchedCard = resolvedSlug ? companionBySlug.get(resolvedSlug) : undefined;
     return {
       id: c.id,
       title: c.title,
       pillar: (isCompanion ? 'companion' : 'council') as 'council' | 'companion' | 'clarity',
       profile_id: c.profile_id || null,
       profile_label: c.profile_id ? profileMap.get(c.profile_id) || null : null,
-      companion_name: c.companion_persona_json?.name || null,
-      companion_role: c.companion_persona_json?.role_label || null,
+      companion_slug: resolvedSlug || null,
+      companion_name: matchedCard?.name || c.companion_persona_json?.name || null,
+      companion_role: matchedCard?.primary_expertise || c.companion_persona_json?.role_label || null,
+      avatar_url: matchedCard?.avatar_url ?? c.companion_persona_json?.avatar_url ?? null,
+      monogram_palette:
+        matchedCard?.monogram_palette ?? c.companion_persona_json?.monogram_palette ?? null,
       updated_at: c.updated_at,
     };
   });
 
-  // 3. Guides & Companions (Always return all 5 Council guides + 1 Companion card)
-  let latestCompanion: {
-    kind: 'companion';
-    id: string;
-    title: string;
-    subtitle: string;
-    conversationId?: string;
-    lastActiveAt?: string;
-  } | null = null;
+  // 3. Council Guides (All 6 Council experts; Companions render in the Companions grid below)
 
-  for (const c of visibleConvs) {
-    if (c.pillar === 'companion' || c.companion_persona_json?.name) {
-      const cname = c.companion_persona_json?.name || c.title.split('·')[0].trim();
-      const crole = c.companion_persona_json?.role_label || 'Companion';
-      latestCompanion = {
-        kind: 'companion',
-        id: `comp-${c.id}`,
-        title: cname ? `Companion · ${cname}` : 'Companion',
-        subtitle: crole,
-        conversationId: c.id,
-        lastActiveAt: c.updated_at,
-      };
-      break;
+  const featuredSlugs = ['mira', 'aira', 'luna', 'kabir', 'rohan', 'dev', 'tara', 'marc', 'bella'];
+  const featuredSet = new Set<string>();
+  const orderedFeaturedCards = [];
+  for (const slug of featuredSlugs) {
+    const card = companionBySlug.get(slug);
+    if (card && !featuredSet.has(card.slug)) {
+      featuredSet.add(card.slug);
+      orderedFeaturedCards.push(card);
     }
   }
-
-  if (!latestCompanion) {
-    latestCompanion = {
-      kind: 'companion',
-      id: 'comp-starter',
-      title: 'Companion',
-      subtitle: 'Feel better talking through thoughts & stress',
-    };
+  for (const card of companionCatalog) {
+    if (orderedFeaturedCards.length >= 6) break;
+    if (!featuredSet.has(card.slug)) {
+      featuredSet.add(card.slug);
+      orderedFeaturedCards.push(card);
+    }
   }
+  const featuredCompanions = orderedFeaturedCards.slice(0, 6).map((card) => ({
+    slug: card.slug,
+    name: card.name,
+    age: card.age,
+    primary_expertise: card.primary_expertise,
+    tagline: card.tagline,
+    avatar_url: card.avatar_url,
+    monogram_palette: card.monogram_palette,
+    last_conversation_id: lastConvIdBySlug.get(card.slug.toLowerCase()) || null,
+  }));
 
   // Look up latest activity per Council guide across recent conversations
   const councilConvIds = visibleConvs
@@ -622,6 +664,7 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     'western_astrologer',
     'tarot_reader',
     'numerologist',
+    'hellenistic_astrologer',
   ] as const;
 
   const recentGuides: Array<{
@@ -630,6 +673,9 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     title: string;
     subtitle: string;
     expertSlug?: string;
+    companionSlug?: string;
+    avatarUrl?: string | null;
+    monogramPalette?: { bg: string; ring: string; ink: string } | null;
     conversationId?: string;
     lastActiveAt?: string;
   }> = [
@@ -645,7 +691,6 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
         ...(act ? { conversationId: act.conversationId, lastActiveAt: act.lastActiveAt } : {}),
       };
     }),
-    latestCompanion,
   ];
 
   // 4. Favorites & recent Mini-App runs
@@ -685,6 +730,7 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
   res.json({
     recentConversations,
     recentGuides: recentGuides.slice(0, 6),
+    featuredCompanions,
     favoriteAppSlugs,
     recentAppRuns,
     primaryProfile,
@@ -702,7 +748,8 @@ router.get('/:slug/readings', requireAuth, async (req: AuthenticatedRequest, res
   }
 
   const slug = String(req.params.slug || '').trim();
-  if (!MINI_APPS_BY_SLUG[slug]) {
+  const appDef = await getDynamicAppBySlug(slug);
+  if (!appDef) {
     res.status(404).json({ error: 'Mini-App not found' });
     return;
   }
@@ -782,7 +829,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
   }
 
   const slug = String(req.params.slug || '').trim();
-  const appDef = MINI_APPS_BY_SLUG[slug];
+  const appDef = await getDynamicAppBySlug(slug);
   if (!appDef) {
     res.status(404).json({ error: 'Mini-App not found' });
     return;
@@ -790,7 +837,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
 
   const miniAppsCfg = await getMiniAppsConfig();
   const appOverride = miniAppsCfg.overrides[slug];
-  if (appOverride && appOverride.enabled === false) {
+  if (!appDef.isActive || (appOverride && appOverride.enabled === false)) {
     res.status(403).json({
       error: 'This app is currently paused.',
       code: 'APP_DISABLED',
@@ -1108,19 +1155,22 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
   }
 
   // Fetch live platform-cached Gochar + Tropical transits for timing-aware apps
-  const needsTransits = [
-    'daily-horoscope',
-    'weekly-horoscope',
-    'monthly-horoscope',
-    'current-transits',
-    'dasha-analysis',
-    'wealth-blueprint',
-    'love-forecast',
-    'career-navigator',
-    'salary-negotiator',
-    'jupiter-opportunities',
-    'breakup-clarity',
-  ].includes(slug);
+  const needsTransits =
+    [
+      'daily-horoscope',
+      'weekly-horoscope',
+      'monthly-horoscope',
+      'current-transits',
+      'dasha-analysis',
+      'wealth-blueprint',
+      'love-forecast',
+      'career-navigator',
+      'salary-negotiator',
+      'jupiter-opportunities',
+      'breakup-clarity',
+    ].includes(slug) ||
+    appDef.category === 'daily_timing' ||
+    ['daily', 'weekly', 'monthly'].includes(appDef.cacheScope);
 
   let transitPlanets: PlanetPosition[] = [];
   let westernTransitPlanets: WesternPlanetPosition[] = [];
@@ -1159,6 +1209,14 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     partnerProfile,
     transitSummary: transitSummary || null,
     inputs,
+    customPrompts: {
+      vedicPrompt: appDef.vedicPrompt,
+      westernPrompt: appDef.westernPrompt,
+      systemOverride: appDef.systemOverride,
+      rules: appDef.rules,
+      title: appDef.title,
+      description: appDef.description,
+    },
   });
 
   let markdown = '';
@@ -1170,7 +1228,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
     try {
       const fallbackUtilityModel = await getUtilityModelAsync();
       modelUsed =
-        appOverride?.model_id || miniAppsCfg.default_model_id || fallbackUtilityModel;
+        appDef.modelId || appOverride?.model_id || miniAppsCfg.default_model_id || fallbackUtilityModel;
       const completion = await createOpenRouterCompletion({
         model: modelUsed,
         system: promptSpec.system,
@@ -1189,6 +1247,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
   if (!markdown) {
     markdown = buildFallbackMarkdownForApp({
       slug,
+      title: appDef.title,
       profileName: profile?.name,
       inputs,
       astrologyMode,

@@ -22,13 +22,18 @@ import ChartViewer, {
   type CompiledChartJson,
   type DailyTransitsPayload,
   type NatalTruthDossierClient,
+  type VedicTabId,
 } from './ChartViewer';
 import { BirthChartForm } from './BirthChartModal';
 import CustomSelect from './CustomSelect';
 import LifeContextModal from './LifeContextModal';
 import Tooltip from './Tooltip';
 import type { LifeContextData, PlaceSuggestion } from './chatTypes';
-import { PREVIEW_PROFILES } from './previewFixtures';
+import {
+  PREVIEW_CHART_JSON,
+  PREVIEW_DAILY_TRANSITS,
+  PREVIEW_PROFILES,
+} from './previewFixtures';
 
 interface ProfileSummary {
   id: string;
@@ -92,6 +97,7 @@ const ProfileManager: React.FC = () => {
   const [inspectingId, setInspectingId] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<ProfileSummary | null>(null);
   const [selectedDailyTransits, setSelectedDailyTransits] = useState<DailyTransitsPayload | null>(null);
+  const [initialChartTab, setInitialChartTab] = useState<VedicTabId>('overview');
 
   // Edit Modal state
   const [editingProfile, setEditingProfile] = useState<ProfileSummary | null>(null);
@@ -445,9 +451,17 @@ const ProfileManager: React.FC = () => {
     }
   };
 
-  const handleInspectChart = async (profileId: string) => {
+  const handleInspectChart = async (profileId: string, initialTab: VedicTabId = 'overview') => {
+    setInitialChartTab(initialTab);
     if (isPreviewMode) {
-      navigate('/app/chat');
+      const target = profiles.find((p) => p.id === profileId) || profiles[0];
+      if (target) {
+        setSelectedDailyTransits(PREVIEW_DAILY_TRANSITS);
+        setSelectedProfile({
+          ...target,
+          chart_json: target.chart_json || PREVIEW_CHART_JSON,
+        });
+      }
       return;
     }
     const token = await getAccessToken();
@@ -567,7 +581,9 @@ const ProfileManager: React.FC = () => {
         <ChartViewer
           chart={selectedProfile.chart_json}
           dailyTransits={selectedDailyTransits}
+          initialVedicTab={initialChartTab}
           profileId={selectedProfile.id}
+          gender={selectedProfile.gender}
           dossier={selectedProfile.natal_truth_dossier_json ?? null}
           lifeContextCompleteness={selectedProfile.life_context_completeness ?? 0}
           onOpenLifeContext={() => setLifeContextTarget(selectedProfile)}
@@ -945,19 +961,40 @@ const ProfileManager: React.FC = () => {
                     )}
                   </div>
 
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830] transition-colors">
-                    {isInspecting ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span>Opening...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>View chart</span>
-                        <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-0.5 transition-transform" />
-                      </>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {isPreviewMode && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleInspectChart(profile.id, 'vargas');
+                        }}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-[#8B7355] hover:text-[#3D3830] transition-colors cursor-pointer"
+                      >
+                        <span>All 16 Divisional Charts</span>
+                      </button>
                     )}
-                  </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleInspectChart(profile.id);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830] hover:text-[#3D3830] transition-colors cursor-pointer"
+                    >
+                      {isInspecting ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <span>Opening...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>View chart</span>
+                          <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-0.5 transition-transform" />
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             );

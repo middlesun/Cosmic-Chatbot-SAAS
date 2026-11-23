@@ -14,6 +14,26 @@ app.listen(3000);
 
 const nodeHandler = httpServerHandler({ port: 3000 });
 
+const NOINDEX_CLASSIC_PREFIXES = [
+  '/legacy',
+  '/classic',
+  '/written-consultations',
+  '/pay',
+  '/book',
+  '/why-us',
+  '/contact',
+  '/services',
+];
+
+function shouldNoIndex(url: URL): boolean {
+  if (url.hostname.startsWith('classic.') || url.hostname.startsWith('legacy.')) {
+    return true;
+  }
+  return NOINDEX_CLASSIC_PREFIXES.some(
+    (prefix) => url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)
+  );
+}
+
 export default {
   async fetch(
     request: Request,
@@ -31,7 +51,17 @@ export default {
 
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/') && env.ASSETS) {
-      return env.ASSETS.fetch(request);
+      const assetRes = await env.ASSETS.fetch(request);
+      if (shouldNoIndex(url)) {
+        const headers = new Headers(assetRes.headers);
+        headers.set('X-Robots-Tag', 'noindex, nofollow');
+        return new Response(assetRes.body, {
+          status: assetRes.status,
+          statusText: assetRes.statusText,
+          headers,
+        });
+      }
+      return assetRes;
     }
 
     return runWithWaitUntil(

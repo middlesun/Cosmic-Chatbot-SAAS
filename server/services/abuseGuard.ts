@@ -357,10 +357,143 @@ export function containsInternalPromptLeak(text: string): boolean {
   return INTERNAL_LEAK_SIGNATURES.some((sig) => sig.test(text));
 }
 
+const NON_HUMAN_CALLNAME_TOKENS = new Set([
+  'app',
+  'apps',
+  'studio',
+  'studios',
+  'lab',
+  'labs',
+  'tech',
+  'software',
+  'solution',
+  'solutions',
+  'agency',
+  'digital',
+  'media',
+  'venture',
+  'ventures',
+  'holding',
+  'holdings',
+  'group',
+  'corp',
+  'corporation',
+  'inc',
+  'llc',
+  'ltd',
+  'llp',
+  'pvt',
+  'gmbh',
+  'co',
+  'fintastic',
+  'cosmic',
+  'council',
+  'admin',
+  'administrator',
+  'support',
+  'info',
+  'contact',
+  'team',
+  'hello',
+  'sales',
+  'marketing',
+  'help',
+  'official',
+  'service',
+  'services',
+  'account',
+  'accounts',
+  'user',
+  'guest',
+  'member',
+  'client',
+  'seeker',
+  'preview',
+  'observatory',
+  'test',
+  'demo',
+  'bot',
+  'ai',
+  'cloud',
+  'hq',
+  'global',
+  'shop',
+  'store',
+  'enterprise',
+  'enterprises',
+  'consulting',
+  'consultancy',
+  'works',
+  'dev',
+  'mail',
+  'gmail',
+  'yahoo',
+  'outlook',
+  'hotmail',
+  'icloud',
+]);
+
+/**
+ * Validates whether a user display/profile string looks like an actual human personal name.
+ * Rejects email addresses, Gmail local parts, domains/URLs, digits, handles, and brand/company names
+ * (e.g., "Fintastic Apps", "fintasticapps@gmail.com", "Observatory Preview").
+ * Returns clean first name only when verified as a natural human name; otherwise returns null.
+ */
+export function sanitizeHumanCallName(raw?: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim().replace(/\s+/g, ' ');
+  if (!trimmed || trimmed.length < 2 || trimmed.length > 48) return null;
+
+  const lower = trimmed.toLowerCase();
+  if (
+    trimmed.includes('@') ||
+    /https?:|www\.|\.(?:com|io|ai|co|in|org|net|app|dev|xyz|me)\b/i.test(lower) ||
+    /[0-9_/#$%^&*+=~`|\\<>{}\[\]]/.test(trimmed)
+  ) {
+    return null;
+  }
+
+  const words = trimmed.split(' ').filter(Boolean);
+  if (words.length === 0 || words.length > 3) return null;
+
+  for (const w of words) {
+    const cleanWord = w.replace(/[.'’\-]/g, '');
+    if (cleanWord.length === 0) return null;
+    if (NON_HUMAN_CALLNAME_TOKENS.has(cleanWord.toLowerCase())) {
+      return null;
+    }
+    if (!/^[\p{L}][\p{L}'’.\-]*$/u.test(w)) {
+      return null;
+    }
+  }
+
+  const firstWord = words[0].replace(/[.]+$/g, '');
+  if (firstWord.length < 2 || firstWord.length > 20) return null;
+
+  // Reject CamelCase or mashed multi-word brand/handle tokens (e.g., "FintasticApps", "johnDoeBiz")
+  if (/[a-z][A-Z]/.test(firstWord) && !/^(?:Mc|Mac|De|La|Di|Van|Von)[A-Z]/.test(firstWord)) {
+    return null;
+  }
+  if (
+    words.length === 1 &&
+    firstWord.length > 12 &&
+    firstWord === firstWord.toLowerCase()
+  ) {
+    return null;
+  }
+
+  // Reject typical "Brand Apps" plural second word even if not in list
+  if (words.length > 1 && /(?:apps|labs|tech|inc|llc|ltd|corp|hq)$/i.test(words[words.length - 1])) {
+    return null;
+  }
+
+  return firstWord;
+}
+
 /**
  * Light, non-destructive Vedic Astrologer prose sanitizer:
  * - Replaces archaic third-person chart tells ("the native", "the native's") with second-person ("you", "your")
- * - Strips accidental internal cartridge/priority debug tags ([F_...], [PRIO_...])
+ * - Strips accidental internal cartridge/priority debug tags ([F_...], [PRIO_...]) and :::prediction artifacts
  * - Preserves markdown structure, tables, code fences, and inline Sanskrit/Jyotish terms
  */
 export function sanitizeVedicProse(
@@ -429,6 +562,7 @@ export function sanitizeVedicProse(
     // Strip legacy prompt-structure markers (:::prediction, :::analysis, :::, [CONFIDENCE: ...], [FOLLOWUP])
     .replace(/^[ \t]*:::[a-zA-Z0-9_-]*[ \t]*(?:\r?\n|$)/gm, '')
     .replace(/:::(?:prediction|analysis)\b[ \t]*/gi, '')
+    .replace(/^(?:\s*:::[a-zA-Z0-9_-]*[ \t]*|\s*(?:prediction|ediction)\b[ \t]*[:\-]?[ \t]*)+/i, '')
     .replace(/[ \t]*:::[ \t]*$/gm, '')
     .replace(/\[CONFIDENCE\s*:[^\]]*\][ \t]*/gi, '')
     .replace(/^[ \t]*\[FOLLOWUP\][^\n]*(?:\r?\n|$)/gim, '')

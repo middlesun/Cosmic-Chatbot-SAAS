@@ -10,9 +10,16 @@ import adminRouter from './routes/admin';
 import appsRouter from './routes/apps';
 import notesRouter from './routes/notes';
 import favouritesRouter from './routes/favourites';
-import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './services/astrologyApi';
+import {
+  getOrFetchDailyTransits,
+  isAstrologyApiConfigured,
+  searchBirthPlaces,
+} from './services/astrologyApi';
+import { getPublicCompanionsCatalogCached } from './services/companionPresets';
+import { checkRateLimit, getClientIpHash } from './services/abuseGuard';
 import { fetchSanityBlogPosts, isSanityConfigured } from '../lib/sanity';
 import { normalizeCouncilSlug } from '../lib/vedicTypes';
+import { ALLOWED_CHAT_NUMERIC_FONTS } from './services/platformSettings';
 
 export function createExpressApp(): Express {
   const app = express();
@@ -28,6 +35,51 @@ export function createExpressApp(): Express {
     const supabaseAnonKey = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.json({ supabaseUrl, supabaseAnonKey });
+  });
+
+  // Public specialist companions for landing showcase (never returns system prompts or private layers)
+  app.get('/api/public/companions', async (_req, res) => {
+    try {
+      const catalog = await getPublicCompanionsCatalogCached();
+      const companions = catalog.filter((c) => {
+        if (c.category_tag === 'friends') return false;
+        const primaryLower = (c.primary_expertise || '').toLowerCase();
+        if (primaryLower === 'mood lifter' || primaryLower === 'friend') return false;
+        return true;
+      });
+      res.setHeader('Cache-Control', 'public, max-age=120');
+      res.json({ companions });
+    } catch {
+      res.status(500).json({ error: 'Unable to load specialist companions right now.' });
+    }
+  });
+
+  // Rate-limited public place autocomplete for the landing page Birth Chart entry form
+  app.get('/api/public/places', async (req, res) => {
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 120) : '';
+    if (q.length < 2) {
+      res.json({ places: [], configured: isAstrologyApiConfigured() });
+      return;
+    }
+
+    if (!isAstrologyApiConfigured()) {
+      res.json({ places: [], configured: false });
+      return;
+    }
+
+    const ipHash = getClientIpHash(req) || 'unknown';
+    const rate = checkRateLimit(`public_place_search:${ipHash}`, 35, 5 * 60 * 1000);
+    if (!rate.allowed) {
+      res.status(429).json({ error: 'Please pause a moment before searching more places.', places: [] });
+      return;
+    }
+
+    try {
+      const places = await searchBirthPlaces(q);
+      res.json({ places, configured: true });
+    } catch {
+      res.status(502).json({ error: 'Unable to look up place right now.', places: [] });
+    }
   });
 
   // Health & Environment readiness check (never exposes secret values)
@@ -113,6 +165,7 @@ export function createExpressApp(): Express {
       default_astrology_mode,
       preferred_call_name,
       chat_font_size,
+      chat_numeric_font,
       suggestions_auto_expand,
     } = req.body || {};
     const updates: Record<string, string | boolean | null> = {};
@@ -141,6 +194,14 @@ export function createExpressApp(): Express {
     if (['sm', 'base', 'lg'].includes(chat_font_size)) {
       updates.chat_font_size = chat_font_size;
     }
+    if (chat_numeric_font === null || chat_numeric_font === 'default') {
+      updates.chat_numeric_font = null;
+    } else if (
+      typeof chat_numeric_font === 'string' &&
+      (ALLOWED_CHAT_NUMERIC_FONTS as readonly string[]).includes(chat_numeric_font)
+    ) {
+      updates.chat_numeric_font = chat_numeric_font;
+    }
     if (typeof suggestions_auto_expand === 'boolean') {
       updates.suggestions_auto_expand = suggestions_auto_expand;
     }
@@ -158,8 +219,32 @@ export function createExpressApp(): Express {
       .single();
 
     if (error) {
-      // Safe fallback if migration 008 / 005 / 002 columns aren't migrated yet
-      const v7Updates = { ...updates };
+      // Safe fallback if newer columns aren't migrated yet
+      const withoutNumericFont = { ...updates };
+      delete withoutNumericFont.chat_numeric_font;
+
+      if (Object.keys(withoutNumericFont).length > 0 && 'chat_numeric_font' in updates) {
+        const nfFallback = await supabaseAdmin
+          .from('users')
+          .update({ ...withoutNumericFont, updated_at: new Date().toISOString() })
+          .eq('id', req.appUser.id)
+          .select('*')
+          .single();
+
+        if (!nfFallback.error && nfFallback.data) {
+          res.json({
+            user: {
+              ...nfFallback.data,
+              ...(updates.chat_numeric_font !== undefined
+                ? { chat_numeric_font: updates.chat_numeric_font }
+                : {}),
+            },
+          });
+          return;
+        }
+      }
+
+      const v7Updates = { ...withoutNumericFont };
       delete v7Updates.default_astrology_mode;
 
       if (Object.keys(v7Updates).length > 0) {
@@ -175,6 +260,9 @@ export function createExpressApp(): Express {
             user: {
               ...v7Fallback.data,
               ...(default_astrology_mode ? { default_astrology_mode } : {}),
+              ...(updates.chat_numeric_font !== undefined
+                ? { chat_numeric_font: updates.chat_numeric_font }
+                : {}),
             },
           });
           return;
@@ -200,6 +288,9 @@ export function createExpressApp(): Express {
                 ? { suggestions_auto_expand }
                 : {}),
               ...(default_astrology_mode ? { default_astrology_mode } : {}),
+              ...(updates.chat_numeric_font !== undefined
+                ? { chat_numeric_font: updates.chat_numeric_font }
+                : {}),
             },
           });
           return;
@@ -227,13 +318,17 @@ export function createExpressApp(): Express {
       // If only newer-migration fields were sent before migration ran, return non-blocking success
       if (
         (Object.keys(updates).length === 1 && typeof suggestions_auto_expand === 'boolean') ||
-        (Object.keys(updates).length === 1 && Boolean(default_astrology_mode))
+        (Object.keys(updates).length === 1 && Boolean(default_astrology_mode)) ||
+        (Object.keys(updates).length === 1 && 'chat_numeric_font' in updates)
       ) {
         res.json({
           user: {
             ...req.appUser,
             ...(typeof suggestions_auto_expand === 'boolean' ? { suggestions_auto_expand } : {}),
             ...(default_astrology_mode ? { default_astrology_mode } : {}),
+            ...(updates.chat_numeric_font !== undefined
+              ? { chat_numeric_font: updates.chat_numeric_font }
+              : {}),
           },
           persisted: false,
         });

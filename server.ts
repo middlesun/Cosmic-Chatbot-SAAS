@@ -8,9 +8,32 @@ import { createExpressApp } from './server/app';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const NOINDEX_CLASSIC_PREFIXES = [
+  '/legacy',
+  '/classic',
+  '/written-consultations',
+  '/pay',
+  '/book',
+  '/why-us',
+  '/contact',
+  '/services',
+];
+
 async function startServer() {
   const app = createExpressApp();
   const PORT = Number(process.env.PORT) || 3000;
+
+  app.use((req, res, next) => {
+    const host = (req.hostname || '').toLowerCase();
+    const isClassicHost = host.startsWith('classic.') || host.startsWith('legacy.');
+    const isClassicPath = NOINDEX_CLASSIC_PREFIXES.some(
+      (prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`)
+    );
+    if (isClassicHost || isClassicPath) {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    }
+    next();
+  });
 
   // Vite dev middleware vs static production build
   if (process.env.NODE_ENV !== 'production') {

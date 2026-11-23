@@ -320,7 +320,11 @@ function summarizeExtraProfileForSynastry(
     person: item.label || enriched.meta.name || `Partner ${index + 1}`,
     lagna: asc ? `${asc.sign.slice(0, 3)} ${asc.dms}` : '—',
     activeDasha: enriched.vimshottari?.currentStack
-      ? `${enriched.vimshottari.currentStack.mahadasha}/${enriched.vimshottari.currentStack.antardasha} (to ${enriched.vimshottari.currentStack.adEnd})`
+      ? `${enriched.vimshottari.currentStack.mahadasha}/${enriched.vimshottari.currentStack.antardasha} (${
+          enriched.vimshottari.currentStack.adStart
+            ? `${enriched.vimshottari.currentStack.adStart}..`
+            : 'to '
+        }${enriched.vimshottari.currentStack.adEnd})`
       : '—',
     d1Core: enriched.planets
       .filter((p) => keyNames.has(p.name))
@@ -579,7 +583,7 @@ export async function compileStage2ContextPackage(
         const nextH = ((pair.nextSignIndex - ascSignIdx + 12) % 12) + 1;
         const curHMoon =
           moonSignIdx >= 0 ? `/M-H${((pair.currentSignIndex - moonSignIdx + 12) % 12) + 1}` : '';
-        return `${pair.planet}:${pair.currentSign.slice(0, 3)} ${pair.currentDegreeInSign.toFixed(1)}°(L-H${curH}${curHMoon}${pair.isRetrograde ? ' Rx' : ''})->${pair.nextSign.slice(0, 3)}(L-H${nextH})~${pair.nextIngressApproxDate}(${pair.daysUntilIngress}d)`;
+        return `${pair.planet}:${pair.currentSign.slice(0, 3)} ${pair.currentDegreeInSign.toFixed(1)}°(L-H${curH}${curHMoon}${pair.isRetrograde ? ' Rx' : ''}${pair.currentSignEntryApproxDate ? `,from~${pair.currentSignEntryApproxDate}` : ''})->${pair.nextSign.slice(0, 3)}(L-H${nextH})~${pair.nextIngressApproxDate}(${pair.daysUntilIngress}d)`;
       });
     }
   }
@@ -588,7 +592,7 @@ export async function compileStage2ContextPackage(
     ? {
         transitDate: input.dailyTransits?.transitDate,
         dasha: activeStack
-          ? `MD:${activeStack.mahadasha}(to ${activeStack.mdEnd},${activeStack.mdProgressPct ?? '?'}%${activeStack.mdSandhiWarning ? ',SANDHI' : ''}) | AD:${activeStack.antardasha}(to ${activeStack.adEnd},${activeStack.adProgressPct ?? '?'}%${activeStack.adSandhiWarning ? ',SANDHI' : ''}) | PD:${activeStack.pratyantardasha}(to ${activeStack.pdEnd})`
+          ? `MD:${activeStack.mahadasha}(${activeStack.mdStart ? `${activeStack.mdStart}..` : 'to '}${activeStack.mdEnd},${activeStack.mdProgressPct ?? '?'}%${activeStack.mdSandhiWarning ? ',SANDHI' : ''}) | AD:${activeStack.antardasha}(${activeStack.adStart ? `${activeStack.adStart}..` : 'to '}${activeStack.adEnd},${activeStack.adProgressPct ?? '?'}%${activeStack.adSandhiWarning ? ',SANDHI' : ''}) | PD:${activeStack.pratyantardasha}(${activeStack.pdStart ? `${activeStack.pdStart}..` : 'to '}${activeStack.pdEnd})`
           : undefined,
         nextADs: getUpcomingAntardashasSnippet(enriched),
         chara: enriched.jaimini?.charaDasha?.currentPeriod
@@ -1040,6 +1044,11 @@ export async function compileStage2ContextPackage(
       asc: layerA.lagnesh_profile.ascendant_degree_maturity,
       lagnesh: `${lagnesh}(PHI:${layerA.lagnesh_profile.health_score_0_100},D1:${layerA.lagnesh_profile.d1_state},D9:${layerA.lagnesh_profile.d9_state})`,
       power: `${layerA.snapshot_scores.chart_archetype_label}|Pwr:${layerA.snapshot_scores.overall_natal_power_0_100}/100|D9Amp:${layerA.snapshot_scores.d9_amplification_0_10}/10`,
+      ...(!timingSlice && activeStack
+        ? {
+            activeDasha: `MD:${activeStack.mahadasha}(${activeStack.mdStart ? `${activeStack.mdStart}..` : 'to '}${activeStack.mdEnd}) | AD:${activeStack.antardasha}(${activeStack.adStart ? `${activeStack.adStart}..` : 'to '}${activeStack.adEnd})`,
+          }
+        : {}),
     },
     kernel: compactNarrativeKernel,
     ...(compactDomainAudit ? { domainAudit: compactDomainAudit } : {}),

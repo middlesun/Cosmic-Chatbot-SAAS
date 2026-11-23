@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   Compass,
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import AstrologyModeToggle from './AstrologyModeToggle';
+import CompanionAvatar from './CompanionAvatar';
 import LifeContextModal from './LifeContextModal';
 import TimingRadarDashboard from './TimingRadarDashboard';
 import { getUserProfileDisplayLabel } from './chatUtilities';
@@ -25,9 +26,10 @@ import {
   renderMiniAppIcon,
 } from './miniAppsClientData';
 import {
-  MINI_APP_CATEGORIES,
+  DEFAULT_MINI_APP_CATEGORY_RECORDS,
   type HomeSummaryResponse,
   type MiniAppCategory,
+  type MiniAppCategoryRecord,
   type MiniAppDefinition,
 } from './miniAppsTypes';
 
@@ -47,11 +49,15 @@ const formatRelativeDate = (iso: string): string => {
 };
 
 const AppDashboardHome: React.FC = () => {
+  const navigate = useNavigate();
   const { appUser, stats, isPreviewMode, getAccessToken, astrologyMode, setAstrologyMode } = useAuth();
   const [summary, setSummary] = useState<HomeSummaryResponse | null>(() =>
     isPreviewMode ? PREVIEW_HOME_SUMMARY : null
   );
   const [catalogApps, setCatalogApps] = useState<MiniAppDefinition[]>(CLIENT_MINI_APPS);
+  const [appCategories, setAppCategories] = useState<MiniAppCategoryRecord[]>(
+    DEFAULT_MINI_APP_CATEGORY_RECORDS
+  );
   const [summaryLoading, setSummaryLoading] = useState<boolean>(!isPreviewMode);
   const [calibrationOpen, setCalibrationOpen] = useState(false);
   const [activeAppCategory, setActiveAppCategory] = useState<
@@ -105,6 +111,9 @@ const AppDashboardHome: React.FC = () => {
       }
       if (catRes && catRes.ok) {
         const catData = await catRes.json();
+        if (Array.isArray(catData.categories)) {
+          setAppCategories(catData.categories as MiniAppCategoryRecord[]);
+        }
         if (Array.isArray(catData.apps)) {
           setCatalogApps(catData.apps as MiniAppDefinition[]);
         }
@@ -122,6 +131,27 @@ const AppDashboardHome: React.FC = () => {
   useEffect(() => {
     void loadHomeSummary();
   }, [loadHomeSummary]);
+
+  useEffect(() => {
+    if (activeAppCategory === 'favorites' && favoriteSlugs.length === 0) {
+      setActiveAppCategory('all');
+    }
+  }, [activeAppCategory, favoriteSlugs.length]);
+
+  const homeAppCategoryTabs = useMemo(() => {
+    const tabs: Array<{ id: 'all' | 'popular' | MiniAppCategory | 'favorites'; label: string }> = [
+      { id: 'all', label: 'All' },
+      { id: 'popular', label: 'Most Popular' },
+    ];
+    if (favoriteSlugs.length > 0) {
+      tabs.push({ id: 'favorites', label: `Favourites (${favoriteSlugs.length})` });
+    }
+    for (const cat of appCategories) {
+      if (!cat.isActive) continue;
+      tabs.push({ id: cat.slug, label: cat.label });
+    }
+    return tabs;
+  }, [appCategories, favoriteSlugs.length]);
 
   const handleToggleFavorite = async (e: React.MouseEvent, appSlug: string) => {
     e.preventDefault();
@@ -185,6 +215,7 @@ const AppDashboardHome: React.FC = () => {
       const westernPriority = [
         'expert-western_astrologer',
         'expert-modern_astrologer',
+        'expert-hellenistic_astrologer',
         'expert-vedic_astrologer',
       ];
       return [...base].sort((a, b) => {
@@ -342,47 +373,34 @@ const AppDashboardHome: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {summary.recentConversations.map((conv) => {
               const isCompanion = conv.pillar === 'companion';
-              const metaLine = isCompanion
-                ? `Companion · ${conv.companion_role || 'Conversation'}`
-                : `Council${conv.profile_label ? ` · ${conv.profile_label}` : ' · General'}`;
               return (
                 <Link
                   key={conv.id}
                   to={`/app/chat/${conv.id}`}
-                  className="group relative flex flex-col justify-between rounded-3xl rounded-tl-md bg-[#FDFBF7] border border-[#3D3830]/15 p-5 shadow-[0_8px_20px_-14px_rgba(61,56,48,0.22)] transition-all hover:bg-[#F1ECE3]/75 hover:border-[#4A453D]/35"
+                  className="group relative flex flex-col justify-between gap-4 rounded-3xl rounded-tl-md bg-[#FDFBF7] border border-[#3D3830]/15 p-5 shadow-[0_8px_20px_-14px_rgba(61,56,48,0.22)] transition-all hover:bg-[#F1ECE3]/75 hover:border-[#4A453D]/35"
                 >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-2.5">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="h-8 w-8 rounded-full bg-[#4A453D] text-[#FAF7F2] flex items-center justify-center shrink-0">
-                          {isCompanion ? (
-                            <HeartHandshake className="h-3.5 w-3.5 text-[#E6D3B3]" />
-                          ) : (
-                            <MessageCircle className="h-3.5 w-3.5 text-[#E6D3B3]" />
-                          )}
-                        </span>
-                        <span className="text-[11px] font-medium text-[#5C5449] truncate">
-                          {metaLine}
-                        </span>
-                      </div>
-                      <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#8B8275] shrink-0">
-                        {formatRelativeDate(conv.updated_at)}
+                  <div className="flex items-center justify-between gap-2.5">
+                    {isCompanion ? (
+                      <CompanionAvatar
+                        name={conv.companion_name || conv.title || 'Companion'}
+                        avatarUrl={conv.avatar_url}
+                        palette={conv.monogram_palette || undefined}
+                        size="sm"
+                        shape="circle"
+                      />
+                    ) : (
+                      <span className="h-9 w-9 rounded-full bg-[#4A453D] text-[#FAF7F2] flex items-center justify-center shrink-0">
+                        <MessageCircle className="h-4 w-4 text-[#E6D3B3]" />
                       </span>
-                    </div>
+                    )}
+                    <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#8B8275] shrink-0">
+                      {formatRelativeDate(conv.updated_at)}
+                    </span>
+                  </div>
 
-                    <div className="rounded-2xl rounded-tl-sm bg-[#F1ECE3]/75 px-3.5 py-2.5 border border-[#3D3830]/8">
-                      <h3 className="font-serif text-lg font-medium text-[#3D3830] leading-snug line-clamp-2">
-                        {isCompanion && conv.companion_name ? conv.companion_name : conv.title}
-                      </h3>
-                      {isCompanion && conv.title && (
-                        <p className="mt-0.5 text-xs text-[#5C5449] truncate">{conv.title}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3.5 flex items-center justify-between text-xs font-medium text-[#4A453D] group-hover:text-[#3D3830]">
-                    <span>Continue chat</span>
-                    <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-0.5 transition-transform" />
-                  </div>
+                  <h3 className="font-serif text-lg font-medium text-[#3D3830] leading-snug line-clamp-2">
+                    {isCompanion && conv.companion_name ? conv.companion_name : conv.title}
+                  </h3>
                 </Link>
               );
             })}
@@ -413,15 +431,12 @@ const AppDashboardHome: React.FC = () => {
         )}
       </section>
 
-      {/* SECTION 2: GUIDES & COMPANIONS (All 6 — Dark-Warm Bento Cards) */}
+      {/* SECTION 2: GUIDES & COMPANIONS */}
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="text-xs text-[#8B8275]">Council & Companions</p>
-            <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
-              Your Guides & Companions
-            </h2>
-          </div>
+          <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
+            Your Guides & Companions
+          </h2>
           <Link
             to="/app/chat?pillar=companion"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors whitespace-nowrap"
@@ -437,45 +452,122 @@ const AppDashboardHome: React.FC = () => {
               guide.kind === 'companion'
                 ? guide.conversationId
                   ? `/app/chat/${guide.conversationId}`
+                  : guide.companionSlug
+                  ? `/app/chat?pillar=companion&companion=${encodeURIComponent(guide.companionSlug)}`
                   : '/app/chat?pillar=companion'
                 : `/app/chat?pillar=council&expert=${encodeURIComponent(
                     guide.expertSlug || 'vedic_astrologer'
                   )}`;
+            const cleanTitle = guide.title.replace(/^Companion\s*·\s*/i, '');
             return (
               <Link
                 key={guide.id}
                 to={href}
-                className="group flex items-start justify-between gap-3.5 rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/15 p-5 transition-colors hover:bg-[#EAE3D7] hover:border-[#3D3830]/25"
+                className="group rounded-3xl bg-[#F1ECE3] hover:bg-[#EAE3D7] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/15 hover:border-[#3D3830]/30 text-[#3D3830] hover:-translate-y-1 hover:shadow-[0_20px_44px_-22px_rgba(61,56,48,0.18)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between gap-4"
               >
-                <div className="flex items-start gap-3.5 min-w-0">
-                  <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/12 flex items-center justify-center text-[#8B7355] shrink-0">
-                    {guide.kind === 'companion' ? (
-                      <HeartHandshake className="h-4 w-4" />
-                    ) : guide.expertSlug === 'tarot_reader' ? (
-                      <Sparkles className="h-4 w-4" />
-                    ) : guide.expertSlug === 'numerologist' ? (
-                      <Hash className="h-4 w-4" />
-                    ) : (
-                      <Compass className="h-4 w-4" />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[11px] text-[#8B8275]">
-                      {guide.kind === 'companion' ? 'Companion' : 'Council Guide'}
-                      {guide.lastActiveAt ? ` · ${formatRelativeDate(guide.lastActiveAt)}` : ''}
-                    </p>
-                    <h3 className="mt-0.5 font-serif text-xl font-medium text-[#3D3830] truncate">
-                      {guide.title}
-                    </h3>
-                    <p className="mt-1 text-xs text-[#5C5449] line-clamp-1">{guide.subtitle}</p>
-                  </div>
+                <div className="flex items-center justify-between gap-2">
+                  {guide.kind === 'companion' ? (
+                    <CompanionAvatar
+                      name={cleanTitle || 'Companion'}
+                      avatarUrl={guide.avatarUrl}
+                      palette={guide.monogramPalette || undefined}
+                      size="sm"
+                      shape="circle"
+                      className="!w-10 !h-10"
+                    />
+                  ) : (
+                    <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/80 border border-[#3D3830]/15 flex items-center justify-center text-[#8B7355] group-hover:text-[#3D3830] transition-colors shrink-0">
+                      {guide.expertSlug === 'tarot_reader' ? (
+                        <Sparkles className="h-5 w-5" />
+                      ) : guide.expertSlug === 'numerologist' ? (
+                        <Hash className="h-5 w-5" />
+                      ) : (
+                        <Compass className="h-5 w-5" />
+                      )}
+                    </div>
+                  )}
+                  <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/75 group-hover:bg-[#FAF7F2] border border-[#3D3830]/10 flex items-center justify-center transition-colors shrink-0">
+                    <ArrowRight className="h-3.5 w-3.5 text-[#3D3830] group-hover:translate-x-0.5 transition-transform" />
+                  </span>
                 </div>
-                <ArrowRight className="mt-1 h-4 w-4 text-[#8B8275] group-hover:text-[#3D3830] group-hover:translate-x-0.5 transition-all shrink-0" />
+                <div>
+                  <h3 className="font-serif text-2xl font-medium text-[#3D3830] tracking-tight leading-snug">
+                    {cleanTitle}
+                  </h3>
+                </div>
               </Link>
             );
           })}
         </div>
       </section>
+
+      {/* SECTION 2B: FEATURED COMPANIONS — Calm Portrait Strip */}
+      {(() => {
+        const featuredCompanions =
+          summary?.featuredCompanions && summary.featuredCompanions.length > 0
+            ? summary.featuredCompanions
+            : PREVIEW_HOME_SUMMARY.featuredCompanions || [];
+        if (featuredCompanions.length === 0) return null;
+        return (
+          <section className="space-y-4">
+            <div className="flex items-end justify-between gap-4">
+              <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
+                Companions
+              </h2>
+              <Link
+                to="/app/companions"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors whitespace-nowrap"
+              >
+                <span>Browse all</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {featuredCompanions.map((comp) => {
+                const targetHref = comp.last_conversation_id
+                  ? `/app/chat/${comp.last_conversation_id}`
+                  : `/app/chat?pillar=companion&companion=${encodeURIComponent(comp.slug)}`;
+                return (
+                  <Link
+                    key={comp.slug}
+                    to={targetHref}
+                    className="group flex items-start justify-between gap-3.5 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/14 p-4 sm:p-5 transition-all hover:bg-[#F1ECE3]/80 hover:border-[#3D3830]/28"
+                  >
+                    <div className="flex items-start gap-3.5 min-w-0">
+                      <CompanionAvatar
+                        name={comp.name}
+                        avatarUrl={comp.avatar_url}
+                        palette={comp.monogram_palette}
+                        size="md"
+                        shape="circle"
+                      />
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex items-baseline gap-1.5 min-w-0">
+                          <h3 className="font-serif text-lg font-medium text-[#3D3830] truncate">
+                            {comp.name}
+                          </h3>
+                          <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#8B8275] shrink-0">
+                            {comp.age}
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-medium text-[#8B7355] truncate">
+                          {comp.primary_expertise}
+                          {comp.last_conversation_id ? ' · Active' : ''}
+                        </p>
+                        <p className="text-xs text-[#5C5449] leading-snug line-clamp-2 pt-0.5">
+                          {comp.tagline}
+                        </p>
+                      </div>
+                    </div>
+                    <ArrowRight className="mt-1 h-4 w-4 text-[#8B8275] group-hover:text-[#3D3830] group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Gentle Desh-Kaal-Patra Context Calibration Prompt (when primary profile < 80%) */}
       {summary?.primaryProfile &&
@@ -532,18 +624,14 @@ const AppDashboardHome: React.FC = () => {
           </Link>
         </div>
 
-        {/* Aligned 8 Category Tabs */}
+        {/* Dynamic Category Tabs */}
         <div
           role="tablist"
           aria-label="Filter home apps by category"
           className="flex items-center gap-1 overflow-x-auto no-scrollbar p-1 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/8 w-full sm:w-fit max-w-full"
         >
-          {MINI_APP_CATEGORIES.map((cat) => {
+          {homeAppCategoryTabs.map((cat) => {
             const isActive = activeAppCategory === cat.id;
-            const favSuffix =
-              cat.id === 'favorites' && favoriteSlugs.length > 0
-                ? ` (${favoriteSlugs.length})`
-                : '';
             return (
               <button
                 key={cat.id}
@@ -558,7 +646,6 @@ const AppDashboardHome: React.FC = () => {
                 }`}
               >
                 {cat.label}
-                {favSuffix}
               </button>
             );
           })}
@@ -576,44 +663,43 @@ const AppDashboardHome: React.FC = () => {
             {displayedApps.map((app) => {
               const isFav = favoriteSlugs.includes(app.slug);
               return (
-                <Link
+                <div
                   key={app.slug}
-                  to={`/app/apps/${app.slug}`}
-                  className="group flex flex-col justify-between rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/app/apps/${app.slug}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(`/app/apps/${app.slug}`);
+                    }
+                  }}
+                  className="group flex flex-col justify-between gap-5 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A]"
                 >
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="h-10 w-10 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/8 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors">
-                        {renderMiniAppIcon(app.iconKey, 'h-4 w-4')}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => void handleToggleFavorite(e, app.slug)}
-                        aria-label={isFav ? `Remove ${app.title} from favourites` : `Add ${app.title} to favourites`}
-                        className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                          isFav
-                            ? 'text-[#B8965A] bg-[#B8965A]/12'
-                            : 'text-[#8B8275] hover:text-[#3D3830] hover:bg-[#EAE3D7]/60'
-                        }`}
-                      >
-                        <Heart className={`h-3.5 w-3.5 ${isFav ? 'fill-current' : ''}`} />
-                      </button>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="h-10 w-10 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/8 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors shrink-0">
+                      {renderMiniAppIcon(app.iconKey, 'h-4 w-4')}
                     </div>
-                    <div>
-                      <p className="text-[11px] text-[#8B8275]">{app.categoryLabel}</p>
-                      <h3 className="mt-0.5 font-serif text-xl font-medium text-[#3D3830]">
-                        {app.shortTitle}
-                      </h3>
-                      <p className="mt-1 text-xs text-[#5C5449] leading-relaxed line-clamp-2">
-                        {app.tagline}
-                      </p>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => void handleToggleFavorite(e, app.slug)}
+                      aria-label={isFav ? `Remove ${app.title} from favourites` : `Add ${app.title} to favourites`}
+                      className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                        isFav
+                          ? 'text-[#B8965A] bg-[#B8965A]/12'
+                          : 'text-[#8B8275] hover:text-[#3D3830] hover:bg-[#EAE3D7]/60'
+                      }`}
+                    >
+                      <Heart className={`h-3.5 w-3.5 ${isFav ? 'fill-current' : ''}`} />
+                    </button>
                   </div>
-                  <div className="mt-4 pt-3 border-t border-[#3D3830]/8 flex items-center justify-between text-xs font-medium text-[#5C5449] group-hover:text-[#3D3830]">
-                    <span>Open</span>
-                    <ArrowRight className="h-3.5 w-3.5 text-[#8B7355] group-hover:translate-x-0.5 transition-transform" />
+                  <div className="flex items-center justify-between gap-2.5">
+                    <h3 className="font-serif text-xl font-medium text-[#3D3830] leading-snug">
+                      {app.shortTitle || app.title}
+                    </h3>
+                    <ArrowRight className="h-4 w-4 text-[#8B7355] group-hover:translate-x-0.5 transition-transform shrink-0" />
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>

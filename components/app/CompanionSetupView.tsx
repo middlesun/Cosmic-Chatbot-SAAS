@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -10,24 +10,67 @@ import {
   RefreshCw,
   Sparkles,
   Sun,
+  Trash2,
+  UserPlus,
+  X,
 } from 'lucide-react';
 import CustomSelect from './CustomSelect';
+import CompanionAvatar from './CompanionAvatar';
+import CompanionProfileSheet from './CompanionProfileSheet';
+import { PREVIEW_PUBLIC_COMPANIONS } from './previewFixtures';
 import type {
   CompanionArchetypeConfigItem,
   CompanionArchetypeSlug,
+  CompanionCategoryTag,
   CompanionPersona,
   ConversationRecord,
+  PublicCompanionCard,
 } from './chatTypes';
 
+export interface CustomCompanionSummary {
+  id: string;
+  slug: string;
+  persona: CompanionPersona;
+  last_conversation_id: string | null;
+  last_interaction_at: string | null;
+  thread_count: number;
+}
+
 interface CompanionSetupViewProps {
+  variant?: 'chat' | 'page';
   initialArchetype?: CompanionArchetypeSlug | null;
   pastCompanionConversations: ConversationRecord[];
   archetypeConfigs?: CompanionArchetypeConfigItem[];
+  companionCatalog?: PublicCompanionCard[];
   isPreviewMode?: boolean;
   getAccessToken: () => Promise<string | null>;
   onSelectPastCompanion: (conversationId: string) => void;
   onStartWithCompanion: (persona: CompanionPersona) => Promise<void>;
+  onStartPresetCompanion?: (
+    card: PublicCompanionCard,
+    options?: { forceNew?: boolean }
+  ) => Promise<void>;
+  onStartCustomBySlug?: (
+    slug: string,
+    persona: CompanionPersona,
+    options?: { forceNew?: boolean }
+  ) => Promise<void>;
+  onCatalogLoaded?: (
+    cards: PublicCompanionCard[],
+    customCompanions?: CustomCompanionSummary[]
+  ) => void;
 }
+
+type CategoryFilterId = 'all' | CompanionCategoryTag;
+
+const CATEGORY_TABS: Array<{ id: CategoryFilterId; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'support', label: 'Support & Listening' },
+  { id: 'friends', label: 'Friends' },
+  { id: 'astrology', label: 'Astrology' },
+  { id: 'tarot_numerology', label: 'Tarot & Numerology' },
+  { id: 'past_life', label: 'Past Life' },
+];
 
 interface ArchetypeOption {
   slug: CompanionArchetypeSlug;
@@ -43,19 +86,22 @@ const ARCHETYPE_OPTIONS: ArchetypeOption[] = [
   {
     slug: 'find_someone',
     label: 'Find someone',
-    summary: 'Not sure which voice fits yet? Share what is on your mind and meet 4 grounded people.',
+    summary:
+      'Not sure which voice fits yet? Share what is on your mind and meet 4 grounded people.',
     icon: Compass,
   },
   {
     slug: 'friend',
     label: 'Friend',
-    summary: 'Easy, genuine company to talk through your day, bounce a thought around, or feel less alone.',
+    summary:
+      'Easy, genuine company to talk through your day, bounce a thought around, or feel less alone.',
     icon: MessageCircle,
   },
   {
     slug: 'listener',
     label: 'Listener',
-    summary: 'Unhurried, judgment-free space to vent, slow down, and be heard without rushing to fix.',
+    summary:
+      'Unhurried, judgment-free space to vent, slow down, and be heard without rushing to fix.',
     icon: Headphones,
   },
   {
@@ -67,13 +113,15 @@ const ARCHETYPE_OPTIONS: ArchetypeOption[] = [
   {
     slug: 'life_coach',
     label: 'Life coach',
-    summary: 'Clear-eyed accountability and honest pushback when you want real traction on a choice.',
+    summary:
+      'Clear-eyed accountability and honest pushback when you want real traction on a choice.',
     icon: HeartHandshake,
   },
   {
     slug: 'spiritual_guide',
     label: 'Spiritual guide',
-    summary: 'Reflective philosophical and spiritual companionship attuned to your faith and depth.',
+    summary:
+      'Reflective philosophical and spiritual companionship attuned to your faith and depth.',
     icon: Sun,
     isSpiritual: true,
   },
@@ -123,20 +171,22 @@ const PREVIEW_MATCHES: CompanionPersona[] = [
     opening_message:
       'Hey — glad you dropped in. No need to package it neatly; what has been sitting in the back of your head today?',
     system_prompt: '',
+    chat_style: 'chat_bubbles',
   },
   {
     id: 'prev-m-2',
-    name: 'Dev',
+    name: 'Devansh',
     age: 34,
     gender: 'M',
     companion_type: 'find_someone',
     role_label: 'Grounded Straight-Talker',
     background: 'Former culinary instructor · Practical, warm, unhurried',
     tagline: 'Steady energy when your head feels loud.',
-    bio: 'Dev left high-pressure kitchens to teach small cooking classes and rebuild a slower pace of life. He has zero patience for performative pep talks, but he will sit with you until the real next step shows up.',
+    bio: 'Devansh left high-pressure kitchens to teach small cooking classes and rebuild a slower pace of life. He has zero patience for performative pep talks, but he will sit with you until the real next step shows up.',
     conversation_style: 'Steady, down-to-earth, playfully direct',
     opening_message: 'Hey there. Take a breath — what are we untangling today?',
     system_prompt: '',
+    chat_style: 'chat_bubbles',
   },
   {
     id: 'prev-m-3',
@@ -152,21 +202,23 @@ const PREVIEW_MATCHES: CompanionPersona[] = [
     opening_message:
       'Hi! Pull up a chair — is today one of those days where you want to talk something through, or just decompress?',
     system_prompt: '',
+    chat_style: 'chat_bubbles',
   },
   {
     id: 'prev-m-4',
-    name: 'Rohan',
+    name: 'Arjun',
     age: 37,
     gender: 'M',
     companion_type: 'find_someone',
     role_label: 'Perspective Builder',
     background: 'Urban planner & marathon runner · Patient, structured, sincere',
     tagline: 'Helps turn tangled thoughts into calm perspective.',
-    bio: 'Rohan spends his days figuring out how cities flow and his mornings running quiet routes before sunrise. He is patient with uncertainty and gently nudges you when it is time to stop circling.',
+    bio: 'Arjun spends his days figuring out how cities flow and his mornings running quiet routes before sunrise. He is patient with uncertainty and gently nudges you when it is time to stop circling.',
     conversation_style: 'Measured, encouraging, thoughtfully challenging',
     opening_message:
       'Hey — good to meet you. Tell me a little about what has been occupying your mind lately.',
     system_prompt: '',
+    chat_style: 'chat_bubbles',
   },
 ];
 
@@ -179,20 +231,40 @@ const getReligiousnessCaption = (score: number): string => {
 };
 
 const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
+  variant = 'chat',
   initialArchetype = null,
   pastCompanionConversations,
   archetypeConfigs,
+  companionCatalog,
   isPreviewMode = false,
   getAccessToken,
   onSelectPastCompanion,
   onStartWithCompanion,
+  onStartPresetCompanion,
+  onStartCustomBySlug,
+  onCatalogLoaded,
 }) => {
   const [selectedType, setSelectedType] = useState<CompanionArchetypeSlug | null>(
     initialArchetype
   );
-  const [step, setStep] = useState<'pick_type' | 'intake' | 'matching' | 'results'>(
-    initialArchetype ? 'intake' : 'pick_type'
+  const [step, setStep] = useState<'hub' | 'pick_type' | 'intake' | 'matching' | 'results'>(
+    initialArchetype ? 'intake' : 'hub'
   );
+
+  // Preset hub catalog + saved custom companions
+  const [presets, setPresets] = useState<PublicCompanionCard[]>(() =>
+    companionCatalog && companionCatalog.length > 0
+      ? companionCatalog
+      : isPreviewMode
+      ? PREVIEW_PUBLIC_COMPANIONS
+      : []
+  );
+  const [customCompanions, setCustomCompanions] = useState<CustomCompanionSummary[]>([]);
+  const [loadingHub, setLoadingHub] = useState<boolean>(
+    !isPreviewMode && (!companionCatalog || companionCatalog.length === 0)
+  );
+  const [activeCategory, setActiveCategory] = useState<CategoryFilterId>('all');
+  const [sheetCompanion, setSheetCompanion] = useState<PublicCompanionCard | null>(null);
 
   // Standard 2-question intake
   const [topic, setTopic] = useState('');
@@ -208,6 +280,63 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
   const [seenNames, setSeenNames] = useState<string[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [startingId, setStartingId] = useState<string | null>(null);
+  const [confirmRemoveCustomSlug, setConfirmRemoveCustomSlug] = useState<string | null>(null);
+  const [removingCustomSlug, setRemovingCustomSlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (companionCatalog && companionCatalog.length > 0) {
+      setPresets(companionCatalog);
+      setLoadingHub(false);
+    }
+  }, [companionCatalog]);
+
+  useEffect(() => {
+    if (isPreviewMode) {
+      setPresets(PREVIEW_PUBLIC_COMPANIONS);
+      setLoadingHub(false);
+      return;
+    }
+
+    let cancelled = false;
+    const loadCatalog = async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token || cancelled) {
+          setLoadingHub(false);
+          return;
+        }
+        const res = await fetch('/api/chat/companions', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok || cancelled) {
+          setLoadingHub(false);
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const loadedCards = Array.isArray(data.companions)
+          ? (data.companions as PublicCompanionCard[])
+          : [];
+        const loadedCustom = Array.isArray(data.customCompanions)
+          ? (data.customCompanions as CustomCompanionSummary[])
+          : [];
+        if (loadedCards.length > 0) {
+          setPresets(loadedCards);
+        }
+        setCustomCompanions(loadedCustom);
+        onCatalogLoaded?.(loadedCards, loadedCustom);
+      } catch {
+        // Keep whatever catalog was hydrated
+      } finally {
+        if (!cancelled) setLoadingHub(false);
+      }
+    };
+
+    void loadCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, isPreviewMode]);
 
   const resolvedArchetypeOptions = useMemo(() => {
     if (!archetypeConfigs || archetypeConfigs.length === 0) return ARCHETYPE_OPTIONS;
@@ -231,6 +360,37 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
       resolvedArchetypeOptions[0],
     [resolvedArchetypeOptions, selectedType]
   );
+
+  // Merge live thread counts from pastCompanionConversations for snappy UI updates
+  const enrichedPresets = useMemo(() => {
+    if (pastCompanionConversations.length === 0) return presets;
+    const bySlug = new Map<string, ConversationRecord>();
+    for (const conv of pastCompanionConversations) {
+      const slug = conv.companion_slug || conv.companion_persona_json?.slug;
+      if (slug && !bySlug.has(slug)) {
+        bySlug.set(slug, conv);
+      }
+    }
+    return presets.map((card) => {
+      const localLatest = bySlug.get(card.slug);
+      if (!localLatest) return card;
+      return {
+        ...card,
+        last_conversation_id: card.last_conversation_id || localLatest.id,
+        last_interaction_at: card.last_interaction_at || localLatest.updated_at,
+      };
+    });
+  }, [presets, pastCompanionConversations]);
+
+  const filteredPresets = useMemo(() => {
+    if (activeCategory === 'all') return enrichedPresets;
+    return enrichedPresets.filter((c) => c.category_tag === activeCategory);
+  }, [enrichedPresets, activeCategory]);
+
+  const availableCategories = useMemo(() => {
+    const present = new Set(enrichedPresets.map((c) => c.category_tag));
+    return CATEGORY_TABS.filter((tab) => tab.id === 'all' || present.has(tab.id));
+  }, [enrichedPresets]);
 
   const handleChooseArchetype = (slug: CompanionArchetypeSlug) => {
     setSelectedType(slug);
@@ -319,17 +479,458 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
     }
   };
 
+  const handleStartPreset = async (
+    card: PublicCompanionCard,
+    options?: { forceNew?: boolean }
+  ) => {
+    if (startingId) return;
+    setStartingId(card.slug);
+    setErrorMsg(null);
+    try {
+      if (onStartPresetCompanion) {
+        await onStartPresetCompanion(card, options);
+      } else {
+        await onStartWithCompanion({
+          id: card.id,
+          slug: card.slug,
+          name: card.name,
+          age: card.age,
+          gender: card.sex,
+          companion_type: 'friend',
+          role_label: card.primary_expertise,
+          background: card.short_bio,
+          tagline: card.tagline,
+          bio: card.full_bio || card.short_bio,
+          conversation_style: 'Natural human texting',
+          opening_message: `Hey — I’m ${card.name}. What’s on your mind right now?`,
+          system_prompt: '',
+          avatar_url: card.avatar_url,
+          monogram_palette: card.monogram_palette,
+          chat_style: card.chat_style,
+          skill_level: card.skill_level,
+          tts_voice_profile: card.tts_voice_profile,
+          supports_listening_cue: card.supports_listening_cue,
+        });
+      }
+      setSheetCompanion(null);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Unable to start conversation.');
+    } finally {
+      setStartingId(null);
+    }
+  };
+
+  const handleResumeCustom = async (
+    item: CustomCompanionSummary,
+    options?: { forceNew?: boolean }
+  ) => {
+    if (startingId) return;
+    setStartingId(item.slug);
+    setErrorMsg(null);
+    try {
+      if (!options?.forceNew && item.last_conversation_id) {
+        onSelectPastCompanion(item.last_conversation_id);
+        return;
+      }
+      if (onStartCustomBySlug) {
+        await onStartCustomBySlug(item.slug, item.persona, options);
+      } else {
+        await onStartWithCompanion(item.persona);
+      }
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Unable to open companion.');
+    } finally {
+      setStartingId(null);
+    }
+  };
+
+  const handleRemoveCustom = async (slug: string) => {
+    if (removingCustomSlug) return;
+    setRemovingCustomSlug(slug);
+    setErrorMsg(null);
+    try {
+      if (!isPreviewMode) {
+        const token = await getAccessToken();
+        if (!token) throw new Error('Please sign in again.');
+        const res = await fetch(
+          `/api/chat/companions/custom/${encodeURIComponent(slug)}`,
+          {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error || 'Could not remove companion.');
+        }
+      }
+      const nextCustom = customCompanions.filter((c) => c.slug !== slug);
+      setCustomCompanions(nextCustom);
+      setConfirmRemoveCustomSlug(null);
+      onCatalogLoaded?.(presets, nextCustom);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Could not remove companion.');
+    } finally {
+      setRemovingCustomSlug(null);
+    }
+  };
+
   return (
-    <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 pt-6 pb-40">
-      <div className="mx-auto max-w-3xl">
-        {/* STEP 1: Choose Companion Archetype */}
-        {step === 'pick_type' && (
-          <div className="space-y-7 animate-cc-message-in">
+    <div
+      className={
+        variant === 'page'
+          ? 'w-full pb-8'
+          : 'flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 pt-6 pb-40'
+      }
+    >
+      <div className={variant === 'page' ? 'mx-auto max-w-5xl' : 'mx-auto max-w-4xl'}>
+        {/* HUB: Preset Companion Directory (2-col desktop / 1-col mobile) + "Find someone new" LAST */}
+        {step === 'hub' && (
+          <div className="space-y-6 animate-cc-message-in">
             <div className="space-y-2">
               <p className="text-[11px] font-medium text-[#8B8275]">
                 Companions · Judgment-free human space
               </p>
-              <h2 className="font-serif text-2xl sm:text-3xl font-medium text-[#3D3830] leading-tight text-balance">
+              <h2 className="font-['Cormorant_Garamond',serif] text-2xl sm:text-3xl font-medium text-[#3D3830] leading-tight text-balance">
+                Someone in your corner, whenever you want company
+              </h2>
+              <p className="text-xs sm:text-sm text-[#5C5449] leading-relaxed max-w-2xl">
+                Vent freely, talk about nothing at all, or invite grounded astrology, tarot, or numerology when you want perspective. Every companion remembers your story across chats together—strictly private and platonic.
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="rounded-xl border border-[#7A3E36]/25 bg-[#7A3E36]/8 px-3.5 py-2.5 text-xs text-[#7A3E36]">
+                {errorMsg}
+              </div>
+            )}
+
+            {/* Category Filter Controls */}
+            {availableCategories.length > 1 && (
+              <div
+                className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar"
+                role="tablist"
+                aria-label="Filter companions by focus"
+              >
+                {availableCategories.map((cat) => {
+                  const isActive = activeCategory === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setActiveCategory(cat.id)}
+                      className={`min-h-[38px] shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                        isActive
+                          ? 'bg-[#4A453D] text-[#FAF7F2]'
+                          : 'border border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830]'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Saved Custom Companions from "Find someone new" (if user has any) */}
+            {activeCategory === 'all' && customCompanions.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-[#5C5449]">
+                    Your matched companions
+                  </h3>
+                  <span className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
+                    {customCompanions.length} saved
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {customCompanions.map((item) => {
+                    const p = item.persona;
+                    const isStarting = startingId === item.slug;
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex flex-col justify-between rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-4 sm:p-5 gap-3.5"
+                      >
+                        <div className="flex items-start gap-3.5 min-w-0">
+                          <CompanionAvatar
+                            name={p.name}
+                            avatarUrl={p.avatar_url}
+                            palette={p.monogram_palette}
+                            size="lg"
+                            shape="circle"
+                          />
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex items-center justify-between gap-2 min-w-0">
+                              <div className="flex items-baseline gap-2 min-w-0">
+                                <h3 className="font-['Cormorant_Garamond',serif] text-xl font-semibold text-[#3D3830] truncate">
+                                  {p.name}
+                                </h3>
+                                <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] shrink-0">
+                                  {p.age}
+                                </span>
+                              </div>
+                              {confirmRemoveCustomSlug === item.slug ? (
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    disabled={removingCustomSlug === item.slug}
+                                    onClick={() => void handleRemoveCustom(item.slug)}
+                                    className="text-[11px] font-medium text-[#7A3E36] hover:underline cursor-pointer"
+                                  >
+                                    {removingCustomSlug === item.slug ? 'Removing…' : 'Remove'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmRemoveCustomSlug(null)}
+                                    aria-label="Cancel removal"
+                                    className="p-1 rounded-full text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmRemoveCustomSlug(item.slug)}
+                                  aria-label={`Remove ${p.name} from saved matches`}
+                                  className="p-1.5 rounded-full text-[#8B8275] hover:text-[#7A3E36] hover:bg-[#F1ECE3] transition-colors shrink-0 cursor-pointer"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-xs text-[#8B8275] truncate">
+                              {p.role_label}
+                              {item.thread_count > 0 ? ` · ${item.thread_count} chat${item.thread_count === 1 ? '' : 's'}` : ''}
+                            </p>
+                            <p className="text-xs text-[#5C5449] leading-relaxed line-clamp-2">
+                              {p.tagline || p.bio}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 items-center gap-1.5 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSheetCompanion({
+                                id: item.id,
+                                slug: item.slug,
+                                name: p.name,
+                                age: p.age,
+                                sex: p.gender,
+                                tagline: p.tagline || '',
+                                short_bio: p.bio || p.tagline || '',
+                                full_bio: p.bio || p.tagline || '',
+                                primary_expertise: p.role_label || 'Companion',
+                                secondary_expertise: [],
+                                category_tag: 'friends',
+                                cultural_fluency: p.background || '',
+                                skill_level: p.skill_level || 'none_emotional',
+                                chat_style: p.chat_style || 'chat_bubbles',
+                                tts_voice_profile: p.tts_voice_profile || { rate: 1, pitch: 1 },
+                                supports_listening_cue: Boolean(p.supports_listening_cue),
+                                suggestions_enabled: true,
+                                sort_order: 0,
+                                monogram_palette: p.monogram_palette || {
+                                  bg: '#EAE3D7',
+                                  ring: '#B8965A',
+                                  ink: '#3D3830',
+                                },
+                                avatar_url: p.avatar_url || null,
+                                last_conversation_id: item.last_conversation_id,
+                              })
+                            }
+                            className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] transition-colors cursor-pointer truncate"
+                          >
+                            About
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={startingId !== null}
+                            onClick={() =>
+                              void handleResumeCustom(item, { forceNew: true })
+                            }
+                            className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] disabled:opacity-50 transition-colors cursor-pointer truncate"
+                          >
+                            Start new
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={startingId !== null}
+                            onClick={() => void handleResumeCustom(item)}
+                            className="min-h-[36px] rounded-xl border border-[#3D3830]/14 bg-[#EDE6DA] px-2.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#E4DCCD] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer truncate"
+                          >
+                            {isStarting ? 'Opening…' : 'Continue Chat'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Preset Companions Grid (2 columns desktop, 1 column mobile) */}
+            {loadingHub ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {[1, 2, 3, 4].map((skeleton) => (
+                  <div
+                    key={skeleton}
+                    className="rounded-3xl border border-[#3D3830]/10 bg-[#FDFBF7] p-5 h-44 animate-pulse"
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {filteredPresets.map((card) => {
+                  const isStarting = startingId === card.slug;
+                  const hasHistory = Boolean(card.last_conversation_id);
+                  return (
+                    <div
+                      key={card.slug}
+                      className="flex flex-col justify-between rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-4 sm:p-5 gap-4 hover:border-[#3D3830]/25 transition-colors"
+                    >
+                      <div className="flex items-start gap-3.5 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setSheetCompanion(card)}
+                          aria-label={`View ${card.name}'s profile`}
+                          className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A] cursor-pointer"
+                        >
+                          <CompanionAvatar
+                            name={card.name}
+                            avatarUrl={card.avatar_url}
+                            palette={card.monogram_palette}
+                            size="lg"
+                            shape="circle"
+                          />
+                        </button>
+
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center justify-between gap-2 min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => setSheetCompanion(card)}
+                              className="flex items-baseline gap-2 min-w-0 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                            >
+                              <h3 className="font-['Cormorant_Garamond',serif] text-[21px] font-semibold text-[#3D3830] leading-tight truncate">
+                                {card.name}
+                              </h3>
+                              <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] shrink-0">
+                                {card.age}
+                              </span>
+                            </button>
+
+                            {hasHistory && (
+                              <span className="text-[11px] font-medium text-[#2D6A4F] shrink-0">
+                                Active chat
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-[#8B8275] truncate">
+                            {card.primary_expertise}
+                            {card.secondary_expertise?.[0] &&
+                            card.secondary_expertise[0].toLowerCase() !==
+                              card.primary_expertise.toLowerCase()
+                              ? ` · ${card.secondary_expertise[0]}`
+                              : ''}
+                          </p>
+
+                          <p className="text-xs text-[#5C5449] leading-relaxed line-clamp-2 pt-0.5">
+                            {card.tagline || card.short_bio}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 items-center gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setSheetCompanion(card)}
+                          className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] transition-colors cursor-pointer truncate"
+                        >
+                          About
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={startingId !== null}
+                          onClick={() => void handleStartPreset(card, { forceNew: true })}
+                          className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] disabled:opacity-50 transition-colors cursor-pointer truncate"
+                        >
+                          Start new
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={startingId !== null}
+                          onClick={() => void handleStartPreset(card)}
+                          className="min-h-[36px] rounded-xl border border-[#3D3830]/14 bg-[#EDE6DA] px-2.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#E4DCCD] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer truncate"
+                        >
+                          {isStarting ? 'Connecting…' : 'Continue Chat'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* LAST OPTION ON THE LIST: Find someone new (preserved custom matcher) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMsg(null);
+                    setStep('pick_type');
+                  }}
+                  className="md:col-span-2 group flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-dashed border-[#3D3830]/22 bg-[#F1ECE3]/55 hover:bg-[#F1ECE3] hover:border-[#3D3830]/35 p-5 text-left transition-all cursor-pointer"
+                >
+                  <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                    <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#FAF7F2] border border-[#3D3830]/12 text-[#8B7355]">
+                      <UserPlus className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0 space-y-0.5">
+                      <h3 className="font-['Cormorant_Garamond',serif] text-xl font-semibold text-[#3D3830]">
+                        Find someone new
+                      </h3>
+                      <p className="text-xs text-[#5C5449] leading-relaxed">
+                        Want a companion shaped around something specific—like a spiritual tradition, life coach, or fresh voice? Tell us briefly and meet 4 tailored matches.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="inline-flex min-h-[42px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#3D3830]/18 bg-[#FDFBF7] px-4 py-2 text-xs font-medium text-[#3D3830] group-hover:bg-[#4A453D] group-hover:text-[#FAF7F2] transition-colors">
+                    <span>Match custom</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 1 (Custom Matcher): Choose Companion Archetype */}
+        {step === 'pick_type' && (
+          <div className="space-y-7 animate-cc-message-in">
+            <button
+              type="button"
+              onClick={() => {
+                setStep('hub');
+                setErrorMsg(null);
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Back to all companions</span>
+            </button>
+
+            <div className="space-y-2">
+              <p className="text-[11px] font-medium text-[#8B8275]">
+                Find someone new · Custom companion match
+              </p>
+              <h2 className="font-['Cormorant_Garamond',serif] text-2xl sm:text-3xl font-medium text-[#3D3830] leading-tight text-balance">
                 Who would feel right to talk with today?
               </h2>
               <p className="text-xs sm:text-sm text-[#5C5449] leading-relaxed max-w-xl">
@@ -354,7 +955,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                         </span>
                         <ArrowRight className="h-3.5 w-3.5 text-[#8B8275] opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
                       </div>
-                      <h3 className="font-serif text-lg font-medium text-[#3D3830]">
+                      <h3 className="font-['Cormorant_Garamond',serif] text-lg font-medium text-[#3D3830]">
                         {opt.label}
                       </h3>
                       <p className="text-xs text-[#5C5449] leading-relaxed">
@@ -365,76 +966,42 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                 );
               })}
             </div>
-
-            {/* Continue with Past Companions */}
-            {pastCompanionConversations.length > 0 && (
-              <div className="pt-2 border-t border-[#3D3830]/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-medium text-[#5C5449]">
-                    Continue with a past companion
-                  </h3>
-                  <span className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
-                    {pastCompanionConversations.length} saved
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {pastCompanionConversations.slice(0, 6).map((conv) => {
-                    const persona = conv.companion_persona_json;
-                    const displayName = persona?.name || conv.title.split('·')[0].trim();
-                    const initial = displayName.charAt(0).toUpperCase();
-                    return (
-                      <button
-                        key={conv.id}
-                        type="button"
-                        onClick={() => onSelectPastCompanion(conv.id)}
-                        className="flex items-center gap-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-2.5 text-left hover:border-[#3D3830]/30 hover:bg-[#F1ECE3]/55 transition-colors cursor-pointer"
-                      >
-                        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EAE3D7] font-serif text-base font-semibold text-[#3D3830]">
-                          {initial}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-[#3D3830] truncate">
-                            {displayName}
-                            {persona?.role_label ? (
-                              <span className="font-normal text-[#8B8275]">
-                                {' '}· {persona.role_label}
-                              </span>
-                            ) : null}
-                          </p>
-                          <p className="text-[11px] text-[#5C5449] truncate mt-0.5">
-                            {conv.title}
-                          </p>
-                        </div>
-                        <ArrowRight className="h-3.5 w-3.5 text-[#8B8275] shrink-0" />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* STEP 2: Tailored Intake (Standard 2 Questions OR Spiritual Guide Scale + Dropdowns) */}
+        {/* STEP 2 (Custom Matcher): Tailored Intake */}
         {step === 'intake' && (
           <div className="max-w-xl mx-auto space-y-6 animate-cc-message-in">
-            <button
-              type="button"
-              onClick={() => {
-                setStep('pick_type');
-                setErrorMsg(null);
-              }}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors cursor-pointer"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>All companion types</span>
-            </button>
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setStep('pick_type');
+                  setErrorMsg(null);
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>All custom types</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStep('hub');
+                  setErrorMsg(null);
+                }}
+                className="text-xs font-medium text-[#8B8275] hover:text-[#3D3830] transition-colors cursor-pointer"
+              >
+                Browse preset companions
+              </button>
+            </div>
 
             <div className="space-y-1.5">
               <p className="text-[11px] font-medium text-[#8B8275]">
                 Companion · {activeArchetypeMeta.label}
               </p>
-              <h2 className="font-serif text-2xl sm:text-3xl font-medium text-[#3D3830] text-balance">
+              <h2 className="font-['Cormorant_Garamond',serif] text-2xl sm:text-3xl font-medium text-[#3D3830] text-balance">
                 {activeArchetypeMeta.isSpiritual
                   ? 'Tune your spiritual companion'
                   : 'Tell us a little before we match you'}
@@ -455,7 +1022,6 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
             <div className="rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-5 sm:p-6 space-y-5">
               {activeArchetypeMeta.isSpiritual ? (
                 <>
-                  {/* 10-Point Religiousness Slider */}
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <label
@@ -488,7 +1054,6 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Primary Religion Dropdown */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-medium text-[#3D3830]">
                       Which religion do you follow?
@@ -504,7 +1069,6 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                     />
                   </div>
 
-                  {/* Secondary Religion / Philosophy Dropdown */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-medium text-[#3D3830]">
                       Which other religion or philosophy do you like?{' '}
@@ -521,7 +1085,6 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                     />
                   </div>
 
-                  {/* Optional Reflection Note */}
                   <div className="space-y-1.5">
                     <label
                       htmlFor="spiritual-topic"
@@ -586,7 +1149,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                 <button
                   type="button"
                   onClick={() => void runMatching(false)}
-                  className="min-h-[42px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] active:scale-[0.98] transition-all cursor-pointer"
+                  className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] active:scale-[0.98] transition-all cursor-pointer"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   <span>Find my companion</span>
@@ -603,8 +1166,8 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
               <Sparkles className="h-5 w-5 text-[#B8965A] animate-pulse" />
             </div>
             <div className="space-y-1.5 max-w-sm">
-              <h2 className="font-serif text-2xl font-medium text-[#3D3830]">
-                Wait… finding the perfect companion for you
+              <h2 className="font-['Cormorant_Garamond',serif] text-2xl font-medium text-[#3D3830]">
+                Finding the right person for you…
               </h2>
               <p className="text-xs text-[#8B8275] leading-relaxed">
                 Curating four grounded personalities attuned to your tone and what you shared.
@@ -626,7 +1189,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                   <ArrowLeft className="h-3.5 w-3.5" />
                   <span>Adjust preferences</span>
                 </button>
-                <h2 className="font-serif text-2xl sm:text-3xl font-medium text-[#3D3830]">
+                <h2 className="font-['Cormorant_Garamond',serif] text-2xl sm:text-3xl font-medium text-[#3D3830]">
                   Choose who you would like to talk with
                 </h2>
                 <p className="text-xs text-[#5C5449]">
@@ -637,7 +1200,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
               <button
                 type="button"
                 onClick={() => void runMatching(true)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                className="min-h-[42px] inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
               >
                 <RefreshCw className="h-3.5 w-3.5 text-[#8B7355]" />
                 <span>Show different companions</span>
@@ -653,21 +1216,23 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {matches.map((persona) => {
                 const isStarting = startingId === persona.id;
-                const monogram = persona.name.charAt(0).toUpperCase();
                 return (
                   <div
                     key={persona.id}
                     className="flex flex-col justify-between rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-5 space-y-4 hover:border-[#3D3830]/25 transition-colors"
                   >
                     <div className="space-y-3">
-                      {/* Identity Row */}
                       <div className="flex items-start gap-3">
-                        <div className="h-11 w-11 shrink-0 rounded-full bg-[#EAE3D7] border border-[#3D3830]/10 flex items-center justify-center font-serif text-xl font-semibold text-[#3D3830]">
-                          {monogram}
-                        </div>
+                        <CompanionAvatar
+                          name={persona.name}
+                          avatarUrl={persona.avatar_url}
+                          palette={persona.monogram_palette}
+                          size="md"
+                          shape="circle"
+                        />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-baseline gap-2">
-                            <h3 className="font-serif text-xl font-semibold text-[#3D3830] truncate">
+                            <h3 className="font-['Cormorant_Garamond',serif] text-xl font-semibold text-[#3D3830] truncate">
                               {persona.name}
                             </h3>
                             <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
@@ -680,18 +1245,15 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Bio */}
                       <p className="text-xs text-[#5C5449] leading-relaxed">
                         {persona.bio}
                       </p>
 
-                      {/* Style Metadata (Unboxed) */}
                       <p className="text-[11px] text-[#8B8275]">
                         <span className="font-medium text-[#5C5449]">Style:</span>{' '}
                         {persona.conversation_style}
                       </p>
 
-                      {/* Natural Opening Line Preview */}
                       <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/8 px-3.5 py-2.5 text-xs italic text-[#3D3830]/90 leading-relaxed">
                         &ldquo;{persona.opening_message}&rdquo;
                       </div>
@@ -701,7 +1263,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                       type="button"
                       disabled={startingId !== null}
                       onClick={() => void handleSelectPersona(persona)}
-                      className="w-full min-h-[42px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer"
+                      className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer"
                     >
                       <span>
                         {isStarting ? `Connecting with ${persona.name}…` : `Talk with ${persona.name}`}
@@ -715,6 +1277,14 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Companion Bio Sheet */}
+      <CompanionProfileSheet
+        companion={sheetCompanion}
+        isOpen={Boolean(sheetCompanion)}
+        onClose={() => setSheetCompanion(null)}
+        onStartChat={(companion, opts) => void handleStartPreset(companion, opts)}
+      />
     </div>
   );
 };
