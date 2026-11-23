@@ -4571,6 +4571,8 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     hasCustomCompanionsTable,
     hasMiniAppCategoriesTable,
     hasMiniAppsTable,
+    hasMigration017Companions,
+    hasMigration017MiniApps,
   ] = await Promise.all([
     checkTable('users'),
     checkTable('profiles'),
@@ -4590,6 +4592,8 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     checkTable('user_custom_companions'),
     checkTable('mini_app_categories', 'slug'),
     checkTable('mini_apps', 'slug'),
+    checkTable('companions', 'id, backstory, soul_consciousness'),
+    checkTable('mini_apps', 'slug, rules_json'),
   ]);
 
   const migration004Ready = hasPlatformSettings && hasPromptRecipes && hasSupportTickets;
@@ -4599,6 +4603,7 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
   const migration012Ready = hasPipelineLogs;
   const migration015Ready = hasCompanionsTable && hasCompanionBondsTable && hasCustomCompanionsTable;
   const migration016Ready = hasMiniAppCategoriesTable && hasMiniAppsTable;
+  const migration017Ready = hasMigration017Companions && hasMigration017MiniApps;
 
   res.json({
     integrations: {
@@ -4632,6 +4637,7 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
       user_custom_companions: hasCustomCompanionsTable,
       mini_app_categories: hasMiniAppCategoriesTable,
       mini_apps: hasMiniAppsTable,
+      migration_017_columns: migration017Ready,
     },
     migration004Ready,
     migration005Ready,
@@ -4640,6 +4646,7 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     migration012Ready,
     migration015Ready,
     migration016Ready,
+    migration017Ready,
     timestamp: new Date().toISOString(),
   });
 });

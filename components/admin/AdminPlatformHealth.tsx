@@ -41,6 +41,7 @@ interface PlatformHealthResponse {
     user_custom_companions?: boolean;
     mini_app_categories?: boolean;
     mini_apps?: boolean;
+    migration_017_columns?: boolean;
   };
   migration004Ready: boolean;
   migration005Ready?: boolean;
@@ -49,6 +50,7 @@ interface PlatformHealthResponse {
   migration012Ready?: boolean;
   migration015Ready?: boolean;
   migration016Ready?: boolean;
+  migration017Ready?: boolean;
   timestamp: string;
 }
 
@@ -225,6 +227,11 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
           ok: Boolean(health.tables.mini_apps),
           group: 'Mini-Apps Manager (016)',
         },
+        {
+          name: 'companions (backstory, soul) & mini_apps.rules_json',
+          ok: Boolean(health.tables.migration_017_columns),
+          group: 'Soul, Backstory & Rules (017)',
+        },
       ]
     : [];
 
@@ -290,6 +297,15 @@ const AdminPlatformHealth: React.FC<AdminPlatformHealthProps> = ({ getAccessToke
                 id: '016',
                 file: 'supabase/migrations/016_mini_apps_manager.sql',
                 summary: 'Dynamic Mini-Apps & Categories Manager (CRUD, prompts, and display ordering)',
+              },
+            ]
+          : []),
+        ...(health.migration017Ready === false
+          ? [
+              {
+                id: '017',
+                file: 'supabase/migrations/017_companion_soul_backstory_and_app_rules.sql',
+                summary: 'Companion Back Story & Soul/Consciousness columns + Mini-App modular rules stack',
               },
             ]
           : []),

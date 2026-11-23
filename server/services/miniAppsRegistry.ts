@@ -289,7 +289,7 @@ async function seedDedicatedTables(
       is_active: c.isActive,
       updated_at: new Date().toISOString(),
     }));
-    const appRows = apps.map((a) => ({
+    const appRowsWithRules = apps.map((a) => ({
       slug: a.slug,
       title: a.title,
       short_title: a.shortTitle,
@@ -307,6 +307,7 @@ async function seedDedicatedTables(
       vedic_prompt: a.vedicPrompt,
       western_prompt: a.westernPrompt,
       system_override: a.systemOverride,
+      rules_json: sanitizeMiniAppRules(a.rules),
       input_label: a.inputLabel,
       input_placeholder: a.inputPlaceholder,
       model_id: a.modelId,
@@ -322,8 +323,35 @@ async function seedDedicatedTables(
 
     const { error: aErr } = await supabaseAdmin
       .from('mini_apps')
-      .upsert(appRows, { onConflict: 'slug' });
-    return !aErr;
+      .upsert(appRowsWithRules, { onConflict: 'slug' });
+    if (!aErr) return true;
+
+    if (
+      aErr.code === '42703' ||
+      String(aErr.message || '').toLowerCase().includes('rules_json')
+    ) {
+      const appRowsBase = appRowsWithRules.map(({ rules_json: _rj, ...rest }) => rest);
+      const { error: fallbackErr } = await supabaseAdmin
+        .from('mini_apps')
+        .upsert(appRowsBase, { onConflict: 'slug' });
+      if (fallbackErr) return false;
+
+      const overlayMap = await readMiniAppRulesOverlay();
+      let changed = false;
+      for (const app of apps) {
+        const cleaned = sanitizeMiniAppRules(app.rules);
+        if (cleaned.length > 0) {
+          overlayMap[app.slug] = cleaned;
+          changed = true;
+        }
+      }
+      if (changed) {
+        await savePlatformSetting('mini_apps_rules_overlay', overlayMap).catch(() => undefined);
+      }
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }

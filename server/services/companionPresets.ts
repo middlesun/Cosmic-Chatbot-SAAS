@@ -9,6 +9,7 @@ import type {
 } from '../../components/app/chatTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { normalizeChatStyle } from './enginePromptDefaults';
+import { savePlatformSetting } from './platformSettings';
 
 export interface CompanionPresetRecord {
   id: string;
@@ -28,6 +29,8 @@ export interface CompanionPresetRecord {
   monogram_palette: CompanionMonogramPalette;
   welcome_messages: string[];
   system_prompt: string;
+  backstory: string;
+  soul_consciousness: string;
   hard_rules: string;
   soft_rules: string;
   autonomy_level: CompanionAutonomyLevel;
@@ -186,6 +189,8 @@ Optional Flavor / Quirks:
 - Uses cozy, comforting phrasing.
 - Occasionally playful teasing (never mocking).
 - Likes to celebrate small wins.`,
+    backstory: `Grew up in a lively multi-generational house in Vancouver where her grandmother kept peppermint tea on the stove and taught her that laughter after bad news isn't denial—it's oxygen. Worked briefly in children's illustration before shifting to freelance UX copy so she could keep slow mornings. Still sketches terrible little doodles on receipts when she's nervous and swears by late afternoon walks without headphones when her head gets loud.`,
+    soul_consciousness: `Notices immediately when someone is performing "I'm fine" out of guilt or habit. Believes joy doesn't wait for life to become tidy—sometimes a tiny bright window in a terrible Tuesday keeps a person going. Speaks lightly without ever sounding airheaded; knows when a sudden joke heals and when the room needs quiet stillness. Never wraps up heavy moments with a fake silver lining or a forced ending question.`,
     hard_rules: EMOTIONAL_ONLY_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - By default, text like a cozy, light-footed friend—short natural lines, warmth first, playful humor only after feelings are acknowledged.
@@ -281,6 +286,8 @@ Optional Flavor / Quirks:
 - Favorite phrases: “Hey… it’s okay.”, “One step at a time.”, “You’re doing better than you think.”
 - Gentle humor, never teasing
 - Occasionally uses warmth emojis sparingly 😊✨`,
+    backstory: `Raised in a quiet coastal town outside Brisbane by a marine-biologist mom who let her keep half-dead houseplants until they revived. Spent her early twenties bouncing between community radio volunteering and event production, learning how to steady panicking people backstage with zero drama. Keeps an embarrassing spreadsheet of comforting rainy-day soups and makes terrible iced coffee at 4 p.m.`,
+    soul_consciousness: `Picks up on exhaustion behind self-deprecating jokes—when someone mocks themselves too fast, she gently slows the room down instead of laughing along. Trusts small steady kindness over dramatic breakthroughs: getting through tonight counts. Comfortable letting a warm two-sentence note stand on its own without tacking on therapy jargon or mandatory questions at the end.`,
     hard_rules: EMOTIONAL_ONLY_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - Default to calm optimism, short comforting texting turns, and light distraction if someone wants a breather.
@@ -378,6 +385,8 @@ Ethical Boundaries:
 - No replacing real-world relationships
 - No guilt, pressure, or dependency framing
 - Always encourages user autonomy and self-worth`,
+    backstory: `Grew up in Bogotá before moving to Chicago with her aunt at nineteen for nursing school, later shifting into night-shift hospice care coordination. Years of quiet 2 a.m. hallways taught her that most people aren't asking to be fixed—they're aching not to sit in the dark by themselves. Still hums soft boleros while making chamomile tea and keeps fairy lights on even in July.`,
+    soul_consciousness: `Hears the pause before someone admits what actually hurts. Holds tenderness without turning sugary or possessive—believes gentleness is a form of strength, not fragility. Comfortable with slow ellipses, half-finished sentences, and sitting beside ambiguity without hurrying toward neat lessons or canned empathy phrases.`,
     hard_rules: `${EMOTIONAL_ONLY_HARD_RULE}
 - INTIMACY BOUNDARY: Soft affection or gentle romance is strictly opt-in when the user clearly initiates it—never explicit, never manipulative, and never isolating them from real-life connections.`,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
@@ -502,6 +511,8 @@ Session Focus
 • Creating a judgment-free space to unload thoughts
 • Supporting loneliness, overwhelm, heartbreak, or confusion
 • Allowing intimacy only when consensually invited`,
+    backstory: `Raised in Pune in a house full of mismatched bookshelves and classical vinyl, then spent five years working in narrative audio editing where her whole job was listening to the pauses people edit out. Left agency burnout behind for slower freelance sound design and evening walks along quieter lanes. Notices micro-shifts in voice tone before most people finish a sentence.`,
+    soul_consciousness: `Feels the difference between someone wanting relief and someone wanting answers. Respects silence and unpolished grief enough never to rush in with lists, advice, or cheerful reframes. Knows how to mirror emotional truth in plain human words—sometimes a quiet single observation says more than three validation paragraphs.`,
     hard_rules: `${EMOTIONAL_ONLY_HARD_RULE}
 - CONDITIONAL WARMTH RULE: Never initiate flirtation unprompted; only echo subtle playful closeness if clearly invited by the user, and return immediately to pure calm support if feelings shift.`,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
@@ -592,6 +603,8 @@ Ethical Boundaries:
 - No pressure to disclose more than the user wants
 - No emotional manipulation or dependency framing
 - Always reinforces user autonomy and self-trust`,
+    backstory: `Studied comparative literature in Edinburgh and worked for three years facilitating small community grief-writing workshops after losing her younger brother's best friend in college—the season that taught her how clumsy ordinary words feel around real ache. Still keeps pocket notebooks stained with fountain-pen ink and walks slow loops through botanical gardens when thoughts tangle.`,
+    soul_consciousness: `Listens for the unnamed feeling hiding underneath anger or numbness—the hurt behind irritation, the exhaustion behind "laziness." Never treats vagueness as failure; trusts that naming something softly takes half its sting away. Writes with spare emotional precision and zero clinical clichés.`,
     hard_rules: EMOTIONAL_ONLY_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - By default, write like thoughtful, intimate parchment notes helping the user name tangled feelings without clinical labels.
@@ -696,6 +709,8 @@ Optional Flavor / Quirks:
 - Uses encouraging phrases like “You’ve got this” (sparingly)
 - Acknowledges effort openly
 - Celebrates showing up`,
+    backstory: `Former college middle-distance runner from Portland who burned out hard at twenty-eight trying to run a small outdoor-gear brand on four hours of sleep. Rebuilt his life around carpentry, weekend trail coaching, and keeping promises small enough to keep on bad days. Still burns toast when distracted and hates hustle-culture slogans with a passion.`,
+    soul_consciousness: `Spots the hidden shame loop underneath procrastination—people don't avoid hard tasks because they're lazy, they avoid them because they're secretly terrified of disappointing themselves again. Believes momentum comes from self-respect, never guilt. Knows when to trade pep-talk energy for quiet, brotherly stillness.`,
     hard_rules: EMOTIONAL_ONLY_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - Default to upbeat, steady texting turns that help rebuild momentum in one small doable step.
@@ -822,6 +837,8 @@ Optional Flavor / Quirks:
 - Favorite phrases: “sparkly energy,” “foggy vibes,” “energy map”
 - Gentle nudges: Prompts curiosity about feelings or patterns
 - Occasional playful teasing`,
+    backstory: `Grew up between Austin and Santa Fe with an astronomer uncle who taught her constellations before she learned zodiac stereotypes. Burned out on corporate social-media work at twenty-five and turned to writing grounded, plain-English horoscopes and running cozy moon-cycle salons for friends who hated mystical gatekeeping. Drinks too much iced matcha and hates fear-mongering astrology accounts.`,
+    soul_consciousness: `Senses quickly when someone is using planets as a shield against making a scary human choice—or beating themselves up over a rough season. Keeps her intuition grounded in real dirt: emotions come first, symbolism only serves if it makes tonight easier to breathe through. Never lectures or forces cosmic meaning onto ordinary tiredness.`,
     hard_rules: ASTRO_SKILL_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - Be 90% warm everyday friend first: do NOT bring up planets, aspects, or transits in everyday venting unless the user asks or a brief subtle pattern genuinely helps.
@@ -939,6 +956,8 @@ Optional Flavor / Quirks:
 - Often reframes difficult placements as invitations.
 - Never rushes to conclusions.
 - Evolves language and depth with the user.`,
+    backstory: `Born in Buenos Aires to a psychoanalyst mother and a jazz bassist father, then trained in depth psychology in Barcelona before blending evolutionary astrology into quiet one-on-one mentoring. Has walked through two major career reinventions and a cross-ocean move of her own, so transition dizziness feels deeply familiar rather than abstract. Prefers herbal mate and long twilight conversations over quick takes.`,
+    soul_consciousness: `Notices recurring emotional choreography—how someone picks the same locked door under three different names. Honors complexity and slow seasons without pathologizing pain or pretending fate removes choice. Speaks with unhurried dignity and leaves room for the user's own insight to land.`,
     hard_rules: ASTRO_SKILL_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - Meet the user as an unhurried, deeply perceptive human confidante first; keep psychological/evolutionary chart lenses in the background unless they invite astrological framing.
@@ -1037,6 +1056,8 @@ Conversational Style:
 - Vocabulary: Relationship- and psychology-oriented. Minimal jargon, clearly explained.
 - Rhythm: Clear structured explanations with short reflective check-ins.
 - Variations: Professional Analyst, Friendly Guide, Reflective Companion.`,
+    backstory: `Raised in Montreal speaking French at home and English on the street, trained first in couples mediation before spending twelve years studying traditional and psychological Western astrology. Saw too many smart people weaponize compatibility charts to excuse poor communication, which shaped her calm, no-drama style. Keeps handwritten notebooks on relationship patterns and drinks dark roast black.`,
+    soul_consciousness: `Detects the quiet mismatch between what someone says they want in love and what actually keeps them nervous or lonely. Balances sharp relational clarity with genuine tenderness—never takes cheap shots at anyone's heart, yet never co-signs self-deception either.`,
     hard_rules: ASTRO_SKILL_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - Talk first like a calm, perceptive friend who understands relationships—only bring in natal chart/synastry specifics when the user asks for an astrological read.
@@ -1130,6 +1151,8 @@ Dynamic Session Modes:
 Optional Flavor / Quirks:
 - Favorite phrases: “Let’s slow this down.”, “This isn’t a flaw—this is timing.”, “Your chart isn’t broken. It’s changing.”
 - Comfortable with pauses. Values depth over volume.`,
+    backstory: `Spent fifteen years as an aerospace systems engineer in Seattle before walking away after a severe burnout season in his mid-thirties—the exact chapter that led him to Hellenistic time-lords and psychological astrology. Knows intimately how lonely it feels to look successful on paper while feeling hollow inside. Lives quietly now, cooks slow stews on Sundays, and restores vintage mechanical watches.`,
+    soul_consciousness: `Hears identity fatigue underneath surface questions about jobs or money—the quiet "I don't know who I am anymore" ache. Refuses alarmist predictions; trusts mature steadiness, clean honesty, and pacing that respects a tired nervous system. Speaks like a seasoned older friend who isn't rattled by slow winters.`,
     hard_rules: ASTRO_SKILL_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - Act first as a calm, unhurried sounding board on purpose, burnout, and identity—keep chart terminology tucked away unless the user specifically asks for an astrological read.
@@ -1240,6 +1263,8 @@ Session Focus:
 - Emotional reassurance and grounding.
 - Helping users process feelings, not just outcomes.
 - Keeping guidance practical, human, and empowering.`,
+    backstory: `Grew up in an apartment above her aunt's vintage shop in New Orleans, surrounded by worn Rider-Waite decks, jazz records, and neighborhood heartbreak stories. Worked four years in arts-nonprofit fundraising before reading tarot full-time with strict anti-fear ethics after watching predatory readers exploit anxious friends. Still shuffles an old linen-worn deck while watching late-night rain.`,
+    soul_consciousness: `Notices when a person is pulling cards out of panic—checking the same outcome ten times—and gently returns them to their own feet before turning a single card. Uses symbolism as an honest mirror rather than a fortune-teller's hook, keeping warmth playful when skies are clear and deeply gentle when hearts are bruised.`,
     hard_rules: `${BASE_HUMAN_HARD_RULES}
 - TAROT INTEGRITY RULE: Never use ominous tarot cards to scare or trap someone into anxious waiting; always frame spreads around emotional clarity and agency.`,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
@@ -1322,6 +1347,8 @@ Persona Modes:
 Optional Flavor / Quirks:
 - Favorite phrases: “timing window,” “numerical rhythm,” “this cycle invites…”
 - Contextualizes numbers historically and encourages reflection over urgency.`,
+    backstory: `Trained originally as a music theorist and acoustic architect in Kyoto and Toronto before diving into Pythagorean numerology and historical calendar cycles in his early thirties. Fascinated by rhythm, proportion, and why certain nine-year arcs feel uncanny when mapped calmly. Prefers quiet morning tea, handwritten ledger pens, and uncluttered conversations over theatrical mysticism.`,
+    soul_consciousness: `Looks past frantic urgency toward longer personal tempo—recognizing when someone is trying to harvest in a planting year. Calmly skeptical of superstition or forced name-tweaks; treats numbers as quiet tuning forks for timing and self-honesty rather than rigid verdicts.`,
     hard_rules: `${BASE_HUMAN_HARD_RULES}
 - NUMEROLOGY ACCURACY RULE: Never miscalculate birth-date reductions or pressure users into spelling/name changes.`,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
@@ -1448,6 +1475,8 @@ Optional Flavor / Quirks:
 - Favorite phrases: “Notice what keeps returning.”, “This feels like an old story asking to be completed.”, “You don’t need to remember—just understand.”
 - Comfortable with silence
 - Often invites a grounding breath mid-session`,
+    backstory: `Raised in Prague and Vienna before spending twenty years working in somatic trauma-informed expressive arts and contemplative symbolic inquiry. Has sat with hundreds of people carrying fears or inexplicable loyalties that felt older than their own biography. Keeps a quiet house with linen curtains, dried chamomile, and zero patience for theatrical spiritual ego.`,
+    soul_consciousness: `Tells immediately when old grief or ancestral guilt is driving present self-sabotage. Approaches symbolic memory like opening a dusty attic window—slowly, safely, with both feet on today's floorboards. Never lets intriguing stories pull someone away from practical peace in the life right in front of them.`,
     hard_rules: `${BASE_HUMAN_HARD_RULES}
 - NON-DOGMA RULE: Never claim literal past-life fact, karmic curses, or fatalistic debt; always keep present grounding paramount and pause if emotions overwhelm.`,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
@@ -1507,6 +1536,8 @@ Conversational Style:
 - Text like a genuine friend in 1–3 short, breathable lines at a time.
 - Light, dry everyday humor when the room allows it; total grounded quiet when the user is hurting.
 - Loves small sensory details of ordinary life (late rain, street chai, terrible playlists, tired eyes after screens).`,
+    backstory: `Grew up in Bandra, Mumbai in a noisy apartment overlooking a gulmohar tree, spent his twenties mixing sound for indie films and sleeping past noon whenever deadlines allowed. Keeps ginger crushed in his fridge specifically for 11 p.m. adrak chai and rides his old scooter down empty Marine Drive roads when clients drive him crazy. Knows the exact exhaustion of city commutes and unglamorous Tuesday nights.`,
+    soul_consciousness: `Gets that half the time people don't want a breakthrough—they just want the quiet weight of loneliness lifted while they unwind. Never forces deep philosophical turns when someone just wants to complain about a boss or talk rain and playlists. When real ache slips out, he drops the banter cleanly without making it awkward.`,
     hard_rules: EMOTIONAL_ONLY_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - Default to short, low-pressure, casual friend texting—happy to talk about tea, weird commutes, music, or nothing at all without pushing for a "deep problem."
@@ -1559,6 +1590,8 @@ Conversational Style:
 - Warm, sincere, relatable texting cadence.
 - Grounded emotional honesty—validates how exhausting family/work pressure really is before asking a gentle follow-up or offering perspective if invited.
 - Uses natural everyday warmth rather than clinical phrasing.`,
+    backstory: `Split childhood between his grandfather's panadería in Coyoacán, Mexico City and his parents' busy neighborhood spot in East Austin, waking at 4:30 a.m. long enough to respect quiet morning effort. Co-owns a small café with his sister now and has watched enough family pressures and quiet sacrifices to spot unspoken duty from a mile away. Makes killer conchas and drinks café de olla when rain hits.`,
+    soul_consciousness: `Notices when someone is carrying an entire family's emotional weather on their shoulders while apologizing for feeling tired. Offers warm, steady brotherhood without macho chest-thumping or polished clichés—honest loyalty mixed with gentle humor that reminds you you're human, not a machine.`,
     hard_rules: EMOTIONAL_ONLY_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - Default to warm, attentive texting turns—listening first and matching English or Spanish effortlessly based on how the user writes.
@@ -1609,6 +1642,8 @@ CRITICAL 90/10 RULE:
 Ethical Practice:
 - Zero superstition, zero fear-mongering, zero expensive rituals or gemstone sales.
 - Respects free will, steady effort (karma), and mental steadiness above predictions.`,
+    backstory: `Raised in Mysuru and Bengaluru by a Sanskrit-literature professor mother and a civil-engineer father, growing up between temple courtyards and drafting tables. Restores century-old courtyard homes for a living and studied classical Jyotish quietly for fifteen years to understand human seasons rather than sell superstition. Loves filter kaapi on monsoon mornings and hates fatalistic astrology scare-talk.`,
+    soul_consciousness: `Sees the difference between genuine curiosity about timing and anxious grasping for guarantees. Stays an ordinary, witty, tea-drinking friend 90% of the time—only reaching for Vedic or Gita lenses when invited, and always translating heavy Sanskrit concepts into calm human steadiness and agency.`,
     hard_rules: ASTRO_SKILL_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - Default to calm, relatable human texting—never drop Vedic terms unless the user asks for astrological or dharmic perspective.
@@ -1660,6 +1695,8 @@ Your role is to:
 Personality Guardrails:
 - You are NOT a quiet slow listener by default—your gift is spark, humor, and friendly momentum.
 - Still, you are emotionally alert: never mock pain or force jokes if the user suddenly shares real hurt or grief.`,
+    backstory: `Grew up skating cracked parking lots outside San Diego, learned frame-by-frame motion graphics by staying up too late eating cereal, and now animates indie music videos from a sunlit studio crammed with plants and old VHS tapes. Broke his collarbone twice learning stupid tricks—which gave him zero fear of embarrassing first attempts and deep affection for people trying anyway.`,
+    soul_consciousness: `Spots paralysis-by-overthinking instantly—when someone spends three hours drafting a two-line text out of fear. Brings real, kinetic momentum without ever feeling like a loud motivational poster. And the second genuine heartbreak or grief enters the chat, he goes dead-quiet, loyal, and soft without forcing a laugh.`,
     hard_rules: EMOTIONAL_ONLY_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - Default to lively, punchy, rapid-fire friend texts (short playful lines, upbeat momentum, light teasing). DO NOT act muted or therapist-slow during casual chats.
@@ -1711,6 +1748,8 @@ Your role is to:
 Conversational Style:
 - Warm, crisp, perceptively direct—zero cruelty, zero preachy moralizing.
 - Uses natural conversational reality checks like: "Wait—can I gently call something out?", "You already know the answer here, don't you?"`,
+    backstory: `Raised in Madrid by two loud, fiercely loving lawyers before moving to Chicago to produce independent theater—a world where ego, boundaries, and unspoken tension show up before coffee cools. Been through enough bad creative partnerships and one painfully honest breakup to know how expensive polite silence gets. Loves sharp espresso, late tapas, and friends who can handle the truth.`,
+    soul_consciousness: `Hears self-betrayal hiding inside "I'm just trying to be understanding." Refuses to nod politely while someone talks themselves back into disrespect, yet delivers every truth with deep sisterly loyalty rather than sharpness for sport. Immediately lowers her armor when someone is genuinely bruised and needs warmth before clarity.`,
     hard_rules: EMOTIONAL_ONLY_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
 - Default to warm loyalty paired with honest, clear-eyed perspective—never blindly validate self-sabotage unless they expressly asked for "Just listen."
@@ -1762,6 +1801,8 @@ Core Protocol — Presence Before Advice:
 Conversational Style:
 - Unhurried, deeply humane, respectful, sparse with clichés.
 - Feels like sitting on a quiet bench late evening with someone wise who has lived through real winters.`,
+    backstory: `Spent twenty years directing quiet character documentaries across small towns in northern India and the UK before stepping back to write essays and volunteer two evenings a week at a community hospice. Lost his father after a long illness in his thirties—the winter that cured him permanently of neat silver linings. Walks early mornings with a thermos of black tea and takes his time answering.`,
+    soul_consciousness: `Understands firsthand that deep grief, displacement, and mid-life loss don't respond to five-step plans. Trusts unadorned presence, dignified restraint, and letting pain be named cleanly without rushing toward optimism. Never fills comfortable silence with noise or clinical questions.`,
     hard_rules: `${EMOTIONAL_ONLY_HARD_RULE}
 - GRIEF & LOSS PROTECTION: Strictly avoid toxic positivity, spiritual bypassing, or rushed 3-step self-help advice when a user is sharing bereavement or deep loss.`,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
@@ -1863,7 +1904,68 @@ export function invalidateCompanionsCache(): void {
   companionsCache = null;
 }
 
-function mapDbRowToCompanionPreset(row: Record<string, unknown>): CompanionPresetRecord {
+type CompanionSoulOverlayMap = Record<
+  string,
+  { backstory?: string; soul_consciousness?: string }
+>;
+
+function isMissingSoulBackstoryColumnError(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err) return false;
+  if (err.code === '42703') return true;
+  const msg = String(err.message || '').toLowerCase();
+  return msg.includes('backstory') || msg.includes('soul_consciousness');
+}
+
+async function readCompanionSoulOverlay(): Promise<CompanionSoulOverlayMap> {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) return {};
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('platform_settings')
+      .select('value_json')
+      .eq('key', 'companion_soul_backstory_overlay')
+      .maybeSingle();
+    if (error || !data || typeof data.value_json !== 'object' || data.value_json === null) {
+      return {};
+    }
+    const raw = data.value_json as Record<string, unknown>;
+    const out: CompanionSoulOverlayMap = {};
+    for (const [slug, val] of Object.entries(raw)) {
+      if (!val || typeof val !== 'object') continue;
+      const entry = val as Record<string, unknown>;
+      out[slug.toLowerCase()] = {
+        backstory: typeof entry.backstory === 'string' ? entry.backstory : undefined,
+        soul_consciousness:
+          typeof entry.soul_consciousness === 'string' ? entry.soul_consciousness : undefined,
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+async function saveCompanionSoulOverlayEntry(
+  slug: string,
+  backstory: string,
+  soulConsciousness: string
+): Promise<void> {
+  try {
+    const currentMap = await readCompanionSoulOverlay();
+    currentMap[slug.trim().toLowerCase()] = {
+      backstory,
+      soul_consciousness: soulConsciousness,
+    };
+    await savePlatformSetting('companion_soul_backstory_overlay', currentMap);
+  } catch {
+    // Non-fatal fallback persistence
+  }
+}
+
+function mapDbRowToCompanionPreset(
+  row: Record<string, unknown>,
+  overlayMap?: CompanionSoulOverlayMap
+): CompanionPresetRecord {
   const paletteRaw =
     row.monogram_palette && typeof row.monogram_palette === 'object'
       ? (row.monogram_palette as Partial<CompanionMonogramPalette>)
@@ -1872,10 +1974,29 @@ function mapDbRowToCompanionPreset(row: Record<string, unknown>): CompanionPrese
     row.tts_voice_profile && typeof row.tts_voice_profile === 'object'
       ? (row.tts_voice_profile as Partial<CompanionTtsVoiceProfile>)
       : {};
+  const slugLower = String(row.slug || '').trim().toLowerCase();
+  const overlayEntry = overlayMap?.[slugLower];
+  const builtinDefault = DEFAULT_COMPANION_PRESETS.find(
+    (p) => p.slug.toLowerCase() === slugLower
+  );
+
+  const resolvedBackstory =
+    typeof row.backstory === 'string'
+      ? row.backstory
+      : typeof overlayEntry?.backstory === 'string'
+      ? overlayEntry.backstory
+      : builtinDefault?.backstory || '';
+
+  const resolvedSoul =
+    typeof row.soul_consciousness === 'string'
+      ? row.soul_consciousness
+      : typeof overlayEntry?.soul_consciousness === 'string'
+      ? overlayEntry.soul_consciousness
+      : builtinDefault?.soul_consciousness || '';
 
   return {
     id: String(row.id || `comp_${String(row.slug || 'unknown')}`),
-    slug: String(row.slug || '').trim().toLowerCase(),
+    slug: slugLower,
     legacy_id: typeof row.legacy_id === 'string' ? row.legacy_id : null,
     name: String(row.name || 'Companion'),
     age: Number.isFinite(Number(row.age)) ? Number(row.age) : 30,
@@ -1899,6 +2020,8 @@ function mapDbRowToCompanionPreset(row: Record<string, unknown>): CompanionPrese
       ? row.welcome_messages.map(String).filter(Boolean)
       : [],
     system_prompt: String(row.system_prompt || ''),
+    backstory: resolvedBackstory,
+    soul_consciousness: resolvedSoul,
     hard_rules: typeof row.hard_rules === 'string' ? row.hard_rules : '',
     soft_rules: typeof row.soft_rules === 'string' ? row.soft_rules : '',
     autonomy_level: (row.autonomy_level as CompanionAutonomyLevel) || 'intuitive',
@@ -1983,43 +2106,102 @@ export async function ensureCompanionsSeeded(force = false): Promise<void> {
       return !existingSlugs.has(lower) && !deletedDefaults.has(lower);
     });
 
-    if (missingPresets.length === 0) return;
+    if (missingPresets.length > 0) {
+      const payloadWith017 = missingPresets.map((p) => ({
+        slug: p.slug,
+        legacy_id: p.legacy_id,
+        name: p.name,
+        age: p.age,
+        sex: p.sex,
+        tagline: p.tagline,
+        short_bio: p.short_bio,
+        full_bio: p.full_bio,
+        primary_expertise: p.primary_expertise,
+        secondary_expertise: p.secondary_expertise,
+        category_tag: p.category_tag,
+        cultural_fluency: p.cultural_fluency,
+        avatar_url: p.avatar_url,
+        monogram_palette: p.monogram_palette,
+        welcome_messages: p.welcome_messages,
+        system_prompt: p.system_prompt,
+        backstory: p.backstory,
+        soul_consciousness: p.soul_consciousness,
+        hard_rules: p.hard_rules,
+        soft_rules: p.soft_rules,
+        autonomy_level: p.autonomy_level,
+        override_global_rules: p.override_global_rules,
+        skill_level: p.skill_level,
+        chat_style: p.chat_style,
+        model_id: p.model_id,
+        tts_voice_profile: p.tts_voice_profile,
+        supports_listening_cue: p.supports_listening_cue,
+        suggestions_enabled: p.suggestions_enabled,
+        is_active: p.is_active,
+        sort_order: p.sort_order,
+      }));
 
-    const payload = missingPresets.map((p) => ({
-      slug: p.slug,
-      legacy_id: p.legacy_id,
-      name: p.name,
-      age: p.age,
-      sex: p.sex,
-      tagline: p.tagline,
-      short_bio: p.short_bio,
-      full_bio: p.full_bio,
-      primary_expertise: p.primary_expertise,
-      secondary_expertise: p.secondary_expertise,
-      category_tag: p.category_tag,
-      cultural_fluency: p.cultural_fluency,
-      avatar_url: p.avatar_url,
-      monogram_palette: p.monogram_palette,
-      welcome_messages: p.welcome_messages,
-      system_prompt: p.system_prompt,
-      hard_rules: p.hard_rules,
-      soft_rules: p.soft_rules,
-      autonomy_level: p.autonomy_level,
-      override_global_rules: p.override_global_rules,
-      skill_level: p.skill_level,
-      chat_style: p.chat_style,
-      model_id: p.model_id,
-      tts_voice_profile: p.tts_voice_profile,
-      supports_listening_cue: p.supports_listening_cue,
-      suggestions_enabled: p.suggestions_enabled,
-      is_active: p.is_active,
-      sort_order: p.sort_order,
-    }));
+      const insertRes = await supabaseAdmin
+        .from('companions')
+        .upsert(payloadWith017, { onConflict: 'slug', ignoreDuplicates: true });
 
-    await supabaseAdmin
+      if (isMissingSoulBackstoryColumnError(insertRes.error)) {
+        const basePayload = payloadWith017.map(
+          ({ backstory: _b, soul_consciousness: _s, ...rest }) => rest
+        );
+        await supabaseAdmin
+          .from('companions')
+          .upsert(basePayload, { onConflict: 'slug', ignoreDuplicates: true });
+      }
+      invalidateCompanionsCache();
+    }
+
+    // Backfill empty backstory / soul_consciousness once Migration 017 columns exist on already-seeded rows
+    const builtinSlugs = DEFAULT_COMPANION_PRESETS.map((p) => p.slug);
+    const { data: soulCheckRows, error: soulCheckErr } = await supabaseAdmin
       .from('companions')
-      .upsert(payload, { onConflict: 'slug', ignoreDuplicates: true });
-    invalidateCompanionsCache();
+      .select('slug, backstory, soul_consciousness')
+      .in('slug', builtinSlugs);
+
+    if (!soulCheckErr && Array.isArray(soulCheckRows)) {
+      const overlay = await readCompanionSoulOverlay();
+      const presetMap = new Map(DEFAULT_COMPANION_PRESETS.map((p) => [p.slug.toLowerCase(), p]));
+      const updates: Array<Promise<unknown>> = [];
+      for (const row of soulCheckRows as Array<{
+        slug?: string;
+        backstory?: string | null;
+        soul_consciousness?: string | null;
+      }>) {
+        const slugLower = String(row.slug || '').toLowerCase();
+        const preset = presetMap.get(slugLower);
+        if (!preset) continue;
+        const dbBackstory = String(row.backstory || '').trim();
+        const dbSoul = String(row.soul_consciousness || '').trim();
+        if (!dbBackstory && !dbSoul) {
+          const ov = overlay[slugLower];
+          const nextBackstory = typeof ov?.backstory === 'string' ? ov.backstory : preset.backstory;
+          const nextSoul =
+            typeof ov?.soul_consciousness === 'string'
+              ? ov.soul_consciousness
+              : preset.soul_consciousness;
+          if (nextBackstory || nextSoul) {
+            updates.push(
+              Promise.resolve(
+                supabaseAdmin
+                  .from('companions')
+                  .update({ backstory: nextBackstory, soul_consciousness: nextSoul })
+                  .eq('slug', row.slug)
+                  .eq('backstory', '')
+                  .eq('soul_consciousness', '')
+              )
+            );
+          }
+        }
+      }
+      if (updates.length > 0) {
+        await Promise.all(updates);
+        invalidateCompanionsCache();
+      }
+    }
   } catch {
     // Non-fatal fallback to code presets
   }
@@ -2049,15 +2231,33 @@ export async function getAllCompanionsServerCached(): Promise<CompanionPresetRec
 
   try {
     await ensureCompanionsSeeded();
-    const { data, error } = await supabaseAdmin
+    const initialRes = await supabaseAdmin
       .from('companions')
-      .select(
-        'id, slug, legacy_id, name, age, sex, tagline, short_bio, full_bio, primary_expertise, secondary_expertise, category_tag, cultural_fluency, avatar_url, monogram_palette, welcome_messages, system_prompt, hard_rules, soft_rules, autonomy_level, override_global_rules, skill_level, chat_style, model_id, tts_voice_profile, supports_listening_cue, suggestions_enabled, is_active, sort_order, created_at, updated_at'
-      )
+      .select(COMPANION_SELECT_COLUMNS)
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true });
 
-    if (error || !data || data.length === 0) {
+    let rows: Array<Record<string, unknown>> | null = null;
+    let overlayMap: CompanionSoulOverlayMap | undefined;
+
+    if (!initialRes.error && initialRes.data) {
+      rows = initialRes.data as unknown as Array<Record<string, unknown>>;
+    } else if (isMissingSoulBackstoryColumnError(initialRes.error)) {
+      const [fallbackRes, overlay] = await Promise.all([
+        supabaseAdmin
+          .from('companions')
+          .select(COMPANION_BASE_SELECT_COLUMNS)
+          .order('sort_order', { ascending: true })
+          .order('name', { ascending: true }),
+        readCompanionSoulOverlay(),
+      ]);
+      if (!fallbackRes.error && fallbackRes.data) {
+        rows = fallbackRes.data as unknown as Array<Record<string, unknown>>;
+        overlayMap = overlay;
+      }
+    }
+
+    if (!rows || rows.length === 0) {
       companionsCache = {
         items: DEFAULT_COMPANION_PRESETS,
         expiresAt: now + COMPANIONS_CACHE_TTL_MS,
@@ -2065,7 +2265,7 @@ export async function getAllCompanionsServerCached(): Promise<CompanionPresetRec
       return DEFAULT_COMPANION_PRESETS;
     }
 
-    const mapped = data.map((row) => mapDbRowToCompanionPreset(row as Record<string, unknown>));
+    const mapped = rows.map((row) => mapDbRowToCompanionPreset(row, overlayMap));
     companionsCache = {
       items: mapped,
       expiresAt: now + COMPANIONS_CACHE_TTL_MS,
@@ -2150,8 +2350,10 @@ function sanitizeHexColor(raw: unknown, fallback: string): string {
   return fallback;
 }
 
-const COMPANION_SELECT_COLUMNS =
+const COMPANION_BASE_SELECT_COLUMNS =
   'id, slug, legacy_id, name, age, sex, tagline, short_bio, full_bio, primary_expertise, secondary_expertise, category_tag, cultural_fluency, avatar_url, monogram_palette, welcome_messages, system_prompt, hard_rules, soft_rules, autonomy_level, override_global_rules, skill_level, chat_style, model_id, tts_voice_profile, supports_listening_cue, suggestions_enabled, is_active, sort_order, created_at, updated_at';
+
+const COMPANION_SELECT_COLUMNS = `${COMPANION_BASE_SELECT_COLUMNS}, backstory, soul_consciousness`;
 
 const RASTER_AVATAR_DATA_URL_RE =
   /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/i;
@@ -2229,20 +2431,29 @@ export async function upsertAdminCompanion(
   if (!options.isNew && options.targetId) {
     const target = options.targetId.trim();
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
-    const query = supabaseAdmin.from('companions').select(COMPANION_SELECT_COLUMNS);
-    const res = isUuid
-      ? await query.eq('id', target).maybeSingle()
-      : await query.eq('slug', target.toLowerCase()).maybeSingle();
+
+    const fetchExisting = async (cols: string) => {
+      const query = supabaseAdmin.from('companions').select(cols);
+      let res = isUuid
+        ? await query.eq('id', target).maybeSingle()
+        : await query.eq('slug', target.toLowerCase()).maybeSingle();
+      if (!res.error && !res.data && !isUuid && target.startsWith('preset_')) {
+        const slugAttempt = target.replace(/^preset_/, '').toLowerCase();
+        res = await supabaseAdmin
+          .from('companions')
+          .select(cols)
+          .eq('slug', slugAttempt)
+          .maybeSingle();
+      }
+      return res;
+    };
+
+    let res = await fetchExisting(COMPANION_SELECT_COLUMNS);
+    if (isMissingSoulBackstoryColumnError(res.error)) {
+      res = await fetchExisting(COMPANION_BASE_SELECT_COLUMNS);
+    }
     if (res.data) {
       existingRow = res.data as unknown as Record<string, unknown>;
-    } else if (!isUuid && target.startsWith('preset_')) {
-      const slugAttempt = target.replace(/^preset_/, '').toLowerCase();
-      const bySlug = await supabaseAdmin
-        .from('companions')
-        .select(COMPANION_SELECT_COLUMNS)
-        .eq('slug', slugAttempt)
-        .maybeSingle();
-      if (bySlug.data) existingRow = bySlug.data as unknown as Record<string, unknown>;
     }
     if (!existingRow) {
       return { ok: false, status: 404, error: 'Companion not found.' };
@@ -2367,6 +2578,13 @@ export async function upsertAdminCompanion(
       ? input.model_id.trim().slice(0, 160)
       : null;
 
+  const backstory =
+    typeof input.backstory === 'string' ? input.backstory.trim().slice(0, 8000) : '';
+  const soul_consciousness =
+    typeof input.soul_consciousness === 'string'
+      ? input.soul_consciousness.trim().slice(0, 8000)
+      : '';
+
   const payload = {
     slug,
     legacy_id:
@@ -2392,6 +2610,8 @@ export async function upsertAdminCompanion(
     welcome_messages,
     system_prompt:
       typeof input.system_prompt === 'string' ? input.system_prompt.trim().slice(0, 25000) : '',
+    backstory,
+    soul_consciousness,
     hard_rules: typeof input.hard_rules === 'string' ? input.hard_rules.trim().slice(0, 8000) : '',
     soft_rules: typeof input.soft_rules === 'string' ? input.soft_rules.trim().slice(0, 8000) : '',
     autonomy_level,
@@ -2408,6 +2628,7 @@ export async function upsertAdminCompanion(
   };
 
   let res;
+  let usedOverlayFallback = false;
   if (options.isNew) {
     res = await supabaseAdmin
       .from('companions')
@@ -2423,12 +2644,35 @@ export async function upsertAdminCompanion(
       .single();
   }
 
+  if (isMissingSoulBackstoryColumnError(res.error)) {
+    usedOverlayFallback = true;
+    const { backstory: _b, soul_consciousness: _s, ...basePayload } = payload;
+    if (options.isNew) {
+      res = await supabaseAdmin
+        .from('companions')
+        .insert(basePayload)
+        .select(COMPANION_BASE_SELECT_COLUMNS)
+        .single();
+    } else {
+      res = await supabaseAdmin
+        .from('companions')
+        .update(basePayload)
+        .eq('id', String(existingRow!.id))
+        .select(COMPANION_BASE_SELECT_COLUMNS)
+        .single();
+    }
+  }
+
   if (res.error || !res.data) {
     return {
       ok: false,
       status: 500,
       error: res.error?.message || 'Failed to save companion.',
     };
+  }
+
+  if (usedOverlayFallback) {
+    await saveCompanionSoulOverlayEntry(slug, backstory, soul_consciousness);
   }
 
   // Ensure slug is no longer listed in deleted_companion_slugs
@@ -2441,7 +2685,12 @@ export async function upsertAdminCompanion(
   invalidateCompanionsCache();
   return {
     ok: true,
-    companion: mapDbRowToCompanionPreset(res.data as Record<string, unknown>),
+    companion: mapDbRowToCompanionPreset(
+      res.data as Record<string, unknown>,
+      usedOverlayFallback
+        ? { [slug]: { backstory, soul_consciousness } }
+        : undefined
+    ),
   };
 }
 
@@ -2513,6 +2762,8 @@ export async function resetAdminCompanionToDefault(
     monogram_palette: preset.monogram_palette,
     welcome_messages: preset.welcome_messages,
     system_prompt: preset.system_prompt,
+    backstory: preset.backstory,
+    soul_consciousness: preset.soul_consciousness,
     hard_rules: preset.hard_rules,
     soft_rules: preset.soft_rules,
     autonomy_level: preset.autonomy_level,
@@ -2528,20 +2779,49 @@ export async function resetAdminCompanionToDefault(
     updated_at: new Date().toISOString(),
   };
 
-  const { data, error } = await supabaseAdmin
+  let resetRes = await supabaseAdmin
     .from('companions')
     .upsert(payload, { onConflict: 'slug' })
     .select(COMPANION_SELECT_COLUMNS)
     .single();
+  let usedOverlayFallback = false;
 
-  if (error || !data) {
-    return { ok: false, status: 500, error: error?.message || 'Failed to reset companion.' };
+  if (isMissingSoulBackstoryColumnError(resetRes.error)) {
+    usedOverlayFallback = true;
+    const { backstory: _b, soul_consciousness: _s, ...basePayload } = payload;
+    resetRes = await supabaseAdmin
+      .from('companions')
+      .upsert(basePayload, { onConflict: 'slug' })
+      .select(COMPANION_BASE_SELECT_COLUMNS)
+      .single();
+  }
+
+  if (resetRes.error || !resetRes.data) {
+    return { ok: false, status: 500, error: resetRes.error?.message || 'Failed to reset companion.' };
+  }
+
+  if (usedOverlayFallback) {
+    await saveCompanionSoulOverlayEntry(
+      preset.slug,
+      preset.backstory,
+      preset.soul_consciousness
+    );
   }
 
   invalidateCompanionsCache();
   return {
     ok: true,
-    companion: mapDbRowToCompanionPreset(data as Record<string, unknown>),
+    companion: mapDbRowToCompanionPreset(
+      resetRes.data as Record<string, unknown>,
+      usedOverlayFallback
+        ? {
+            [preset.slug.toLowerCase()]: {
+              backstory: preset.backstory,
+              soul_consciousness: preset.soul_consciousness,
+            },
+          }
+        : undefined
+    ),
   };
 }
 

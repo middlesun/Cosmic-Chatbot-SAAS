@@ -160,8 +160,15 @@ function buildPublicCompanionPersonaSnapshot(preset: CompanionPresetRecord): Rec
 
 function stripSensitivePersonaFields(persona: unknown): Record<string, unknown> | null {
   if (!persona || typeof persona !== 'object') return null;
-  const { system_prompt: _sp, hard_rules: _hr, soft_rules: _sr, model_id: _mi, ...safe } =
-    persona as Record<string, unknown>;
+  const {
+    system_prompt: _sp,
+    backstory: _bs,
+    soul_consciousness: _sc,
+    hard_rules: _hr,
+    soft_rules: _sr,
+    model_id: _mi,
+    ...safe
+  } = persona as Record<string, unknown>;
   return safe;
 }
 
@@ -1232,6 +1239,7 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
           culturalFluency: preset.cultural_fluency,
           tagline: preset.tagline,
           systemPromptSnippet: preset.system_prompt,
+          soulSnippet: preset.soul_consciousness,
           chatStyle: preset.chat_style,
           languageSlug: req.appUser.default_language || 'English',
           preferredCallName: req.appUser.preferred_call_name,
@@ -1480,6 +1488,14 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
       .trim()
       .slice(0, 400),
     system_prompt: String(rawPersona.system_prompt || '').trim().slice(0, 2000),
+    backstory:
+      typeof rawPersona.backstory === 'string' && rawPersona.backstory.trim()
+        ? rawPersona.backstory.trim().slice(0, 1200)
+        : undefined,
+    soul_consciousness:
+      typeof rawPersona.soul_consciousness === 'string' && rawPersona.soul_consciousness.trim()
+        ? rawPersona.soul_consciousness.trim().slice(0, 1200)
+        : undefined,
     chat_style: 'chat_bubbles',
     skill_level: 'none_emotional',
     supports_listening_cue: true,
@@ -1593,6 +1609,7 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
         culturalFluency: cleanPersona.background,
         tagline: cleanPersona.tagline,
         systemPromptSnippet: cleanPersona.system_prompt || cleanPersona.bio,
+        soulSnippet: cleanPersona.soul_consciousness,
         chatStyle: cleanPersona.chat_style || 'chat_bubbles',
         languageSlug: req.appUser.default_language || 'English',
         preferredCallName: req.appUser.preferred_call_name,
@@ -3221,6 +3238,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       onTimingWidgets: (timingWidgets) => {
         sendEvent({ type: 'timing_widgets', timingWidgets });
       },
+      onTarotSpread: (tarotSpread) => {
+        sendEvent({ type: 'tarot_spread', tarotSpread });
+      },
       onChunk: (chunkText) => {
         sendEvent({ type: 'chunk', text: chunkText });
       },
@@ -3379,14 +3399,20 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     const hasTimingWidgets = Boolean(
       streamResult.timingWidgets && streamResult.timingWidgets.length > 0
     );
+    const hasTarotSpread = Boolean(
+      streamResult.tarotSpread &&
+        Array.isArray(streamResult.tarotSpread.cards) &&
+        streamResult.tarotSpread.cards.length > 0
+    );
     const initialSuggestionsPayload =
-      hasInitialStructured || hasVedicMetadata || hasTechBreakdown || hasTimingWidgets
+      hasInitialStructured || hasVedicMetadata || hasTechBreakdown || hasTimingWidgets || hasTarotSpread
         ? {
             ...initialStructuredSuggestions,
             ...(stage1Decision?.routerResult ? { vedic_stage1: stage1Decision.routerResult } : {}),
             ...(streamResult.vedicMeta ? { vedic_meta: streamResult.vedicMeta } : {}),
             ...(streamResult.techBreakdown ? { tech_breakdown: streamResult.techBreakdown } : {}),
             ...(hasTimingWidgets ? { timing_widgets: streamResult.timingWidgets } : {}),
+            ...(hasTarotSpread ? { tarot_spread: streamResult.tarotSpread } : {}),
           }
         : null;
 
@@ -3564,6 +3590,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       render_style: effectiveRenderStyle,
       techBreakdown: streamResult.techBreakdown || null,
       timingWidgets: streamResult.timingWidgets || null,
+      tarotSpread: streamResult.tarotSpread || null,
       vedicMeta: streamResult.vedicMeta || null,
       pendingProfile,
       conversation: enrichedConversation,
@@ -3606,13 +3633,14 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         finalStructuredSuggestions.followups.length > 0 ||
         finalStructuredSuggestions.deeper_analysis.length > 0;
       const finalSuggestionsPayload =
-        hasAnyFinalStructured || hasVedicMetadata || hasTechBreakdown || hasTimingWidgets
+        hasAnyFinalStructured || hasVedicMetadata || hasTechBreakdown || hasTimingWidgets || hasTarotSpread
           ? {
               ...finalStructuredSuggestions,
               ...(stage1Decision?.routerResult ? { vedic_stage1: stage1Decision.routerResult } : {}),
               ...(streamResult.vedicMeta ? { vedic_meta: streamResult.vedicMeta } : {}),
               ...(streamResult.techBreakdown ? { tech_breakdown: streamResult.techBreakdown } : {}),
               ...(hasTimingWidgets ? { timing_widgets: streamResult.timingWidgets } : {}),
+              ...(hasTarotSpread ? { tarot_spread: streamResult.tarotSpread } : {}),
             }
           : null;
 

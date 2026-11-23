@@ -19,7 +19,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import AstrologyModeToggle from './AstrologyModeToggle';
-import { useAuth, type AstrologyMode } from './AuthContext';
+import { useOptionalAuth, type AstrologyMode } from './AuthContext';
 import {
   SHODASHVARGA_DEFS,
   VEDIC_SIGNS_SHORT,
@@ -738,16 +738,19 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
   onOpenLifeContext,
   onDossierRefreshed,
 }) => {
-  const { astrologyMode: sessionMode, getAccessToken, isPreviewMode } = useAuth();
+  const auth = useOptionalAuth();
+  const sessionMode = auth?.astrologyMode ?? 'vedic';
+  const getAccessToken = auth?.getAccessToken ?? (async () => null);
+  const isPreviewMode = auth?.isPreviewMode ?? true;
   const [viewMode, setViewMode] = useState<AstrologyMode>(initialMode || sessionMode || 'vedic');
   const [refreshingDossier, setRefreshingDossier] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
-    if (!initialMode) {
-      setViewMode(sessionMode);
+    if (!initialMode && auth?.astrologyMode) {
+      setViewMode(auth.astrologyMode);
     }
-  }, [sessionMode, initialMode]);
+  }, [auth?.astrologyMode, initialMode]);
 
   const [chartStyle, setChartStyle] = useState<'north' | 'south'>('north');
   const [vedicTab, setVedicTab] = useState<VedicTabId>(initialVedicTab || 'overview');

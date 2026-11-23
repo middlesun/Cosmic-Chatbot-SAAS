@@ -10,7 +10,13 @@ import adminRouter from './routes/admin';
 import appsRouter from './routes/apps';
 import notesRouter from './routes/notes';
 import favouritesRouter from './routes/favourites';
-import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './services/astrologyApi';
+import {
+  getOrFetchDailyTransits,
+  isAstrologyApiConfigured,
+  searchBirthPlaces,
+} from './services/astrologyApi';
+import { getPublicCompanionsCatalogCached } from './services/companionPresets';
+import { checkRateLimit, getClientIpHash } from './services/abuseGuard';
 import { fetchSanityBlogPosts, isSanityConfigured } from '../lib/sanity';
 import { normalizeCouncilSlug } from '../lib/vedicTypes';
 import { ALLOWED_CHAT_NUMERIC_FONTS } from './services/platformSettings';
@@ -29,6 +35,51 @@ export function createExpressApp(): Express {
     const supabaseAnonKey = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.json({ supabaseUrl, supabaseAnonKey });
+  });
+
+  // Public specialist companions for landing showcase (never returns system prompts or private layers)
+  app.get('/api/public/companions', async (_req, res) => {
+    try {
+      const catalog = await getPublicCompanionsCatalogCached();
+      const companions = catalog.filter((c) => {
+        if (c.category_tag === 'friends') return false;
+        const primaryLower = (c.primary_expertise || '').toLowerCase();
+        if (primaryLower === 'mood lifter' || primaryLower === 'friend') return false;
+        return true;
+      });
+      res.setHeader('Cache-Control', 'public, max-age=120');
+      res.json({ companions });
+    } catch {
+      res.status(500).json({ error: 'Unable to load specialist companions right now.' });
+    }
+  });
+
+  // Rate-limited public place autocomplete for the landing page Birth Chart entry form
+  app.get('/api/public/places', async (req, res) => {
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 120) : '';
+    if (q.length < 2) {
+      res.json({ places: [], configured: isAstrologyApiConfigured() });
+      return;
+    }
+
+    if (!isAstrologyApiConfigured()) {
+      res.json({ places: [], configured: false });
+      return;
+    }
+
+    const ipHash = getClientIpHash(req) || 'unknown';
+    const rate = checkRateLimit(`public_place_search:${ipHash}`, 35, 5 * 60 * 1000);
+    if (!rate.allowed) {
+      res.status(429).json({ error: 'Please pause a moment before searching more places.', places: [] });
+      return;
+    }
+
+    try {
+      const places = await searchBirthPlaces(q);
+      res.json({ places, configured: true });
+    } catch {
+      res.status(502).json({ error: 'Unable to look up place right now.', places: [] });
+    }
   });
 
   // Health & Environment readiness check (never exposes secret values)

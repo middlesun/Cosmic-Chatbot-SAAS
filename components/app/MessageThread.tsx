@@ -42,11 +42,13 @@ import {
   type PublicGuideUiConfig,
   type SuggestionItem,
   type TimingProgressWidget,
+  type DrawnTarotSpread,
 } from './chatTypes';
 import type { ChatFontSize } from './ChatSettingsModal';
 import CompanionAvatar from './CompanionAvatar';
 import Tooltip from './Tooltip';
 import SuggestionsPanel from './SuggestionsPanel';
+import TarotCardSpread from './TarotCardSpread';
 import { ChartCreationProgress } from './BirthChartModal';
 import {
   cleanCompanionMarkupText,
@@ -94,6 +96,8 @@ interface MessageThreadProps {
   streamingText: string;
   streamingStatus?: string | null;
   streamingTimingWidgets?: TimingProgressWidget[];
+  streamingTarotSpread?: DrawnTarotSpread | null;
+  freshTarotMsgIds?: Set<string>;
   isStreaming: boolean;
   catalog: ChatCatalog | null;
   fontSize?: ChatFontSize;
@@ -631,6 +635,8 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   streamingText,
   streamingStatus = null,
   streamingTimingWidgets = [],
+  streamingTarotSpread = null,
+  freshTarotMsgIds,
   isStreaming,
   catalog,
   fontSize = 'base',
@@ -2081,6 +2087,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 {(() => {
                   const hasTechBreakdown = Boolean(msg.suggestions_json?.tech_breakdown);
                   const cleanText = cleanCompanionMarkupText(msg.content);
+                  const msgTarotSpread =
+                    msg.suggestions_json?.tarot_spread &&
+                    Array.isArray(msg.suggestions_json.tarot_spread.cards) &&
+                    msg.suggestions_json.tarot_spread.cards.length > 0
+                      ? msg.suggestions_json.tarot_spread
+                      : null;
+                  const tarotStartRevealed = !freshTarotMsgIds?.has(msg.id);
 
                   if (isBubbleMsg) {
                     const bubbles = splitCompanionBubbles(msg.content);
@@ -2133,6 +2146,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                           <span className="px-1 text-[11px] font-medium text-[#8B8275]">
                             {bubbleSpeakerName}
                           </span>
+                          {msgTarotSpread && (
+                            <div className="w-full max-w-xl">
+                              <TarotCardSpread
+                                spread={msgTarotSpread}
+                                initialRevealed={tarotStartRevealed}
+                                compact
+                              />
+                            </div>
+                          )}
                           {bubbleList.map((bubbleText, bIdx) => (
                             <div
                               key={`${msg.id}-b-${bIdx}`}
@@ -2152,38 +2174,56 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     );
                   }
 
+                  const spreadBanner = msgTarotSpread ? (
+                    <TarotCardSpread
+                      spread={msgTarotSpread}
+                      initialRevealed={tarotStartRevealed}
+                    />
+                  ) : null;
+
                   if (msgRenderStyle === 'dialogue') {
                     return (
-                      <div className="rounded-3xl border border-[#B8965A]/25 border-l-[3px] border-l-[#B8965A] bg-[#FDFBF7] px-5 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
-                        {renderEditorialContent(
-                          cleanText,
-                          false,
-                          msg.suggestions_json?.timing_widgets
-                        )}
+                      <div className="space-y-3 min-w-0">
+                        {spreadBanner}
+                        <div className="rounded-3xl border border-[#B8965A]/25 border-l-[3px] border-l-[#B8965A] bg-[#FDFBF7] px-5 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
+                          {renderEditorialContent(
+                            cleanText,
+                            false,
+                            msg.suggestions_json?.timing_widgets
+                          )}
+                        </div>
                       </div>
                     );
                   }
 
                   if (msgRenderStyle === 'concise_brief') {
                     return (
-                      <div className="rounded-2xl border border-[#3D3830]/14 bg-[#FDFBF7] px-4 py-3.5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#8B8275] mb-1.5">
-                          Quick Brief
-                        </p>
+                      <div className="space-y-3 min-w-0">
+                        {spreadBanner}
+                        <div className="rounded-2xl border border-[#3D3830]/14 bg-[#FDFBF7] px-4 py-3.5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#8B8275] mb-1.5">
+                            Quick Brief
+                          </p>
+                          {renderEditorialContent(
+                            cleanText,
+                            false,
+                            msg.suggestions_json?.timing_widgets
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (msgRenderStyle === 'editorial') {
+                    return (
+                      <div className="space-y-3 min-w-0">
+                        {spreadBanner}
                         {renderEditorialContent(
                           cleanText,
                           false,
                           msg.suggestions_json?.timing_widgets
                         )}
                       </div>
-                    );
-                  }
-
-                  if (msgRenderStyle === 'editorial') {
-                    return renderEditorialContent(
-                      cleanText,
-                      false,
-                      msg.suggestions_json?.timing_widgets
                     );
                   }
 
@@ -2198,10 +2238,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                       msg.output_format_used === 'marriage_master' ||
                       msg.output_format_used === 'dual_view' ||
                       responseMode === 'detailed');
-                  return renderEditorialContent(
-                    cleanText,
-                    useDetailedCards,
-                    msg.suggestions_json?.timing_widgets
+                  return (
+                    <div className="space-y-3 min-w-0">
+                      {spreadBanner}
+                      {renderEditorialContent(
+                        cleanText,
+                        useDetailedCards,
+                        msg.suggestions_json?.timing_widgets
+                      )}
+                    </div>
                   );
                 })()}
 
@@ -2612,6 +2657,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                       <span className="px-1 text-[11px] font-medium text-[#8B8275]">
                         {liveSpeakerName}
                       </span>
+                      {streamingTarotSpread && streamingTarotSpread.cards?.length > 0 && (
+                        <div className="w-full max-w-xl">
+                          <TarotCardSpread
+                            spread={streamingTarotSpread}
+                            initialRevealed={false}
+                            compact
+                          />
+                        </div>
+                      )}
                       {visibleBubbles.map((bubbleText, bIdx) => (
                         <div
                           key={`live-b-${bIdx}`}
@@ -2668,6 +2722,12 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   )}
                   {activePillar === 'clarity' && (
                     <p className="text-[11px] font-medium text-[#8B8275]">Clarity</p>
+                  )}
+                  {streamingTarotSpread && streamingTarotSpread.cards?.length > 0 && (
+                    <TarotCardSpread
+                      spread={streamingTarotSpread}
+                      initialRevealed={false}
+                    />
                   )}
                   {streamingText ? (
                     activeThreadChatStyle === 'dialogue' ? (

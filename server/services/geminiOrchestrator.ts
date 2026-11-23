@@ -17,6 +17,7 @@ import {
   formatPythagoreanNumerologyContext,
   formatTarotSpreadContext,
   formatTropicalWesternContext,
+  type DrawnTarotSpread,
 } from './divinationEngines';
 import {
   buildChatStyleInstruction,
@@ -211,6 +212,7 @@ export interface StreamConsultationParams {
   abortSignal: AbortSignal;
   onStatus?: (statusText: string) => void;
   onTimingWidgets?: (widgets: TimingProgressWidget[]) => void;
+  onTarotSpread?: (spread: DrawnTarotSpread) => void;
   onChunk: (chunkText: string) => void;
 }
 
@@ -243,6 +245,7 @@ export interface StreamConsultationResult {
   vedicMeta?: VedicSynthesisMeta | null;
   stage2Pkg?: Stage2ContextPackage | null;
   timingWidgets?: TimingProgressWidget[];
+  tarotSpread?: DrawnTarotSpread | null;
 }
 
 function normalizeDraftBirthTime(raw: string): string | null {
@@ -502,6 +505,7 @@ async function buildStaticSystemInstruction(params: {
   wantsSuggestions: boolean;
   resolvedSuggestions: GuideSuggestionsConfig;
   chatStyle: ChatStyle;
+  tarotSpread?: DrawnTarotSpread | null;
 }> {
   const [guideCfg, coreConstitution, activeModeRecipe] = await Promise.all([
     getResolvedGuideConfig(params.expertSlug),
@@ -625,8 +629,9 @@ async function buildStaticSystemInstruction(params: {
     : '';
 
   // Discipline-specific deterministic engines & profile context injection
+  let drawnSpread: DrawnTarotSpread | null = null;
   if (isTarot) {
-    const drawnSpread = drawTarotSpread(params.userPrompt);
+    drawnSpread = drawTarotSpread(params.userPrompt);
     sections.push(formatTarotSpreadContext(drawnSpread));
     if (params.profile) {
       sections.push(
@@ -806,6 +811,7 @@ Keep the JSON strictly valid UTF-8 single-line JSON with double quotes and no tr
     wantsSuggestions,
     resolvedSuggestions: guideSug,
     chatStyle: guideCfg.chat_style,
+    tarotSpread: drawnSpread,
   };
 }
 
@@ -1295,6 +1301,7 @@ User's specific question: ${finalUserText}`;
   let wantsSuggestions = false;
   let activeSuggestionsSpec: SuggestionsConfig | undefined;
   let resolvedRenderStyle: ChatStyle | undefined;
+  let activeTarotSpread: DrawnTarotSpread | null = null;
 
   if (activePillar === 'companion') {
     const builtComp = await buildCompanionSystemPromptAsync({
@@ -1319,6 +1326,7 @@ User's specific question: ${finalUserText}`;
     systemInstructionWithDynamic = builtComp.systemInstruction;
     modelOverride = builtComp.modelOverride;
     resolvedRenderStyle = builtComp.chatStyle;
+    activeTarotSpread = builtComp.tarotSpread || null;
     wantsSuggestions = false;
   } else if (activePillar === 'clarity') {
     const builtClarity = await buildClaritySystemPromptAsync({
@@ -1353,6 +1361,7 @@ User's specific question: ${finalUserText}`;
     wantsSuggestions = built.wantsSuggestions;
     activeSuggestionsSpec = built.resolvedSuggestions;
     resolvedRenderStyle = built.chatStyle;
+    activeTarotSpread = built.tarotSpread || null;
 
     // Fetch today's cached Gochar transits (max 1 API call/day across platform, with deterministic fallback)
     let gocharContext = '';
@@ -1396,6 +1405,10 @@ User's specific question: ${finalUserText}`;
     ]
       .filter(Boolean)
       .join('\n\n---\n\n');
+  }
+
+  if (activeTarotSpread && activeTarotSpread.cards.length > 0) {
+    params.onTarotSpread?.(activeTarotSpread);
   }
 
   const model = modelOverride || runtime.consultationModel || getConsultationModel();
@@ -1623,6 +1636,7 @@ User's specific question: ${finalUserText}`;
     return {
       fullText: sanitized.text,
       techBreakdown: safeLegacyBreakdown,
+      tarotSpread: streamResult.aborted || contAborted ? null : activeTarotSpread,
       tokensIn: totalTokensIn,
       tokensOut: totalTokensOut,
       creditsCharged,

@@ -58,6 +58,7 @@ import {
   type CompanionPersona,
   type ConversationRecord,
   type CustomPromptRecord,
+  type DrawnTarotSpread,
   type FavoriteMessageRecord,
   type LifeContextData,
   type MessageReaction,
@@ -405,6 +406,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const [streamingText, setStreamingText] = useState('');
   const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
   const [streamingTimingWidgets, setStreamingTimingWidgets] = useState<TimingProgressWidget[]>([]);
+  const [streamingTarotSpread, setStreamingTarotSpread] = useState<DrawnTarotSpread | null>(null);
+  const [freshTarotMsgIds, setFreshTarotMsgIds] = useState<Set<string>>(() => new Set());
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   // Phase 2: Multi-Thread Tabs (Closable; at least 1 tab stays open)
@@ -881,6 +884,32 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
+
+  useEffect(() => {
+    if (embeddedPreview || isPreviewMode) return;
+    const handleOnboardingProfileReady = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ profile?: ChatProfile; conversationId?: string }>
+      ).detail;
+      const incomingProfile = detail?.profile;
+      if (incomingProfile?.id) {
+        setProfiles((prev) => {
+          const exists = prev.some((p) => p.id === incomingProfile.id);
+          return exists
+            ? prev.map((p) => (p.id === incomingProfile.id ? incomingProfile : p))
+            : [incomingProfile, ...prev];
+        });
+        if (!detail?.conversationId) {
+          setPendingProfileId((prevId) => prevId || incomingProfile.id);
+        }
+      }
+      void loadConversations();
+    };
+    window.addEventListener('cc-onboarding-profile-ready', handleOnboardingProfileReady);
+    return () => {
+      window.removeEventListener('cc-onboarding-profile-ready', handleOnboardingProfileReady);
+    };
+  }, [embeddedPreview, isPreviewMode, loadConversations]);
 
   // Snapshot helper for instant zero-flicker multi-tab switching
   const snapshotActiveTabState = useCallback(
@@ -2784,12 +2813,21 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     void handleSwitchToReferredCompanion(targetSlug, forceNew ? { mode: 'fresh' } : undefined);
   }, [companionCatalog, isPreviewMode]);
 
-  // Handle matched custom persona handoff from /app/companions navigation state (primarily preview mode)
+  // Handle matched custom persona or onboarding profile handoff via navigation state
   useEffect(() => {
     if (embeddedPreview) return;
     const navState = location.state as
-      | { startCompanionPersona?: CompanionPersona; forceNew?: boolean }
+      | {
+          startCompanionPersona?: CompanionPersona;
+          forceNew?: boolean;
+          selectedProfileId?: string;
+        }
       | null;
+    if (navState?.selectedProfileId && !navState.startCompanionPersona) {
+      setPendingProfileId(navState.selectedProfileId);
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+      return;
+    }
     const incomingPersona = navState?.startCompanionPersona;
     if (!incomingPersona) return;
 
@@ -3222,6 +3260,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     setStreamingText('');
     setStreamingStatus('Preparing consultation...');
     setStreamingTimingWidgets([]);
+    setStreamingTarotSpread(null);
 
     let createdConvForTurn: ConversationRecord | null = null;
     let serverUserMsgId: string | null = null;
@@ -3408,6 +3447,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           suggestions?: MessageSuggestions | null;
           techBreakdown?: string | null;
           timingWidgets?: TimingProgressWidget[];
+          tarotSpread?: DrawnTarotSpread | null;
           render_style?: ChatStyle | null;
           referral?: MessageReferralPayload | null;
           title?: string;
@@ -3430,6 +3470,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           if (isCurrentStreamOwner) {
             setStreamingTimingWidgets(evt.timingWidgets);
           }
+        } else if (evt.type === 'tarot_spread' && evt.tarotSpread) {
+          if (isCurrentStreamOwner) {
+            setStreamingTarotSpread(evt.tarotSpread);
+          }
         } else if (evt.type === 'chunk' && evt.text) {
           hasReceivedAssistantChunk = true;
           accumulated += evt.text;
@@ -3449,7 +3493,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
               Array.isArray(evt.timingWidgets) && evt.timingWidgets.length > 0
                 ? evt.timingWidgets
                 : undefined;
-            const mergedSuggestions =
+            const eventTarotSpread =
+              evt.tarotSpread &&
+              Array.isArray(evt.tarotSpread.cards) &&
+              evt.tarotSpread.cards.length > 0
+                ? evt.tarotSpread
+                : undefined;
+            const mergedSuggestions: MessageSuggestions | null =
               sendPillar === 'council' && baseSuggestions
                 ? {
                     ...baseSuggestions,
@@ -3459,37 +3509,66 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                     ...(eventTimingWidgets && !baseSuggestions.timing_widgets?.length
                       ? { timing_widgets: eventTimingWidgets }
                       : {}),
+                    ...(eventTarotSpread && !baseSuggestions.tarot_spread
+                      ? { tarot_spread: eventTarotSpread }
+                      : {}),
                   }
-                : sendPillar === 'council' && (evt.techBreakdown || eventTimingWidgets)
+                : sendPillar === 'council' &&
+                  (evt.techBreakdown || eventTimingWidgets || eventTarotSpread)
                 ? {
                     followups: [],
                     deeper_analysis: [],
                     ...(evt.techBreakdown ? { tech_breakdown: evt.techBreakdown } : {}),
                     ...(eventTimingWidgets ? { timing_widgets: eventTimingWidgets } : {}),
+                    ...(eventTarotSpread ? { tarot_spread: eventTarotSpread } : {}),
                   }
                 : null;
             const companionSuggestions: MessageSuggestions | null =
               sendPillar === 'companion'
-                ? baseSuggestions ||
-                  (Array.isArray(evt.followups) && evt.followups.length > 0
-                    ? {
-                        followups: evt.followups.map((text, idx) => ({
-                          id: `comp_f_${idx}`,
-                          text,
-                        })),
+                ? (() => {
+                    const compBase: MessageSuggestions | null =
+                      baseSuggestions ||
+                      (Array.isArray(evt.followups) && evt.followups.length > 0
+                        ? {
+                            followups: evt.followups.map((text, idx) => ({
+                              id: `comp_f_${idx}`,
+                              text,
+                            })),
+                            deeper_analysis: [],
+                          }
+                        : null);
+                    if (compBase) {
+                      return eventTarotSpread && !compBase.tarot_spread
+                        ? { ...compBase, tarot_spread: eventTarotSpread }
+                        : compBase;
+                    }
+                    if (eventTarotSpread) {
+                      return {
+                        followups: [],
                         deeper_analysis: [],
-                      }
-                    : null)
+                        tarot_spread: eventTarotSpread,
+                      };
+                    }
+                    return null;
+                  })()
                 : null;
+            const finalSuggestions =
+              sendPillar === 'council' ? mergedSuggestions : companionSuggestions;
             const enrichedAssistant: ChatMessageRecord = {
               ...evt.assistantMessage,
-              suggestions_json:
-                sendPillar === 'council' ? mergedSuggestions : companionSuggestions,
+              suggestions_json: finalSuggestions,
               render_style:
                 evt.assistantMessage.render_style ?? evt.render_style ?? null,
               referral_json:
                 evt.assistantMessage.referral_json ?? evt.referral ?? null,
             };
+            if (finalSuggestions?.tarot_spread?.cards?.length) {
+              setFreshTarotMsgIds((prev) => {
+                const next = new Set(prev);
+                next.add(enrichedAssistant.id);
+                return next;
+              });
+            }
             setMessages((prev) => [...prev, enrichedAssistant]);
             if (sendPillar === 'council' && evt.pendingProfile) {
               setPendingProfileConfirm({
@@ -3547,6 +3626,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             setStreamingText('');
             setStreamingStatus(null);
             setStreamingTimingWidgets([]);
+            setStreamingTarotSpread(null);
             setIsStreaming(false);
             setStreamingTabId(null);
             abortControllerRef.current = null;
@@ -3563,7 +3643,23 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                         ? evt.followups
                         : m.followups_json,
                       suggestions_json:
-                        evt.suggestions !== undefined ? evt.suggestions : m.suggestions_json,
+                        evt.suggestions !== undefined
+                          ? evt.suggestions
+                            ? {
+                                ...evt.suggestions,
+                                ...(m.suggestions_json?.tarot_spread &&
+                                !evt.suggestions.tarot_spread
+                                  ? { tarot_spread: m.suggestions_json.tarot_spread }
+                                  : {}),
+                              }
+                            : m.suggestions_json?.tarot_spread
+                            ? {
+                                followups: [],
+                                deeper_analysis: [],
+                                tarot_spread: m.suggestions_json.tarot_spread,
+                              }
+                            : null
+                          : m.suggestions_json,
                     }
                   : m
               )
@@ -3630,6 +3726,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         setStreamingText('');
         setStreamingStatus(null);
         setStreamingTimingWidgets([]);
+        setStreamingTarotSpread(null);
         abortControllerRef.current = null;
       }
     }
@@ -5223,6 +5320,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             streamingText={streamingText}
             streamingStatus={streamingStatus}
             streamingTimingWidgets={streamingTimingWidgets}
+            streamingTarotSpread={streamingTarotSpread}
+            freshTarotMsgIds={freshTarotMsgIds}
             isStreaming={isStreaming}
             catalog={catalog}
             fontSize={chatFontSize}

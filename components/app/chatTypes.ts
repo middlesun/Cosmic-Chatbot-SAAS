@@ -13,6 +13,7 @@ import {
   type TimingWidgetId,
   type VedicSynthesisMeta,
 } from '../../lib/vedicTypes';
+import type { DrawnTarotCard, DrawnTarotSpread } from '../../lib/tarotDeck';
 
 export {
   DEFAULT_COUNCIL_EXPERT_SLUG,
@@ -29,6 +30,8 @@ export type {
   VedicSynthesisMeta,
   TimingProgressWidget,
   TimingWidgetId,
+  DrawnTarotCard,
+  DrawnTarotSpread,
 };
 
 export interface ChatCatalogOption {
@@ -64,6 +67,7 @@ export interface MessageSuggestions {
   sutra_meta?: VedicSynthesisMeta | null;
   tech_breakdown?: string | null;
   timing_widgets?: TimingProgressWidget[] | null;
+  tarot_spread?: DrawnTarotSpread | null;
 }
 
 export interface AskLaterItem {

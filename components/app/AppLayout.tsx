@@ -29,6 +29,7 @@ import AccountSettingsModal from './AccountSettingsModal';
 import FloatingScrollControls from '../FloatingScrollControls';
 import Tooltip from './Tooltip';
 import UserAvatar from './UserAvatar';
+import PendingOnboardingHydrator from './PendingOnboardingHydrator';
 import { getUserProfileDisplayLabel } from './chatUtilities';
 
 const APP_SIDEBAR_LOCK_KEY = 'cc_app_sidebar_locked';
@@ -688,6 +689,7 @@ const AppLayout: React.FC = () => {
         )}
 
         {!isChatRoute && <FloatingScrollControls scrollContainerRef={mainScrollRef} />}
+        <PendingOnboardingHydrator />
       </div>
     </AppShellContext.Provider>
   );

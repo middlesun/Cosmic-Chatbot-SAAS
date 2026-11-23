@@ -595,6 +595,8 @@ export type PlatformSettingKey =
   | 'suggestions_config'
   | 'mini_apps_config'
   | 'mini_apps_registry'
+  | 'mini_apps_rules_overlay'
+  | 'companion_soul_backstory_overlay'
   | 'per_guide_chatbot_config'
   | 'engine_prompt_overrides'
   | 'playbook_overrides';

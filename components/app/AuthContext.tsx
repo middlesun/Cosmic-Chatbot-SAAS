@@ -298,6 +298,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
+export const useOptionalAuth = (): AuthContextValue | undefined => {
+  return useContext(AuthContext);
+};
+
 export const useAuth = (): AuthContextValue => {
   const ctx = useContext(AuthContext);
   if (!ctx) {

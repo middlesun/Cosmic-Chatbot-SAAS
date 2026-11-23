@@ -6,6 +6,7 @@ import {
   Check,
   Eye,
   EyeOff,
+  GripVertical,
   Image as ImageIcon,
   Plus,
   RotateCcw,
@@ -51,6 +52,8 @@ export interface AdminCompanionRecord {
   monogram_palette: CompanionMonogramPalette;
   welcome_messages: string[];
   system_prompt: string;
+  backstory: string;
+  soul_consciousness: string;
   hard_rules: string;
   soft_rules: string;
   autonomy_level: CompanionAutonomyLevel;
@@ -179,6 +182,8 @@ function createBlankCompanion(nextSortOrder: number): AdminCompanionRecord {
       "Hey—good to see you here. Take a breath, what's on your mind today?",
     ],
     system_prompt: '',
+    backstory: '',
+    soul_consciousness: '',
     hard_rules:
       'NON-NEGOTIABLE GUARDRAILS:\n- Stay inside your lived human persona; never refer to yourself as an AI or bot.\n- Never diagnose medical/psychiatric conditions or invent chart placements not provided.',
     soft_rules:
@@ -225,6 +230,8 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reordering, setReordering] = useState(false);
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [resetting, setResetting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -394,6 +401,8 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
     setSelectedId(item.id);
     setDraft({
       ...item,
+      backstory: item.backstory || '',
+      soul_consciousness: item.soul_consciousness || '',
       monogram_palette: { ...item.monogram_palette },
       tts_voice_profile: { ...item.tts_voice_profile },
       welcome_messages: [...(item.welcome_messages || [])],
@@ -432,6 +441,8 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
     const payload = {
       ...draft,
       slug: (draft.slug || slugifyName(draft.name)).trim().toLowerCase(),
+      backstory: (draft.backstory || '').trim(),
+      soul_consciousness: (draft.soul_consciousness || '').trim(),
       secondary_expertise: parsedSecondary,
       welcome_messages: (draft.welcome_messages || []).map((w) => w.trim()).filter(Boolean),
     };
@@ -519,12 +530,19 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
     }
   };
 
-  const handleMoveCompanion = async (indexInAll: number, delta: -1 | 1) => {
-    const nextIdx = indexInAll + delta;
-    if (nextIdx < 0 || nextIdx >= companions.length) return;
+  const handleMoveCompanionToIndex = async (fromIdx: number, toIdx: number) => {
+    if (
+      fromIdx < 0 ||
+      toIdx < 0 ||
+      fromIdx >= companions.length ||
+      toIdx >= companions.length ||
+      fromIdx === toIdx
+    ) {
+      return;
+    }
     const reordered = [...companions];
-    const [moved] = reordered.splice(indexInAll, 1);
-    reordered.splice(nextIdx, 0, moved);
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
 
     const updatedWithOrder = reordered.map((c, idx) => ({
       ...c,
@@ -556,10 +574,14 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reorder companions');
+      await loadCompanions();
     } finally {
       setReordering(false);
     }
   };
+
+  const handleMoveCompanion = (indexInAll: number, delta: -1 | 1) =>
+    handleMoveCompanionToIndex(indexInAll, indexInAll + delta);
 
   const handleQuickToggleActive = async (item: AdminCompanionRecord) => {
     setError(null);
@@ -705,7 +727,11 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                   ...CATEGORY_OPTIONS.map((c) => ({ value: c.value, label: c.label })),
                 ]}
               />
-              {!canReorder && (
+              {canReorder ? (
+                <p className="text-[11px] text-[#8B8275]">
+                  Drag handle or ↑ ↓ to reorder companions.
+                </p>
+              ) : (
                 <p className="text-[11px] text-[#8B8275]">
                   Clear search &amp; category filter to reorder companions.
                 </p>
@@ -721,15 +747,60 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                 filteredCompanions.map((item) => {
                   const isSelected = draft?.id === item.id;
                   const globalIdx = companions.findIndex((c) => c.id === item.id);
+                  const isDragging = draggedIdx === globalIdx;
+                  const isDragOver =
+                    dragOverIdx === globalIdx && draggedIdx !== null && draggedIdx !== globalIdx;
                   return (
                     <div
                       key={item.id}
-                      className={`flex items-center gap-2.5 px-3.5 py-2.5 transition-colors ${
-                        isSelected
-                          ? 'bg-[#EAE3D7]/70'
-                          : 'hover:bg-[#FAF7F2]'
+                      draggable={canReorder && !reordering}
+                      onDragStart={(e) => {
+                        if (!canReorder || reordering) return;
+                        setDraggedIdx(globalIdx);
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', String(globalIdx));
+                      }}
+                      onDragOver={(e) => {
+                        if (!canReorder || draggedIdx === null) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (dragOverIdx !== globalIdx) setDragOverIdx(globalIdx);
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverIdx === globalIdx) setDragOverIdx(null);
+                      }}
+                      onDrop={(e) => {
+                        if (!canReorder) return;
+                        e.preventDefault();
+                        const from = draggedIdx;
+                        setDraggedIdx(null);
+                        setDragOverIdx(null);
+                        if (from !== null && from !== globalIdx) {
+                          void handleMoveCompanionToIndex(from, globalIdx);
+                        }
+                      }}
+                      onDragEnd={() => {
+                        setDraggedIdx(null);
+                        setDragOverIdx(null);
+                      }}
+                      className={`flex items-center gap-2 px-3 py-2.5 transition-colors border-l-2 ${
+                        isDragging ? 'opacity-55' : ''
+                      } ${
+                        isDragOver
+                          ? 'border-l-[#B8965A] bg-[#B8965A]/12'
+                          : isSelected
+                            ? 'border-l-[#3D3830] bg-[#EAE3D7]/70'
+                            : 'border-l-transparent hover:bg-[#FAF7F2]'
                       }`}
                     >
+                      {canReorder && (
+                        <span
+                          title="Drag to reorder"
+                          className="text-[#8B8275] hover:text-[#3D3830] cursor-grab active:cursor-grabbing shrink-0"
+                        >
+                          <GripVertical className="h-3.5 w-3.5" />
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleSelectCompanion(item)}
@@ -1392,6 +1463,63 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                         }
                         className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
                       />
+                    </div>
+
+                    {/* Back Story & Soul & Consciousness */}
+                    <div className="grid grid-cols-1 gap-4 pt-2 border-t border-[#3D3830]/10">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <span className="text-xs font-semibold text-[#3D3830]">
+                              Back Story (Private Lived History)
+                            </span>
+                            <p className="text-[11px] text-[#8B8275]">
+                              Quiet lived background (roots, shaping season, small daily habits). Strictly server-side — never shown on public cards or dumped unprompted.
+                            </p>
+                          </div>
+                          <span className="font-mono text-[11px] tabular-nums text-[#8B8275] shrink-0">
+                            {(draft.backstory || '').length} chars · ~{approxTokens(draft.backstory || '')} tokens
+                          </span>
+                        </div>
+                        <textarea
+                          rows={4}
+                          value={draft.backstory || ''}
+                          onChange={(e) =>
+                            setDraft((prev) =>
+                              prev ? { ...prev, backstory: e.target.value } : prev
+                            )
+                          }
+                          placeholder="Where they grew up, a turning point, and quiet everyday texture they carry without announcing..."
+                          className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-3.5 font-mono text-xs leading-relaxed text-[#3D3830] placeholder:text-[#8B8275] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <span className="text-xs font-semibold text-[#3D3830]">
+                              Soul &amp; Consciousness (Inner Compass, Perceptual Focus &amp; Cadence)
+                            </span>
+                            <p className="text-[11px] text-[#8B8275]">
+                              What they notice between the lines, how they hold silence or gentle pushback, and how they stay un-robotic.
+                            </p>
+                          </div>
+                          <span className="font-mono text-[11px] tabular-nums text-[#8B8275] shrink-0">
+                            {(draft.soul_consciousness || '').length} chars · ~{approxTokens(draft.soul_consciousness || '')} tokens
+                          </span>
+                        </div>
+                        <textarea
+                          rows={4}
+                          value={draft.soul_consciousness || ''}
+                          onChange={(e) =>
+                            setDraft((prev) =>
+                              prev ? { ...prev, soul_consciousness: e.target.value } : prev
+                            )
+                          }
+                          placeholder="What subtle human truth this companion catches first, and how their inner stillness shapes their timing..."
+                          className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-3.5 font-mono text-xs leading-relaxed text-[#3D3830] placeholder:text-[#8B8275] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                        />
+                      </div>
                     </div>
 
                     {/* Layered Rules & Autonomy */}
