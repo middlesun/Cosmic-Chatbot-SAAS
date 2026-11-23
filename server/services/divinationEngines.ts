@@ -555,7 +555,7 @@ function chooseSpreadPositions(userPrompt: string): {
   }
 
   return {
-    spreadName: '3-Card Guidance Spread',
+    spreadName: '3-Card Illuminated Spread',
     positions: [
       '1. Root Influence (What Led Here)',
       '2. Present Energy (What Is Active Now)',

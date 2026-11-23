@@ -41,7 +41,7 @@ const TarotCardFacePlate: React.FC<{
           {!imgFailed ? (
             <img
               src={meta.imageUrl}
-              alt={`${meta.title} tarot card`}
+              alt={`${meta.title} — Illuminated Botanical & Gemstone Tarot`}
               loading="lazy"
               referrerPolicy="no-referrer"
               onError={() => setImgFailed(true)}
@@ -73,7 +73,7 @@ const TarotCardBackPlate: React.FC = () => {
       {!backFailed ? (
         <img
           src={TAROT_BACK_IMAGE_URL}
-          alt="Tarot card back"
+          alt="Illuminated Botanical Tarot card back"
           loading="lazy"
           referrerPolicy="no-referrer"
           onError={() => setBackFailed(true)}
@@ -187,7 +187,7 @@ const TarotCardSpread: React.FC<TarotCardSpreadProps> = ({
             <span className="truncate">{spread.spreadName}</span>
           </div>
           <p className="text-[11px] text-[#8B8275] mt-0.5">
-            {allRevealed ? 'Tap any card for a closer look' : 'Tap each card to turn it over'}
+            {cards.length} {cards.length === 1 ? 'card' : 'cards'} drawn · Tap card to reveal or zoom
           </p>
         </div>
 

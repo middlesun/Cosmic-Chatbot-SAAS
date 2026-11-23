@@ -5,20 +5,20 @@ import TarotCardSpread from './app/TarotCardSpread';
 import type { DrawnTarotSpread } from '../lib/tarotDeck';
 
 const CUSTOM_CARD_MEANINGS: Record<number, string> = {
-  0: 'Eight of Pentacles · You have been putting in steady, quiet effort—you have built more solid ground here than it feels like right now.',
-  1: 'XVII · The Star · A calm clearing after mental fatigue. Hope feels quieter and steadier when you stop forcing an immediate leap.',
-  2: 'Ace of Wands · A fresh creative spark is ready to test on one small, low-risk step before making any big commitment.',
+  0: 'Eight of Pentacles · Disciplined, quiet refinement — you have already built deeper craft and footing than it feels like in the moment.',
+  1: 'XVII · The Star · Calm clarity after mental fatigue. Notice where hope feels grounded rather than frantic; space returns before the next move.',
+  2: 'Ace of Wands · A fresh creative spark is ready to test through one small, low-risk step before making a sweeping career commitment.',
 };
 
 const REVERSED_THIRD_CARD_MEANING =
-  'Ace of Wands (Reversed) · You already feel ready for something new, even if timing or confidence feels a little hesitant right now. Try one quiet step first instead of forcing a huge change.';
+  'Ace of Wands (Reversed) · The desire for a new chapter is already lit inside you, though timing or confidence feels momentarily bottled up. Test one private step first instead of forcing an abrupt leap.';
 
 const TarotStyleShowcase: React.FC = () => {
   const [previewReversed, setPreviewReversed] = useState<boolean>(false);
 
   const landingSpread = useMemo<DrawnTarotSpread>(
     () => ({
-      spreadName: '3-Card Clarity Spread',
+      spreadName: '3-Card Illuminated Botanical Spread',
       cards: [
         {
           position: '1. Root Influence',
@@ -61,29 +61,29 @@ const TarotStyleShowcase: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div className="space-y-1.5 max-w-2xl">
             <p className="text-xs font-medium text-[#8B8275]">
-              Tarot in Chat
+              Visual Tarot Inside Chat · Full 78-Card Deck
             </p>
             <h2
               className="font-serif text-3xl sm:text-4xl font-medium text-[#3D3830] tracking-tight leading-tight"
               style={{ textWrap: 'balance' }}
             >
-              Tarot to give you more clarity
+              Illuminated Botanical &amp; Gemstone Tarot
             </h2>
           </div>
           <p className="text-xs sm:text-sm text-[#5C5449] max-w-md leading-relaxed">
-            Talk freely about whatever is on your mind. Whenever a moment needs perspective, draw cards right inside your conversation.
+            Talk naturally about life first — whenever clarity calls for a reading, your companion shuffles our full 78-card illustrated deck directly inside chat.
           </p>
         </div>
 
-        {/* Showcase Frame */}
+        {/* Showcase Frame: Craft Overview + Real Interactive 78-Card Spread */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          {/* Left: Personal Experience Copy */}
+          {/* Left: Deck Craft & Companion Philosophy */}
           <div className="lg:col-span-4 rounded-3xl border border-[#3D3830]/12 bg-[#FAF7F2] p-5 sm:p-6 flex flex-col justify-between gap-5">
             <div className="space-y-4">
               <div className="overflow-hidden rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] aspect-[4/3]">
                 <img
                   src="/assets/tarot/style2-illuminated.jpg"
-                  alt="Tarot reading cards"
+                  alt="Illuminated Botanical & Gemstone Tarot deck — indigo-plum gold foil moon back beside The Star card"
                   loading="lazy"
                   referrerPolicy="no-referrer"
                   className="h-full w-full object-cover"
@@ -92,10 +92,10 @@ const TarotStyleShowcase: React.FC = () => {
 
               <div className="space-y-2">
                 <h3 className="font-serif text-2xl font-medium text-[#3D3830] leading-tight">
-                  Cards when you need them, conversation when you don&apos;t
+                  Painted for quiet reflection
                 </h3>
                 <p className="text-xs sm:text-sm text-[#5C5449] leading-relaxed">
-                  Some days you just want to talk things through. Other days, pulling a card helps you put words to what you&apos;ve been feeling—and move forward with a calmer mind.
+                  Lapis night skies, antique ochre gold, sage botanicals, and indigo-plum card backs — every one of the 78 Major and Minor Arcana cards is bespoke-illustrated to match your journal.
                 </p>
               </div>
             </div>
@@ -103,15 +103,15 @@ const TarotStyleShowcase: React.FC = () => {
             <div className="pt-4 border-t border-[#3D3830]/10 space-y-2 text-xs text-[#5C5449]">
               <p className="flex items-center gap-2 text-[#3D3830] font-medium">
                 <Sparkles className="h-3.5 w-3.5 text-[#B8965A] shrink-0" />
-                <span>Always tied to your life</span>
+                <span>Pulled only when a spread adds clarity</span>
               </p>
               <p className="text-[11px] text-[#8B8275] leading-relaxed">
-                Ask for a single card for today or a spread for a bigger decision. Every reading stays saved in your chat so you can revisit it anytime.
+                Everyday conversation stays warm and unscripted; ask for a 1-card pull, 3-card trajectory, or 5-card crossroads whenever you want a visual mirror.
               </p>
             </div>
           </div>
 
-          {/* Right: Live Simulated In-Chat Spread */}
+          {/* Right: Live Simulated In-Chat Spread Powered by Real Deck Plates */}
           <div className="lg:col-span-8 rounded-3xl border border-[#3D3830]/12 bg-[#FAF7F2] p-5 sm:p-7 space-y-5 flex flex-col justify-between">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#3D3830]/10">
               <div className="flex items-center gap-3">
@@ -123,10 +123,10 @@ const TarotStyleShowcase: React.FC = () => {
                 />
                 <div>
                   <p className="font-serif text-xl font-medium text-[#3D3830] leading-tight">
-                    Bella · Tarot Companion
+                    Bella · Interactive In-Chat Reading
                   </p>
                   <p className="text-xs text-[#8B8275]">
-                    See how a reading feels inside your chat
+                    Tap any card face-down to reveal, click an open card to inspect larger
                   </p>
                 </div>
               </div>
@@ -153,7 +153,7 @@ const TarotStyleShowcase: React.FC = () => {
                 </div>
               </div>
 
-              {/* Bella Bubble + Tarot Spread */}
+              {/* Bella Bubble + Real TarotCardSpread Component */}
               <div className="space-y-2">
                 <div className="rounded-2xl rounded-tl-sm border border-[#3D3830]/12 bg-[#FDFBF7] px-4 py-3 text-xs sm:text-sm text-[#3D3830] max-w-xl">
                   Let&apos;s look calmly at where your effort sits, what is shifting right now, and one grounded next move.
