@@ -272,7 +272,6 @@ export async function streamOpenRouterCompletion(params: {
   tokensIn: number;
   tokensOut: number;
   aborted: boolean;
-  finishReason: string | null;
 }> {
   const runtime = await getResolvedOpenRouterRuntime();
   if (!runtime.apiKey) {
@@ -319,55 +318,6 @@ export async function streamOpenRouterCompletion(params: {
   let tokensIn = 0;
   let tokensOut = 0;
   let aborted = false;
-  let finishReason: string | null = null;
-  let seenDone = false;
-
-  const processStreamLine = (rawLine: string) => {
-    const line = rawLine.trim();
-    if (!line || line.startsWith(':') || !line.startsWith('data:')) return;
-
-    const payload = line.slice(5).trim();
-    if (payload === '[DONE]') {
-      seenDone = true;
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(payload) as {
-        choices?: Array<{
-          delta?: { content?: string };
-          finish_reason?: string | null;
-        }>;
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
-        error?: { message?: string };
-      };
-
-      if (parsed.error?.message) {
-        throw new Error(parsed.error.message);
-      }
-
-      const choice = parsed.choices?.[0];
-      if (typeof choice?.finish_reason === 'string' && choice.finish_reason) {
-        finishReason = choice.finish_reason;
-      }
-
-      const delta = choice?.delta?.content;
-      if (typeof delta === 'string' && delta.length > 0) {
-        fullText += delta;
-        params.onChunk(delta);
-      }
-
-      if (parsed.usage) {
-        tokensIn = parsed.usage.prompt_tokens ?? tokensIn;
-        tokensOut = parsed.usage.completion_tokens ?? tokensOut;
-      }
-    } catch (parseErr) {
-      if (parseErr instanceof SyntaxError) {
-        return;
-      }
-      throw parseErr;
-    }
-  };
 
   try {
     while (true) {
@@ -384,18 +334,41 @@ export async function streamOpenRouterCompletion(params: {
       buffer = lines.pop() || '';
 
       for (const rawLine of lines) {
-        processStreamLine(rawLine);
-        if (seenDone) break;
-      }
-      if (seenDone) break;
-    }
+        const line = rawLine.trim();
+        if (!line || line.startsWith(':')) continue;
+        if (!line.startsWith('data:')) continue;
 
-    if (!aborted && !seenDone) {
-      buffer += decoder.decode();
-      if (buffer.trim()) {
-        for (const rawLine of buffer.split('\n')) {
-          processStreamLine(rawLine);
-          if (seenDone) break;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') {
+          break;
+        }
+
+        try {
+          const parsed = JSON.parse(payload) as {
+            choices?: Array<{ delta?: { content?: string } }>;
+            usage?: { prompt_tokens?: number; completion_tokens?: number };
+            error?: { message?: string };
+          };
+
+          if (parsed.error?.message) {
+            throw new Error(parsed.error.message);
+          }
+
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (typeof delta === 'string' && delta.length > 0) {
+            fullText += delta;
+            params.onChunk(delta);
+          }
+
+          if (parsed.usage) {
+            tokensIn = parsed.usage.prompt_tokens ?? tokensIn;
+            tokensOut = parsed.usage.completion_tokens ?? tokensOut;
+          }
+        } catch (parseErr) {
+          if (parseErr instanceof SyntaxError) {
+            continue;
+          }
+          throw parseErr;
         }
       }
     }
@@ -412,6 +385,5 @@ export async function streamOpenRouterCompletion(params: {
     tokensIn,
     tokensOut,
     aborted,
-    finishReason,
   };
 }

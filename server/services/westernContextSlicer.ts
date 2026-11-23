@@ -651,74 +651,12 @@ export async function compileWesternStage2ContextPackage(
     ...(westernDossier.dignity_hierarchy.dispositor_backbone.summary
       ? { dispositorTree: westernDossier.dignity_hierarchy.dispositor_backbone.summary }
       : {}),
-    ...(w.hellenistic
-      ? {
-          hellenistic: {
-            lots: w.hellenistic.lots.map(
-              (l) => `${l.name}: ${l.sign} ${l.dms} (WS H${l.wholeSignHouse}, Lord ${l.lord}, Bound ${l.boundLord})`
-            ),
-            bounds: w.hellenistic.bounds.map(
-              (b) => `${b.body}: ${b.sign} ${b.degree} WS-H${b.wholeSignHouse} [Bound ${b.termLord}, Decan ${b.decanLord}]`
-            ),
-            zodiacalReleasing: w.hellenistic.zodiacalReleasing,
-          },
-        }
-      : {}),
-    ...(timingSnapshot
-      ? {
-          timing: {
-            asOfDate: timingSnapshot.asOfDate,
-            profection: {
-              age: timingSnapshot.profection.age,
-              house: timingSnapshot.profection.profectedHouse,
-              sign: timingSnapshot.profection.profectedSign,
-              lord: timingSnapshot.profection.lordOfYearTraditional,
-              modernLord: timingSnapshot.profection.lordOfYearModern,
-              lordHouse: timingSnapshot.profection.lordNatalHouse,
-              dignity: timingSnapshot.profection.lordDignity,
-              startDate: timingSnapshot.profection.yearStartIso,
-              endDate: timingSnapshot.profection.yearEndIso,
-              daysLeft: timingSnapshot.profection.daysLeft,
-            },
-            progressedMoon: `${timingSnapshot.progressions.moon.sign} ${timingSnapshot.progressions.moon.dms} H${timingSnapshot.progressions.moon.house} (${timingSnapshot.progressions.moon.signStartIso}..${timingSnapshot.progressions.moon.signEndIso}, ${timingSnapshot.progressions.moon.percentElapsed}% elapsed, ${timingSnapshot.progressions.moon.daysLeft}d left)`,
-            progressedSun: `${timingSnapshot.progressions.sun.sign} ${timingSnapshot.progressions.sun.dms} H${timingSnapshot.progressions.sun.house}`,
-            ...(timingSnapshot.progressions.tightAspectsToNatal.length > 0
-              ? {
-                  progressedTightAspects: timingSnapshot.progressions.tightAspectsToNatal
-                    .slice(0, 6)
-                    .map((a) => `${a.progressedBody} ${a.aspect} ${a.natalBody} (${a.orb}°)`),
-                }
-              : {}),
-            solarReturn: timingSnapshot.solarReturn.summary,
-            outerTransits: timingSnapshot.transits.outerPlanets.map(
-              (p) => `${p.planet} ${p.sign} ${p.dms} H${p.natalHouse}${p.isRetrograde ? ' Rx' : ''}`
-            ),
-            ...(timingSnapshot.transits.tightHitsToNatal.length > 0
-              ? {
-                  tightTransitHits: timingSnapshot.transits.tightHitsToNatal
-                    .slice(0, 8)
-                    .map((h) => `${h.transitPlanet} ${h.aspect} ${h.natalBody} (${h.orb}°)`),
-                }
-              : {}),
-          },
-        }
-      : {}),
+    ...(timingSnapshot ? { timing: timingSnapshot } : {}),
     ...(synastrySlices ? { partners: synastrySlices } : {}),
   };
 
   const chartSliceJsonStr = JSON.stringify(chartSlice);
-  const v1FullWesternBaseline = JSON.stringify({
-    western: enriched.western,
-    westernDossier,
-    ...(synastrySlices ? { partners: input.extraProfiles?.map((p) => p.chart.western) } : {}),
-    ...(timingSnapshot
-      ? { fullTiming: timingSnapshot, dailyTransits: input.dailyTransits?.westernPlanets || [] }
-      : {}),
-  }).length;
-  const v1FullChartChars = Math.max(
-    formatChartForLLM(enriched, 'western').length,
-    v1FullWesternBaseline
-  );
+  const v1FullChartChars = formatChartForLLM(enriched, 'western').length;
   const slicedChars = chartSliceJsonStr.length;
   const reductionPct =
     v1FullChartChars > 0

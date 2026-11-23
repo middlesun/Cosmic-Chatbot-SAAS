@@ -1,33 +1,20 @@
 import crypto from 'crypto';
-import type {
-  ChatStyle,
-  CompanionChatCue,
-  MessageReferralPayload,
-} from '../../components/app/chatTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './astrologyApi';
 import { formatChartForLLM, type CompiledChartData } from './chartCompiler';
-import {
-  normalizeCompanionSlug,
-  type CompanionPresetRecord,
-} from './companionPresets';
 import {
   drawTarotSpread,
   extractNumerologyHintsFromPrompt,
   formatPythagoreanNumerologyContext,
   formatTarotSpreadContext,
   formatTropicalWesternContext,
-  type DrawnTarotSpread,
 } from './divinationEngines';
 import {
-  buildChatStyleInstruction,
   buildClaritySystemPromptAsync,
   buildCompanionSystemPromptAsync,
   type ChatPillar,
   type CompanionPersona,
-  type ReferrableCompanionSummary,
 } from './companionEngine';
-import type { CompanionBondState } from './memoryArchivist';
 import {
   createOpenRouterCompletion,
   getConsultationModel,
@@ -43,7 +30,6 @@ import {
 } from './openrouter';
 import {
   getCoreCouncilConstitutionAsync,
-  getWesternCoreCouncilConstitutionAsync,
   resolvePromptModules,
 } from './promptDefaults';
 import {
@@ -83,6 +69,9 @@ import {
   type Stage1RoutingDecision,
 } from './intentRouter';
 import type { NatalTruthDossierV1 } from './natalDossier';
+import {
+  WESTERN_CORE_COUNCIL_CONSTITUTION,
+} from './enginePromptDefaults';
 import {
   buildShortReplyBreakdownInstruction,
   buildVedicPathAPrompt,
@@ -163,12 +152,6 @@ export interface StreamConsultationParams {
   userId: string;
   pillar?: ChatPillar;
   companionPersona?: CompanionPersona | null;
-  companionPreset?: CompanionPresetRecord | null;
-  companionBond?: CompanionBondState | null;
-  companionChatMode?: CompanionChatCue | null;
-  companionCrossThreadSummary?: string | null;
-  referrableCompanions?: ReferrableCompanionSummary[];
-  clientLocalHour?: number | null;
   conversation: {
     id: string;
     profile_id: string | null;
@@ -176,8 +159,6 @@ export interface StreamConsultationParams {
     use_full_profile_memory: boolean;
     title: string;
     pillar?: ChatPillar;
-    companion_slug?: string | null;
-    companion_chat_mode?: CompanionChatCue | null;
     companion_persona_json?: CompanionPersona | null;
   };
   profile: ConsultationProfileRecord | null;
@@ -212,7 +193,6 @@ export interface StreamConsultationParams {
   abortSignal: AbortSignal;
   onStatus?: (statusText: string) => void;
   onTimingWidgets?: (widgets: TimingProgressWidget[]) => void;
-  onTarotSpread?: (spread: DrawnTarotSpread) => void;
   onChunk: (chunkText: string) => void;
 }
 
@@ -240,12 +220,9 @@ export interface StreamConsultationResult {
   leakIntercepted?: boolean;
   pendingProfile?: PendingBirthProfileDraft | null;
   suggestions?: MessageSuggestions | null;
-  referral?: MessageReferralPayload | null;
-  renderStyle?: ChatStyle;
   vedicMeta?: VedicSynthesisMeta | null;
   stage2Pkg?: Stage2ContextPackage | null;
   timingWidgets?: TimingProgressWidget[];
-  tarotSpread?: DrawnTarotSpread | null;
 }
 
 function normalizeDraftBirthTime(raw: string): string | null {
@@ -286,8 +263,6 @@ const PROFILE_CONFIRM_REGEX = /<CC_PROFILE_CONFIRM>([\s\S]*?)<\/CC_PROFILE_CONFI
 const PARTIAL_PROFILE_CONFIRM_REGEX = /<CC_PROFILE_CONFIRM[\s\S]*$/i;
 const SUGGESTIONS_BLOCK_REGEX = /<<<SUGGESTIONS_JSON>>>([\s\S]*?)<<<END_SUGGESTIONS_JSON>>>/i;
 const PARTIAL_SUGGESTIONS_REGEX = /<<<SUGGESTIONS(?:_JSON)?[\s\S]*$/i;
-const REFERRAL_BLOCK_REGEX = /<<<REFERRAL:([\s\S]*?)>>>/i;
-const PARTIAL_REFERRAL_REGEX = /<<<REFERRAL[\s\S]*$/i;
 
 function makeSuggestionId(prefix: string): string {
   return `${prefix}_${crypto.randomBytes(4).toString('hex')}`;
@@ -349,14 +324,12 @@ export function extractHiddenDirectives(
   suggestionsConfig?: Pick<
     SuggestionsConfig,
     'followups_enabled' | 'deeper_analysis_enabled' | 'max_followups' | 'max_deeper_analysis'
-  >,
-  referrableCompanions?: ReferrableCompanionSummary[]
+  >
 ): {
   cleanText: string;
   techBreakdown: string | null;
   pendingProfile: PendingBirthProfileDraft | null;
   suggestions: MessageSuggestions | null;
-  referral: MessageReferralPayload | null;
 } {
   let pendingProfile: PendingBirthProfileDraft | null = null;
   const profileMatch = PROFILE_CONFIRM_REGEX.exec(rawText);
@@ -431,49 +404,15 @@ export function extractHiddenDirectives(
     }
   }
 
-  let referral: MessageReferralPayload | null = null;
-  const refMatch = REFERRAL_BLOCK_REGEX.exec(rawText);
-  if (refMatch && refMatch[1]) {
-    const parsed = safeExtractJson<{
-      slug?: unknown;
-      name?: unknown;
-      reason?: unknown;
-    }>(refMatch[1].trim(), {});
-    const normalizedSlug = normalizeCompanionSlug(
-      typeof parsed.slug === 'string' ? parsed.slug : ''
-    );
-    if (normalizedSlug) {
-      const matched =
-        referrableCompanions?.find((c) => c.slug.toLowerCase() === normalizedSlug) || null;
-      if (!referrableCompanions || referrableCompanions.length === 0 || matched) {
-        referral = {
-          slug: matched ? matched.slug : normalizedSlug,
-          name:
-            matched?.name ||
-            (typeof parsed.name === 'string' && parsed.name.trim()
-              ? parsed.name.trim().slice(0, 60)
-              : normalizedSlug),
-          reason:
-            typeof parsed.reason === 'string' && parsed.reason.trim()
-              ? parsed.reason.trim().slice(0, 220)
-              : undefined,
-        };
-      }
-    }
-  }
-
   const strippedBase = rawText
     .replace(PROFILE_CONFIRM_REGEX, '')
     .replace(SUGGESTIONS_BLOCK_REGEX, '')
-    .replace(REFERRAL_BLOCK_REGEX, '')
     .replace(PARTIAL_PROFILE_CONFIRM_REGEX, '')
-    .replace(PARTIAL_SUGGESTIONS_REGEX, '')
-    .replace(PARTIAL_REFERRAL_REGEX, '')
-    .trimEnd();
+    .replace(PARTIAL_SUGGESTIONS_REGEX, '');
 
   const { mainText: cleanText, techBreakdown } = extractTechBreakdown(strippedBase);
 
-  return { cleanText, techBreakdown, pendingProfile, suggestions, referral };
+  return { cleanText, techBreakdown, pendingProfile, suggestions };
 }
 
 export function extractPendingProfileConfirmation(rawText: string): {
@@ -504,8 +443,6 @@ async function buildStaticSystemInstruction(params: {
   modelOverride: string | null;
   wantsSuggestions: boolean;
   resolvedSuggestions: GuideSuggestionsConfig;
-  chatStyle: ChatStyle;
-  tarotSpread?: DrawnTarotSpread | null;
 }> {
   const [guideCfg, coreConstitution, activeModeRecipe] = await Promise.all([
     getResolvedGuideConfig(params.expertSlug),
@@ -554,19 +491,13 @@ async function buildStaticSystemInstruction(params: {
     (isLearnAstrology ? promptBodies['learn_astrology'] : '') ||
     '';
 
-  const isHellenistic = params.expertSlug === 'hellenistic_astrologer';
   const isWesternOrModern =
-    params.expertSlug === 'western_astrologer' ||
-    params.expertSlug === 'modern_astrologer' ||
-    isHellenistic;
+    params.expertSlug === 'western_astrologer' || params.expertSlug === 'modern_astrologer';
   const isTarot = params.expertSlug === 'tarot_reader';
   const isNumerology = params.expertSlug === 'numerologist';
-  const westernConstitution = isWesternOrModern
-    ? await getWesternCoreCouncilConstitutionAsync()
-    : coreConstitution;
 
   const sections: string[] = [
-    isWesternOrModern ? westernConstitution : coreConstitution,
+    isWesternOrModern ? WESTERN_CORE_COUNCIL_CONSTITUTION : coreConstitution,
     guideCfg.combined_rules_text || '',
     primaryExpertPrompt,
     ...recipeBlocks,
@@ -578,10 +509,6 @@ async function buildStaticSystemInstruction(params: {
       isWesternOrModern
         ? `COMMUNICATION DEPTH — FRIENDLY MODE (NON-TECHNICAL): Perform all analytical synthesis silently behind the scenes, then explain your answer in warm, clear, everyday conversational language. Avoid overwhelming technical jargon, raw degrees, or dense aspect chains unless the user explicitly asks to see the technical breakdown. Translate factors directly into relatable life guidance and clear calendar timing windows.`
         : `COMMUNICATION DEPTH — FRIENDLY MODE (NON-TECHNICAL): Perform all analytical synthesis silently behind the scenes, then explain your answer in warm, clear, everyday conversational language. Avoid overwhelming technical jargon, raw planetary degrees, Nakshatra pada math, or dense chains unless the user explicitly asks to see the technical breakdown. Translate factors directly into relatable life guidance and clear calendar timing windows.`
-    );
-  } else if (isHellenistic) {
-    sections.push(
-      `COMMUNICATION DEPTH — DETAILED MODE (HELLENISTIC CLASSICAL): Ground your analysis in Tropical Whole Sign houses (wsH), Day/Night Sect (lights & benefics/malefics of and contrary to sect), essential dignity & Egyptian Bounds (terms), the Hermetic Lots (Fortune, Spirit, Eros, Necessity), Annual Profections & Lord of the Year, and Zodiacal Releasing (Spirit/Fortune L1–L2 chapters) wherever it sharpens and illuminates the answer, keeping prose calm and cohesive.`
     );
   } else if (isWesternOrModern) {
     sections.push(
@@ -612,9 +539,12 @@ async function buildStaticSystemInstruction(params: {
     );
   }
 
-  sections.push(buildChatStyleInstruction(guideCfg.chat_style, { isCouncil: true }));
-
-  // Speak naturally with "you/your" directly rather than addressing the user by name or account handle.
+  if (params.preferredCallName?.trim()) {
+    const safeName = params.preferredCallName.trim();
+    sections.push(
+      `USER NAME CONTEXT: The person you are speaking with goes by "${safeName}". NEVER start your message with "Hello ${safeName},", "Hi ${safeName},", "Dear ${safeName},", or any email-style salutation header. Respond directly to their question in natural conversation, and only weave their name in sparingly inside a sentence if it feels genuinely organic.`
+    );
+  }
 
   if (params.turnCount > 0) {
     sections.push(
@@ -629,9 +559,8 @@ async function buildStaticSystemInstruction(params: {
     : '';
 
   // Discipline-specific deterministic engines & profile context injection
-  let drawnSpread: DrawnTarotSpread | null = null;
   if (isTarot) {
-    drawnSpread = drawTarotSpread(params.userPrompt);
+    const drawnSpread = drawTarotSpread(params.userPrompt);
     sections.push(formatTarotSpreadContext(drawnSpread));
     if (params.profile) {
       sections.push(
@@ -810,8 +739,6 @@ Keep the JSON strictly valid UTF-8 single-line JSON with double quotes and no tr
     modelOverride,
     wantsSuggestions,
     resolvedSuggestions: guideSug,
-    chatStyle: guideCfg.chat_style,
-    tarotSpread: drawnSpread,
   };
 }
 
@@ -862,8 +789,7 @@ User's specific question: ${finalUserText}`;
   const isWesternCouncilTurn =
     activePillar === 'council' &&
     (normalizedExpertSlug === 'western_astrologer' ||
-      normalizedExpertSlug === 'modern_astrologer' ||
-      normalizedExpertSlug === 'hellenistic_astrologer') &&
+      normalizedExpertSlug === 'modern_astrologer') &&
     params.modeSlug !== 'learn_astrology' &&
     params.conversation.mode_type !== 'learn_astrology' &&
     params.conversation.mode_type !== 'report_followup' &&
@@ -874,7 +800,6 @@ User's specific question: ${finalUserText}`;
     !isWesternCouncilTurn &&
     normalizedExpertSlug !== 'western_astrologer' &&
     normalizedExpertSlug !== 'modern_astrologer' &&
-    normalizedExpertSlug !== 'hellenistic_astrologer' &&
     normalizedExpertSlug !== 'tarot_reader' &&
     normalizedExpertSlug !== 'numerologist' &&
     normalizedExpertSlug !== 'learn_astrology' &&
@@ -896,8 +821,7 @@ User's specific question: ${finalUserText}`;
     ]);
 
     const effectiveConstitution = isWesternCouncilTurn
-      ? engineOverrides.western_core_council_constitution?.trim() ||
-        (await getWesternCoreCouncilConstitutionAsync())
+      ? WESTERN_CORE_COUNCIL_CONSTITUTION
       : coreConstitution;
 
     const recipeSteps = activeModeRecipe
@@ -990,8 +914,8 @@ User's specific question: ${finalUserText}`;
 
     const vedicBaseTokens =
       responseLength === 'short'
-        ? Math.max(runtime.tokenLimits.chat_short + 400, 1200)
-        : Math.max(runtime.tokenLimits.chat_detailed, 4800);
+        ? Math.max(runtime.tokenLimits.chat_short + 350, 900)
+        : runtime.tokenLimits.chat_detailed;
 
     const currentLocationLabel = [
       params.profile.current_city,
@@ -1040,7 +964,6 @@ User's specific question: ${finalUserText}`;
         technicalDirective: params.technicalDirective,
         priorInferredFluency: params.userPriorFluency,
         maxOutputTokens: vedicBaseTokens,
-        chatStyle: guideCfg.chat_style,
         abortSignal: params.abortSignal,
         onStatus: params.onStatus,
         onChunk: params.onChunk,
@@ -1070,7 +993,6 @@ User's specific question: ${finalUserText}`;
         suggestions: null,
         vedicMeta: deepRes.meta,
         stage2Pkg,
-        renderStyle: guideCfg.chat_style,
       };
     }
 
@@ -1095,7 +1017,6 @@ User's specific question: ${finalUserText}`;
       turnCount: activeHistory.length,
       technicalDirective: params.technicalDirective,
       priorInferredFluency: params.userPriorFluency,
-      chatStyle: guideCfg.chat_style,
     });
 
     const pathAAbortController = new AbortController();
@@ -1116,56 +1037,6 @@ User's specific question: ${finalUserText}`;
     );
 
     try {
-      const handlePathAChunk = (chunkText: string) => {
-        if (leakIntercepted) return;
-        rawAccumulated += chunkText;
-        if (containsInternalPromptLeak(rawAccumulated)) {
-          leakIntercepted = true;
-          pathAAbortController.abort();
-          return;
-        }
-        if (hiddenBreakdownHoldStarted) return;
-
-        const breakdownIdx = rawAccumulated.search(/<<<TECH_BREAKDOWN/i);
-        if (breakdownIdx !== -1) {
-          if (breakdownIdx > flushedLength) {
-            const beforeTag = sanitizeVedicProse(
-              rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, ''),
-              allowedTimingWidgetIds
-            );
-            if (beforeTag) params.onChunk(beforeTag);
-            flushedLength = breakdownIdx;
-          }
-          hiddenBreakdownHoldStarted = true;
-          return;
-        }
-
-        let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
-        if (safeEnd > flushedLength) {
-          const tentative = rawAccumulated.slice(flushedLength, safeEnd);
-          const trailingNative = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
-          if (trailingNative) {
-            safeEnd -= trailingNative[0].length;
-          } else {
-            const trailingMarker =
-              /(?:^|\r?\n)[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|(?:prediction|ediction|analysis)\b[ \t]*[:\-]?|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*)|\[\[?TIMING_BAR[^\]]*$/i.exec(
-                tentative
-              );
-            if (trailingMarker) {
-              safeEnd -= trailingMarker[0].length;
-            }
-          }
-          if (safeEnd > flushedLength) {
-            const toEmit = sanitizeVedicProse(
-              rawAccumulated.slice(flushedLength, safeEnd),
-              allowedTimingWidgetIds
-            );
-            flushedLength = safeEnd;
-            if (toEmit) params.onChunk(toEmit);
-          }
-        }
-      };
-
       const streamResult = await streamOpenRouterCompletion({
         model: vedicModel,
         system: pathAPrompt.systemInstruction,
@@ -1175,58 +1046,68 @@ User's specific question: ${finalUserText}`;
         ],
         maxTokens: vedicBaseTokens,
         abortSignal: pathAAbortController.signal,
-        onChunk: handlePathAChunk,
+        onChunk: (chunkText) => {
+          if (leakIntercepted) return;
+          rawAccumulated += chunkText;
+          if (containsInternalPromptLeak(rawAccumulated)) {
+            leakIntercepted = true;
+            pathAAbortController.abort();
+            return;
+          }
+          if (hiddenBreakdownHoldStarted) return;
+
+          const breakdownIdx = rawAccumulated.search(/<<<TECH_BREAKDOWN/i);
+          if (breakdownIdx !== -1) {
+            if (breakdownIdx > flushedLength) {
+              const beforeTag = sanitizeVedicProse(
+                rawAccumulated.slice(flushedLength, breakdownIdx).replace(/\s+$/, ''),
+                allowedTimingWidgetIds
+              );
+              if (beforeTag) params.onChunk(beforeTag);
+              flushedLength = breakdownIdx;
+            }
+            hiddenBreakdownHoldStarted = true;
+            return;
+          }
+
+          let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
+          if (safeEnd > flushedLength) {
+            const tentative = rawAccumulated.slice(flushedLength, safeEnd);
+            const trailingNative = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
+            if (trailingNative) {
+              safeEnd -= trailingNative[0].length;
+            } else {
+              const trailingMarker = /(?:\r?\n[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*)|\[\[?TIMING_BAR[^\]]*)$/i.exec(
+                tentative
+              );
+              if (trailingMarker) {
+                safeEnd -= trailingMarker[0].length;
+              }
+            }
+            if (safeEnd > flushedLength) {
+              const toEmit = sanitizeVedicProse(
+                rawAccumulated.slice(flushedLength, safeEnd),
+                allowedTimingWidgetIds
+              );
+              flushedLength = safeEnd;
+              if (toEmit) params.onChunk(toEmit);
+            }
+          }
+        },
       });
 
-      let contTokensIn = 0;
-      let contTokensOut = 0;
-      let contAborted = false;
-      if (
-        streamResult.finishReason === 'length' &&
-        !streamResult.aborted &&
-        !leakIntercepted &&
-        !hiddenBreakdownHoldStarted &&
-        rawAccumulated.trim().length > 0 &&
-        !/[.!?)"'\]\*\`]\s*$/.test(rawAccumulated)
-      ) {
-        const contResult = await streamOpenRouterCompletion({
-          model: vedicModel,
-          system: pathAPrompt.systemInstruction,
-          messages: [
-            ...historyOpenRouterMessages,
-            { role: 'user', content: finalUserText },
-            { role: 'assistant', content: rawAccumulated },
-            {
-              role: 'user',
-              content:
-                'Continue seamlessly from your exact last word to finish this sentence and complete your reading cleanly without repeating anything already written.',
-            },
-          ],
-          maxTokens: 1800,
-          abortSignal: pathAAbortController.signal,
-          onChunk: handlePathAChunk,
-        });
-        contTokensIn = contResult.tokensIn;
-        contTokensOut = contResult.tokensOut;
-        contAborted = contResult.aborted;
-      }
-
-      const totalTokensIn = streamResult.tokensIn + contTokensIn;
-      const totalTokensOut = streamResult.tokensOut + contTokensOut;
-
-      if (leakIntercepted || containsInternalPromptLeak(rawAccumulated)) {
+      if (leakIntercepted || containsInternalPromptLeak(streamResult.fullText)) {
         return {
           fullText: PROMPT_EXTRACTION_REFUSAL,
           techBreakdown: null,
-          tokensIn: totalTokensIn,
-          tokensOut: totalTokensOut,
+          tokensIn: streamResult.tokensIn,
+          tokensOut: streamResult.tokensOut,
           creditsCharged: 0,
           aborted: false,
           leakIntercepted: true,
           pendingProfile: null,
           suggestions: null,
           vedicMeta: pathAPrompt.meta,
-          renderStyle: guideCfg.chat_style,
         };
       }
 
@@ -1240,7 +1121,7 @@ User's specific question: ${finalUserText}`;
         if (remaining) params.onChunk(remaining);
       }
 
-      const extractedFinal = extractTechBreakdown(rawAccumulated.trim());
+      const extractedFinal = extractTechBreakdown(streamResult.fullText.trim());
       const sanitized = sanitizeAssistantOutput(
         extractedFinal.mainText,
         allowedTimingWidgetIds
@@ -1249,15 +1130,14 @@ User's specific question: ${finalUserText}`;
         return {
           fullText: sanitized.text,
           techBreakdown: null,
-          tokensIn: totalTokensIn,
-          tokensOut: totalTokensOut,
+          tokensIn: streamResult.tokensIn,
+          tokensOut: streamResult.tokensOut,
           creditsCharged: 0,
           aborted: false,
           leakIntercepted: true,
           pendingProfile: null,
           suggestions: null,
           vedicMeta: pathAPrompt.meta,
-          renderStyle: guideCfg.chat_style,
         };
       }
 
@@ -1270,8 +1150,8 @@ User's specific question: ${finalUserText}`;
       }
 
       const creditsCharged = calculateCreditsFromUsage(
-        totalTokensIn,
-        totalTokensOut,
+        streamResult.tokensIn,
+        streamResult.tokensOut,
         sanitized.text,
         pricingConfig.chat_billing
       );
@@ -1280,16 +1160,15 @@ User's specific question: ${finalUserText}`;
         fullText: sanitized.text,
         techBreakdown: safeBreakdown,
         timingWidgets: stage2Pkg.timingWidgets,
-        tokensIn: totalTokensIn,
-        tokensOut: totalTokensOut,
+        tokensIn: streamResult.tokensIn,
+        tokensOut: streamResult.tokensOut,
         creditsCharged,
-        aborted: (streamResult.aborted || contAborted) && !leakIntercepted,
+        aborted: streamResult.aborted && !leakIntercepted,
         leakIntercepted: false,
         pendingProfile: null,
         suggestions: null,
         vedicMeta: pathAPrompt.meta,
         stage2Pkg,
-        renderStyle: guideCfg.chat_style,
       };
     } finally {
       params.abortSignal.removeEventListener('abort', forwardPathAAbort);
@@ -1300,12 +1179,9 @@ User's specific question: ${finalUserText}`;
   let modelOverride: string | null = null;
   let wantsSuggestions = false;
   let activeSuggestionsSpec: SuggestionsConfig | undefined;
-  let resolvedRenderStyle: ChatStyle | undefined;
-  let activeTarotSpread: DrawnTarotSpread | null = null;
 
   if (activePillar === 'companion') {
     const builtComp = await buildCompanionSystemPromptAsync({
-      preset: params.companionPreset || null,
       persona: activeCompanionPersona,
       languageSlug: params.languageSlug,
       preferredCallName: params.preferredCallName,
@@ -1313,20 +1189,9 @@ User's specific question: ${finalUserText}`;
       memorySnippets: params.conversation.use_full_profile_memory
         ? params.scopeMemoryContext
         : null,
-      bond: params.companionBond || null,
-      crossThreadSnippets: params.companionCrossThreadSummary || null,
-      userDefaultProfile: params.profile,
-      userPrompt: params.userPrompt,
-      historyMessages: activeHistory,
-      companionChatMode:
-        params.companionChatMode ?? params.conversation.companion_chat_mode ?? null,
-      referrableCompanions: params.referrableCompanions,
-      clientLocalHour: params.clientLocalHour,
     });
     systemInstructionWithDynamic = builtComp.systemInstruction;
     modelOverride = builtComp.modelOverride;
-    resolvedRenderStyle = builtComp.chatStyle;
-    activeTarotSpread = builtComp.tarotSpread || null;
     wantsSuggestions = false;
   } else if (activePillar === 'clarity') {
     const builtClarity = await buildClaritySystemPromptAsync({
@@ -1360,8 +1225,6 @@ User's specific question: ${finalUserText}`;
     modelOverride = built.modelOverride;
     wantsSuggestions = built.wantsSuggestions;
     activeSuggestionsSpec = built.resolvedSuggestions;
-    resolvedRenderStyle = built.chatStyle;
-    activeTarotSpread = built.tarotSpread || null;
 
     // Fetch today's cached Gochar transits (max 1 API call/day across platform, with deterministic fallback)
     let gocharContext = '';
@@ -1371,9 +1234,7 @@ User's specific question: ${finalUserText}`;
       try {
         const daily = await getOrFetchDailyTransits();
         gocharContext =
-          params.expertSlug === 'western_astrologer' ||
-          params.expertSlug === 'modern_astrologer' ||
-          params.expertSlug === 'hellenistic_astrologer'
+          params.expertSlug === 'western_astrologer' || params.expertSlug === 'modern_astrologer'
             ? daily.westernTransitsText
             : daily.transitsText;
       } catch {
@@ -1407,19 +1268,15 @@ User's specific question: ${finalUserText}`;
       .join('\n\n---\n\n');
   }
 
-  if (activeTarotSpread && activeTarotSpread.cards.length > 0) {
-    params.onTarotSpread?.(activeTarotSpread);
-  }
-
   const model = modelOverride || runtime.consultationModel || getConsultationModel();
   const baseOutputTokens =
     activePillar === 'companion'
-      ? Math.max(Math.min(runtime.tokenLimits.chat_detailed, 1400), 1100)
+      ? Math.min(runtime.tokenLimits.chat_detailed, 1100)
       : activePillar === 'clarity'
-      ? Math.max(Math.min(runtime.tokenLimits.chat_detailed, 1800), 1400)
+      ? Math.min(runtime.tokenLimits.chat_detailed, 1400)
       : responseLength === 'short'
-      ? Math.max(runtime.tokenLimits.chat_short + 400, 1200)
-      : Math.max(runtime.tokenLimits.chat_detailed, 4800);
+      ? Math.max(runtime.tokenLimits.chat_short + 350, 900)
+      : runtime.tokenLimits.chat_detailed;
   // Reserve headroom for compact single-turn suggestions JSON so prose is never clipped
   const maxOutputTokens = wantsSuggestions ? baseOutputTokens + 420 : baseOutputTokens;
 
@@ -1476,109 +1333,70 @@ User's specific question: ${finalUserText}`;
       text.search(/<CC_PROFILE_CONFIRM/i),
       text.search(/<<<SUGGESTIONS/i),
       text.search(/<<<TECH_BREAKDOWN/i),
-      text.search(/<<<REFERRAL/i),
     ].filter((idx) => idx !== -1);
     return indices.length > 0 ? Math.min(...indices) : -1;
   };
 
   try {
-    const handlePathBChunk = (chunkText: string) => {
-      if (leakIntercepted) return;
-      rawAccumulated += chunkText;
-      if (containsInternalPromptLeak(rawAccumulated)) {
-        leakIntercepted = true;
-        internalAbortController.abort();
-        return;
-      }
-      if (hiddenBlockHoldStarted) return;
-
-      const tagIndex = findEarliestHiddenTagIndex(rawAccumulated);
-      if (tagIndex !== -1) {
-        if (tagIndex > flushedLength) {
-          const beforeTag = sanitizeVedicProse(
-            rawAccumulated.slice(flushedLength, tagIndex).replace(/\s+$/, '')
-          );
-          if (beforeTag) {
-            params.onChunk(beforeTag);
-          }
-          flushedLength = tagIndex;
-        }
-        hiddenBlockHoldStarted = true;
-        return;
-      }
-
-      let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
-      if (safeEnd > flushedLength) {
-        const tentative = rawAccumulated.slice(flushedLength, safeEnd);
-        const trailingNative = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
-        if (trailingNative) {
-          safeEnd -= trailingNative[0].length;
-        } else {
-          const trailingMarker =
-            /(?:^|\r?\n)[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|(?:prediction|ediction|analysis)\b[ \t]*[:\-]?|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*)$/i.exec(
-              tentative
-            );
-          if (trailingMarker) {
-            safeEnd -= trailingMarker[0].length;
-          }
-        }
-        if (safeEnd > flushedLength) {
-          const toEmit = sanitizeVedicProse(rawAccumulated.slice(flushedLength, safeEnd));
-          flushedLength = safeEnd;
-          if (toEmit) params.onChunk(toEmit);
-        }
-      }
-    };
-
     const streamResult = await streamOpenRouterCompletion({
       model,
       system: systemInstructionWithDynamic,
       messages,
       maxTokens: maxOutputTokens,
       abortSignal: internalAbortController.signal,
-      onChunk: handlePathBChunk,
+      onChunk: (chunkText) => {
+        if (leakIntercepted) return;
+        rawAccumulated += chunkText;
+        if (containsInternalPromptLeak(rawAccumulated)) {
+          leakIntercepted = true;
+          internalAbortController.abort();
+          return;
+        }
+        if (hiddenBlockHoldStarted) return;
+
+        const tagIndex = findEarliestHiddenTagIndex(rawAccumulated);
+        if (tagIndex !== -1) {
+          if (tagIndex > flushedLength) {
+            const beforeTag = sanitizeVedicProse(
+              rawAccumulated.slice(flushedLength, tagIndex).replace(/\s+$/, '')
+            );
+            if (beforeTag) {
+              params.onChunk(beforeTag);
+            }
+            flushedLength = tagIndex;
+          }
+          hiddenBlockHoldStarted = true;
+          return;
+        }
+
+        let safeEnd = rawAccumulated.length - HOLD_BACK_CHARS;
+        if (safeEnd > flushedLength) {
+          const tentative = rawAccumulated.slice(flushedLength, safeEnd);
+          const trailingNative = /\b(?:the|a)(?:\s+native['’]?s?)?$/i.exec(tentative);
+          if (trailingNative) {
+            safeEnd -= trailingNative[0].length;
+          } else {
+            const trailingMarker = /(?:\r?\n[ \t]*(?::{1,3}[a-zA-Z0-9_-]*|\[(?:CONFIDENCE|FOLLOWUP)[^\]]*))$/i.exec(
+              tentative
+            );
+            if (trailingMarker) {
+              safeEnd -= trailingMarker[0].length;
+            }
+          }
+          if (safeEnd > flushedLength) {
+            const toEmit = sanitizeVedicProse(rawAccumulated.slice(flushedLength, safeEnd));
+            flushedLength = safeEnd;
+            if (toEmit) params.onChunk(toEmit);
+          }
+        }
+      },
     });
 
-    let contTokensIn = 0;
-    let contTokensOut = 0;
-    let contAborted = false;
-    if (
-      streamResult.finishReason === 'length' &&
-      !streamResult.aborted &&
-      !leakIntercepted &&
-      !hiddenBlockHoldStarted &&
-      rawAccumulated.trim().length > 0 &&
-      !/[.!?)"'\]\*\`]\s*$/.test(rawAccumulated)
-    ) {
-      const contResult = await streamOpenRouterCompletion({
-        model,
-        system: systemInstructionWithDynamic,
-        messages: [
-          ...messages,
-          { role: 'assistant', content: rawAccumulated },
-          {
-            role: 'user',
-            content:
-              'Continue seamlessly from your exact last word to finish this sentence and complete your response cleanly without repeating anything already written.',
-          },
-        ],
-        maxTokens: 1600,
-        abortSignal: internalAbortController.signal,
-        onChunk: handlePathBChunk,
-      });
-      contTokensIn = contResult.tokensIn;
-      contTokensOut = contResult.tokensOut;
-      contAborted = contResult.aborted;
-    }
-
-    const totalTokensIn = streamResult.tokensIn + contTokensIn;
-    const totalTokensOut = streamResult.tokensOut + contTokensOut;
-
-    if (leakIntercepted || containsInternalPromptLeak(rawAccumulated)) {
+    if (leakIntercepted || containsInternalPromptLeak(streamResult.fullText)) {
       return {
         fullText: PROMPT_EXTRACTION_REFUSAL,
-        tokensIn: totalTokensIn,
-        tokensOut: totalTokensOut,
+        tokensIn: streamResult.tokensIn,
+        tokensOut: streamResult.tokensOut,
         creditsCharged: 0,
         aborted: false,
         leakIntercepted: true,
@@ -1587,46 +1405,36 @@ User's specific question: ${finalUserText}`;
       };
     }
 
-    const extractedFromAccumulated = extractHiddenDirectives(
-      rawAccumulated,
-      activeSuggestionsSpec,
-      params.referrableCompanions
-    );
+    const extractedFromAccumulated = extractHiddenDirectives(rawAccumulated, activeSuggestionsSpec);
     if (!hiddenBlockHoldStarted && extractedFromAccumulated.cleanText.length > flushedLength) {
       params.onChunk(sanitizeVedicProse(extractedFromAccumulated.cleanText.slice(flushedLength)));
       flushedLength = extractedFromAccumulated.cleanText.length;
     }
 
-    const extractedFinal = extractHiddenDirectives(
-      rawAccumulated,
-      activeSuggestionsSpec,
-      params.referrableCompanions
-    );
+    const extractedFinal = extractHiddenDirectives(streamResult.fullText, activeSuggestionsSpec);
     const sanitized = sanitizeAssistantOutput(extractedFinal.cleanText);
     if (sanitized.leaked) {
       return {
         fullText: sanitized.text,
-        tokensIn: totalTokensIn,
-        tokensOut: totalTokensOut,
+        tokensIn: streamResult.tokensIn,
+        tokensOut: streamResult.tokensOut,
         creditsCharged: 0,
         aborted: false,
         leakIntercepted: true,
         pendingProfile: null,
         suggestions: null,
-        referral: null,
-        renderStyle: resolvedRenderStyle,
       };
     }
 
     const creditsCharged = calculateCreditsFromUsage(
-      totalTokensIn,
-      totalTokensOut,
+      streamResult.tokensIn,
+      streamResult.tokensOut,
       sanitized.text,
       pricingConfig.chat_billing
     );
 
     let safeLegacyBreakdown: string | null = null;
-    if (!streamResult.aborted && !contAborted && extractedFinal.techBreakdown) {
+    if (!streamResult.aborted && extractedFinal.techBreakdown) {
       const bdSanitized = sanitizeAssistantOutput(extractedFinal.techBreakdown);
       if (!bdSanitized.leaked && bdSanitized.text.trim()) {
         safeLegacyBreakdown = bdSanitized.text.trim();
@@ -1636,16 +1444,13 @@ User's specific question: ${finalUserText}`;
     return {
       fullText: sanitized.text,
       techBreakdown: safeLegacyBreakdown,
-      tarotSpread: streamResult.aborted || contAborted ? null : activeTarotSpread,
-      tokensIn: totalTokensIn,
-      tokensOut: totalTokensOut,
+      tokensIn: streamResult.tokensIn,
+      tokensOut: streamResult.tokensOut,
       creditsCharged,
-      aborted: (streamResult.aborted || contAborted) && !leakIntercepted,
+      aborted: streamResult.aborted && !leakIntercepted,
       leakIntercepted: false,
-      pendingProfile: streamResult.aborted || contAborted ? null : extractedFinal.pendingProfile,
-      suggestions: streamResult.aborted || contAborted ? null : extractedFinal.suggestions,
-      referral: streamResult.aborted || contAborted ? null : extractedFinal.referral,
-      renderStyle: resolvedRenderStyle,
+      pendingProfile: streamResult.aborted ? null : extractedFinal.pendingProfile,
+      suggestions: streamResult.aborted ? null : extractedFinal.suggestions,
     };
   } finally {
     params.abortSignal.removeEventListener('abort', forwardAbort);
@@ -1661,68 +1466,41 @@ export async function generateStructuredSuggestions(params: {
   hasProfile: boolean;
 }): Promise<MessageSuggestions> {
   try {
-    const isCompanionSug =
-      params.expertSlug === 'companion' || params.expertSlug.startsWith('companion:');
-    const guideLookupSlug = isCompanionSug
-      ? 'companion'
-      : normalizeCouncilSlug(params.expertSlug);
     const [guideCfg, runtime] = await Promise.all([
-      getResolvedGuideConfig(guideLookupSlug),
+      getResolvedGuideConfig(normalizeCouncilSlug(params.expertSlug)),
       getResolvedOpenRouterRuntime(),
     ]);
     const suggestionsConfig = guideCfg.suggestions;
 
     if (
-      (!isCompanionSug && !suggestionsConfig.enabled) ||
+      !suggestionsConfig.enabled ||
       guideCfg.features.followups === false ||
-      (!isCompanionSug &&
-        !suggestionsConfig.followups_enabled &&
-        !suggestionsConfig.deeper_analysis_enabled)
+      (!suggestionsConfig.followups_enabled && !suggestionsConfig.deeper_analysis_enabled)
     ) {
       return { followups: [], deeper_analysis: [] };
     }
 
-    const maxF = isCompanionSug
-      ? Math.max(2, Math.min(4, suggestionsConfig.max_followups || 3))
-      : suggestionsConfig.followups_enabled
+    const maxF = suggestionsConfig.followups_enabled
       ? Math.max(1, Math.min(6, suggestionsConfig.max_followups || 4))
       : 0;
-    const maxD = isCompanionSug
-      ? 0
-      : suggestionsConfig.deeper_analysis_enabled
+    const maxD = suggestionsConfig.deeper_analysis_enabled
       ? Math.max(1, Math.min(6, suggestionsConfig.max_deeper_analysis || 4))
       : 0;
 
-    const cleanAnswerPreview = String(params.assistantAnswer || '')
-      .replace(/\[\[BUBBLE\]\]/g, ' ')
-      .slice(0, 1800);
-
-    const promptBody = isCompanionSug
-      ? `Generate 3 natural, human, first-person quick-reply options the USER might text next in this friend/companion conversation.
-Language: ${params.languageSlug}
-
-WHAT THE USER JUST SAID:
-${params.userQuestion.slice(0, 500)}
-
-WHAT THE COMPANION JUST REPLIED:
-${cleanAnswerPreview}
-
-RULES:
-- Sound like real everyday texts a person would actually tap to send (short, candid, human—6 to 14 words max).
-- Vary naturally: e.g. one emotional continuation or confession, one question back to the companion, one lighter/pivot option.
-- NEVER write stiff clinical astrology checklists or "analyze my Dasha/chart deeper" unless the companion explicitly brought it up.
-- Return STRICTLY JSON with shape: { "followups": [{ "text": "..." }], "deeper_analysis": [] }`
-      : `Generate structured two-tier suggestions STRICTLY anchored to the user's LAST question and the answer just given.
+    const completion = await createOpenRouterCompletion({
+      model: runtime.utilityModel || getUtilityModel(),
+      maxTokens: Math.max(600, runtime.tokenLimits.utility),
+      jsonMode: true,
+      disableReasoning: true,
+      temperature: 0.45,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate structured two-tier suggestions for this Cosmic Council consultation exchange.
 Active Council Guide: ${params.expertSlug}
 Topic Mode: ${params.modeSlug}
 Language: ${params.languageSlug}
 Chart Attached: ${params.hasProfile ? 'Yes' : 'No'}
-
-USER QUESTION (PRIMARY ANCHOR — NEVER DRIFT TO UNRELATED LIFE AREAS):
-${params.userQuestion.slice(0, 600)}
-
-COUNCIL ANSWER EXCERPT:
-${cleanAnswerPreview}
 
 ${maxF > 0 ? `TIER 1 — "followups" (${Math.min(3, maxF)}–${maxF} items):\n${suggestionsConfig.followups_rules}\n` : ''}
 ${maxD > 0 ? `TIER 2 — "deeper_analysis" (${Math.min(3, maxD)}–${maxD} items):\n${suggestionsConfig.deeper_analysis_rules}\n` : ''}
@@ -1731,15 +1509,15 @@ Return STRICTLY JSON with shape:
 {
   "followups": ${maxF > 0 ? '[{ "text": "..." }]' : '[]'},
   "deeper_analysis": ${maxD > 0 ? '[{ "text": "...", "technical_directive": "..." }]' : '[]'}
-}`;
+}
 
-    const completion = await createOpenRouterCompletion({
-      model: runtime.utilityModel || getUtilityModel(),
-      maxTokens: Math.max(500, runtime.tokenLimits.utility),
-      jsonMode: true,
-      disableReasoning: true,
-      temperature: isCompanionSug ? 0.65 : 0.45,
-      messages: [{ role: 'user', content: promptBody }],
+USER QUESTION:
+${params.userQuestion.slice(0, 600)}
+
+COUNCIL ANSWER EXCERPT:
+${params.assistantAnswer.slice(0, 1800)}`,
+        },
+      ],
     });
 
     const parsed = safeExtractJson<{
@@ -1769,42 +1547,29 @@ export async function generateMoreStructuredSuggestions(params: {
   count?: number;
 }): Promise<MessageSuggestions> {
   try {
-    const isCompanionSug =
-      params.expertSlug === 'companion' || params.expertSlug.startsWith('companion:');
-    const guideLookupSlug = isCompanionSug
-      ? 'companion'
-      : normalizeCouncilSlug(params.expertSlug);
     const [guideCfg, runtime] = await Promise.all([
-      getResolvedGuideConfig(guideLookupSlug),
+      getResolvedGuideConfig(normalizeCouncilSlug(params.expertSlug)),
       getResolvedOpenRouterRuntime(),
     ]);
     const suggestionsConfig = guideCfg.suggestions;
 
     if (
-      (!isCompanionSug && !suggestionsConfig.enabled) ||
+      !suggestionsConfig.enabled ||
       guideCfg.features.followups === false ||
-      (!isCompanionSug &&
-        !suggestionsConfig.followups_enabled &&
-        !suggestionsConfig.deeper_analysis_enabled)
+      (!suggestionsConfig.followups_enabled && !suggestionsConfig.deeper_analysis_enabled)
     ) {
       return { followups: [], deeper_analysis: [] };
     }
 
-    const totalTarget = Math.max(2, Math.min(12, params.count || (isCompanionSug ? 4 : 8)));
+    const totalTarget = Math.max(2, Math.min(12, params.count || 8));
     const bothEnabled =
-      !isCompanionSug &&
-      suggestionsConfig.followups_enabled &&
-      suggestionsConfig.deeper_analysis_enabled;
-    const countF = isCompanionSug
-      ? totalTarget
-      : bothEnabled
+      suggestionsConfig.followups_enabled && suggestionsConfig.deeper_analysis_enabled;
+    const countF = bothEnabled
       ? Math.ceil(totalTarget / 2)
       : suggestionsConfig.followups_enabled
       ? totalTarget
       : 0;
-    const countD = isCompanionSug
-      ? 0
-      : bothEnabled
+    const countD = bothEnabled
       ? Math.floor(totalTarget / 2)
       : suggestionsConfig.deeper_analysis_enabled
       ? totalTarget
@@ -1815,35 +1580,20 @@ export async function generateMoreStructuredSuggestions(params: {
       .map((t, i) => `${i + 1}. ${t}`)
       .join('\n');
 
-    const cleanAnswerPreview = String(params.assistantAnswer || '')
-      .replace(/\[\[BUBBLE\]\]/g, ' ')
-      .slice(0, 1800);
-
-    const promptBody = isCompanionSug
-      ? `Generate ${countF} BRAND-NEW short, natural first-person user texting replies to continue this conversation.
-Language: ${params.languageSlug}
-
-WHAT THE USER SAID:
-${params.userQuestion.slice(0, 500)}
-
-COMPANION REPLY:
-${cleanAnswerPreview}
-
-DO NOT REPEAT ANY OF THESE:
-${existingListBlock || '(none yet)'}
-
-Return STRICTLY JSON: { "followups": [{ "text": "..." }], "deeper_analysis": [] }`
-      : `Generate ${totalTarget} BRAND-NEW structured suggestions tightly anchored to the USER QUESTION and COUNCIL ANSWER EXCERPT below. Do NOT drift into unrelated topics (e.g. marriage, promotion, contracts) unless the user asked about them.
+    const completion = await createOpenRouterCompletion({
+      model: runtime.utilityModel || getUtilityModel(),
+      maxTokens: 640,
+      jsonMode: true,
+      disableReasoning: true,
+      temperature: 0.65,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate ${totalTarget} BRAND-NEW structured suggestions for this Cosmic Council consultation exchange.
 Active Council Guide: ${params.expertSlug}
 Topic Mode: ${params.modeSlug}
 Language: ${params.languageSlug}
 Chart Attached: ${params.hasProfile ? 'Yes' : 'No'}
-
-USER QUESTION (PRIMARY ANCHOR):
-${params.userQuestion.slice(0, 600)}
-
-COUNCIL ANSWER EXCERPT:
-${cleanAnswerPreview}
 
 ${countF > 0 ? `TIER 1 — "followups" (EXACTLY ${countF} new items):\n${suggestionsConfig.followups_rules}\n` : ''}
 ${countD > 0 ? `TIER 2 — "deeper_analysis" (EXACTLY ${countD} new items):\n${suggestionsConfig.deeper_analysis_rules}\n` : ''}
@@ -1856,15 +1606,15 @@ Return STRICTLY JSON with shape:
 {
   "followups": ${countF > 0 ? '[{ "text": "..." }]' : '[]'},
   "deeper_analysis": ${countD > 0 ? '[{ "text": "...", "technical_directive": "..." }]' : '[]'}
-}`;
+}
 
-    const completion = await createOpenRouterCompletion({
-      model: runtime.utilityModel || getUtilityModel(),
-      maxTokens: 640,
-      jsonMode: true,
-      disableReasoning: true,
-      temperature: 0.65,
-      messages: [{ role: 'user', content: promptBody }],
+USER QUESTION:
+${params.userQuestion.slice(0, 600)}
+
+COUNCIL ANSWER EXCERPT:
+${params.assistantAnswer.slice(0, 1800)}`,
+        },
+      ],
     });
 
     const parsed = safeExtractJson<{
@@ -1935,60 +1685,29 @@ export async function runQuickTool(params: {
   modeSlug?: string;
   languageSlug?: string;
   profileId?: string | null;
-  expertSlug?: string | null;
-  tradition?: 'vedic' | 'western';
   userId: string;
 }): Promise<{ items?: string[]; resultText: string }> {
   const supabaseAdmin = getSupabaseAdmin();
-  const isWestern =
-    params.tradition === 'western' ||
-    params.expertSlug === 'western_astrologer' ||
-    params.expertSlug === 'modern_astrologer' ||
-    params.expertSlug === 'hellenistic_astrologer';
   const [{ bodies: promptBodies, models: promptModels }, runtime] = await Promise.all([
     resolvePromptModules([params.toolSlug]),
     getResolvedOpenRouterRuntime(),
   ]);
-  const baseToolInstruction = promptBodies[params.toolSlug] || '';
-  const toolInstruction = isWestern
-    ? `${baseToolInstruction}\n\nTRADITION OVERRIDE — WESTERN TROPICAL ASTROLOGY: Frame every question or refined prompt strictly using Western Tropical astrology concepts (Tropical zodiac, Placidus houses, tight aspects, Day/Night Sect, Annual Profections, Secondary Progressions, Solar Return, Outer Transits). NEVER include Vedic or Sanskrit terminology (no Lagna, D9/D10, Nakshatra, Dasha, Gochar, KP Sub-Lord, or Ashtakavarga).`
-    : baseToolInstruction;
+  const toolInstruction = promptBodies[params.toolSlug] || '';
   const toolModel = promptModels[params.toolSlug] || runtime.utilityModel || getUtilityModel();
 
   let profileContext = '';
   if (params.profileId && supabaseAdmin) {
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select(
-        isWestern
-          ? 'name, is_activated, birth_date, chart_text_context, chart_json'
-          : 'name, is_activated, chart_text_context'
-      )
+      .select('name, is_activated, chart_text_context')
       .eq('id', params.profileId)
       .eq('user_id', params.userId)
       .maybeSingle();
 
     if (profile) {
-      const profRec = profile as unknown as {
-        name: string;
-        birth_date?: string;
-        chart_text_context?: string | null;
-        chart_json?: CompiledChartData | null;
-      };
-      if (isWestern && profRec.chart_json) {
-        const tropicalText = formatTropicalWesternContext({
-          chartJson: profRec.chart_json,
-          birthDate: profRec.birth_date || '1990-01-01',
-          profileName: profRec.name,
-        });
-        profileContext = tropicalText
-          ? `TROPICAL WESTERN PROFILE CONTEXT (${profRec.name}):\n${tropicalText.slice(0, 2800)}`
-          : `PROFILE NAME: ${profRec.name}`;
-      } else {
-        profileContext = profRec.chart_text_context
-          ? `PROFILE CONTEXT (${profRec.name}):\n${profRec.chart_text_context.slice(0, 2800)}`
-          : `PROFILE NAME: ${profRec.name}`;
-      }
+      profileContext = profile.chart_text_context
+        ? `PROFILE CONTEXT (${profile.name}):\n${profile.chart_text_context.slice(0, 2800)}`
+        : `PROFILE NAME: ${profile.name}`;
     }
   }
 

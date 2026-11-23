@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import type { MiniAppDefinition } from '../../components/app/miniAppsTypes';
-import { getDynamicMiniAppsPublicCatalog } from '../services/miniAppsRegistry';
+import { MINI_APPS_BY_SLUG } from '../services/miniAppsCatalog';
 
 const router = Router();
 
@@ -120,17 +119,9 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 
   // 1. Starred Apps
-  const { apps: dynamicApps } = await getDynamicMiniAppsPublicCatalog().catch(() => ({
-    apps: [] as MiniAppDefinition[],
-  }));
-  const dynamicBySlug = new Map<string, MiniAppDefinition>(
-    dynamicApps.map((a) => [a.slug, a] as const)
-  );
-
   const apps = (!favAppsRes.error && favAppsRes.data ? favAppsRes.data : [])
     .map((row) => {
-      const slugKey = String(row.app_slug);
-      const def = dynamicBySlug.get(slugKey);
+      const def = MINI_APPS_BY_SLUG[String(row.app_slug)];
       if (!def) return null;
       return {
         slug: def.slug,

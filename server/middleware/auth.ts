@@ -28,7 +28,6 @@ export interface AppUserRecord {
   default_astrology_mode?: 'vedic' | 'western' | null;
   preferred_call_name?: string | null;
   chat_font_size?: 'sm' | 'base' | 'lg' | null;
-  chat_numeric_font?: 'dm_sans' | 'inter' | 'plus_jakarta' | 'roboto' | 'cormorant' | 'jetbrains_mono' | null;
   suggestions_auto_expand?: boolean | null;
   sutra_user_profile_json?: VedicUserProfile | null;
   signup_ip_hash?: string | null;

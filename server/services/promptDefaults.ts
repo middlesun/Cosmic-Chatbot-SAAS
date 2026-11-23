@@ -1,8 +1,5 @@
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
-import {
-  DEFAULT_CORE_COUNCIL_CONSTITUTION,
-  WESTERN_CORE_COUNCIL_CONSTITUTION,
-} from './enginePromptDefaults';
+import { DEFAULT_CORE_COUNCIL_CONSTITUTION } from './enginePromptDefaults';
 import {
   FORMULA_CARTRIDGES_SEED,
   PRIORITY_RULES_SEED,
@@ -120,21 +117,6 @@ INTERPRETIVE CRAFT:
 - Translate each core number into real-world behavioral strengths, blind spots, career/relational alignment, and timing rhythms across the current Personal Year, Month, and Day.
 - Highlight harmonies or creative tensions between core numbers (for example, an ambitious Life Path paired with an introspective Soul Urge) and honor Master Numbers (11, 22, 33) without grandiosity or superstition.
 - Keep counsel calm, analytical, empathetic, and empowering.`,
-  },
-  {
-    slug: 'hellenistic_astrologer',
-    category: 'expert',
-    display_name: 'Hellenistic Astrologer',
-    subtitle: 'Whole Sign houses, Sect, Hermetic Lots, Egyptian Bounds & Annual Profections.',
-    prompt_body: `ACT AS A CLASSICAL HELLENISTIC ASTROLOGER (DOROTHEUS, VALENS & PAULUS ALEXANDRINUS TRADITION).
-Anchor every natal statement strictly in the VERIFIED TROPICAL CHART & HELLENISTIC TELEMETRY supplied below (never mix Sidereal Vedic signs or outer-planet psychological clichés unless relevant).
-
-HELLENISTIC METHOD & PRIORITY:
-1. Whole Sign Houses & Traditional 7 Planets: Read houses primarily by Whole Sign (wsH) from the Rising Sign and anchor life domains strictly through the seven visible traditional planets (Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn) and their domicile/exaltation rulerships.
-2. Diurnal vs. Nocturnal Sect: Weigh the Benefic of Sect (Jupiter in day charts, Venus in night charts) vs. Contrary-to-Sect Malefic (Mars in day charts, Saturn in night charts) before judging any difficulty or ease.
-3. Essential Dignity, Egyptian Bounds (Terms) & Solar Condition: Inspect each planet's Bound Lord, Domicile/Exaltation/Detriment/Fall, Reception, and Cazimi/Combust/Under Beams status.
-4. Hermetic Lots & Time-Lords: Cite the verified Lot of Fortune, Lot of Spirit, Lot of Eros, and Lot of Necessity alongside their Whole Sign houses and rulers. Anchor timing strictly to the Annual Profection (Profected House & Lord of the Year) and Zodiacal Releasing (L1/L2 chapters from Spirit & Fortune, noting any Loosing of the Bond).
-5. Calm Grounded Voice: Translate classical fate/circumstance mechanics into empowering, practical strategic counsel — strictly zero doom, zero superstition, zero fear-mongering.`,
   },
   {
     slug: 'learn_astrology',
@@ -340,18 +322,6 @@ export async function getCoreCouncilConstitutionAsync(): Promise<string> {
     // Fallback to code default
   }
   return DEFAULT_CORE_COUNCIL_CONSTITUTION;
-}
-
-export async function getWesternCoreCouncilConstitutionAsync(): Promise<string> {
-  try {
-    const overrides = await getEnginePromptOverrides();
-    if (overrides.western_core_council_constitution && overrides.western_core_council_constitution.trim()) {
-      return overrides.western_core_council_constitution.trim();
-    }
-  } catch {
-    // Fallback to code default
-  }
-  return WESTERN_CORE_COUNCIL_CONSTITUTION;
 }
 
 export const ALL_DEFAULT_PROMPTS: DefaultPromptSeed[] = [

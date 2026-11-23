@@ -1,30 +1,9 @@
-import { enrichCompiledChart, type CompiledChartData } from './chartCompiler';
+import type { CompiledChartData } from './chartCompiler';
 import { getOrFetchDailyTransits, isAstrologyApiConfigured } from './astrologyApi';
-import {
-  computeDeterministicSiderealPlanets,
-  computeWesternDailyTransits,
-  computeWesternTimingSnapshot,
-  SIGNS,
-  WESTERN_TRADITIONAL_RULERS,
-  type DashaNode,
-  type PlanetPosition,
-  type WesternPlanetPosition,
-} from './jyotishMath';
-import {
-  createOpenRouterCompletion,
-  getUtilityModel,
-  isOpenRouterConfigured,
-  safeExtractJson,
-} from './openrouter';
+import type { DashaNode, PlanetPosition } from './jyotishMath';
 
 export interface DashaProgressItem {
-  level:
-    | 'Mahadasha'
-    | 'Antardasha'
-    | 'Pratyantardasha'
-    | 'Annual Profection'
-    | 'Progressed Moon'
-    | 'Solar Return';
+  level: 'Mahadasha' | 'Antardasha' | 'Pratyantardasha';
   lord: string;
   startDate: string;
   endDate: string;
@@ -54,14 +33,13 @@ export interface ConvergenceWindow {
 }
 
 export interface TimingRadarSnapshot {
-  mode?: 'vedic' | 'western';
   profileId: string;
   profileName: string;
   ascendantSign: string;
   moonSign: string;
   dashaLadder: DashaProgressItem[];
   upcomingShift: {
-    type: 'Antardasha' | 'Pratyantardasha' | 'Profection' | 'Progressed Moon';
+    type: 'Antardasha' | 'Pratyantardasha';
     fromLord: string;
     toLord: string;
     transitionDate: string;
@@ -83,6 +61,14 @@ export interface TimingRadarSnapshot {
   };
   transitsAvailable: boolean;
 }
+
+// In-memory brief cache keyed by (profileId + date/month) so page reloads do not burn Gemini tokens
+import {
+  createOpenRouterCompletion,
+  getUtilityModel,
+  isOpenRouterConfigured,
+  safeExtractJson,
+} from './openrouter';
 
 const dailyBriefCache = new Map<
   string,
@@ -391,329 +377,11 @@ dailyHeadline, dailyGuidance, dailyAction, monthlyHeadline, monthlyGuidance, mon
   };
 }
 
-async function generateCachedWesternBriefs(params: {
-  profileId: string;
-  profileName: string;
-  ascendantSign: string;
-  moonSign: string;
-  profectionSummary: string;
-  progressedMoonSummary: string;
-  saturnHouse: number;
-  jupiterHouse: number;
-  tightHitSummary: string;
-  daysUntilNextProfection: number;
-}): Promise<{
-  dailyBrief: TimingRadarSnapshot['dailyBrief'];
-  monthlyBrief: TimingRadarSnapshot['monthlyBrief'];
-}> {
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const monthISO = todayISO.slice(0, 7);
-  const dailyKey = `${params.profileId}:western:${todayISO}`;
-  const monthlyKey = `${params.profileId}:western:${monthISO}`;
-
-  let daily = dailyBriefCache.get(dailyKey);
-  let monthly = monthlyBriefCache.get(monthlyKey);
-
-  if (isOpenRouterConfigured() && (!daily || !monthly)) {
-    try {
-      const completion = await createOpenRouterCompletion({
-        model: getUtilityModel(),
-        jsonMode: true,
-        temperature: 0.35,
-        messages: [
-          {
-            role: 'user',
-            content: `Create a calm, Oura-inspired Western Tropical Timing Radar brief for ${params.profileName} (${params.ascendantSign} Rising, ${params.moonSign} Moon).
-Annual Profection: ${params.profectionSummary}.
-Secondary Progressed Moon: ${params.progressedMoonSummary}.
-Outer Transits: Saturn in H${params.saturnHouse}, Jupiter in H${params.jupiterHouse}. Tight hits: ${params.tightHitSummary || 'None exact today'}.
-Use strictly Western Tropical terminology (NO Sanskrit/Vedic terms). Return crisp, non-fatalistic, deeply specific guidance strictly as JSON with keys:
-dailyHeadline, dailyGuidance, dailyAction, monthlyHeadline, monthlyGuidance, monthlyWatch.`,
-          },
-        ],
-      });
-
-      const parsed = safeExtractJson<Record<string, string>>(completion.text, {});
-      if (parsed.dailyHeadline && parsed.dailyGuidance) {
-        daily = {
-          headline: parsed.dailyHeadline,
-          guidance: parsed.dailyGuidance,
-          focusAction: parsed.dailyAction || 'Align high-priority decisions with clarity.',
-        };
-        dailyBriefCache.set(dailyKey, daily);
-      }
-      if (parsed.monthlyHeadline && parsed.monthlyGuidance) {
-        monthly = {
-          headline: parsed.monthlyHeadline,
-          guidance: parsed.monthlyGuidance,
-          themeWatch: parsed.monthlyWatch || params.profectionSummary,
-        };
-        monthlyBriefCache.set(monthlyKey, monthly);
-      }
-    } catch {
-      // Deterministic fallback below
-    }
-  }
-
-  return {
-    dailyBrief: {
-      date: todayISO,
-      headline: daily?.headline || `${params.profectionSummary} · ${params.progressedMoonSummary}`,
-      guidance:
-        daily?.guidance ||
-        `Today weaves your ${params.profectionSummary} with Secondary Progressed Moon in ${params.progressedMoonSummary} and Jupiter transiting your ${params.jupiterHouse}th Placidus house. Favor calm follow-through and clear dialogue.`,
-      focusAction:
-        daily?.focusAction ||
-        `Lean into one deliberate priority aligned with your ${params.profectionSummary} focus.`,
-    },
-    monthlyBrief: {
-      month: monthISO,
-      headline: monthly?.headline || `Steady Momentum Under ${params.profectionSummary}`,
-      guidance:
-        monthly?.guidance ||
-        `Throughout ${monthISO}, ${params.ascendantSign} Rising balances Saturn transiting House ${params.saturnHouse} with Jupiter expanding House ${params.jupiterHouse}. Pace commitments with grounded discernment.`,
-      themeWatch:
-        monthly?.themeWatch ||
-        `${params.daysUntilNextProfection} days until your next Annual Profection birthday shift`,
-    },
-  };
-}
-
-async function buildWesternTimingRadar(params: {
-  profileId: string;
-  profileName: string;
-  chartJson: CompiledChartData;
-}): Promise<TimingRadarSnapshot> {
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const enriched = enrichCompiledChart(params.chartJson).chartJson;
-  const w = enriched.western;
-
-  if (!w) {
-    return {
-      mode: 'western',
-      profileId: params.profileId,
-      profileName: params.profileName,
-      ascendantSign: 'Aries',
-      moonSign: 'Aries',
-      dashaLadder: [],
-      upcomingShift: null,
-      transitsDate: todayISO,
-      slowPlanetShifts: [],
-      convergenceWindows: [],
-      dailyBrief: {
-        date: todayISO,
-        headline: 'Tropical Timing Readiness',
-        guidance: 'Recalculate or open your chart profile to populate Tropical angles and multi-clock timings.',
-        focusAction: 'Review your birth details in Profiles.',
-      },
-      monthlyBrief: {
-        month: todayISO.slice(0, 7),
-        headline: 'Monthly Tropical Overview',
-        guidance: 'Save your birth chart to view live Annual Profections, Progressed Moon, and outer transits.',
-        themeWatch: 'Birth chart data required',
-      },
-      transitsAvailable: false,
-    };
-  }
-
-  let westernTransits: WesternPlanetPosition[] = [];
-  let transitsDate: string | null = todayISO;
-  let transitsAvailable = false;
-
-  if (isAstrologyApiConfigured()) {
-    try {
-      const gochar = await getOrFetchDailyTransits();
-      if (Array.isArray(gochar.westernPlanets) && gochar.westernPlanets.length > 0) {
-        westernTransits = gochar.westernPlanets;
-        transitsDate = gochar.transitDate;
-        transitsAvailable = true;
-      }
-    } catch {
-      // Deterministic fallback below
-    }
-  }
-  if (westernTransits.length === 0) {
-    const siderealDaily = computeDeterministicSiderealPlanets(todayISO);
-    westernTransits = computeWesternDailyTransits(siderealDaily, todayISO);
-    transitsAvailable = true;
-  }
-
-  const snap = computeWesternTimingSnapshot({
-    westernChart: w,
-    birthDateISO: enriched.meta?.birthDate || '1990-01-01',
-    birthTimeStr: enriched.meta?.birthTime || '12:00:00',
-    timezoneOffsetHours: enriched.meta?.location?.timezoneOffset ?? 0,
-    latitude: enriched.meta?.location?.latitude ?? 0,
-    longitude: enriched.meta?.location?.longitude ?? 0,
-    transitPlanets: westernTransits,
-    nowDate: todayISO,
-  });
-
-  const ladder: DashaProgressItem[] = [
-    {
-      level: 'Annual Profection',
-      lord: `H${snap.profection.profectedHouse} ${snap.profection.profectedSign} · Lord: ${snap.profection.lordOfYearTraditional}`,
-      startDate: snap.profection.yearStartIso,
-      endDate: snap.profection.yearEndIso,
-      percentElapsed: snap.profection.percentElapsed,
-      daysRemaining: snap.profection.daysLeft,
-    },
-    {
-      level: 'Progressed Moon',
-      lord: `${snap.progressions.moon.sign} ${snap.progressions.moon.dms} (H${snap.progressions.moon.house})`,
-      startDate: snap.progressions.moon.signStartIso,
-      endDate: snap.progressions.moon.signEndIso,
-      percentElapsed: snap.progressions.moon.percentElapsed,
-      daysRemaining: snap.progressions.moon.daysLeft,
-    },
-    {
-      level: 'Solar Return',
-      lord: `SR Asc ${snap.solarReturn.srAscendantSign} · Sun H${snap.solarReturn.srSunHouse}`,
-      startDate: snap.solarReturn.yearStartIso,
-      endDate: snap.solarReturn.yearEndIso,
-      percentElapsed: snap.profection.percentElapsed,
-      daysRemaining: snap.profection.daysLeft,
-    },
-  ];
-
-  const ascSignIdx = Math.floor((w.angles.ascendant.longitude || 0) / 30) % 12;
-  const nextProfHouse = (snap.profection.profectedHouse % 12) + 1;
-  const nextProfSignIdx = (ascSignIdx + nextProfHouse - 1) % 12;
-  const nextProfLord = WESTERN_TRADITIONAL_RULERS[nextProfSignIdx];
-
-  const upcomingShift: TimingRadarSnapshot['upcomingShift'] = {
-    type: 'Profection',
-    fromLord: `H${snap.profection.profectedHouse} (${snap.profection.lordOfYearTraditional})`,
-    toLord: `H${nextProfHouse} (${nextProfLord})`,
-    transitionDate: snap.profection.yearEndIso,
-  };
-
-  const tropMoon = w.planets.find((p) => p.name === 'Moon');
-  const tropMoonSignIdx = tropMoon?.signIndex ?? 0;
-  const wantedOuter = new Set(['Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto', 'North Node']);
-
-  const slowPlanetShifts: TransitAlignmentItem[] = snap.transits.outerPlanets
-    .filter((tp) => wantedOuter.has(tp.planet))
-    .map((tp) => {
-      const signIdx = Math.max(0, SIGNS.indexOf(tp.sign as (typeof SIGNS)[number]));
-      const houseFromMoon = ((signIdx - tropMoonSignIdx + 12) % 12) + 1;
-      const tightHits = snap.transits.tightHitsToNatal.filter((h) => h.transitPlanet === tp.planet);
-      const topHit = tightHits[0];
-
-      let signal: 'supportive' | 'neutral' | 'intense' = 'neutral';
-      let note = `Transiting Placidus House ${tp.natalHouse} (${tp.sign}).`;
-
-      if (topHit) {
-        const isHarmonious = topHit.aspect === 'Trine' || topHit.aspect === 'Sextile' || (topHit.aspect === 'Conjunction' && tp.planet === 'Jupiter');
-        const isChallenging = topHit.aspect === 'Square' || topHit.aspect === 'Opposition';
-        signal = isHarmonious ? 'supportive' : isChallenging ? 'intense' : tp.planet === 'Jupiter' ? 'supportive' : 'neutral';
-        note = `${topHit.aspect} natal ${topHit.natalBody} (${topHit.orb.toFixed(1)}° orb) · House ${tp.natalHouse}.`;
-      } else if (tp.planet === 'Jupiter') {
-        signal = 'supportive';
-        note = `Expanding Placidus House ${tp.natalHouse} themes in ${tp.sign}.`;
-      } else if (tp.planet === 'Saturn') {
-        signal = [1, 4, 7, 10].includes(tp.natalHouse) ? 'intense' : 'neutral';
-        note = `Structuring & testing Placidus House ${tp.natalHouse} commitments.`;
-      }
-
-      return {
-        planet: tp.planet,
-        sign: tp.sign,
-        dms: tp.dms,
-        nakshatra: '',
-        isRetrograde: tp.isRetrograde,
-        houseFromLagna: tp.natalHouse,
-        houseFromMoon,
-        savBindus: 0,
-        signal,
-        note,
-      };
-    });
-
-  const jupTransit = slowPlanetShifts.find((s) => s.planet === 'Jupiter');
-  const satTransit = slowPlanetShifts.find((s) => s.planet === 'Saturn');
-  const today = new Date();
-  const plus30 = new Date(today.getTime() + 30 * 86400 * 1000).toISOString().slice(0, 10);
-  const plus90 = new Date(today.getTime() + 90 * 86400 * 1000).toISOString().slice(0, 10);
-  const plus180 = new Date(today.getTime() + 180 * 86400 * 1000).toISOString().slice(0, 10);
-
-  const tightHitSummary = snap.transits.tightHitsToNatal
-    .slice(0, 2)
-    .map((h) => `${h.transitPlanet} ${h.aspect} ${h.natalBody} (${h.orb.toFixed(1)}°)`)
-    .join(', ');
-
-  const convergenceWindows: ConvergenceWindow[] = [
-    {
-      label: 'Immediate Horizon (Next 30 Days)',
-      windowRange: `${todayISO} → ${plus30}`,
-      focusDomain: `H${snap.profection.profectedHouse} Profection (${snap.profection.lordOfYearTraditional})`,
-      intensity: jupTransit?.signal === 'supportive' ? 'Peak Alignment' : 'Steady Consolidation',
-      drivers: tightHitSummary
-        ? `Exact outer transits (${tightHitSummary}) activating your ${snap.profection.profectedSign} Profection year.`
-        : `Jupiter in H${jupTransit?.houseFromLagna ?? '-'} (${jupTransit?.sign ?? ''}) supporting Lord of the Year ${snap.profection.lordOfYearTraditional}.`,
-    },
-    {
-      label: `Next Profection Year: ${upcomingShift.toLord}`,
-      windowRange: `Shifts ${snap.profection.yearEndIso}`,
-      focusDomain: 'Solar Return & Birthday Cycle',
-      intensity: satTransit?.signal === 'intense' ? 'Reflective Calibration' : 'Steady Consolidation',
-      drivers: `Transitions from ${upcomingShift.fromLord} into ${upcomingShift.toLord} while Progressed Moon moves through ${snap.progressions.moon.sign}.`,
-    },
-    {
-      label: 'Medium-Term Outer Transit Arc (90–180 Days)',
-      windowRange: `${plus90} → ${plus180}`,
-      focusDomain: 'Progressions + Outer Transits',
-      intensity:
-        snap.progressions.tightAspectsToNatal.length > 0 || jupTransit?.signal === 'supportive'
-          ? 'Peak Alignment'
-          : 'Steady Consolidation',
-      drivers:
-        snap.progressions.tightAspectsToNatal[0]
-          ? `Progressed ${snap.progressions.tightAspectsToNatal[0].progressedBody} ${snap.progressions.tightAspectsToNatal[0].aspect} natal ${snap.progressions.tightAspectsToNatal[0].natalBody} paired with Saturn H${satTransit?.houseFromLagna ?? '-'}.`
-          : `Jupiter H${jupTransit?.houseFromLagna ?? '-'} expansion balanced by Saturn H${satTransit?.houseFromLagna ?? '-'} discipline.`,
-    },
-  ];
-
-  const { dailyBrief, monthlyBrief } = await generateCachedWesternBriefs({
-    profileId: params.profileId,
-    profileName: params.profileName,
-    ascendantSign: w.angles.ascendant.sign,
-    moonSign: tropMoon?.sign || 'Aries',
-    profectionSummary: `H${snap.profection.profectedHouse} ${snap.profection.profectedSign} (${snap.profection.lordOfYearTraditional})`,
-    progressedMoonSummary: `${snap.progressions.moon.sign} (H${snap.progressions.moon.house})`,
-    saturnHouse: satTransit?.houseFromLagna ?? 1,
-    jupiterHouse: jupTransit?.houseFromLagna ?? 1,
-    tightHitSummary,
-    daysUntilNextProfection: snap.profection.daysLeft,
-  });
-
-  return {
-    mode: 'western',
-    profileId: params.profileId,
-    profileName: params.profileName,
-    ascendantSign: w.angles.ascendant.sign,
-    moonSign: tropMoon?.sign || 'Aries',
-    dashaLadder: ladder,
-    upcomingShift,
-    transitsDate,
-    slowPlanetShifts,
-    convergenceWindows,
-    dailyBrief,
-    monthlyBrief,
-    transitsAvailable,
-  };
-}
-
 export async function buildTimingRadarForProfile(params: {
   profileId: string;
   profileName: string;
   chartJson: CompiledChartData;
-  mode?: 'vedic' | 'western';
 }): Promise<TimingRadarSnapshot> {
-  if (params.mode === 'western') {
-    return buildWesternTimingRadar(params);
-  }
-
   const todayISO = new Date().toISOString().slice(0, 10);
   const { chartJson } = params;
 
@@ -779,7 +447,6 @@ export async function buildTimingRadarForProfile(params: {
   });
 
   return {
-    mode: 'vedic',
     profileId: params.profileId,
     profileName: params.profileName,
     ascendantSign: asc?.sign || 'Aries',

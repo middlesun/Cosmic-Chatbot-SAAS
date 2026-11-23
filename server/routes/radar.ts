@@ -14,15 +14,6 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 
   const requestedProfileId = typeof req.query.profileId === 'string' ? req.query.profileId : '';
-  const rawMode = typeof req.query.mode === 'string' ? req.query.mode.trim().toLowerCase() : '';
-  const mode: 'vedic' | 'western' =
-    rawMode === 'western'
-      ? 'western'
-      : rawMode === 'vedic'
-      ? 'vedic'
-      : req.appUser.default_astrology_mode === 'western'
-      ? 'western'
-      : 'vedic';
 
   interface RadarProfileRow {
     id: string;
@@ -114,12 +105,10 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       profileId: targetMeta.id,
       profileName: targetMeta.name,
       chartJson: targetChartRow.chart_json as CompiledChartData,
-      mode,
     });
 
     res.json({
       hasActivatedProfile: true,
-      mode,
       profiles: serializedProfiles,
       radar,
     });

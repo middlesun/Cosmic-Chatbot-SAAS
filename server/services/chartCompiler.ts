@@ -307,7 +307,6 @@ export function enrichCompiledChart(rawChart: CompiledChartData): {
     !rawChart.western.configurations ||
     !rawChart.western.mutualReceptions ||
     !rawChart.western.dispositorTree ||
-    !rawChart.western.hellenistic ||
     !rawChart.kp?.rulingPlanets ||
     !rawChart.jaimini?.arudhaPadas ||
     !rawChart.jaimini?.charaDasha ||
@@ -373,8 +372,7 @@ export function enrichCompiledChart(rawChart: CompiledChartData): {
     rawChart.western?.sect &&
     rawChart.western?.configurations &&
     rawChart.western?.mutualReceptions &&
-    rawChart.western?.dispositorTree &&
-    rawChart.western?.hellenistic
+    rawChart.western?.dispositorTree
       ? rawChart.western
       : computeWesternChart({
           siderealPlanets: rawChart.planets,
@@ -459,7 +457,6 @@ export function formatChartForLLM(
     !chart.western ||
     !chart.western.sect ||
     !chart.western.configurations ||
-    !chart.western.hellenistic ||
     !chart.lalKitab ||
     !chart.panchang ||
     !chart.vargas?.D27 ||
@@ -514,7 +511,6 @@ export function formatChartForLLM(
       finalDispositors: w.dispositorTree?.traditional.finalDispositors,
       dispositorLoops: w.dispositorTree?.traditional.loops,
       configurations: w.configurations?.map((cfg) => cfg.summary),
-      hellenistic: w.hellenistic,
       aspects: w.aspects
         .slice(0, 36)
         .map(

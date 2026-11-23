@@ -3,18 +3,12 @@ import { Brain, Check, Loader2, Lock, UserCheck, X } from 'lucide-react';
 import { useAuth, type AstrologyMode } from './AuthContext';
 import CustomSelect from './CustomSelect';
 import {
-  CHAT_NUMERIC_FONT_CLASSES,
-  CHAT_NUMERIC_FONT_OPTIONS,
   DEFAULT_COUNCIL_EXPERT_SLUG,
   type ChatCatalog,
-  type ChatNumericFont,
   type ChatProfile,
 } from './chatTypes';
 
 export type ChatFontSize = 'sm' | 'base' | 'lg';
-export type UserNumericFontChoice = ChatNumericFont | 'default';
-
-export const CHAT_NUMERIC_FONT_STORAGE_KEY = 'cc_chat_numeric_font';
 
 interface ChatSettingsModalProps {
   isOpen: boolean;
@@ -27,8 +21,6 @@ interface ChatSettingsModalProps {
   languageSlug: string;
   isThreadLocked: boolean;
   initialFontSize: ChatFontSize;
-  initialNumericFont?: UserNumericFontChoice;
-  platformNumericFont?: ChatNumericFont;
   initialSuggestionsAutoExpand?: boolean;
   getAccessToken: () => Promise<string | null>;
   onSwitchProfile: (profileId: string | null) => void;
@@ -37,7 +29,6 @@ interface ChatSettingsModalProps {
   onToggleMemory: () => void;
   onSaved: (updated: {
     chatFontSize: ChatFontSize;
-    chatNumericFont: UserNumericFontChoice;
     defaultExpert: string;
     defaultLanguage: string;
     suggestionsAutoExpand: boolean;
@@ -65,8 +56,6 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
   languageSlug,
   isThreadLocked,
   initialFontSize,
-  initialNumericFont = 'default',
-  platformNumericFont = 'dm_sans',
   initialSuggestionsAutoExpand = true,
   getAccessToken,
   onSwitchProfile,
@@ -78,25 +67,15 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
 }) => {
   const { appUser, astrologyMode, setAstrologyMode, refreshUser } = useAuth();
   const [fontSize, setFontSize] = useState<ChatFontSize>(initialFontSize);
-  const [numericFontChoice, setNumericFontChoice] =
-    useState<UserNumericFontChoice>(initialNumericFont);
   const [defaultCouncilMode, setDefaultCouncilMode] = useState<AstrologyMode>(() => {
     if (!isPreviewMode && appUser?.default_astrology_mode) {
       return appUser.default_astrology_mode === 'western' ? 'western' : 'vedic';
     }
-    if (
-      !isPreviewMode &&
-      (appUser?.default_expert === 'western_astrologer' ||
-        appUser?.default_expert === 'modern_astrologer' ||
-        appUser?.default_expert === 'hellenistic_astrologer')
-    ) {
+    if (!isPreviewMode && appUser?.default_expert === 'western_astrologer') {
       return 'western';
     }
     return astrologyMode === 'western' ? 'western' : 'vedic';
   });
-  const [preferredCallName, setPreferredCallName] = useState<string>(
-    appUser?.preferred_call_name || ''
-  );
   const [suggestionsAutoExpand, setSuggestionsAutoExpand] = useState<boolean>(
     initialSuggestionsAutoExpand
   );
@@ -106,15 +85,10 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setFontSize(initialFontSize);
-      setNumericFontChoice(initialNumericFont);
-      setPreferredCallName(appUser?.preferred_call_name || '');
       const resolvedMode: AstrologyMode = isPreviewMode
         ? astrologyMode
         : appUser?.default_astrology_mode === 'western' ||
-          (!appUser?.default_astrology_mode &&
-            (appUser?.default_expert === 'western_astrologer' ||
-              appUser?.default_expert === 'modern_astrologer' ||
-              appUser?.default_expert === 'hellenistic_astrologer'))
+          (!appUser?.default_astrology_mode && appUser?.default_expert === 'western_astrologer')
         ? 'western'
         : 'vedic';
       setDefaultCouncilMode(resolvedMode);
@@ -125,11 +99,9 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
     isOpen,
     isPreviewMode,
     initialFontSize,
-    initialNumericFont,
     initialSuggestionsAutoExpand,
     appUser?.default_astrology_mode,
     appUser?.default_expert,
-    appUser?.preferred_call_name,
     astrologyMode,
   ]);
 
@@ -158,17 +130,10 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
     const savedDefaultExpert =
       defaultCouncilMode === 'western' ? 'western_astrologer' : DEFAULT_COUNCIL_EXPERT_SLUG;
 
-    if (numericFontChoice === 'default') {
-      localStorage.removeItem(CHAT_NUMERIC_FONT_STORAGE_KEY);
-    } else {
-      localStorage.setItem(CHAT_NUMERIC_FONT_STORAGE_KEY, numericFontChoice);
-    }
-
     if (isPreviewMode) {
       setAstrologyMode(defaultCouncilMode);
       onSaved({
         chatFontSize: fontSize,
-        chatNumericFont: numericFontChoice,
         defaultExpert: savedDefaultExpert,
         defaultLanguage: languageSlug,
         suggestionsAutoExpand,
@@ -191,11 +156,9 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
         },
         body: JSON.stringify({
           chat_font_size: fontSize,
-          chat_numeric_font: numericFontChoice === 'default' ? null : numericFontChoice,
           default_astrology_mode: defaultCouncilMode,
           default_expert: savedDefaultExpert,
           default_language: languageSlug,
-          preferred_call_name: preferredCallName.trim(),
           suggestions_auto_expand: suggestionsAutoExpand,
         }),
       });
@@ -209,7 +172,6 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
       await refreshUser();
       onSaved({
         chatFontSize: fontSize,
-        chatNumericFont: numericFontChoice,
         defaultExpert: savedDefaultExpert,
         defaultLanguage: languageSlug,
         suggestionsAutoExpand,
@@ -345,32 +307,6 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
               </p>
             )}
 
-            {/* Preferred Personal Name ("What should we call you?") */}
-            <div>
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <label
-                  htmlFor="chat-preferred-call-name"
-                  className="text-xs font-medium text-[#5C5449]"
-                >
-                  What should we call you?
-                </label>
-                <span className="text-[11px] text-[#8B8275]">
-                  Used naturally by companions &amp; guides
-                </span>
-              </div>
-              <input
-                id="chat-preferred-call-name"
-                type="text"
-                maxLength={60}
-                value={preferredCallName}
-                onChange={(e) => setPreferredCallName(e.target.value)}
-                placeholder={
-                  appUser?.full_name?.trim() || 'First name or nickname (optional)'
-                }
-                className="w-full rounded-xl border border-[#3D3830]/14 bg-[#FDFBF7] px-3.5 py-2 text-xs text-[#3D3830] placeholder:text-[#8B8275] focus:outline-none focus:border-[#3D3830]/40"
-              />
-            </div>
-
             {/* Default Council (Always Editable — sets default tradition & new + tab astrologer) */}
             <div>
               <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -442,54 +378,6 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
                   );
                 })}
               </div>
-            </div>
-
-            {/* Numeric & Date Font */}
-            <div>
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <label className="text-xs font-medium text-[#5C5449]">
-                  Numeric &amp; Date Font
-                </label>
-                <span className="text-[11px] text-[#8B8275]">
-                  Numbers, years &amp; degrees
-                </span>
-              </div>
-              <CustomSelect
-                value={numericFontChoice}
-                onChange={(val) => setNumericFontChoice(val as UserNumericFontChoice)}
-                ariaLabel="Select numeric and date font"
-                size="sm"
-                surface="elevated"
-                className="w-full"
-                options={[
-                  {
-                    value: 'default',
-                    label: `Platform Default (${
-                      CHAT_NUMERIC_FONT_OPTIONS.find((o) => o.value === platformNumericFont)
-                        ?.label.split(' — ')[0] || 'DM Sans'
-                    })`,
-                  },
-                  ...CHAT_NUMERIC_FONT_OPTIONS.map((o) => ({
-                    value: o.value,
-                    label: o.label,
-                  })),
-                ]}
-              />
-              {(() => {
-                const previewFontKey: ChatNumericFont =
-                  numericFontChoice === 'default' ? platformNumericFont : numericFontChoice;
-                const previewCls =
-                  CHAT_NUMERIC_FONT_CLASSES[previewFontKey] || CHAT_NUMERIC_FONT_CLASSES.dm_sans;
-                return (
-                  <p className="mt-1.5 rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] px-3 py-1.5 text-xs text-[#5C5449]">
-                    Preview: Until December{' '}
-                    <span className={`${previewCls} text-[#3D3830]`}>2028</span> (started February{' '}
-                    <span className={`${previewCls} text-[#3D3830]`}>2026</span>) ·{' '}
-                    <span className={`${previewCls} text-[#3D3830]`}>14°22&apos;</span> ·{' '}
-                    <span className={`${previewCls} text-[#3D3830]`}>5/5</span>
-                  </p>
-                );
-              })()}
             </div>
 
             {/* Suggestions Default Expansion (OFF collapses by default; never disables) */}

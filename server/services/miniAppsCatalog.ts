@@ -4,7 +4,6 @@ import { formatPythagoreanNumerologyContext } from './divinationEngines';
 import type {
   BreakdownDomain,
   MiniAppDefinition,
-  MiniAppRuleItem,
   MiniAppStructuredHeader,
   PlanetStrengthQuestion,
 } from '../../components/app/miniAppsTypes';
@@ -1536,609 +1535,6 @@ const EDITORIAL_APP_GUARDRAIL_WESTERN = `STYLE & PHILOSOPHY CONSTITUTION (NON-NE
 - Never use clickbait hype, excessive emojis, or generic sun-sign filler. Anchor every insight directly in the verified Western chart/transit/numerology data provided below.
 - Format cleanly in Markdown using ### section headings, concise scannable paragraphs, bullet points, and **bold** emphasis for key placements and aspects.`;
 
-export const DEFAULT_APP_PROMPT_TEMPLATES: Record<
-  string,
-  { vedicPrompt: string; westernPrompt: string }
-> = {
-  'daily-horoscope': {
-    vedicPrompt: `TASK: Compose a deeply personal Daily Horoscope for {{date}}.
-Begin your response with this exact opening line:
-Here is your daily horoscope report for **{{formatted_date}}** (**{{profile_name}}**) — **({{mode}})**:
-
-Then structure with these ### headings:
-### Today’s Rhythm & Tone
-(Explain how today’s transiting Moon Nakshatra and key planetary Gochar interact with the natal Moon, Lagna, and active Dasha.)
-### Work, Decisions & Timing
-(Concrete guidance on meetings, focused work, negotiations, or pacing today.)
-### Heart & Relationships
-(How Venus, Moon, and Mars influence tone, listening, and emotional clarity today.)
-### Practical Grounding Focus
-(One simple, realistic habit or reflection that helps optimize today’s energy.)`,
-    westernPrompt: `TASK: Compose a deeply personal Daily Horoscope for {{date}}.
-Begin your response with this exact opening line:
-Here is your daily horoscope report for **{{formatted_date}}** (**{{profile_name}}**) — **({{mode}})**:
-
-Then structure with these ### headings:
-### Today’s Rhythm & Tone
-(Explain how today’s transiting Tropical Moon, Sun, and planetary aspects interact with natal Sun, Moon, Rising, and Placidus houses.)
-### Work, Decisions & Timing
-(Concrete guidance on meetings, focused work, negotiations, or pacing today.)
-### Heart & Relationships
-(How Venus, Moon, and Mars influence tone, listening, and emotional clarity today.)
-### Practical Grounding Focus
-(One simple, realistic habit or reflection that helps optimize today’s energy.)`,
-  },
-  'weekly-horoscope': {
-    vedicPrompt: `TASK: Compose a strategic 7-day Weekly Horoscope starting {{date}} (**{{mode}}**).
-Begin with a clear line or header indicating **({{mode}})**.
-Structure with these ### headings:
-### Weekly Theme
-(A concise framing title and core 7-day synthesis anchored in active Dasha and slow/fast Gochar transits.)
-### Seven-Day Celestial Flow
-(Early week, mid-week, and weekend shifts as the Moon moves across natal houses and Nakshatras.)
-### Career & Financial Pacing
-(Best windows for outreach, deep work, and careful review over the next 7 days.)
-### Relationships & Social Energy
-(How to navigate conversations, affection, and personal boundaries this week.)
-### Grounding Anchor for the Week
-(One practical behavioral focus to stay steady.)`,
-    westernPrompt: `TASK: Compose a strategic 7-day Weekly Horoscope starting {{date}} (**{{mode}}**).
-Begin with a clear line or header indicating **({{mode}})**.
-Structure with these ### headings:
-### Weekly Theme
-(A concise framing title and core 7-day synthesis anchored in active outer-planet transits, lunations, and aspects to your natal Sun, Moon, and Rising.)
-### Seven-Day Celestial Flow
-(Early week, mid-week, and weekend shifts as the Tropical Moon transits your Placidus houses and aspects key natal planets.)
-### Career & Financial Pacing
-(Best windows for outreach, deep work, and careful review over the next 7 days.)
-### Relationships & Social Energy
-(How to navigate conversations, affection, and personal boundaries this week.)
-### Grounding Anchor for the Week
-(One practical behavioral focus to stay steady.)`,
-  },
-  'monthly-horoscope': {
-    vedicPrompt: `TASK: Compose a strategic Monthly Forecast for {{month_year}} (**{{mode}}**).
-Begin with a clear line or header indicating **({{mode}})**.
-Structure with these ### headings:
-### Core Theme for {{month_year}}
-(High-level synthesis of the month’s active Dasha + Saturn/Jupiter/Rahu-Ketu transit posture.)
-### Slow-Planet & Transit Architecture
-(How major transits over natal houses and Ashtakavarga bindus shape this month’s momentum.)
-### Work, Craft & Resources
-(Where steady effort compounds and where patience protects capital or reputation.)
-### Relationships & Inner Life
-(Key relational themes and emotional recalibrations across the month.)
-### Strategic Focus for the Next 30 Days
-(3 concise, actionable priorities.)`,
-    westernPrompt: `TASK: Compose a strategic Monthly Forecast for {{month_year}} (**{{mode}}**).
-Begin with a clear line or header indicating **({{mode}})**.
-Structure with these ### headings:
-### Core Theme for {{month_year}}
-(High-level synthesis of the month’s Tropical Sun progression, Jupiter/Saturn/outer-planet transits, and major natal aspects.)
-### Slow-Planet & Transit Architecture
-(How slow-moving transits over your Placidus angular houses and natal aspects shape this month’s momentum.)
-### Work, Craft & Resources
-(Where steady effort compounds and where patience protects capital or reputation.)
-### Relationships & Inner Life
-(Key relational themes and emotional recalibrations across the month.)
-### Strategic Focus for the Next 30 Days
-(3 concise, actionable priorities.)`,
-  },
-  'current-transits': {
-    vedicPrompt: `TASK: Compose a precise Current Planetary Transits (Gochar) briefing for {{date}} (**{{mode}}**).
-Begin with a clear line or header indicating **({{mode}})**.
-Structure with these ### headings:
-### Sky Weather Overview
-(Concise summary of the dominant Sidereal planetary alignments and retrogrades active today.)
-### Key House Activations
-(Explain clearly how Jupiter, Saturn, Rahu/Ketu, and faster planets impact the 1st, 4th, 7th, and 10th houses — or general collective themes if no profile is linked.)
-### High-Attention Windows & Opportunities
-(Highlight supportive high-SAV transits alongside areas calling for measured patience.)
-### Practical Navigation
-(3 grounded pointers for working constructively with today’s sky.)`,
-    westernPrompt: `TASK: Compose a precise Current Planetary Transits (Tropical Sky) briefing for {{date}} (**{{mode}}**).
-Begin with a clear line or header indicating **({{mode}})**.
-Structure with these ### headings:
-### Sky Weather Overview
-(Concise summary of dominant Tropical planetary alignments, aspects, and retrogrades active today.)
-### Key House Activations
-(Explain clearly how transiting Jupiter, Saturn, Uranus/Neptune/Pluto, Nodes, and inner planets interact with your Placidus 1st, 4th, 7th, and 10th houses — or general collective themes if no profile is linked.)
-### High-Attention Windows & Opportunities
-(Highlight flowing trine/sextile transits alongside square/opposition tension points calling for measured patience.)
-### Practical Navigation
-(3 grounded pointers for working constructively with today’s sky.)`,
-  },
-  'dasha-analysis': {
-    vedicPrompt: `TASK: Perform a scholarly yet accessible Vimshottari Dasha Analysis as of {{date}} (**{{mode}}**).
-Structure with these ### headings:
-### Your Active Planetary Chapter
-(Explain the active Mahadasha, Antardasha, and Pratyantardasha lords — their natal house ownership, placement, dignity, and what life themes they govern.)
-### Psychological & Material Themes Right Now
-(How this specific planetary pairing expresses in mindset, career, relationships, and growth.)
-### Next 12-Month Trajectory & Upcoming Shifts
-(Note upcoming Antardasha or Pratyantardasha transitions and how the tone evolves over the next year.)
-### Aligning Constructively With This Period
-(Practical, non-superstitious behavioral adjustments and focus areas that honor the Dasha lords.)`,
-    westernPrompt: `NOTE: The user is currently viewing in **Western ({{mode}})** mode, and this module focuses on planetary life chapters & timing cycles. Keep the primary lens grounded in Western timing cycles (Saturn/Jupiter transits, Profection years, and progressions alongside the active timing data provided), clearly labeling **({{mode}})**.
-TASK: Perform a scholarly yet accessible Planetary Timing & Life Chapter Analysis as of {{date}}.
-Structure with these ### headings:
-### Your Active Planetary Chapter ({{mode}})
-(Synthesize current major transits—Saturn, Jupiter, Nodes—and developmental house activations shaping this life chapter.)
-### Psychological & Material Themes Right Now
-(How these planetary activations express in mindset, career, relationships, and growth.)
-### Next 12-Month Trajectory & Upcoming Shifts
-(Note upcoming transit shifts and major aspect openings over the next year.)
-### Aligning Constructively With This Period
-(Practical, non-superstitious behavioral adjustments and focus areas.)`,
-  },
-  'birth-chart-breakdown': {
-    vedicPrompt: `TASK: Perform a focused "Birth Chart Breakdown" module on **{{domain_title}} → {{topic_label}}** (**{{mode}}**).
-Specific Analytical Lens: {{topic_instruction}}
-
-Requirements:
-- Begin by clearly stating **({{mode}})** in your opening line or first heading.
-- Go straight into high-signal analysis (3–4 well-structured sections or 280–420 words).
-- Cite exact verified placements from the Sidereal Vedic chart above (signs, houses, Nakshatras, divisional D9/D10 links where relevant).
-- Close with a **Practical Takeaway** section giving one clear, actionable perspective.`,
-    westernPrompt: `TASK: Perform a focused "Birth Chart Breakdown" module on **{{domain_title}} → {{topic_label}}** (**{{mode}}**).
-Specific Analytical Lens: {{topic_instruction}}
-
-Requirements:
-- Begin by clearly stating **({{mode}})** in your opening line or first heading.
-- Go straight into high-signal analysis (3–4 well-structured sections or 280–420 words).
-- Cite exact verified placements from the Western Tropical chart above (Tropical signs, Placidus houses, Midheaven/Ascendant, Chiron, Nodes, and major aspects).
-- Close with a **Practical Takeaway** section giving one clear, actionable perspective.`,
-  },
-  'wealth-blueprint': {
-    vedicPrompt: `TASK: Compose a grounded "Wealth Blueprint" analysis as of {{date}} (**{{mode}}**).
-Include **({{mode}})** in the opening heading or line.
-Structure with these ### headings:
-### Financial Archetype & Earning Style
-(Derive a clear, realistic financial archetype from the 2nd house, 11th house, D2 Hora, and dominant planetary lords.)
-### Core Treasury & Income Channels (2nd & 11th Houses)
-(How resources naturally accumulate, scale, and compound in this chart.)
-### Aligned Industries & Leverage Points
-(3–4 realistic domains or leverage models suited to the 10th/11th house signature.)
-### Timing Windows & Jupiter/Saturn Pacing
-(How current Dasha and slow-planet transits shape financial decisions over the next 12 months.)
-### Financial Blind Spots & Guardrails
-(Realistic leakage patterns and grounded discipline habits. Avoid guaranteed profit promises.)`,
-    westernPrompt: `TASK: Compose a grounded "Wealth Blueprint" analysis as of {{date}} (**{{mode}}**).
-Include **({{mode}})** in the opening heading or line.
-Structure with these ### headings:
-### Financial Archetype & Earning Style
-(Derive a clear, realistic financial archetype from your 2nd house, 8th/11th houses, Venus/Jupiter placements, Midheaven, and dominant aspects.)
-### Core Treasury & Income Channels (2nd & 11th Houses)
-(How resources naturally accumulate, scale, and compound in this chart.)
-### Aligned Industries & Leverage Points
-(3–4 realistic domains or leverage models suited to the 10th/11th house signature.)
-### Timing Windows & Jupiter/Saturn Pacing
-(How current Jupiter and Saturn transits over your Placidus houses shape financial decisions over the next 12 months.)
-### Financial Blind Spots & Guardrails
-(Realistic leakage patterns and grounded discipline habits. Avoid guaranteed profit promises.)`,
-  },
-  'love-forecast': {
-    vedicPrompt: `TASK: Compose a grounded, empathetic "Love Forecast" starting {{date}} (**{{mode}}**).
-Include **({{mode}})** in the opening heading or line.
-Structure with these ### headings:
-### Current Relational Climate
-(How active Dasha, Venus, 5th/7th house lords, and Moon shape romantic energy right now.)
-### Upcoming Connection & Alignment Windows
-(Key stretches over the next 3–6 months supporting meeting someone, deepening commitment, or clearing communication.)
-### Your Venus & Navamsa Signature
-(What genuinely attracts and sustains mutual respect for this chart — emotional style, pacing, and values.)
-### Grounded Guidance for the Heart
-(Practical relational counsel that works equally well for singles or committed partners.)`,
-    westernPrompt: `TASK: Compose a grounded, empathetic "Love Forecast" starting {{date}} (**{{mode}}**).
-Include **({{mode}})** in the opening heading or line.
-Structure with these ### headings:
-### Current Relational Climate
-(How current Venus, Mars, and slow-planet transits interact with your natal Venus, Moon, 5th/7th Placidus houses, and Descendant right now.)
-### Upcoming Connection & Alignment Windows
-(Key stretches over the next 3–6 months supporting meeting someone, deepening commitment, or clearing communication.)
-### Your Venus, Moon & 7th House Signature
-(What genuinely attracts and sustains mutual respect for this chart — emotional style, pacing, and values.)
-### Grounded Guidance for the Heart
-(Practical relational counsel that works equally well for singles or committed partners.)`,
-  },
-  'career-navigator': {
-    vedicPrompt: `TASK: Compose a strategic "Career Navigator" vocational reading starting {{date}} (**{{mode}}**).
-Include **({{mode}})** in the opening heading or line.
-Structure with these ### headings:
-### Vocational Calling & Public Signature (10th House & D10)
-(Core strengths, authority style, and leadership archetype from 10th house, D10 Dasamsa, and Amatyakaraka.)
-### Daily Work Rhythm (6th vs 10th House)
-(Ideal operating environment, collaboration style, and how you sustain high performance without friction.)
-### Aligned Career Lanes
-(3–4 concrete fields or role archetypes where this chart has structural edge.)
-### Workplace Blind Spots to Watch
-(Patterns that create friction or slow progress, plus how to counter them calmly.)
-### Next 12-Month Career Horizon
-(How current Dasha and Saturn/Jupiter transits influence promotions, pivots, or visibility.)`,
-    westernPrompt: `TASK: Compose a strategic "Career Navigator" vocational reading starting {{date}} (**{{mode}}**).
-Include **({{mode}})** in the opening heading or line.
-Structure with these ### headings:
-### Vocational Calling & Public Signature (10th House & Midheaven)
-(Core strengths, authority style, and leadership archetype from your Midheaven (MC), 10th house, Saturn, and Sun/Mercury placements.)
-### Daily Work Rhythm (6th vs 10th House)
-(Ideal operating environment, collaboration style, and how you sustain high performance without friction.)
-### Aligned Career Lanes
-(3–4 concrete fields or role archetypes where this chart has structural edge.)
-### Workplace Blind Spots to Watch
-(Patterns that create friction or slow progress, plus how to counter them calmly.)
-### Next 12-Month Career Horizon
-(How current Saturn and Jupiter transits across your 10th/6th/2nd houses influence promotions, pivots, or visibility.)`,
-  },
-  numerology: {
-    vedicPrompt: `TASK: Compose a refined "Numerology Blueprint" reading based STRICTLY on the verified Pythagorean calculations above (never alter or recalculate the numbers). Note **({{mode}})** context where referencing supporting chart temperament.
-Structure with these ### headings:
-### Core Vibrational Summary
-(Synthesize Life Path, Expression/Destiny, Soul Urge, and Personality numbers into a cohesive portrait.)
-### Strengths, Blind Spots & Karmic Lessons
-(Highlight master numbers or karmic debt numbers if present, and explain their practical expression.)
-### Career & Relational Resonance
-(Work styles and interpersonal rhythms that fit this numerological signature.)
-### Active Timing Cycle ({{year}})
-(Interpret the verified Personal Year, Personal Month, and Personal Day numbers with clear practical focus.)`,
-    westernPrompt: `TASK: Compose a refined "Numerology Blueprint" reading based STRICTLY on the verified Pythagorean calculations above (never alter or recalculate the numbers). Note **({{mode}})** context where referencing supporting chart temperament.
-Structure with these ### headings:
-### Core Vibrational Summary
-(Synthesize Life Path, Expression/Destiny, Soul Urge, and Personality numbers into a cohesive portrait.)
-### Strengths, Blind Spots & Karmic Lessons
-(Highlight master numbers or karmic debt numbers if present, and explain their practical expression.)
-### Career & Relational Resonance
-(Work styles and interpersonal rhythms that fit this numerological signature.)
-### Active Timing Cycle ({{year}})
-(Interpret the verified Personal Year, Personal Month, and Personal Day numbers with clear practical focus.)`,
-  },
-  'love-compatibility': {
-    vedicPrompt: `TASK: Compose a thoughtful, honest "Love Compatibility" reading between {{profile_name}} and {{partner_name}} (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Compatibility Overview & Core Chemistry
-(Give a grounded, balanced overview of how these two personalities meet — avoid fatalistic "doomed" or shallow 100% claims.)
-### Astrological & Moon/Venus Resonance
-(Compare emotional rhythms, Moon Nakshatra pacing, Venus/Mars chemistry, and partnership needs using verified chart data.)
-### Numerological Harmony
-(Compare their verified Life Path and Expression dynamics cleanly.)
-### Friction Points & How to Navigate Them
-(3 honest, practical habits that help this specific pairing communicate clearly and build lasting trust.)`,
-    westernPrompt: `TASK: Compose a thoughtful, honest "Love Compatibility" reading between {{profile_name}} and {{partner_name}} (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Compatibility Overview & Core Chemistry
-(Give a grounded, balanced overview of how these two personalities meet — avoid fatalistic "doomed" or shallow 100% claims.)
-### Astrological & Moon/Venus Resonance
-(Compare Tropical Sun/Moon/Venus/Mars aspects, elemental balance, and synastry dynamics using verified chart data.)
-### Numerological Harmony
-(Compare their verified Life Path and Expression dynamics cleanly.)
-### Friction Points & How to Navigate Them
-(3 honest, practical habits that help this specific pairing communicate clearly and build lasting trust.)`,
-  },
-  'salary-negotiator': {
-    vedicPrompt: `USER OFFER / NEGOTIATION CONTEXT:
-"{{offer_context}}"
-
-TASK: Compose a sharp, practical "Salary & Offer Strategist" briefing as of {{date}} (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Strategic Positioning & Chart Leverage
-(Briefly connect the user’s 2nd house, 10th house, Mercury communication tone, and active Dasha to their strongest negotiating posture.)
-### Three Tailored Scripts
-Provide three crisp, ready-to-adapt templates (use clean blockquotes or clear subsections):
-1. **The Confident Anchor** (direct, value-led)
-2. **The Analytical Case** (data, scope, and benchmark-led)
-3. **The Collaborative Bridge** (partnership and total-package focused)
-### Timing & Delivery Notes
-(Practical timing guidance based on active Mercury/Jupiter transits and pacing.)`,
-    westernPrompt: `USER OFFER / NEGOTIATION CONTEXT:
-"{{offer_context}}"
-
-TASK: Compose a sharp, practical "Salary & Offer Strategist" briefing as of {{date}} (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Strategic Positioning & Chart Leverage
-(Briefly connect the user’s 2nd house, 10th house/Midheaven, Mercury communication style, and current transits to their strongest negotiating posture.)
-### Three Tailored Scripts
-Provide three crisp, ready-to-adapt templates (use clean blockquotes or clear subsections):
-1. **The Confident Anchor** (direct, value-led)
-2. **The Analytical Case** (data, scope, and benchmark-led)
-3. **The Collaborative Bridge** (partnership and total-package focused)
-### Timing & Delivery Notes
-(Practical timing guidance based on active Mercury/Jupiter transits and pacing.)`,
-  },
-  'dream-interpreter': {
-    vedicPrompt: `USER DREAM LOG:
-"{{dream_text}}"
-
-TASK: Compose a thoughtful, grounded "Dream Interpreter" reflection combining Jungian/archetypal psychology with Vedic Moon & 12th-house symbolism (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Core Symbols & Archetypal Themes
-(Unpack the 3–4 standout images, settings, or emotional shifts in the dream.)
-### Chart & Subconscious Echoes
-(If a birth chart is provided, gently link the dream’s tone to the Moon Nakshatra, 12th house, or current Dasha/transit phase; otherwise focus cleanly on inner emotional currents.)
-### What Your Mind May Be Processing
-(Translate the symbolism into plain, compassionate real-life reflection questions.)
-### Grounding Practice
-(One calm sleep-hygiene or journaling prompt to integrate the insight.)`,
-    westernPrompt: `USER DREAM LOG:
-"{{dream_text}}"
-
-TASK: Compose a thoughtful, grounded "Dream Interpreter" reflection combining Jungian/archetypal psychology with Western Moon, Neptune & 12th-house symbolism (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Core Symbols & Archetypal Themes
-(Unpack the 3–4 standout images, settings, or emotional shifts in the dream.)
-### Chart & Subconscious Echoes
-(If a birth chart is provided, gently link the dream’s tone to the Tropical Moon, Neptune/12th house, or current transits; otherwise focus cleanly on inner emotional currents.)
-### What Your Mind May Be Processing
-(Translate the symbolism into plain, compassionate real-life reflection questions.)
-### Grounding Practice
-(One calm sleep-hygiene or journaling prompt to integrate the insight.)`,
-  },
-  'affirmations-generator': {
-    vedicPrompt: `USER SITUATION / INTENTION:
-"{{situation}}"
-
-TASK: Craft 5 calm, believable, deeply personal affirmations grounded in the user’s actual chart placements (Moon Nakshatra, Ascendant, 2nd house, Venus, and Jupiter) (**{{mode}}**) — never hollow toxic positivity.
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Anchoring Theme
-(Two sentences connecting their current situation to their chart’s innate strengths.)
-### Five Chart-Aligned Affirmations
-For each affirmation:
-- Present the **affirmation statement** in clean bold prose (first person, present, grounded).
-- Follow with a concise italicized line explaining *which verified natal placement or transit supports it*.
-### Daily Integration Practice
-(A brief 2-minute morning or evening cue for practicing these naturally.)`,
-    westernPrompt: `USER SITUATION / INTENTION:
-"{{situation}}"
-
-TASK: Craft 5 calm, believable, deeply personal affirmations grounded in the user’s actual chart placements (Tropical Sun, Moon, Rising, 2nd house, Venus, and Jupiter aspects) (**{{mode}}**) — never hollow toxic positivity.
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Anchoring Theme
-(Two sentences connecting their current situation to their chart’s innate strengths.)
-### Five Chart-Aligned Affirmations
-For each affirmation:
-- Present the **affirmation statement** in clean bold prose (first person, present, grounded).
-- Follow with a concise italicized line explaining *which verified natal placement or transit supports it*.
-### Daily Integration Practice
-(A brief 2-minute morning or evening cue for practicing these naturally.)`,
-  },
-  'planet-strength-tester': {
-    vedicPrompt: `PLANET TESTED: {{planet}}
-LIVED-EXPERIENCE SCORE: {{total_score}}/20
-USER RESPONSES:
-{{answers_summary}}
-
-TASK: Compose a clear, honest "Planet Strength Assessment" for **{{planet}}** (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Functional Status: [Balanced & Expressive / Developing & Mixed / Strained & Seeking Support]
-(Synthesize the {{total_score}}/20 lived score alongside the verified {{mode}} natal placement above — noting where lived habits reinforce or override chart placement.)
-### How {{planet}} Is Showing Up in Daily Life
-(Highlight concrete behavioral strengths and friction patterns reflected in their answers.)
-### Practical Harmonizers
-(3 grounded, zero-superstition habits, mindset shifts, or weekly practices to strengthen and refine {{planet}}’s expression.)`,
-    westernPrompt: `PLANET TESTED: {{planet}}
-LIVED-EXPERIENCE SCORE: {{total_score}}/20
-USER RESPONSES:
-{{answers_summary}}
-
-TASK: Compose a clear, honest "Planet Strength Assessment" for **{{planet}}** (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Functional Status: [Balanced & Expressive / Developing & Mixed / Strained & Seeking Support]
-(Synthesize the {{total_score}}/20 lived score alongside the verified {{mode}} natal placement above — noting where lived habits reinforce or override chart placement.)
-### How {{planet}} Is Showing Up in Daily Life
-(Highlight concrete behavioral strengths and friction patterns reflected in their answers.)
-### Practical Harmonizers
-(3 grounded, zero-superstition habits, mindset shifts, or weekly practices to strengthen and refine {{planet}}’s expression.)`,
-  },
-  'birth-chart-matching': {
-    vedicPrompt: `TASK: Compose a thoughtful, scholarly, and strictly non-fear-based "Birth Chart Matching" synthesis between {{profile_name}} and {{partner_name}} (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Partnership Alignment Summary
-(Give a balanced, honest overall synthesis of emotional resonance, practical compatibility, and long-term partnership durability. Never use fear-mongering — explain balances and practical mitigations clearly.)
-### Moon, Nakshatra & Emotional Rhythm (Ashtakoot Lens)
-(Examine Moon sign / Nakshatra harmony, temperament pacing, and mental ease using the verified placements available.)
-### Venus, Mars & 7th House / Navamsa Interplay
-(Compare affection styles, conflict resolution, and shared life values.)
-### Strengths to Lean Into & Growth Edges
-(List 3 genuine pillars of strength and 2–3 realistic habits that protect mutual trust over the years.)`,
-    westernPrompt: `TASK: Compose a thoughtful, scholarly, and strictly non-fear-based "Birth Chart Matching" synthesis between {{profile_name}} and {{partner_name}} (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Partnership Alignment Summary
-(Give a balanced, honest overall synthesis of emotional resonance, practical compatibility, and long-term partnership durability. Never use fear-mongering — explain balances and practical mitigations clearly.)
-### Sun, Moon & Synastry Aspects
-(Examine Tropical Moon signs, Sun/Moon harmony, Mercury communication rhythm, and elemental balance using the verified placements available.)
-### Venus, Mars, 7th House & House Overlays
-(Compare affection styles, conflict resolution, and shared life values.)
-### Strengths to Lean Into & Growth Edges
-(List 3 genuine pillars of strength and 2–3 realistic habits that protect mutual trust over the years.)`,
-  },
-  'breakup-clarity': {
-    vedicPrompt: `USER CONTEXT:
-Timeline: {{timeframe}}
-What happened / how they feel: "{{breakup_context}}"
-
-TASK: Compose a calm, deeply empathetic "Breakup Clarity & Closure" reflection as of {{date}} (**{{mode}}**).
-Important: Never guarantee an ex will return, never encourage obsession or stalking, and never frame heartbreak as a curse. Honor emotional dignity and genuine healing.
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Making Sense of This Turning Point
-(Contextualize the timing gently through active Mahadasha/Antardasha, Saturn/Rahu-Ketu or Venus transits, and what chapter was naturally completing.)
-### What Your Moon & 7th House Are Asking For Right Now
-(Acknowledge the emotional weather honestly using their natal Moon Nakshatra and Venus/7th house rhythm.)
-### Healing & Reset Windows Ahead
-(Note constructive phases over the next 3–6 months where emotional clarity, self-respect, and fresh openness rebuild.)
-### Grounded Steps Toward Closure
-(3 calm, practical actions that help reclaim steadiness and self-trust this week.)`,
-    westernPrompt: `USER CONTEXT:
-Timeline: {{timeframe}}
-What happened / how they feel: "{{breakup_context}}"
-
-TASK: Compose a calm, deeply empathetic "Breakup Clarity & Closure" reflection as of {{date}} (**{{mode}}**).
-Important: Never guarantee an ex will return, never encourage obsession or stalking, and never frame heartbreak as a curse. Honor emotional dignity and genuine healing.
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Making Sense of This Turning Point
-(Contextualize the timing gently through Saturn/Uranus/Pluto/Nodal transits or Venus cycles, and what chapter was naturally completing.)
-### What Your Moon & 7th House Are Asking For Right Now
-(Acknowledge the emotional weather honestly using their Tropical Moon sign, Venus, and 7th Placidus house rhythm.)
-### Healing & Reset Windows Ahead
-(Note constructive phases over the next 3–6 months where emotional clarity, self-respect, and fresh openness rebuild.)
-### Grounded Steps Toward Closure
-(3 calm, practical actions that help reclaim steadiness and self-trust this week.)`,
-  },
-  'relationship-patterns': {
-    vedicPrompt: `USER REFLECTION ON RECURRING PATTERNS:
-"{{pattern_focus}}"
-
-TASK: Compose an insightful, non-judgmental "Relationship Pattern Decoder" analysis (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### The Core Pattern Reflected in Your Chart
-(Synthesize 7th house, 7th lord, Venus, Moon, Darakaraka, and Rahu/Ketu axis to explain what draws you in and where tension repeats.)
-### What You Often Attract vs. What Truly Nourishes You
-(Contrast surface chemistry or familiar conditioning with the deeper qualities your Navamsa (D9) and Moon genuinely thrive on.)
-### Early Red Flags & Self-Protective Habits
-(Name 2–3 subtle behavioral loops honestly without blame.)
-### Rewriting the Pattern Going Forward
-(3 clear relational boundaries or pacing practices to build healthier reciprocity.)`,
-    westernPrompt: `USER REFLECTION ON RECURRING PATTERNS:
-"{{pattern_focus}}"
-
-TASK: Compose an insightful, non-judgmental "Relationship Pattern Decoder" analysis (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### The Core Pattern Reflected in Your Chart
-(Synthesize Descendant/7th Placidus house, Venus, Moon, Mars, Chiron, and North/South Node axis to explain what draws you in and where tension repeats.)
-### What You Often Attract vs. What Truly Nourishes You
-(Contrast surface chemistry or Descendant projections with the deeper qualities your Tropical Moon, Venus aspects, and 4th/7th houses genuinely thrive on.)
-### Early Red Flags & Self-Protective Habits
-(Name 2–3 subtle behavioral loops honestly without blame.)
-### Rewriting the Pattern Going Forward
-(3 clear relational boundaries or pacing practices to build healthier reciprocity.)`,
-  },
-  'soul-compass': {
-    vedicPrompt: `TASK: Compose a luminous yet grounded "Soul Purpose & Nodal Compass" reading (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Your Evolutionary Arc (Ketu to Rahu)
-(Explain the comfort zone and innate mastery shown by Ketu’s house/sign versus the stretch and calling represented by Rahu’s house/sign.)
-### Atmakaraka & Core Life Lesson
-(Interpret the Jaimini Atmakaraka and 9th/10th house Dharma themes in plain, practical language.)
-### Navamsa (D9) Maturity & Inner Alignment
-(Describe how your sense of purpose refines with experience and what kind of contribution feels deeply worthwhile.)
-### Living Your Compass Practically
-(3 concrete ways to align daily work, creativity, and choices with this evolutionary direction right now.)`,
-    westernPrompt: `TASK: Compose a luminous yet grounded "Soul Purpose & Nodal Compass" reading (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Your Evolutionary Arc (South Node to North Node)
-(Explain the comfort zone and innate mastery shown by your Tropical South Node house/sign versus the stretch and calling represented by your North Node house/sign.)
-### Sun, Midheaven & Core Life Lesson
-(Interpret your natal Sun, Chiron, and 9th/10th Placidus house/Midheaven themes in plain, practical language.)
-### Long-Term Maturation & Inner Alignment
-(Describe how your sense of purpose refines with experience and what kind of contribution feels deeply worthwhile.)
-### Living Your Compass Practically
-(3 concrete ways to align daily work, creativity, and choices with this evolutionary direction right now.)`,
-  },
-  'jupiter-opportunities': {
-    vedicPrompt: `TASK: Compose a strategic, grounded "Jupiter Expansion Windows" briefing starting {{date}} (**{{mode}}**).
-Important: Zero lottery/gambling/instant-riches promises — frame Jupiter authentically as wisdom, mentorship, strategic leverage, education, and compounding opportunity.
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Jupiter’s Current Role in Your Chart
-(Explain natal Jupiter’s house/dignity alongside current Jupiter Gochar house activation and Ashtakavarga bindu support.)
-### Where Expansion Naturally Opens Next
-(Identify the specific life arenas—2nd/5th/9th/10th/11th themes—most supported for growth, allies, learning, or income expansion over the coming months.)
-### Timing Windows to Prepare For
-(Highlight how current Dasha and Jupiter’s pace reward proactive preparation versus premature over-extension.)
-### Turning Good Timing Into Real Results
-(3 practical habits to capitalize on supportive cycles with discipline.)`,
-    westernPrompt: `TASK: Compose a strategic, grounded "Jupiter Expansion Windows" briefing starting {{date}} (**{{mode}}**).
-Important: Zero lottery/gambling/instant-riches promises — frame Jupiter authentically as wisdom, mentorship, strategic leverage, education, and compounding opportunity.
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Jupiter’s Current Role in Your Chart
-(Explain natal Tropical Jupiter’s sign/Placidus house/aspects alongside current transiting Jupiter house activation and aspects.)
-### Where Expansion Naturally Opens Next
-(Identify the specific life arenas—2nd/5th/9th/10th/11th themes—most supported for growth, allies, learning, or income expansion over the coming months.)
-### Timing Windows to Prepare For
-(Highlight how current transits and Jupiter’s pace reward proactive preparation versus premature over-extension.)
-### Turning Good Timing Into Real Results
-(3 practical habits to capitalize on supportive cycles with discipline.)`,
-  },
-  'cosmic-archetype': {
-    vedicPrompt: `TASK: Compose a vivid, editorial "Cosmic Archetype Profile" portrait (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Your Signature Archetype Title
-(Create a refined, memorable two-to-four word editorial archetype grounded directly in Lagna, Moon Nakshatra, and Atmakaraka — zero cliché hype.)
-### How You Think, Feel & Decide
-(Synthesize Ascendant style, Moon Nakshatra emotional cadence, and Mercury/Sun operating patterns.)
-### Dominant Strengths & Natural Environment
-(Where you feel effortlessly in flow and what kind of people or work bring out your best.)
-### Subtle Shadow Tendencies & Balance Keys
-(Honest, compassionate look at stress habits and one stabilizing anchor for everyday equilibrium.)`,
-    westernPrompt: `TASK: Compose a vivid, editorial "Cosmic Archetype Profile" portrait (**{{mode}}**).
-Include **({{mode}})** visibly at the start.
-Structure with these ### headings:
-### Your Signature Archetype Title
-(Create a refined, memorable two-to-four word editorial archetype grounded directly in your Tropical Sun, Moon, Rising, and chart ruler — zero cliché hype.)
-### How You Think, Feel & Decide
-(Synthesize Rising sign style, Tropical Moon emotional cadence, and Mercury/Sun operating patterns.)
-### Dominant Strengths & Natural Environment
-(Where you feel effortlessly in flow and what kind of people or work bring out your best.)
-### Subtle Shadow Tendencies & Balance Keys
-(Honest, compassionate look at stress habits and one stabilizing anchor for everyday equilibrium.)`,
-  },
-  'pet-bond': {
-    vedicPrompt: `PET DETAILS:
-Name: {{pet_name}}
-Species / Breed: {{pet_species}}
-Birth or Adoption Date: {{pet_date}}
-Personality & Quirks: "{{pet_quirks}}"
-
-TASK: Compose a warm, charming, grounded "Pet Temperament & Bond" reading celebrating {{pet_name}} and their connection with {{profile_name}} (**{{mode}}**).
-Keep it joyful, affectionate, and sensible (no medical veterinary advice). Include **({{mode}})** visibly.
-Structure with these ### headings:
-### {{pet_name}}’s Temperament Portrait
-(Describe their natural rhythm, curiosity, loyalty, and comfort style.)
-### The Bond Between You Two
-(Reflect warmly on how {{pet_name}} complements your home energy, 4th/6th house themes, and emotional pace.)
-### How {{pet_name}} Thrives Best Day-to-Day
-(Play, routine, rest, and affection cues that bring out their happiest self.)`,
-    westernPrompt: `PET DETAILS:
-Name: {{pet_name}}
-Species / Breed: {{pet_species}}
-Birth or Adoption Date: {{pet_date}}
-Personality & Quirks: "{{pet_quirks}}"
-
-TASK: Compose a warm, charming, grounded "Pet Temperament & Bond" reading celebrating {{pet_name}} and their connection with {{profile_name}} (**{{mode}}**).
-Keep it joyful, affectionate, and sensible (no medical veterinary advice). Include **({{mode}})** visibly.
-Structure with these ### headings:
-### {{pet_name}}’s Temperament Portrait
-(Describe their natural rhythm, curiosity, loyalty, and comfort style.)
-### The Bond Between You Two
-(Reflect warmly on how {{pet_name}} complements your home energy, 4th/6th house themes, and emotional pace.)
-### How {{pet_name}} Thrives Best Day-to-Day
-(Play, routine, rest, and affection cues that bring out their happiest self.)`,
-  },
-};
-
-function interpolatePromptTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => {
-    return Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : '';
-  });
-}
-
 export function buildMiniAppPrompt(params: {
   slug: string;
   astrologyMode?: 'vedic' | 'western';
@@ -2162,24 +1558,8 @@ export function buildMiniAppPrompt(params: {
   } | null;
   transitSummary?: string | null;
   inputs?: Record<string, unknown>;
-  customPrompts?: {
-    vedicPrompt?: string | null;
-    westernPrompt?: string | null;
-    systemOverride?: string | null;
-    rules?: MiniAppRuleItem[] | null;
-    title?: string | null;
-    description?: string | null;
-  } | null;
 }): { system: string; user: string } {
-  const {
-    slug,
-    astrologyMode = 'vedic',
-    profile,
-    partnerProfile,
-    transitSummary,
-    inputs = {},
-    customPrompts,
-  } = params;
+  const { slug, astrologyMode = 'vedic', profile, partnerProfile, transitSummary, inputs = {} } = params;
   const isWestern = astrologyMode === 'western';
   const modeLabel = isWestern ? 'Western' : 'Vedic';
   const now = new Date();
@@ -2198,9 +1578,7 @@ export function buildMiniAppPrompt(params: {
   const dasha = findActiveDashaSummary(profile?.chart_json);
 
   const profileContextLines: string[] = [];
-  profileContextLines.push(
-    `SELECTED ASTROLOGY SYSTEM: ${isWestern ? 'Western Tropical (Placidus)' : 'Vedic Sidereal (Lahiri)'} — MUST be clearly labeled (${modeLabel}) in output.`
-  );
+  profileContextLines.push(`SELECTED ASTROLOGY SYSTEM: ${isWestern ? 'Western Tropical (Placidus)' : 'Vedic Sidereal (Lahiri)'} — MUST be clearly labeled (${modeLabel}) in output.`);
 
   if (profile) {
     profileContextLines.push(
@@ -2230,64 +1608,247 @@ export function buildMiniAppPrompt(params: {
   }
 
   const baseContext = `AUTHORITATIVE CURRENT DATE: ${dateStr}\n${profileContextLines.join('\n')}`;
-  const defaultRole = isWestern
-    ? 'You are Cosmic Council’s senior Western Tropical astrologer composing a focused editorial reading.'
-    : 'You are Cosmic Council’s senior Vedic & multi-system astrology analyst composing a focused editorial reading.';
-  const guardrail = isWestern ? EDITORIAL_APP_GUARDRAIL_WESTERN : EDITORIAL_APP_GUARDRAIL_VEDIC;
-  const customSys = typeof customPrompts?.systemOverride === 'string' ? customPrompts.systemOverride.trim() : '';
-  const enabledAppRules = Array.isArray(customPrompts?.rules)
-    ? customPrompts.rules
-        .filter((r) => r && r.enabled && (r.title?.trim() || r.body?.trim()))
-        .map((r, idx) => `RULE #${idx + 1} (${r.title.trim() || 'App Rule'}):\n${r.body.trim()}`)
-        .join('\n\n')
-    : '';
-  const systemParts = [defaultRole];
-  if (enabledAppRules) {
-    systemParts.push(`APP RULES STACK (Priority Order):\n${enabledAppRules}`);
-  }
-  if (customSys) {
-    systemParts.push(`ADMIN APP INSTRUCTIONS:\n${customSys}`);
-  }
-  systemParts.push(guardrail);
-  const system = systemParts.join('\n\n');
+  const system = isWestern
+    ? `You are Cosmic Council’s senior Western Tropical astrologer composing a focused editorial reading.\n\n${EDITORIAL_APP_GUARDRAIL_WESTERN}`
+    : `You are Cosmic Council’s senior Vedic & multi-system astrology analyst composing a focused editorial reading.\n\n${EDITORIAL_APP_GUARDRAIL_VEDIC}`;
 
   const partnerWesternCtx =
     isWestern && partnerProfile?.chart_json
       ? formatChartForLLM(partnerProfile.chart_json, 'western').slice(0, 4200)
       : partnerProfile?.chart_text_context?.slice(0, 4200) || '';
 
-  // Extra authoritative structured blocks attached based on app mechanics
-  const extraContextBlocks: string[] = [];
+  switch (slug) {
+    case 'daily-horoscope':
+      return {
+        system,
+        user: `${baseContext}
 
-  if (slug === 'numerology') {
-    const numCtx = formatPythagoreanNumerologyContext({
-      fullName: profile?.name,
-      birthDate: profile?.birth_date,
-    });
-    extraContextBlocks.push(
-      numCtx || 'Compute Pythagorean numbers cleanly from the provided name and birth date.'
-    );
-  }
+TASK: Compose a deeply personal Daily Horoscope for ${dateStr}.
+Begin your response with this exact opening line:
+Here is your daily horoscope report for **${formattedDayMonthYear}** (**${profile?.name || 'Your Chart'}**) — **(${modeLabel})**:
 
-  const partnerName = String(inputs.partnerName || partnerProfile?.name || 'Partner').trim();
-  const partnerDob = String(inputs.partnerDob || partnerProfile?.birth_date || '').trim();
-  const partnerBirthTime = String(inputs.partnerBirthTime || '').trim();
-  const partnerBirthPlace = String(inputs.partnerBirthPlace || '').trim();
-  const relationshipIntent = String(
-    inputs.relationshipIntent || 'Long-term partnership / marriage'
-  ).trim();
+Then structure with these ### headings:
+### Today’s Rhythm & Tone
+(${isWestern ? 'Explain how today’s transiting Tropical Moon, Sun, and planetary aspects interact with natal Sun, Moon, Rising, and Placidus houses.' : 'Explain how today’s transiting Moon Nakshatra and key planetary Gochar interact with the natal Moon, Lagna, and active Dasha.'})
+### Work, Decisions & Timing
+(Concrete guidance on meetings, focused work, negotiations, or pacing today.)
+### Heart & Relationships
+(How Venus, Moon, and Mars influence tone, listening, and emotional clarity today.)
+### Practical Grounding Focus
+(One simple, realistic habit or reflection that helps optimize today’s energy.)`,
+      };
 
-  if (slug === 'love-compatibility') {
-    const userNum = formatPythagoreanNumerologyContext({
-      fullName: profile?.name,
-      birthDate: profile?.birth_date,
-    });
-    const partnerNum = formatPythagoreanNumerologyContext({
-      fullName: partnerName,
-      birthDate: partnerDob,
-    });
-    extraContextBlocks.push(
-      `PARTNER DETAILS:
+    case 'weekly-horoscope':
+      return {
+        system,
+        user: `${baseContext}
+
+TASK: Compose a strategic 7-day Weekly Horoscope starting ${dateStr} (**${modeLabel}**).
+Begin with a clear line or header indicating **(${modeLabel})**.
+Structure with these ### headings:
+### Weekly Theme
+(${isWestern ? 'A concise framing title and core 7-day synthesis anchored in active outer-planet transits, lunations, and aspects to your natal Sun, Moon, and Rising.' : 'A concise framing title and core 7-day synthesis anchored in active Dasha and slow/fast Gochar transits.'})
+### Seven-Day Celestial Flow
+(Early week, mid-week, and weekend shifts as the ${isWestern ? 'Tropical Moon transits your Placidus houses and aspects key natal planets.' : 'Moon moves across natal houses and Nakshatras.'})
+### Career & Financial Pacing
+(Best windows for outreach, deep work, and careful review over the next 7 days.)
+### Relationships & Social Energy
+(How to navigate conversations, affection, and personal boundaries this week.)
+### Grounding Anchor for the Week
+(One practical behavioral focus to stay steady.)`,
+      };
+
+    case 'monthly-horoscope':
+      return {
+        system,
+        user: `${baseContext}
+
+TASK: Compose a strategic Monthly Forecast for ${monthYear} (**${modeLabel}**).
+Begin with a clear line or header indicating **(${modeLabel})**.
+Structure with these ### headings:
+### Core Theme for ${monthYear}
+(${isWestern ? 'High-level synthesis of the month’s Tropical Sun progression, Jupiter/Saturn/outer-planet transits, and major natal aspects.' : 'High-level synthesis of the month’s active Dasha + Saturn/Jupiter/Rahu-Ketu transit posture.'})
+### Slow-Planet & Transit Architecture
+(${isWestern ? 'How slow-moving transits over your Placidus angular houses and natal aspects shape this month’s momentum.' : 'How major transits over natal houses and Ashtakavarga bindus shape this month’s momentum.'})
+### Work, Craft & Resources
+(Where steady effort compounds and where patience protects capital or reputation.)
+### Relationships & Inner Life
+(Key relational themes and emotional recalibrations across the month.)
+### Strategic Focus for the Next 30 Days
+(3 concise, actionable priorities.)`,
+      };
+
+    case 'current-transits':
+      return {
+        system,
+        user: `${baseContext}
+
+TASK: Compose a precise Current Planetary Transits${isWestern ? ' (Tropical Sky)' : ' (Gochar)'} briefing for ${dateStr} (**${modeLabel}**).
+Begin with a clear line or header indicating **(${modeLabel})**.
+Structure with these ### headings:
+### Sky Weather Overview
+(${isWestern ? 'Concise summary of dominant Tropical planetary alignments, aspects, and retrogrades active today.' : 'Concise summary of the dominant Sidereal planetary alignments and retrogrades active today.'})
+### Key House Activations
+(${isWestern ? 'Explain clearly how transiting Jupiter, Saturn, Uranus/Neptune/Pluto, Nodes, and inner planets interact with your Placidus 1st, 4th, 7th, and 10th houses — or general collective themes if no profile is linked.' : 'Explain clearly how Jupiter, Saturn, Rahu/Ketu, and faster planets impact the 1st, 4th, 7th, and 10th houses — or general collective themes if no profile is linked.'})
+### High-Attention Windows & Opportunities
+(${isWestern ? 'Highlight flowing trine/sextile transits alongside square/opposition tension points calling for measured patience.' : 'Highlight supportive high-SAV transits alongside areas calling for measured patience.'})
+### Practical Navigation
+(3 grounded pointers for working constructively with today’s sky.)`,
+      };
+
+    case 'dasha-analysis':
+      return {
+        system,
+        user: `${baseContext}
+
+${
+  isWestern
+    ? `NOTE: The user is currently viewing in **Western (${modeLabel})** mode, and this module focuses on planetary life chapters & timing cycles. Keep the primary lens grounded in Western timing cycles (Saturn/Jupiter transits, Profection years, and progressions alongside the active timing data provided), clearly labeling **(${modeLabel})**.
+TASK: Perform a scholarly yet accessible Planetary Timing & Life Chapter Analysis as of ${dateStr}.
+Structure with these ### headings:
+### Your Active Planetary Chapter (${modeLabel})
+(Synthesize current major transits—Saturn, Jupiter, Nodes—and developmental house activations shaping this life chapter.)
+### Psychological & Material Themes Right Now
+(How these planetary activations express in mindset, career, relationships, and growth.)
+### Next 12-Month Trajectory & Upcoming Shifts
+(Note upcoming transit shifts and major aspect openings over the next year.)
+### Aligning Constructively With This Period
+(Practical, non-superstitious behavioral adjustments and focus areas.)`
+    : `TASK: Perform a scholarly yet accessible Vimshottari Dasha Analysis as of ${dateStr} (**${modeLabel}**).
+Structure with these ### headings:
+### Your Active Planetary Chapter
+(Explain the active Mahadasha, Antardasha, and Pratyantardasha lords — their natal house ownership, placement, dignity, and what life themes they govern.)
+### Psychological & Material Themes Right Now
+(How this specific planetary pairing expresses in mindset, career, relationships, and growth.)
+### Next 12-Month Trajectory & Upcoming Shifts
+(Note upcoming Antardasha or Pratyantardasha transitions and how the tone evolves over the next year.)
+### Aligning Constructively With This Period
+(Practical, non-superstitious behavioral adjustments and focus areas that honor the Dasha lords.)`
+}`,
+      };
+
+    case 'birth-chart-breakdown': {
+      const domainId = String(inputs.domainId || 'gifts');
+      const topicId = String(inputs.topicId || 'natural-talents');
+      const domain = BIRTH_CHART_DOMAINS.find((d) => d.id === domainId) || BIRTH_CHART_DOMAINS[0];
+      const topic = domain.topics.find((t) => t.id === topicId) || domain.topics[0];
+      return {
+        system,
+        user: `${baseContext}
+
+TASK: Perform a focused "Birth Chart Breakdown" module on **${domain.title} → ${topic.label}** (**${modeLabel}**).
+Specific Analytical Lens: ${topic.instruction}
+
+Requirements:
+- Begin by clearly stating **(${modeLabel})** in your opening line or first heading.
+- Go straight into high-signal analysis (3–4 well-structured sections or 280–420 words).
+- ${
+  isWestern
+    ? 'Cite exact verified placements from the Western Tropical chart above (Tropical signs, Placidus houses, Midheaven/Ascendant, Chiron, Nodes, and major aspects).'
+    : 'Cite exact verified placements from the Sidereal Vedic chart above (signs, houses, Nakshatras, divisional D9/D10 links where relevant).'
+}
+- Close with a **Practical Takeaway** section giving one clear, actionable perspective.`,
+      };
+    }
+
+    case 'wealth-blueprint':
+      return {
+        system,
+        user: `${baseContext}
+
+TASK: Compose a grounded "Wealth Blueprint" analysis as of ${dateStr} (**${modeLabel}**).
+Include **(${modeLabel})** in the opening heading or line.
+Structure with these ### headings:
+### Financial Archetype & Earning Style
+(${isWestern ? 'Derive a clear, realistic financial archetype from your 2nd house, 8th/11th houses, Venus/Jupiter placements, Midheaven, and dominant aspects.' : 'Derive a clear, realistic financial archetype from the 2nd house, 11th house, D2 Hora, and dominant planetary lords.'})
+### Core Treasury & Income Channels (2nd & 11th Houses)
+(How resources naturally accumulate, scale, and compound in this chart.)
+### Aligned Industries & Leverage Points
+(3–4 realistic domains or leverage models suited to the 10th/11th house signature.)
+### Timing Windows & Jupiter/Saturn Pacing
+(${isWestern ? 'How current Jupiter and Saturn transits over your Placidus houses shape financial decisions over the next 12 months.' : 'How current Dasha and slow-planet transits shape financial decisions over the next 12 months.'})
+### Financial Blind Spots & Guardrails
+(Realistic leakage patterns and grounded discipline habits. Avoid guaranteed profit promises.)`,
+      };
+
+    case 'love-forecast':
+      return {
+        system,
+        user: `${baseContext}
+
+TASK: Compose a grounded, empathetic "Love Forecast" starting ${dateStr} (**${modeLabel}**).
+Include **(${modeLabel})** in the opening heading or line.
+Structure with these ### headings:
+### Current Relational Climate
+(${isWestern ? 'How current Venus, Mars, and slow-planet transits interact with your natal Venus, Moon, 5th/7th Placidus houses, and Descendant right now.' : 'How active Dasha, Venus, 5th/7th house lords, and Moon shape romantic energy right now.'})
+### Upcoming Connection & Alignment Windows
+(Key stretches over the next 3–6 months supporting meeting someone, deepening commitment, or clearing communication.)
+### ${isWestern ? 'Your Venus, Moon & 7th House Signature' : 'Your Venus & Navamsa Signature'}
+(What genuinely attracts and sustains mutual respect for this chart — emotional style, pacing, and values.)
+### Grounded Guidance for the Heart
+(Practical relational counsel that works equally well for singles or committed partners.)`,
+      };
+
+    case 'career-navigator':
+      return {
+        system,
+        user: `${baseContext}
+
+TASK: Compose a strategic "Career Navigator" vocational reading starting ${dateStr} (**${modeLabel}**).
+Include **(${modeLabel})** in the opening heading or line.
+Structure with these ### headings:
+### Vocational Calling & Public Signature (${isWestern ? '10th House & Midheaven' : '10th House & D10'})
+(${isWestern ? 'Core strengths, authority style, and leadership archetype from your Midheaven (MC), 10th house, Saturn, and Sun/Mercury placements.' : 'Core strengths, authority style, and leadership archetype from 10th house, D10 Dasamsa, and Amatyakaraka.'})
+### Daily Work Rhythm (6th vs 10th House)
+(Ideal operating environment, collaboration style, and how you sustain high performance without friction.)
+### Aligned Career Lanes
+(3–4 concrete fields or role archetypes where this chart has structural edge.)
+### Workplace Blind Spots to Watch
+(Patterns that create friction or slow progress, plus how to counter them calmly.)
+### Next 12-Month Career Horizon
+(${isWestern ? 'How current Saturn and Jupiter transits across your 10th/6th/2nd houses influence promotions, pivots, or visibility.' : 'How current Dasha and Saturn/Jupiter transits influence promotions, pivots, or visibility.'})`,
+      };
+
+    case 'numerology': {
+      const numCtx = formatPythagoreanNumerologyContext({
+        fullName: profile?.name,
+        birthDate: profile?.birth_date,
+      });
+      return {
+        system,
+        user: `${baseContext}
+
+${numCtx || 'Compute Pythagorean numbers cleanly from the provided name and birth date.'}
+
+TASK: Compose a refined "Numerology Blueprint" reading based STRICTLY on the verified Pythagorean calculations above (never alter or recalculate the numbers). Note **(${modeLabel})** context where referencing supporting chart temperament.
+Structure with these ### headings:
+### Core Vibrational Summary
+(Synthesize Life Path, Expression/Destiny, Soul Urge, and Personality numbers into a cohesive portrait.)
+### Strengths, Blind Spots & Karmic Lessons
+(Highlight master numbers or karmic debt numbers if present, and explain their practical expression.)
+### Career & Relational Resonance
+(Work styles and interpersonal rhythms that fit this numerological signature.)
+### Active Timing Cycle (${now.getUTCFullYear()})
+(Interpret the verified Personal Year, Personal Month, and Personal Day numbers with clear practical focus.)`,
+      };
+    }
+
+    case 'love-compatibility': {
+      const partnerName = String(inputs.partnerName || partnerProfile?.name || 'Partner').trim();
+      const partnerDob = String(inputs.partnerDob || partnerProfile?.birth_date || '').trim();
+      const userNum = formatPythagoreanNumerologyContext({
+        fullName: profile?.name,
+        birthDate: profile?.birth_date,
+      });
+      const partnerNum = formatPythagoreanNumerologyContext({
+        fullName: partnerName,
+        birthDate: partnerDob,
+      });
+      return {
+        system,
+        user: `${baseContext}
+
+PARTNER DETAILS:
 Name: ${partnerName}
 Date of Birth: ${partnerDob || 'Not provided'}
 ${partnerWesternCtx ? `\nVERIFIED PARTNER NATAL CHART DATA (${modeLabel}):\n${partnerWesternCtx}` : ''}
@@ -2296,121 +1857,306 @@ PERSON A VERIFIED NUMEROLOGY:
 ${userNum || 'N/A'}
 
 PERSON B VERIFIED NUMEROLOGY:
-${partnerNum || 'N/A'}`
-    );
-  }
+${partnerNum || 'N/A'}
 
-  if (slug === 'birth-chart-matching') {
-    extraContextBlocks.push(
-      `PARTNER DETAILS FOR CHART MATCHING (${modeLabel}):
+TASK: Compose a thoughtful, honest "Love Compatibility" reading between ${profile?.name || 'Person A'} and ${partnerName} (**${modeLabel}**).
+Include **(${modeLabel})** visibly at the start.
+Structure with these ### headings:
+### Compatibility Overview & Core Chemistry
+(Give a grounded, balanced overview of how these two personalities meet — avoid fatalistic "doomed" or shallow 100% claims.)
+### Astrological & Moon/Venus Resonance
+(${isWestern ? 'Compare Tropical Sun/Moon/Venus/Mars aspects, elemental balance, and synastry dynamics using verified chart data.' : 'Compare emotional rhythms, Moon Nakshatra pacing, Venus/Mars chemistry, and partnership needs using verified chart data.'})
+### Numerological Harmony
+(Compare their verified Life Path and Expression dynamics cleanly.)
+### Friction Points & How to Navigate Them
+(3 honest, practical habits that help this specific pairing communicate clearly and build lasting trust.)`,
+      };
+    }
+
+    case 'salary-negotiator': {
+      const offerContext = String(inputs.offerContext || '').trim();
+      return {
+        system,
+        user: `${baseContext}
+
+USER OFFER / NEGOTIATION CONTEXT:
+"${offerContext}"
+
+TASK: Compose a sharp, practical "Salary & Offer Strategist" briefing as of ${dateStr} (**${modeLabel}**).
+Include **(${modeLabel})** visibly at the start.
+Structure with these ### headings:
+### Strategic Positioning & Chart Leverage
+(${isWestern ? 'Briefly connect the user’s 2nd house, 10th house/Midheaven, Mercury communication style, and current transits to their strongest negotiating posture.' : 'Briefly connect the user’s 2nd house, 10th house, Mercury communication tone, and active Dasha to their strongest negotiating posture.'})
+### Three Tailored Scripts
+Provide three crisp, ready-to-adapt templates (use clean blockquotes or clear subsections):
+1. **The Confident Anchor** (direct, value-led)
+2. **The Analytical Case** (data, scope, and benchmark-led)
+3. **The Collaborative Bridge** (partnership and total-package focused)
+### Timing & Delivery Notes
+(Practical timing guidance based on active Mercury/Jupiter transits and pacing.)`,
+      };
+    }
+
+    case 'dream-interpreter': {
+      const dreamText = String(inputs.dreamText || '').trim();
+      return {
+        system,
+        user: `${baseContext}
+
+USER DREAM LOG:
+"${dreamText}"
+
+TASK: Compose a thoughtful, grounded "Dream Interpreter" reflection combining Jungian/archetypal psychology with ${isWestern ? 'Western Moon, Neptune & 12th-house symbolism' : 'Vedic Moon & 12th-house symbolism'} (**${modeLabel}**).
+Include **(${modeLabel})** visibly at the start.
+Structure with these ### headings:
+### Core Symbols & Archetypal Themes
+(Unpack the 3–4 standout images, settings, or emotional shifts in the dream.)
+### Chart & Subconscious Echoes
+(${isWestern ? 'If a birth chart is provided, gently link the dream’s tone to the Tropical Moon, Neptune/12th house, or current transits; otherwise focus cleanly on inner emotional currents.' : 'If a birth chart is provided, gently link the dream’s tone to the Moon Nakshatra, 12th house, or current Dasha/transit phase; otherwise focus cleanly on inner emotional currents.'})
+### What Your Mind May Be Processing
+(Translate the symbolism into plain, compassionate real-life reflection questions.)
+### Grounding Practice
+(One calm sleep-hygiene or journaling prompt to integrate the insight.)`,
+      };
+    }
+
+    case 'affirmations-generator': {
+      const situation = String(inputs.situation || '').trim();
+      return {
+        system,
+        user: `${baseContext}
+
+USER SITUATION / INTENTION:
+"${situation}"
+
+TASK: Craft 5 calm, believable, deeply personal affirmations grounded in the user’s actual chart placements (${isWestern ? 'Tropical Sun, Moon, Rising, 2nd house, Venus, and Jupiter aspects' : 'Moon Nakshatra, Ascendant, 2nd house, Venus, and Jupiter'}) (**${modeLabel}**) — never hollow toxic positivity.
+Include **(${modeLabel})** visibly at the start.
+Structure with these ### headings:
+### Anchoring Theme
+(Two sentences connecting their current situation to their chart’s innate strengths.)
+### Five Chart-Aligned Affirmations
+For each affirmation:
+- Present the **affirmation statement** in clean bold prose (first person, present, grounded).
+- Follow with a concise italicized line explaining *which verified natal placement or transit supports it*.
+### Daily Integration Practice
+(A brief 2-minute morning or evening cue for practicing these naturally.)`,
+      };
+    }
+
+    case 'planet-strength-tester': {
+      const planet = String(inputs.planet || 'Sun');
+      const totalScore = Number(inputs.totalScore || 12);
+      const answersSummary = Array.isArray(inputs.answersSummary)
+        ? (inputs.answersSummary as Array<{ question: string; answer: string; score: number }>)
+            .map((a, idx) => `${idx + 1}. ${a.question} -> "${a.answer}" (${a.score}/4)`)
+            .join('\n')
+        : '';
+      const enrichedChart =
+        profile?.chart_json && !profile.chart_json.western && profile.chart_json.planets?.length
+          ? enrichCompiledChart(profile.chart_json).chartJson
+          : profile?.chart_json;
+      const westernPlanet = enrichedChart?.western?.planets?.find((p) => p.name === planet);
+      const vedicPlanet = enrichedChart?.planets?.find((p) => p.name === planet);
+      const natalNote = isWestern
+        ? westernPlanet
+          ? `VERIFIED NATAL TROPICAL ${planet.toUpperCase()} PLACEMENT: ${westernPlanet.sign} ${westernPlanet.dms} (Placidus House ${westernPlanet.house}${westernPlanet.isRetrograde ? ', Retrograde' : ''})`
+          : `No saved Western chart attached — interpret primarily from the lived-experience responses.`
+        : vedicPlanet
+        ? `VERIFIED NATAL SIDEREAL ${planet.toUpperCase()} PLACEMENT: ${vedicPlanet.sign} ${vedicPlanet.dms} (House ${vedicPlanet.house}, ${vedicPlanet.nakshatra} Pada ${vedicPlanet.pada}, Dignity: ${vedicPlanet.dignity}${vedicPlanet.isRetrograde ? ', Retrograde' : ''})`
+        : `No saved natal chart attached — interpret primarily from the lived-experience responses.`;
+
+      return {
+        system,
+        user: `${baseContext}
+
+${natalNote}
+
+PLANET TESTED: ${planet}
+LIVED-EXPERIENCE SCORE: ${totalScore}/20
+USER RESPONSES:
+${answersSummary}
+
+TASK: Compose a clear, honest "Planet Strength Assessment" for **${planet}** (**${modeLabel}**).
+Include **(${modeLabel})** visibly at the start.
+Structure with these ### headings:
+### Functional Status: [Balanced & Expressive / Developing & Mixed / Strained & Seeking Support]
+(Synthesize the ${totalScore}/20 lived score alongside the verified ${modeLabel} natal placement above — noting where lived habits reinforce or override chart placement.)
+### How ${planet} Is Showing Up in Daily Life
+(Highlight concrete behavioral strengths and friction patterns reflected in their answers.)
+### Practical Harmonizers
+(3 grounded, zero-superstition habits, mindset shifts, or weekly practices to strengthen and refine ${planet}’s expression.)`,
+      };
+    }
+
+    case 'birth-chart-matching': {
+      const partnerName = String(inputs.partnerName || partnerProfile?.name || 'Partner').trim();
+      const partnerDob = String(inputs.partnerDob || partnerProfile?.birth_date || '').trim();
+      const partnerBirthTime = String(inputs.partnerBirthTime || '').trim();
+      const partnerBirthPlace = String(inputs.partnerBirthPlace || '').trim();
+      const relationshipIntent = String(inputs.relationshipIntent || 'Long-term partnership / marriage').trim();
+      return {
+        system,
+        user: `${baseContext}
+
+PARTNER DETAILS FOR CHART MATCHING (${modeLabel}):
 Name: ${partnerName}
 Date of Birth: ${partnerDob || 'Not provided'}
 ${partnerBirthTime ? `Birth Time: ${partnerBirthTime}` : ''}
 ${partnerBirthPlace ? `Birth Place: ${partnerBirthPlace}` : ''}
 Context / Goal: ${relationshipIntent}
-${partnerWesternCtx ? `\nVERIFIED PARTNER NATAL CHART DATA (${modeLabel}):\n${partnerWesternCtx}` : ''}`
-    );
+${partnerWesternCtx ? `\nVERIFIED PARTNER NATAL CHART DATA (${modeLabel}):\n${partnerWesternCtx}` : ''}
+
+TASK: Compose a thoughtful, scholarly, and strictly non-fear-based "Birth Chart Matching" synthesis between ${profile?.name || 'Person A'} and ${partnerName} (**${modeLabel}**).
+Include **(${modeLabel})** visibly at the start.
+Structure with these ### headings:
+### Partnership Alignment Summary
+(Give a balanced, honest overall synthesis of emotional resonance, practical compatibility, and long-term partnership durability. Never use fear-mongering — explain balances and practical mitigations clearly.)
+### ${isWestern ? 'Sun, Moon & Synastry Aspects' : 'Moon, Nakshatra & Emotional Rhythm (Ashtakoot Lens)'}
+(${isWestern ? 'Examine Tropical Moon signs, Sun/Moon harmony, Mercury communication rhythm, and elemental balance using the verified placements available.' : 'Examine Moon sign / Nakshatra harmony, temperament pacing, and mental ease using the verified placements available.'})
+### ${isWestern ? 'Venus, Mars, 7th House & House Overlays' : 'Venus, Mars & 7th House / Navamsa Interplay'}
+(Compare affection styles, conflict resolution, and shared life values.)
+### Strengths to Lean Into & Growth Edges
+(List 3 genuine pillars of strength and 2–3 realistic habits that protect mutual trust over the years.)`,
+      };
+    }
+
+    case 'breakup-clarity': {
+      const breakupContext = String(inputs.breakupContext || '').trim();
+      const timeframe = String(inputs.timeframe || 'Recently').trim();
+      return {
+        system,
+        user: `${baseContext}
+
+USER CONTEXT:
+Timeline: ${timeframe}
+What happened / how they feel: "${breakupContext}"
+
+TASK: Compose a calm, deeply empathetic "Breakup Clarity & Closure" reflection as of ${dateStr} (**${modeLabel}**).
+Important: Never guarantee an ex will return, never encourage obsession or stalking, and never frame heartbreak as a curse. Honor emotional dignity and genuine healing.
+Include **(${modeLabel})** visibly at the start.
+Structure with these ### headings:
+### Making Sense of This Turning Point
+(${isWestern ? 'Contextualize the timing gently through Saturn/Uranus/Pluto/Nodal transits or Venus cycles, and what chapter was naturally completing.' : 'Contextualize the timing gently through active Mahadasha/Antardasha, Saturn/Rahu-Ketu or Venus transits, and what chapter was naturally completing.'})
+### What Your Moon & 7th House Are Asking For Right Now
+(${isWestern ? 'Acknowledge the emotional weather honestly using their Tropical Moon sign, Venus, and 7th Placidus house rhythm.' : 'Acknowledge the emotional weather honestly using their natal Moon Nakshatra and Venus/7th house rhythm.'})
+### Healing & Reset Windows Ahead
+(Note constructive phases over the next 3–6 months where emotional clarity, self-respect, and fresh openness rebuild.)
+### Grounded Steps Toward Closure
+(3 calm, practical actions that help reclaim steadiness and self-trust this week.)`,
+      };
+    }
+
+    case 'relationship-patterns': {
+      const patternFocus = String(inputs.patternFocus || '').trim();
+      return {
+        system,
+        user: `${baseContext}
+
+USER REFLECTION ON RECURRING PATTERNS:
+"${patternFocus || 'Help me understand the recurring patterns in my romantic relationships and how to shift them.'}"
+
+TASK: Compose an insightful, non-judgmental "Relationship Pattern Decoder" analysis (**${modeLabel}**).
+Include **(${modeLabel})** visibly at the start.
+Structure with these ### headings:
+### The Core Pattern Reflected in Your Chart
+(${isWestern ? 'Synthesize Descendant/7th Placidus house, Venus, Moon, Mars, Chiron, and North/South Node axis to explain what draws you in and where tension repeats.' : 'Synthesize 7th house, 7th lord, Venus, Moon, Darakaraka, and Rahu/Ketu axis to explain what draws you in and where tension repeats.'})
+### What You Often Attract vs. What Truly Nourishes You
+(${isWestern ? 'Contrast surface chemistry or Descendant projections with the deeper qualities your Tropical Moon, Venus aspects, and 4th/7th houses genuinely thrive on.' : 'Contrast surface chemistry or familiar conditioning with the deeper qualities your Navamsa (D9) and Moon genuinely thrive on.'})
+### Early Red Flags & Self-Protective Habits
+(Name 2–3 subtle behavioral loops honestly without blame.)
+### Rewriting the Pattern Going Forward
+(3 clear relational boundaries or pacing practices to build healthier reciprocity.)`,
+      };
+    }
+
+    case 'soul-compass':
+      return {
+        system,
+        user: `${baseContext}
+
+TASK: Compose a luminous yet grounded "Soul Purpose & Nodal Compass" reading (**${modeLabel}**).
+Include **(${modeLabel})** visibly at the start.
+Structure with these ### headings:
+### ${isWestern ? 'Your Evolutionary Arc (South Node to North Node)' : 'Your Evolutionary Arc (Ketu to Rahu)'}
+(${isWestern ? 'Explain the comfort zone and innate mastery shown by your Tropical South Node house/sign versus the stretch and calling represented by your North Node house/sign.' : 'Explain the comfort zone and innate mastery shown by Ketu’s house/sign versus the stretch and calling represented by Rahu’s house/sign.'})
+### ${isWestern ? 'Sun, Midheaven & Core Life Lesson' : 'Atmakaraka & Core Life Lesson'}
+(${isWestern ? 'Interpret your natal Sun, Chiron, and 9th/10th Placidus house/Midheaven themes in plain, practical language.' : 'Interpret the Jaimini Atmakaraka and 9th/10th house Dharma themes in plain, practical language.'})
+### ${isWestern ? 'Long-Term Maturation & Inner Alignment' : 'Navamsa (D9) Maturity & Inner Alignment'}
+(Describe how your sense of purpose refines with experience and what kind of contribution feels deeply worthwhile.)
+### Living Your Compass Practically
+(3 concrete ways to align daily work, creativity, and choices with this evolutionary direction right now.)`,
+      };
+
+    case 'jupiter-opportunities':
+      return {
+        system,
+        user: `${baseContext}
+
+TASK: Compose a strategic, grounded "Jupiter Expansion Windows" briefing starting ${dateStr} (**${modeLabel}**).
+Important: Zero lottery/gambling/instant-riches promises — frame Jupiter authentically as wisdom, mentorship, strategic leverage, education, and compounding opportunity.
+Include **(${modeLabel})** visibly at the start.
+Structure with these ### headings:
+### Jupiter’s Current Role in Your Chart
+(${isWestern ? 'Explain natal Tropical Jupiter’s sign/Placidus house/aspects alongside current transiting Jupiter house activation and aspects.' : 'Explain natal Jupiter’s house/dignity alongside current Jupiter Gochar house activation and Ashtakavarga bindu support.'})
+### Where Expansion Naturally Opens Next
+(Identify the specific life arenas—2nd/5th/9th/10th/11th themes—most supported for growth, allies, learning, or income expansion over the coming months.)
+### Timing Windows to Prepare For
+(${isWestern ? 'Highlight how current transits and Jupiter’s pace reward proactive preparation versus premature over-extension.' : 'Highlight how current Dasha and Jupiter’s pace reward proactive preparation versus premature over-extension.'})
+### Turning Good Timing Into Real Results
+(3 practical habits to capitalize on supportive cycles with discipline.)`,
+      };
+
+    case 'cosmic-archetype':
+      return {
+        system,
+        user: `${baseContext}
+
+TASK: Compose a vivid, editorial "Cosmic Archetype Profile" portrait (**${modeLabel}**).
+Include **(${modeLabel})** visibly at the start.
+Structure with these ### headings:
+### Your Signature Archetype Title
+(${isWestern ? 'Create a refined, memorable two-to-four word editorial archetype grounded directly in your Tropical Sun, Moon, Rising, and chart ruler — zero cliché hype.' : 'Create a refined, memorable two-to-four word editorial archetype grounded directly in Lagna, Moon Nakshatra, and Atmakaraka — zero cliché hype.'})
+### How You Think, Feel & Decide
+(${isWestern ? 'Synthesize Rising sign style, Tropical Moon emotional cadence, and Mercury/Sun operating patterns.' : 'Synthesize Ascendant style, Moon Nakshatra emotional cadence, and Mercury/Sun operating patterns.'})
+### Dominant Strengths & Natural Environment
+(Where you feel effortlessly in flow and what kind of people or work bring out your best.)
+### Subtle Shadow Tendencies & Balance Keys
+(Honest, compassionate look at stress habits and one stabilizing anchor for everyday equilibrium.)`,
+      };
+
+    case 'pet-bond': {
+      const petName = String(inputs.petName || 'Your Pet').trim();
+      const petSpecies = String(inputs.petSpecies || 'Companion animal').trim();
+      const petDate = String(inputs.petDate || '').trim();
+      const petQuirks = String(inputs.petQuirks || '').trim();
+      return {
+        system,
+        user: `${baseContext}
+
+PET DETAILS:
+Name: ${petName}
+Species / Breed: ${petSpecies}
+Birth or Adoption Date: ${petDate || 'Approximate / Unknown'}
+Personality & Quirks: "${petQuirks || 'Affectionate, observant, and part of the household rhythm.'}"
+
+TASK: Compose a warm, charming, grounded "Pet Temperament & Bond" reading celebrating ${petName} and their connection with ${profile?.name || 'their human'} (**${modeLabel}**).
+Keep it joyful, affectionate, and sensible (no medical veterinary advice). Include **(${modeLabel})** visibly.
+Structure with these ### headings:
+### ${petName}’s Temperament Portrait
+(Describe their natural rhythm, curiosity, loyalty, and comfort style.)
+### The Bond Between You Two
+(Reflect warmly on how ${petName} complements your home energy, 4th/6th house themes, and emotional pace.)
+### How ${petName} Thrives Best Day-to-Day
+(Play, routine, rest, and affection cues that bring out their happiest self.)`,
+      };
+    }
+
+    default:
+      return {
+        system,
+        user: `${baseContext}\n\nProvide a calm, grounded ${modeLabel} astrology insight labeled (${modeLabel}).`,
+      };
   }
-
-  const domainId = String(inputs.domainId || 'gifts');
-  const topicId = String(inputs.topicId || 'natural-talents');
-  const domain = BIRTH_CHART_DOMAINS.find((d) => d.id === domainId) || BIRTH_CHART_DOMAINS[0];
-  const topic = domain.topics.find((t) => t.id === topicId) || domain.topics[0];
-
-  const planet = String(inputs.planet || 'Sun');
-  const totalScore = Number(inputs.totalScore || 12);
-  const answersSummary = Array.isArray(inputs.answersSummary)
-    ? (inputs.answersSummary as Array<{ question: string; answer: string; score: number }>)
-        .map((a, idx) => `${idx + 1}. ${a.question} -> "${a.answer}" (${a.score}/4)`)
-        .join('\n')
-    : '';
-
-  if (slug === 'planet-strength-tester') {
-    const enrichedChart =
-      profile?.chart_json && !profile.chart_json.western && profile.chart_json.planets?.length
-        ? enrichCompiledChart(profile.chart_json).chartJson
-        : profile?.chart_json;
-    const westernPlanet = enrichedChart?.western?.planets?.find((p) => p.name === planet);
-    const vedicPlanet = enrichedChart?.planets?.find((p) => p.name === planet);
-    const natalNote = isWestern
-      ? westernPlanet
-        ? `VERIFIED NATAL TROPICAL ${planet.toUpperCase()} PLACEMENT: ${westernPlanet.sign} ${westernPlanet.dms} (Placidus House ${westernPlanet.house}${westernPlanet.isRetrograde ? ', Retrograde' : ''})`
-        : `No saved Western chart attached — interpret primarily from the lived-experience responses.`
-      : vedicPlanet
-      ? `VERIFIED NATAL SIDEREAL ${planet.toUpperCase()} PLACEMENT: ${vedicPlanet.sign} ${vedicPlanet.dms} (House ${vedicPlanet.house}, ${vedicPlanet.nakshatra} Pada ${vedicPlanet.pada}, Dignity: ${vedicPlanet.dignity}${vedicPlanet.isRetrograde ? ', Retrograde' : ''})`
-      : `No saved natal chart attached — interpret primarily from the lived-experience responses.`;
-    extraContextBlocks.push(natalNote);
-  }
-
-  const offerContext = String(inputs.offerContext || '').trim();
-  const dreamText = String(inputs.dreamText || '').trim();
-  const situation = String(inputs.situation || '').trim();
-  const breakupContext = String(inputs.breakupContext || '').trim();
-  const timeframe = String(inputs.timeframe || 'Recently').trim();
-  const patternFocus =
-    String(inputs.patternFocus || '').trim() ||
-    'Help me understand the recurring patterns in my romantic relationships and how to shift them.';
-  const petName = String(inputs.petName || 'Your Pet').trim();
-  const petSpecies = String(inputs.petSpecies || 'Companion animal').trim();
-  const petDate = String(inputs.petDate || '').trim() || 'Approximate / Unknown';
-  const petQuirks =
-    String(inputs.petQuirks || '').trim() ||
-    'Affectionate, observant, and part of the household rhythm.';
-  const userInput = String(inputs.userInput || '').trim();
-
-  const vars: Record<string, string> = {
-    date: dateStr,
-    formatted_date: formattedDayMonthYear,
-    month_year: monthYear,
-    year: String(now.getUTCFullYear()),
-    mode: modeLabel,
-    profile_name: profile?.name || 'Your Chart',
-    partner_name: partnerName,
-    partner_dob: partnerDob || 'Not provided',
-    partner_birth_time: partnerBirthTime,
-    partner_birth_place: partnerBirthPlace,
-    relationship_intent: relationshipIntent,
-    offer_context: offerContext,
-    dream_text: dreamText,
-    situation,
-    breakup_context: breakupContext,
-    timeframe,
-    pattern_focus: patternFocus,
-    pet_name: petName,
-    pet_species: petSpecies,
-    pet_date: petDate,
-    pet_quirks: petQuirks,
-    planet,
-    total_score: String(totalScore),
-    answers_summary: answersSummary,
-    domain_title: domain.title,
-    topic_label: topic.label,
-    topic_instruction: topic.instruction,
-    user_inputs: userInput || offerContext || dreamText || situation || breakupContext || patternFocus || '',
-    app_title: customPrompts?.title || MINI_APPS_BY_SLUG[slug]?.title || slug,
-    app_description: customPrompts?.description || MINI_APPS_BY_SLUG[slug]?.description || '',
-  };
-
-  const rawTemplate = isWestern
-    ? customPrompts?.westernPrompt?.trim() ||
-      DEFAULT_APP_PROMPT_TEMPLATES[slug]?.westernPrompt ||
-      ''
-    : customPrompts?.vedicPrompt?.trim() ||
-      DEFAULT_APP_PROMPT_TEMPLATES[slug]?.vedicPrompt ||
-      '';
-
-  const effectiveTemplate =
-    rawTemplate ||
-    `TASK: Compose a clear, deeply grounded "${vars.app_title}" reading for {{profile_name}} as of {{date}} (**{{mode}}**).
-${vars.app_description ? `APP PURPOSE: ${vars.app_description}\n` : ''}${vars.user_inputs ? `USER INPUT / FOCUS:\n"{{user_inputs}}"\n` : ''}Include **({{mode}})** visibly at the start and organize with clear ### headings and actionable takeaways.`;
-
-  const renderedTask = interpolatePromptTemplate(effectiveTemplate, vars);
-  const combinedSections = [baseContext, ...extraContextBlocks, renderedTask].filter(Boolean);
-
-  return {
-    system,
-    user: combinedSections.join('\n\n'),
-  };
 }
 
 export function buildPlanetQuizGenerationPrompt(planet: string): { system: string; user: string } {
@@ -2427,7 +2173,6 @@ Rules:
 
 export function buildFallbackMarkdownForApp(params: {
   slug: string;
-  title?: string;
   profileName?: string;
   inputs?: Record<string, unknown>;
   astrologyMode?: 'vedic' | 'western';
@@ -2764,9 +2509,7 @@ Your connection acts as a natural grounding anchor: ${petName} responds closely 
 Consistent meal and play rhythms, gentle verbal reassurance, and a favorite sunny or cozy corner will keep ${petName} relaxed and deeply content.`;
     }
 
-    default: {
-      const label = params.title || params.slug;
-      return `### ${label} (${modeTag})\nYour personalized **${label}** reading for **${who}** is ready. Explore further anytime in Chat below.`;
-    }
+    default:
+      return `### Reading Summary (${modeTag})\nYour reading is ready. Use the button below to continue exploring this theme in Chat.`;
   }
 }

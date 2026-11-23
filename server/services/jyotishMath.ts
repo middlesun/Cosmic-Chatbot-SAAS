@@ -1229,50 +1229,6 @@ export interface WesternTimingSnapshot {
   };
 }
 
-export interface WesternHellenisticLot {
-  name: 'Lot of Fortune' | 'Lot of Spirit' | 'Lot of Eros' | 'Lot of Necessity';
-  longitude: number;
-  signIndex: number;
-  sign: string;
-  degreeInSign: number;
-  dms: string;
-  wholeSignHouse: number;
-  lord: string;
-  boundLord: string;
-}
-
-export interface WesternHellenisticBoundRow {
-  body: string;
-  sign: string;
-  degree: string;
-  wholeSignHouse: number;
-  termLord: string;
-  decanLord: string;
-}
-
-export interface WesternZodiacalReleasingTrack {
-  fromLot: 'Fortune' | 'Spirit';
-  lotSign: string;
-  l1Sign: string;
-  l1Lord: string;
-  l1StartIso: string;
-  l1EndIso: string;
-  l2Sign: string;
-  l2Lord: string;
-  l2StartIso: string;
-  l2EndIso: string;
-  loosingOfBond: boolean;
-}
-
-export interface WesternHellenisticData {
-  lots: WesternHellenisticLot[];
-  bounds: WesternHellenisticBoundRow[];
-  zodiacalReleasing: {
-    spirit: WesternZodiacalReleasingTrack;
-    fortune: WesternZodiacalReleasingTrack;
-  };
-}
-
 export interface WesternChartData {
   system: 'Tropical (Placidus)';
   ayanamshaUsedForConversion: number;
@@ -1295,7 +1251,6 @@ export interface WesternChartData {
   mutualReceptions?: WesternMutualReceptionItem[];
   dispositorTree?: WesternDispositorTree;
   configurations?: WesternAspectConfiguration[];
-  hellenistic?: WesternHellenisticData;
 }
 
 const NATURAL_FRIENDS: Record<string, { friends: string[]; neutral: string[]; enemies: string[] }> = {
@@ -2609,13 +2564,37 @@ function detectWesternAspectConfigurations(
         ((asp.bodyA === a && asp.bodyB === b) || (asp.bodyA === b && asp.bodyB === a))
     );
 
+  // 1. T-Squares (Opposition + two Squares to Apex)
   const oppositions = aspects.filter(
     (a) => a.aspect === 'Opposition' && a.bodyA !== 'North Node' && a.bodyB !== 'North Node'
   );
+  const tSquareKeys = new Set<string>();
+  for (const opp of oppositions) {
+    for (const candidate of coreBodies) {
+      if (candidate.name === opp.bodyA || candidate.name === opp.bodyB) continue;
+      const sq1 = hasAspect(opp.bodyA, candidate.name, 'Square');
+      const sq2 = hasAspect(opp.bodyB, candidate.name, 'Square');
+      if (sq1 && sq2) {
+        const trio = [opp.bodyA, opp.bodyB, candidate.name];
+        const key = `${[...trio].sort().join('+')}:${candidate.name}`;
+        if (tSquareKeys.has(key)) continue;
+        tSquareKeys.add(key);
+        const maxOrb = Math.max(opp.orb, sq1.orb, sq2.orb);
+        configs.push({
+          type: 'T-Square',
+          planets: trio,
+          apex: candidate.name,
+          elementOrModality: candidate.modality,
+          houseOrSign: `${candidate.sign} H${candidate.house}`,
+          maxOrb: Number(maxOrb.toFixed(2)),
+          summary: `${candidate.modality} T-Square: ${opp.bodyA} opposite ${opp.bodyB} squaring apex ${candidate.name} (${candidate.sign} H${candidate.house}, max orb ${maxOrb.toFixed(1)}°).`,
+        });
+      }
+    }
+  }
 
-  // 1. Grand Crosses first (2 Oppositions mutually Square) so overlapping 3-planet T-Squares are not emitted redundantly
+  // 2. Grand Crosses (2 Oppositions mutually Square)
   const gcKeys = new Set<string>();
-  const grandCrossSets: Array<Set<string>> = [];
   for (let i = 0; i < oppositions.length; i++) {
     for (let j = i + 1; j < oppositions.length; j++) {
       const o1 = oppositions[i];
@@ -2630,7 +2609,6 @@ function detectWesternAspectConfigurations(
         const key = [...four].sort().join('+');
         if (gcKeys.has(key)) continue;
         gcKeys.add(key);
-        grandCrossSets.push(new Set(four));
         const mod = planetByName.get(o1.bodyA)?.modality || 'Cardinal';
         const maxOrb = Math.max(o1.orb, o2.orb, s1.orb, s2.orb, s3.orb, s4.orb);
         configs.push({
@@ -2639,39 +2617,6 @@ function detectWesternAspectConfigurations(
           elementOrModality: mod,
           maxOrb: Number(maxOrb.toFixed(2)),
           summary: `${mod} Grand Cross linking ${four.join(', ')} (max orb ${maxOrb.toFixed(1)}°).`,
-        });
-      }
-    }
-  }
-
-  // 2. T-Squares (Opposition + two Squares to Apex, skipping trios already contained in a Grand Cross)
-  const tSquareKeys = new Set<string>();
-  for (const opp of oppositions) {
-    for (const candidate of coreBodies) {
-      if (candidate.name === opp.bodyA || candidate.name === opp.bodyB) continue;
-      const sq1 = hasAspect(opp.bodyA, candidate.name, 'Square');
-      const sq2 = hasAspect(opp.bodyB, candidate.name, 'Square');
-      if (sq1 && sq2) {
-        if (
-          grandCrossSets.some(
-            (gc) => gc.has(opp.bodyA) && gc.has(opp.bodyB) && gc.has(candidate.name)
-          )
-        ) {
-          continue;
-        }
-        const trio = [opp.bodyA, opp.bodyB, candidate.name];
-        const key = `${[...trio].sort().join('+')}:${candidate.name}`;
-        if (tSquareKeys.has(key)) continue;
-        tSquareKeys.add(key);
-        const maxOrb = Math.max(opp.orb, sq1.orb, sq2.orb);
-        configs.push({
-          type: 'T-Square',
-          planets: trio,
-          apex: candidate.name,
-          elementOrModality: candidate.modality,
-          houseOrSign: `${candidate.sign} H${candidate.house}`,
-          maxOrb: Number(maxOrb.toFixed(2)),
-          summary: `${candidate.modality} T-Square: ${opp.bodyA} opposite ${opp.bodyB} squaring apex ${candidate.name} (${candidate.sign} H${candidate.house}, max orb ${maxOrb.toFixed(1)}°).`,
         });
       }
     }
@@ -3007,13 +2952,6 @@ export function computeWesternChart(params: {
     modern: buildWesternDispositorSystem(planets, WESTERN_MODERN_RULERS),
   };
   const configurations = detectWesternAspectConfigurations(planets, aspects);
-  const hellenistic = computeHellenisticData({
-    planets,
-    ascLon,
-    ascSignIdx,
-    isDiurnal,
-    birthDateISO: params.birthDateISO,
-  });
 
   return {
     system: 'Tropical (Placidus)',
@@ -3037,188 +2975,6 @@ export function computeWesternChart(params: {
     mutualReceptions,
     dispositorTree,
     configurations,
-    hellenistic,
-  };
-}
-
-// Classical Egyptian Terms / Bounds (sign index 0..11 -> [upperDegExclusive, ruler][])
-const EGYPTIAN_BOUNDS: ReadonlyArray<ReadonlyArray<readonly [number, string]>> = [
-  [[6, 'Jupiter'], [12, 'Venus'], [20, 'Mercury'], [25, 'Mars'], [30, 'Saturn']], // Aries
-  [[8, 'Venus'], [14, 'Mercury'], [22, 'Jupiter'], [27, 'Saturn'], [30, 'Mars']], // Taurus
-  [[6, 'Mercury'], [12, 'Jupiter'], [17, 'Venus'], [24, 'Mars'], [30, 'Saturn']], // Gemini
-  [[7, 'Mars'], [13, 'Venus'], [19, 'Mercury'], [26, 'Jupiter'], [30, 'Saturn']], // Cancer
-  [[6, 'Jupiter'], [11, 'Venus'], [18, 'Saturn'], [24, 'Mercury'], [30, 'Mars']], // Leo
-  [[7, 'Mercury'], [17, 'Venus'], [21, 'Jupiter'], [28, 'Mars'], [30, 'Saturn']], // Virgo
-  [[6, 'Saturn'], [14, 'Mercury'], [21, 'Jupiter'], [28, 'Venus'], [30, 'Mars']], // Libra
-  [[7, 'Mars'], [11, 'Venus'], [19, 'Mercury'], [24, 'Jupiter'], [30, 'Saturn']], // Scorpio
-  [[12, 'Jupiter'], [17, 'Venus'], [21, 'Mercury'], [26, 'Saturn'], [30, 'Mars']], // Sagittarius
-  [[7, 'Mercury'], [14, 'Jupiter'], [22, 'Venus'], [26, 'Saturn'], [30, 'Mars']], // Capricorn
-  [[7, 'Mercury'], [13, 'Venus'], [20, 'Jupiter'], [25, 'Mars'], [30, 'Saturn']], // Aquarius
-  [[12, 'Venus'], [16, 'Jupiter'], [19, 'Mercury'], [28, 'Mars'], [30, 'Saturn']], // Pisces
-];
-
-const CHALDEAN_DECAN_ORDER = ['Mars', 'Sun', 'Venus', 'Mercury', 'Moon', 'Saturn', 'Jupiter'] as const;
-const ZR_SIGN_YEARS = [15, 8, 20, 25, 19, 20, 8, 15, 12, 27, 30, 12] as const;
-
-function getEgyptianBoundLord(signIndex: number, degreeInSign: number): string {
-  const table = EGYPTIAN_BOUNDS[((signIndex % 12) + 12) % 12];
-  const deg = ((degreeInSign % 30) + 30) % 30;
-  for (const [limit, ruler] of table) {
-    if (deg < limit) return ruler;
-  }
-  return table[table.length - 1][1];
-}
-
-function getChaldeanDecanLord(signIndex: number, degreeInSign: number): string {
-  const faceIdx = Math.min(2, Math.max(0, Math.floor((((degreeInSign % 30) + 30) % 30) / 10)));
-  const totalDecan = (((signIndex % 12) + 12) % 12) * 3 + faceIdx;
-  return CHALDEAN_DECAN_ORDER[totalDecan % 7];
-}
-
-function computeZodiacalReleasingTrack(
-  fromLot: 'Fortune' | 'Spirit',
-  lotSignIdx: number,
-  birthDateISO: string
-): WesternZodiacalReleasingTrack {
-  const dayMs = 86400 * 1000;
-  const birthMs = Date.parse(`${birthDateISO || '2000-01-01'}T12:00:00Z`);
-  const nowMs = Date.now();
-  const daysPerValensYear = 360;
-
-  let curStartMs = Number.isFinite(birthMs) ? birthMs : nowMs;
-  let l1SignIdx = lotSignIdx;
-  let l1StartMs = curStartMs;
-  let l1EndMs = curStartMs + ZR_SIGN_YEARS[lotSignIdx] * daysPerValensYear * dayMs;
-
-  // Walk L1 periods forward up to 120 years
-  for (let step = 0; step < 30; step++) {
-    const idx = (lotSignIdx + step) % 12;
-    const durMs = ZR_SIGN_YEARS[idx] * daysPerValensYear * dayMs;
-    const nextEndMs = curStartMs + durMs;
-    if (nowMs <= nextEndMs || step === 29) {
-      l1SignIdx = idx;
-      l1StartMs = curStartMs;
-      l1EndMs = nextEndMs;
-      break;
-    }
-    curStartMs = nextEndMs;
-  }
-
-  // Walk L2 sub-periods (1 Valens month = 30 days * signYears)
-  let l2CurStartMs = l1StartMs;
-  let l2SignIdx = l1SignIdx;
-  let l2StartMs = l1StartMs;
-  let l2EndMs = l1EndMs;
-  let loosingOfBond = false;
-
-  for (let step = 0; step < 24; step++) {
-    const idx = (l1SignIdx + step) % 12;
-    const durMs = ZR_SIGN_YEARS[idx] * 30 * dayMs;
-    const nextEndMs = Math.min(l1EndMs, l2CurStartMs + durMs);
-    if (nowMs <= nextEndMs || step === 23) {
-      l2SignIdx = idx;
-      l2StartMs = l2CurStartMs;
-      l2EndMs = nextEndMs;
-      if (step >= 12 || (idx - l1SignIdx + 12) % 12 === 6) {
-        loosingOfBond = true;
-      }
-      break;
-    }
-    l2CurStartMs = nextEndMs;
-    if (l2CurStartMs >= l1EndMs) break;
-  }
-
-  return {
-    fromLot,
-    lotSign: SIGNS[lotSignIdx],
-    l1Sign: SIGNS[l1SignIdx],
-    l1Lord: WESTERN_TRADITIONAL_RULERS[l1SignIdx],
-    l1StartIso: new Date(l1StartMs).toISOString().slice(0, 10),
-    l1EndIso: new Date(l1EndMs).toISOString().slice(0, 10),
-    l2Sign: SIGNS[l2SignIdx],
-    l2Lord: WESTERN_TRADITIONAL_RULERS[l2SignIdx],
-    l2StartIso: new Date(l2StartMs).toISOString().slice(0, 10),
-    l2EndIso: new Date(l2EndMs).toISOString().slice(0, 10),
-    loosingOfBond,
-  };
-}
-
-function computeHellenisticData(params: {
-  planets: WesternPlanetPosition[];
-  ascLon: number;
-  ascSignIdx: number;
-  isDiurnal: boolean;
-  birthDateISO: string;
-}): WesternHellenisticData {
-  const byName = new Map(params.planets.map((p) => [p.name, p]));
-  const sunLon = byName.get('Sun')?.longitude ?? 0;
-  const moonLon = byName.get('Moon')?.longitude ?? 0;
-  const venusLon = byName.get('Venus')?.longitude ?? 0;
-  const mercuryLon = byName.get('Mercury')?.longitude ?? 0;
-
-  const fortuneLon = normalizeDeg(
-    params.isDiurnal ? params.ascLon + moonLon - sunLon : params.ascLon + sunLon - moonLon
-  );
-  const spiritLon = normalizeDeg(
-    params.isDiurnal ? params.ascLon + sunLon - moonLon : params.ascLon + moonLon - sunLon
-  );
-  const erosLon = normalizeDeg(
-    params.isDiurnal ? params.ascLon + venusLon - spiritLon : params.ascLon + spiritLon - venusLon
-  );
-  const necessityLon = normalizeDeg(
-    params.isDiurnal ? params.ascLon + fortuneLon - mercuryLon : params.ascLon + mercuryLon - fortuneLon
-  );
-
-  const buildLot = (
-    name: WesternHellenisticLot['name'],
-    lon: number
-  ): WesternHellenisticLot => {
-    const signIndex = Math.floor(lon / 30) % 12;
-    const deg = lon % 30;
-    return {
-      name,
-      longitude: Number(lon.toFixed(4)),
-      signIndex,
-      sign: SIGNS[signIndex],
-      degreeInSign: Number(deg.toFixed(4)),
-      dms: formatDMS(deg),
-      wholeSignHouse: ((signIndex - params.ascSignIdx + 12) % 12) + 1,
-      lord: WESTERN_TRADITIONAL_RULERS[signIndex],
-      boundLord: getEgyptianBoundLord(signIndex, deg),
-    };
-  };
-
-  const fortuneLot = buildLot('Lot of Fortune', fortuneLon);
-  const spiritLot = buildLot('Lot of Spirit', spiritLon);
-  const lots: WesternHellenisticLot[] = [
-    fortuneLot,
-    spiritLot,
-    buildLot('Lot of Eros', erosLon),
-    buildLot('Lot of Necessity', necessityLon),
-  ];
-
-  const classicalBodyOrder = ['Ascendant', 'Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn'];
-  const bounds: WesternHellenisticBoundRow[] = [];
-  for (const bodyName of classicalBodyOrder) {
-    const b = byName.get(bodyName);
-    if (!b) continue;
-    bounds.push({
-      body: b.name,
-      sign: b.sign,
-      degree: b.dms,
-      wholeSignHouse: b.wholeSignHouse,
-      termLord: getEgyptianBoundLord(b.signIndex, b.degreeInSign),
-      decanLord: getChaldeanDecanLord(b.signIndex, b.degreeInSign),
-    });
-  }
-
-  return {
-    lots,
-    bounds,
-    zodiacalReleasing: {
-      spirit: computeZodiacalReleasingTrack('Spirit', spiritLot.signIndex, params.birthDateISO),
-      fortune: computeZodiacalReleasingTrack('Fortune', fortuneLot.signIndex, params.birthDateISO),
-    },
   };
 }
 
@@ -3451,7 +3207,6 @@ export interface SlowPlanetTransitPair {
   currentSign: string;
   currentDegreeInSign: number;
   isRetrograde: boolean;
-  currentSignEntryApproxDate?: string;
   nextSignIndex: number;
   nextSign: string;
   nextIngressApproxDate: string;
@@ -4521,30 +4276,8 @@ export function computeSlowPlanetTransitPairs(
       daysUntilIngress = foundDay;
     }
 
-    // Also locate when the planet most recently entered its current sign (stepping backward)
-    let daysSinceEntry: number | null = null;
-    for (let day = 7; day <= maxDays; day += 7) {
-      const lon = computeSiderealSlowLongitudesAtJD(baseJd - day)[pName];
-      const sIdx = Math.floor(lon / 30) % 12;
-      if (sIdx !== currentSignIndex) {
-        for (let fine = Math.max(1, day - 7); fine <= day; fine++) {
-          const fineLon = computeSiderealSlowLongitudesAtJD(baseJd - fine)[pName];
-          const fineSign = Math.floor(fineLon / 30) % 12;
-          if (fineSign !== currentSignIndex) {
-            daysSinceEntry = Math.max(1, fine - 1);
-            break;
-          }
-        }
-        break;
-      }
-    }
-
     const baseMs = Date.parse(`${transitDateISO}T12:00:00Z`) || Date.now();
     const ingressDate = new Date(baseMs + daysUntilIngress * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const entryDate =
-      daysSinceEntry !== null
-        ? new Date(baseMs - daysSinceEntry * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-        : undefined;
 
     return {
       planet: pName,
@@ -4552,7 +4285,6 @@ export function computeSlowPlanetTransitPairs(
       currentSign: SIGNS[currentSignIndex],
       currentDegreeInSign: Number(currentDegreeInSign.toFixed(2)),
       isRetrograde,
-      ...(entryDate ? { currentSignEntryApproxDate: entryDate } : {}),
       nextSignIndex,
       nextSign: SIGNS[nextSignIndex],
       nextIngressApproxDate: ingressDate,

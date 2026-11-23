@@ -21,7 +21,6 @@ import {
 } from '../services/lifeContextGuard';
 import {
   buildNatalTruthDossierLayerA,
-  buildWesternTruthDossier,
   compileNatalTruthDossier,
   CURRENT_NATAL_DOSSIER_VERSION,
 } from '../services/natalDossier';
@@ -493,14 +492,8 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   } else if (includeChart && profilePayload.chart_json) {
     try {
       const enriched = enrichCompiledChart(profilePayload.chart_json as CompiledChartData);
-      const existingDossier =
-        profilePayload.natal_truth_dossier_json &&
-        typeof profilePayload.natal_truth_dossier_json === 'object'
-          ? (profilePayload.natal_truth_dossier_json as Record<string, unknown>)
-          : null;
       const needsDossier =
-        !existingDossier ||
-        !existingDossier.western_dossier ||
+        !profilePayload.natal_truth_dossier_json ||
         Number(profilePayload.natal_dossier_version || 0) < CURRENT_NATAL_DOSSIER_VERSION;
 
       let compiledDossier: Record<string, unknown> | null = null;
@@ -509,16 +502,11 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
           enriched.chartJson,
           profilePayload.life_context_json as LifeContextData
         );
-        const westernDossier = buildWesternTruthDossier(
-          enriched.chartJson,
-          profilePayload.life_context_json as LifeContextData
-        );
         compiledDossier = {
           version: CURRENT_NATAL_DOSSIER_VERSION,
           generated_at: new Date().toISOString(),
           layer_a: layerA,
-          layer_b: existingDossier?.layer_b ?? null,
-          western_dossier: westernDossier,
+          layer_b: null,
         };
         profilePayload = {
           ...profilePayload,

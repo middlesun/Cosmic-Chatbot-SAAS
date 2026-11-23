@@ -1,9 +1,6 @@
 import crypto from 'crypto';
-import type { DrawnTarotCard, DrawnTarotSpread } from '../../lib/tarotDeck';
 import { enrichCompiledChart, formatChartForLLM, type CompiledChartData } from './chartCompiler';
 import { SIGNS } from './jyotishMath';
-
-export type { DrawnTarotCard, DrawnTarotSpread };
 
 // =============================================================================
 // 1. DETERMINISTIC TROPICAL WESTERN ASTROLOGY ENGINE
@@ -525,6 +522,17 @@ const FULL_TAROT_DECK: string[] = [
   ...SUITS.flatMap((suit) => RANKS.map((rank) => `${rank} of ${suit}`)),
 ];
 
+export interface DrawnTarotCard {
+  position: string;
+  card: string;
+  orientation: 'Upright' | 'Reversed';
+  arcana: 'Major' | 'Minor';
+}
+
+export interface DrawnTarotSpread {
+  spreadName: string;
+  cards: DrawnTarotCard[];
+}
 
 function chooseSpreadPositions(userPrompt: string): {
   spreadName: string;
@@ -555,7 +563,7 @@ function chooseSpreadPositions(userPrompt: string): {
   }
 
   return {
-    spreadName: '3-Card Guidance Spread',
+    spreadName: '3-Card Illuminated Spread',
     positions: [
       '1. Root Influence (What Led Here)',
       '2. Present Energy (What Is Active Now)',

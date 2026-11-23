@@ -10,7 +10,6 @@ import {
   Copy,
   Eye,
   EyeOff,
-  Heart,
   Lightbulb,
   Loader2,
   Plus,
@@ -23,41 +22,30 @@ import {
   VolumeX,
 } from 'lucide-react';
 import {
-  CHAT_NUMERIC_FONT_CLASSES,
   DEFAULT_COUNCIL_EXPERT_SLUG,
   normalizeCouncilSlug,
   type AskLaterItem,
   type ChatCatalog,
   type ChatMessageRecord,
-  type ChatNumericFont,
   type ChatPillar,
   type ChatProfile,
-  type ChatStyle,
   type ClarificationChip,
   type CompanionPersona,
   type ConversationRecord,
-  type MessageReaction,
   type PendingBirthProfileDraft,
-  type PublicCompanionCard,
-  type PublicGuideUiConfig,
   type SuggestionItem,
   type TimingProgressWidget,
-  type DrawnTarotSpread,
 } from './chatTypes';
 import type { ChatFontSize } from './ChatSettingsModal';
-import CompanionAvatar from './CompanionAvatar';
 import Tooltip from './Tooltip';
 import SuggestionsPanel from './SuggestionsPanel';
-import TarotCardSpread from './TarotCardSpread';
 import { ChartCreationProgress } from './BirthChartModal';
 import {
-  cleanCompanionMarkupText,
   getWhatsAppShareUrl,
   isSpeechSynthesisSupported,
   speakMessageText,
   stopSpeaking,
 } from './chatUtilities';
-import { getAmbientStartersForCompanion } from './companionStarters';
 
 export interface InlineChartCreationState {
   status: 'creating' | 'success' | 'error';
@@ -69,22 +57,6 @@ export interface InlineChartCreationState {
 interface MessageThreadProps {
   activePillar?: ChatPillar;
   activeCompanionPersona?: CompanionPersona | null;
-  activeCompanionCard?: PublicCompanionCard | null;
-  companionCatalog?: PublicCompanionCard[];
-  activeGuideUi?: PublicGuideUiConfig | null;
-  onOpenCompanionProfile?: (card?: PublicCompanionCard) => void;
-  onReactToMessage?: (
-    message: ChatMessageRecord,
-    nextReaction: MessageReaction | null
-  ) => void;
-  onSwitchToReferredCompanion?: (
-    slug: string,
-    options?: {
-      mode: 'fresh' | 'handoff';
-      handoffNote?: string;
-      fromName?: string;
-    }
-  ) => void;
   onSelectClarityPrompt?: (prompt: string) => void;
   conversation: ConversationRecord | null;
   profile: ChatProfile | null;
@@ -96,12 +68,9 @@ interface MessageThreadProps {
   streamingText: string;
   streamingStatus?: string | null;
   streamingTimingWidgets?: TimingProgressWidget[];
-  streamingTarotSpread?: DrawnTarotSpread | null;
-  freshTarotMsgIds?: Set<string>;
   isStreaming: boolean;
   catalog: ChatCatalog | null;
   fontSize?: ChatFontSize;
-  numericFont?: ChatNumericFont;
   languageSlug?: string;
   responseMode?: 'simple' | 'detailed';
   searchQuery?: string;
@@ -176,53 +145,6 @@ const stripTimingBarTokens = (text: string): string => {
   return working;
 };
 
-const splitCompanionBubbles = (raw: string): string[] => {
-  if (!raw) return [];
-  const codeBlocks: string[] = [];
-  let working = raw.replace(/```[\s\S]*?```/g, (match) => {
-    const idx = codeBlocks.length;
-    codeBlocks.push(match);
-    return `__CC_BUBBLE_CODE_${idx}__`;
-  });
-
-  working = working
-    .replace(/<<<REFERRAL:[\s\S]*?(?:>>>|$)/gi, '')
-    .replace(/<<<REFERRAL[^\n]*$/i, '')
-    .replace(/\[\[BUBB?L?E?\]?$/i, '');
-
-  const parts = working
-    .split(/\s*\[\[BUBBLE\]\]\s*/gi)
-    .map((part) => {
-      const restored =
-        codeBlocks.length > 0
-          ? part.replace(/__CC_BUBBLE_CODE_(\d+)__/g, (_, i) => codeBlocks[Number(i)] || '')
-          : part;
-      return restored.trim();
-    })
-    .filter(Boolean);
-
-  return parts;
-};
-
-const getCouncilSpeakerLabel = (expertSlug?: string | null): string => {
-  switch (normalizeCouncilSlug(expertSlug)) {
-    case 'western_astrologer':
-      return 'Western Astrologer';
-    case 'modern_astrologer':
-      return 'Modern Astrologer';
-    case 'hellenistic_astrologer':
-      return 'Hellenistic Astrologer';
-    case 'tarot_reader':
-      return 'Tarot';
-    case 'numerologist':
-      return 'Numerology';
-    case 'learn_astrology':
-      return 'Learn Astrology';
-    default:
-      return 'Vedic Astrologer';
-  }
-};
-
 const stripInlineTechBreakdown = (text: string): string => {
   const withoutBreakdown = text.replace(/<<<TECH_BREAKDOWN[\s\S]*$/i, '');
   const codeBlocks: string[] = [];
@@ -235,7 +157,6 @@ const stripInlineTechBreakdown = (text: string): string => {
   working = working
     .replace(/^[ \t]*:::[a-zA-Z0-9_-]*[ \t]*(?:\r?\n|$)/gm, '')
     .replace(/:::(?:prediction|analysis)\b[ \t]*/gi, '')
-    .replace(/^(?:prediction|ediction)\s*[:\-]?\s+/i, '')
     .replace(/[ \t]*:::[ \t]*$/gm, '')
     .replace(/\[CONFIDENCE\s*:[^\]]*\][ \t]*/gi, '')
     .replace(/^[ \t]*\[FOLLOWUP\][^\n]*(?:\r?\n|$)/gim, '')
@@ -307,8 +228,7 @@ const splitMarkdownWithTimingWidgets = (
 const TimingProgressBar: React.FC<{
   widget: TimingProgressWidget;
   inCard: boolean;
-  numericFontClass: string;
-}> = ({ widget, inCard, numericFontClass }) => {
+}> = ({ widget, inCard }) => {
   const pct = Math.max(0, Math.min(100, Math.round(widget.current.percentElapsed)));
   const daysLeft = Math.max(0, Math.round(widget.current.daysLeft));
 
@@ -347,7 +267,7 @@ const TimingProgressBar: React.FC<{
               {widget.current.label}
             </span>
           </div>
-          <span className={`${numericFontClass} text-[10px] text-[#5C5449] leading-tight mt-0.5 truncate max-w-full`}>
+          <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[10px] text-[#5C5449] leading-tight mt-0.5 truncate max-w-full">
             {widget.current.startDisplay}
           </span>
         </div>
@@ -378,7 +298,7 @@ const TimingProgressBar: React.FC<{
       </div>
 
       {/* Bottom Metadata Row */}
-      <div className={`mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 ${numericFontClass} text-[11px] text-[#5C5449]`}>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 font-['JetBrains_Mono',monospace] tabular-nums text-[11px] text-[#5C5449]">
         <span>
           {widget.current.startDisplay} · {pct}% complete
         </span>
@@ -417,18 +337,15 @@ const highlightString = (text: string, query: string): React.ReactNode => {
   );
 };
 
-const NUMERIC_FONT_CLASSES: Record<ChatNumericFont, string> = CHAT_NUMERIC_FONT_CLASSES;
-
-// Matches ISO dates (2026-11-21), planetary degrees (14°22', 14°22'10", 14.5°), and standalone numeric tokens (2028, 10th, 5/5, 82%, 14:30, 2-3) without altering month words or chart codes (D9, H7)
-const NUMERIC_TELEMETRY_TOKEN_RE =
-  /(\b\d{4}-\d{2}-\d{2}\b|(?<![A-Za-z0-9_])(?:[+-]?\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)(?:°(?:\d{1,2}'(?:\d{1,2}")?)?|%|st|nd|rd|th|\/\d+|:\d{2}(?::\d{2})?|[-–—]\d+(?:\.\d+)?(?:°|%|st|nd|rd|th)?)?(?![A-Za-z0-9_]))/g;
+// Matches planetary degrees (14°22', 14°22'10", 14.5°), SAV/BAV bindus (SAV 34, BAV 5), and dates (2026-11-21, Nov 2026, 14 Jan 2027)
+const TELEMETRY_TOKEN_RE =
+  /(\b(?:SAV|BAV)(?:\s*:?\s*\d{1,2}(?:\/\d{1,2})?)\b|\b\d{1,2}°\d{1,2}'(?:\d{1,2}")?|\b\d{1,2}(?:\.\d+)?°|\b\d{4}-\d{2}-\d{2}\b|\b(?:\d{1,2}\s+)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}\b)/g;
 
 const formatStringWithTelemetryAndHighlight = (
   text: string,
-  query: string,
-  numericFontClass: string
+  query: string
 ): React.ReactNode => {
-  const parts = text.split(NUMERIC_TELEMETRY_TOKEN_RE);
+  const parts = text.split(TELEMETRY_TOKEN_RE);
   if (parts.length <= 1) {
     return highlightString(text, query);
   }
@@ -436,7 +353,10 @@ const formatStringWithTelemetryAndHighlight = (
     if (!part) return null;
     if (idx % 2 === 1) {
       return (
-        <span key={idx} className={numericFontClass}>
+        <span
+          key={idx}
+          className="font-['JetBrains_Mono',monospace] tabular-nums text-[0.9em] font-medium text-[#3D3830]"
+        >
           {highlightString(part, query)}
         </span>
       );
@@ -447,17 +367,16 @@ const formatStringWithTelemetryAndHighlight = (
 
 const formatTelemetryAndHighlightNodes = (
   children: React.ReactNode,
-  query: string,
-  numericFontClass: string
+  query: string
 ): React.ReactNode => {
   return React.Children.map(children, (child) => {
     if (typeof child === 'string') {
-      return formatStringWithTelemetryAndHighlight(child, query, numericFontClass);
+      return formatStringWithTelemetryAndHighlight(child, query);
     }
     if (React.isValidElement<{ children?: React.ReactNode }>(child) && child.props.children) {
       return React.cloneElement(child, {
         ...child.props,
-        children: formatTelemetryAndHighlightNodes(child.props.children, query, numericFontClass),
+        children: formatTelemetryAndHighlightNodes(child.props.children, query),
       });
     }
     return child;
@@ -618,12 +537,6 @@ const CLARITY_STARTERS = [
 const MessageThread: React.FC<MessageThreadProps> = ({
   activePillar = 'council',
   activeCompanionPersona = null,
-  activeCompanionCard = null,
-  companionCatalog = [],
-  activeGuideUi = null,
-  onOpenCompanionProfile,
-  onReactToMessage,
-  onSwitchToReferredCompanion,
   onSelectClarityPrompt,
   conversation,
   profile,
@@ -635,12 +548,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   streamingText,
   streamingStatus = null,
   streamingTimingWidgets = [],
-  streamingTarotSpread = null,
-  freshTarotMsgIds,
   isStreaming,
   catalog,
   fontSize = 'base',
-  numericFont = 'dm_sans',
   languageSlug = 'English',
   responseMode = 'detailed',
   searchQuery = '',
@@ -686,7 +596,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const isWesternSystem =
     normalizedExpertSlug === 'western_astrologer' ||
     normalizedExpertSlug === 'modern_astrologer' ||
-    normalizedExpertSlug === 'hellenistic_astrologer' ||
     (astrologyMode === 'western' &&
       normalizedExpertSlug !== DEFAULT_COUNCIL_EXPERT_SLUG &&
       normalizedExpertSlug !== 'tarot_reader' &&
@@ -715,7 +624,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
   const speechSupported = useMemo(() => isSpeechSynthesisSupported(), []);
   const sizeTokens = FONT_SIZE_STYLES[fontSize] || FONT_SIZE_STYLES.base;
-  const numericFontClass = NUMERIC_FONT_CLASSES[numericFont] || NUMERIC_FONT_CLASSES.dm_sans;
 
   // Stop active voice playback when switching threads or unmounting
   useEffect(() => {
@@ -782,47 +690,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     }
   }, []);
 
-  const companionVoiceProfile =
-    activeCompanionCard?.tts_voice_profile || activeCompanionPersona?.tts_voice_profile;
-
-  const activeCompanionChatStyle: ChatStyle =
-    activeCompanionCard?.chat_style || activeCompanionPersona?.chat_style || 'chat_bubbles';
-
-  const activeThreadChatStyle: ChatStyle =
-    activePillar === 'companion'
-      ? activeCompanionChatStyle
-      : activePillar === 'council'
-      ? activeGuideUi?.chat_style || (responseMode === 'detailed' ? 'structured' : 'editorial')
-      : 'editorial';
-
-  const isBubbleThread =
-    activePillar !== 'clarity' && activeThreadChatStyle === 'chat_bubbles';
-
-  const [revealedBubbleCount, setRevealedBubbleCount] = useState(1);
-
-  useEffect(() => {
-    if (!isStreaming) {
-      setRevealedBubbleCount(1);
-      return;
-    }
-    if (!isBubbleThread) return;
-    const count = splitCompanionBubbles(streamingText).length;
-    if (count > revealedBubbleCount) {
-      const timer = window.setTimeout(() => {
-        setRevealedBubbleCount((c) => c + 1);
-      }, 780);
-      return () => window.clearTimeout(timer);
-    }
-  }, [isStreaming, isBubbleThread, streamingText, revealedBubbleCount]);
-
-  const companionCatalogBySlug = useMemo(() => {
-    const map = new Map<string, PublicCompanionCard>();
-    for (const c of companionCatalog) {
-      map.set(c.slug, c);
-    }
-    return map;
-  }, [companionCatalog]);
-
   const handleToggleListen = useCallback(
     (msg: ChatMessageRecord) => {
       if (speakingMsgId === msg.id) {
@@ -830,18 +697,10 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         setSpeakingMsgId(null);
         return;
       }
-      const cleanText = cleanCompanionMarkupText(stripTimingBarTokens(msg.content));
-      const companionGender =
-        activePillar === 'companion'
-          ? activeCompanionCard?.sex || activeCompanionPersona?.gender
-          : undefined;
       const started = speakMessageText(
-        cleanText,
+        stripTimingBarTokens(msg.content),
         msg.language_used || languageSlug,
         {
-          rate: activePillar === 'companion' ? companionVoiceProfile?.rate : undefined,
-          pitch: activePillar === 'companion' ? companionVoiceProfile?.pitch : undefined,
-          gender: companionGender,
           onEnd: () => setSpeakingMsgId((prev) => (prev === msg.id ? null : prev)),
           onError: () => setSpeakingMsgId((prev) => (prev === msg.id ? null : prev)),
         }
@@ -850,15 +709,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         setSpeakingMsgId(msg.id);
       }
     },
-    [
-      activeCompanionCard?.sex,
-      activeCompanionPersona?.gender,
-      activePillar,
-      companionVoiceProfile?.pitch,
-      companionVoiceProfile?.rate,
-      languageSlug,
-      speakingMsgId,
-    ]
+    [languageSlug, speakingMsgId]
   );
 
   const updateScrollState = useCallback(() => {
@@ -1005,22 +856,22 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     (inCard: boolean) => ({
       h1: ({ children }: { children?: React.ReactNode }) => (
         <h2 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h1} font-medium text-[#3D3830] pt-1`}>
-          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </h2>
       ),
       h2: ({ children }: { children?: React.ReactNode }) => (
         <h3 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h2} font-medium text-[#3D3830] pt-1`}>
-          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </h3>
       ),
       h3: ({ children }: { children?: React.ReactNode }) => (
         <h4 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h3} font-medium text-[#3D3830] pt-1.5`}>
-          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </h4>
       ),
       p: ({ children }: { children?: React.ReactNode }) => (
         <p className={`${sizeTokens.body} text-[#5C5449]`}>
-          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </p>
       ),
       ul: ({ children }: { children?: React.ReactNode }) => (
@@ -1035,21 +886,21 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       ),
       li: ({ children }: { children?: React.ReactNode }) => (
         <li className="leading-[1.68]">
-          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </li>
       ),
       strong: ({ children }: { children?: React.ReactNode }) => (
         <strong className="font-semibold text-[#3D3830]">
-          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </strong>
       ),
       blockquote: ({ children }: { children?: React.ReactNode }) => (
         <blockquote className={`border-l-2 border-[#B8965A]/70 pl-4 py-1 ${sizeTokens.body} text-[#5C5449] italic`}>
-          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </blockquote>
       ),
       code: ({ children }: { children?: React.ReactNode }) => (
-        <code className={`${numericFontClass} text-[0.9em] bg-[#F1ECE3] px-1.5 py-0.5 rounded text-[#3D3830]`}>
+        <code className="font-['JetBrains_Mono',monospace] tabular-nums text-[0.86em] bg-[#F1ECE3] px-1.5 py-0.5 rounded text-[#3D3830]">
           {children}
         </code>
       ),
@@ -1069,16 +920,16 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       ),
       th: ({ children }: { children?: React.ReactNode }) => (
         <th className="px-3 sm:px-3.5 py-2 text-[11px] sm:text-xs font-semibold text-[#3D3830] border-b border-[#3D3830]/12 whitespace-nowrap">
-          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </th>
       ),
       td: ({ children }: { children?: React.ReactNode }) => (
         <td className="px-3 sm:px-3.5 py-2 text-xs text-[#5C5449] border-b border-[#3D3830]/8 align-top leading-relaxed">
-          {formatTelemetryAndHighlightNodes(children, searchQuery, numericFontClass)}
+          {formatTelemetryAndHighlightNodes(children, searchQuery)}
         </td>
       ),
     }),
-    [numericFontClass, searchQuery, sizeTokens]
+    [searchQuery, sizeTokens]
   );
 
   const markdownComponents = useMemo(
@@ -1109,7 +960,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 key={`tw-${seg.widget.id}-${idx}`}
                 widget={seg.widget}
                 inCard={inCard}
-                numericFontClass={numericFontClass}
               />
             ) : (
               <ReactMarkdown
@@ -1124,7 +974,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         </div>
       );
     },
-    [numericFontClass]
+    []
   );
 
   const renderEditorialContent = useCallback(
@@ -1180,7 +1030,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               <h3
                 className={`font-['Cormorant_Garamond',serif] ${sizeTokens.h2} font-medium text-[#3D3830] pb-2 mb-2.5 border-b border-[#3D3830]/10`}
               >
-                {formatStringWithTelemetryAndHighlight(sec.title, searchQuery, numericFontClass)}
+                {formatStringWithTelemetryAndHighlight(sec.title, searchQuery)}
               </h3>
               {sec.body &&
                 renderMarkdownWithWidgets(
@@ -1198,7 +1048,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     [
       cardMarkdownComponents,
       markdownComponents,
-      numericFontClass,
       renderMarkdownWithWidgets,
       searchQuery,
       sizeTokens,
@@ -1251,10 +1100,10 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     const newChatActionButtons = (
       <div
         ref={emptyDropdownRef}
-        className="relative flex flex-wrap items-center justify-center gap-2.5 pt-1 w-full"
+        className="flex flex-wrap items-center justify-center gap-2.5 pt-1"
       >
         {/* 1. Council Guide Dropdown */}
-        <div className="sm:relative">
+        <div className="relative">
           <button
             type="button"
             onClick={() =>
@@ -1280,7 +1129,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             <div
               role="listbox"
               aria-label="Choose Council Guide"
-              className="animate-cc-dropdown-down absolute left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 mt-2 w-[min(18rem,calc(100vw-2.5rem))] sm:w-72 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden text-left z-30"
+              className="animate-cc-dropdown-down absolute left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 mt-2 w-64 sm:w-72 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden text-left z-30"
             >
               <div className="max-h-64 overflow-y-auto p-1.5 space-y-0.5">
                 {(catalog?.experts || []).map((opt) => {
@@ -1321,7 +1170,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         </div>
 
         {/* 2. Profile / Chart Scrollable Dropdown with Pinned Bottom "Add New" */}
-        <div className="sm:relative">
+        <div className="relative">
           <button
             type="button"
             onClick={() =>
@@ -1354,7 +1203,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             <div
               role="listbox"
               aria-label="Choose Birth Chart Profile"
-              className="animate-cc-dropdown-down absolute left-1/2 -translate-x-1/2 mt-2 w-[min(18rem,calc(100vw-2.5rem))] sm:w-72 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden text-left z-30"
+              className="animate-cc-dropdown-down absolute left-1/2 -translate-x-1/2 mt-2 w-64 sm:w-72 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-xl overflow-hidden text-left z-30"
             >
               <div className="max-h-56 overflow-y-auto p-1.5 space-y-0.5">
                 {profiles.length === 0 ? (
@@ -1497,61 +1346,30 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         key={conversation?.id || 'thread'}
         className="animate-cc-tab-panel flex-1 overflow-y-auto px-5 md:px-8 pt-6 pb-36 sm:pb-40"
       >
-        <div className={`mx-auto max-w-2xl ${isBubbleThread ? 'space-y-4' : 'space-y-7'}`}>
+        <div className="mx-auto max-w-2xl space-y-7">
           {/* Quiet Companion Identity Strip at top of Companion conversations */}
           {activePillar === 'companion' && activeCompanionPersona && (
-            <div className="rounded-3xl border border-[#3D3830]/10 bg-[#FDFBF7] px-4 sm:px-5 py-3.5 sm:py-4 space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => onOpenCompanionProfile?.(activeCompanionCard || undefined)}
-                  className="flex items-center gap-3 min-w-0 text-left hover:opacity-85 transition-opacity cursor-pointer"
-                >
-                  <CompanionAvatar
-                    name={activeCompanionPersona.name}
-                    avatarUrl={
-                      activeCompanionCard?.avatar_url ?? activeCompanionPersona.avatar_url
-                    }
-                    palette={
-                      activeCompanionCard?.monogram_palette ??
-                      activeCompanionPersona.monogram_palette
-                    }
-                    size="md"
-                    shape="circle"
-                  />
-                  <div className="min-w-0">
-                    <div className="flex items-baseline gap-2">
-                      <h3 className="font-['Cormorant_Garamond',serif] text-lg font-semibold text-[#3D3830] truncate">
-                        {activeCompanionPersona.name}
-                      </h3>
-                      <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
-                        {activeCompanionPersona.age}
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#5C5449] truncate">
-                      {activeCompanionCard?.primary_expertise ||
-                        activeCompanionPersona.role_label}
-                      {activeCompanionCard?.cultural_fluency
-                        ? ` · ${activeCompanionCard.cultural_fluency}`
-                        : activeCompanionPersona.background
-                        ? ` · ${activeCompanionPersona.background}`
-                        : ''}
-                    </p>
+            <div className="rounded-3xl border border-[#3D3830]/10 bg-[#FDFBF7] px-5 py-4 space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 shrink-0 rounded-full bg-[#EAE3D7] border border-[#3D3830]/10 flex items-center justify-center font-serif text-lg font-semibold text-[#3D3830]">
+                  {activeCompanionPersona.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="font-serif text-lg font-semibold text-[#3D3830] truncate">
+                      {activeCompanionPersona.name}
+                    </h3>
+                    <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
+                      {activeCompanionPersona.age}
+                    </span>
                   </div>
-                </button>
-
-                {onOpenCompanionProfile && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenCompanionProfile(activeCompanionCard || undefined)}
-                    className="shrink-0 min-h-[36px] rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-3 py-1 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                  >
-                    Profile
-                  </button>
-                )}
+                  <p className="text-xs text-[#5C5449] truncate">
+                    {activeCompanionPersona.role_label} · {activeCompanionPersona.background}
+                  </p>
+                </div>
               </div>
               <p className="text-xs text-[#5C5449] leading-relaxed">
-                {activeCompanionCard?.short_bio || activeCompanionPersona.bio}
+                {activeCompanionPersona.bio}
               </p>
             </div>
           )}
@@ -1604,9 +1422,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   {parentMsg && parentMsg.role === 'assistant' && (
                     <div className="max-w-[85%] rounded-xl border-l-2 border-[#8B7355] bg-[#F1ECE3]/70 px-3 py-1.5 text-[11px] text-[#5C5449]">
                       <span className="font-medium text-[#3D3830]">Replying to insight: </span>
-                      <span className="line-clamp-2">
-                        {cleanCompanionMarkupText(stripTimingBarTokens(parentMsg.content))}
-                      </span>
+                      <span className="line-clamp-2">{stripTimingBarTokens(parentMsg.content)}</span>
                     </div>
                   )}
 
@@ -1614,11 +1430,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     onClick={() =>
                       setActiveUserMsgId((prev) => (prev === msg.id ? null : msg.id))
                     }
-                    className={`${
-                      isBubbleThread
-                        ? 'max-w-[82%] sm:max-w-[75%] rounded-2xl rounded-br-sm bg-[#EAE3D7] border border-[#3D3830]/12 px-4 py-2.5'
-                        : 'max-w-[85%] rounded-3xl rounded-tr-md bg-[#F1ECE3] border border-[#3D3830]/10 px-5 py-3.5'
-                    } ${sizeTokens.body} text-[#3D3830] whitespace-pre-wrap cursor-pointer`}
+                    className={`max-w-[85%] rounded-3xl rounded-tr-md bg-[#F1ECE3] border border-[#3D3830]/10 px-5 py-3.5 ${sizeTokens.body} text-[#3D3830] whitespace-pre-wrap cursor-pointer`}
                   >
                     {highlightString(msg.content, searchQuery)}
                   </div>
@@ -1738,60 +1550,20 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               isLatestFollowupHolder &&
               idx === messages.length - 1;
 
-            const msgRenderStyle: ChatStyle =
-              msg.render_style ||
-              (activePillar === 'companion'
-                ? activeCompanionChatStyle
-                : activeGuideUi?.chat_style ||
-                  (responseMode === 'detailed' ? 'structured' : 'editorial'));
-
-            const isBubbleMsg =
-              activePillar !== 'clarity' && msgRenderStyle === 'chat_bubbles';
-            const cleanShareText = cleanCompanionMarkupText(
-              stripTimingBarTokens(msg.content)
-            );
-            const hasFeltReaction = msg.reaction === 'heart' || msg.reaction === 'felt';
-
             const utilityFooterContent = (
-              <div className="flex flex-wrap items-center justify-center sm:justify-end gap-0.5 text-[#8B8275]">
+              <div className="flex flex-wrap items-center justify-end gap-0.5 text-[#8B8275]">
                 {msg.excluded_from_context && (
                   <span className="mr-1.5 text-[11px] text-[#7A3E36]">
                     Excluded from context
                   </span>
                 )}
 
-                {activePillar === 'companion' && onReactToMessage && (
-                  <Tooltip
-                    content={hasFeltReaction ? 'Remove Felt reaction' : 'Felt this'}
-                    placement="top"
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onReactToMessage(msg, hasFeltReaction ? null : 'heart')
-                      }
-                      aria-label={hasFeltReaction ? 'Remove reaction' : 'React with heart'}
-                      aria-pressed={hasFeltReaction}
-                      className={`inline-flex h-7 items-center gap-1 rounded-full px-2 transition-colors cursor-pointer ${
-                        hasFeltReaction
-                          ? 'bg-[#F1E3E6] text-[#A36673]'
-                          : 'hover:bg-[#F1ECE3] hover:text-[#3D3830]'
-                      }`}
-                    >
-                      <Heart
-                        className={`h-3.5 w-3.5 ${hasFeltReaction ? 'fill-current' : ''}`}
-                      />
-                      {hasFeltReaction && (
-                        <span className="text-[10px] font-medium">Felt</span>
-                      )}
-                    </button>
-                  </Tooltip>
-                )}
-
                 <Tooltip content={isCopied ? 'Copied' : 'Copy'} placement="top">
                   <button
                     type="button"
-                    onClick={() => void handleCopyMessage(msg.id, cleanShareText)}
+                    onClick={() =>
+                      void handleCopyMessage(msg.id, stripTimingBarTokens(msg.content))
+                    }
                     aria-label={isCopied ? 'Copied' : 'Copy response'}
                     className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] transition-colors cursor-pointer ${
                       isCopied ? 'text-[#2D6A4F]' : 'hover:text-[#3D3830]'
@@ -1832,7 +1604,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 {enableWhatsappShare && (
                   <Tooltip content="Share on WhatsApp" placement="top">
                     <a
-                      href={getWhatsAppShareUrl(cleanShareText)}
+                      href={getWhatsAppShareUrl(stripTimingBarTokens(msg.content))}
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label="Share on WhatsApp"
@@ -1966,53 +1738,22 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               </div>
             );
 
-            const referralPayload =
-              activePillar === 'companion' ? msg.referral_json || null : null;
-            const referredCard = referralPayload?.slug
-              ? companionCatalogBySlug.get(referralPayload.slug) || null
-              : null;
-
             return (
               <article
                 key={msg.id}
                 data-msg-id={msg.id}
-                className={`animate-cc-message-in transition-all ${
-                  isBubbleMsg
-                    ? 'space-y-2 pb-1'
-                    : 'space-y-3 border-b border-[#3D3830]/10 pb-6'
-                } ${msg.excluded_from_context ? 'opacity-50' : ''} ${
+                className={`animate-cc-message-in space-y-3 border-b border-[#3D3830]/10 pb-6 transition-all ${
+                  msg.excluded_from_context ? 'opacity-50' : ''
+                } ${
                   isActiveMatch
                     ? 'ring-1 ring-[#B8965A]/70 bg-[#B8965A]/[0.05] rounded-2xl p-3 -mx-3'
                     : ''
                 }`}
               >
-                {activePillar === 'companion' && activeCompanionPersona && !isBubbleMsg && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onOpenCompanionProfile?.(activeCompanionCard || undefined)
-                      }
-                      className="inline-flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
-                    >
-                      <CompanionAvatar
-                        name={activeCompanionPersona.name}
-                        avatarUrl={
-                          activeCompanionCard?.avatar_url ??
-                          activeCompanionPersona.avatar_url
-                        }
-                        palette={
-                          activeCompanionCard?.monogram_palette ??
-                          activeCompanionPersona.monogram_palette
-                        }
-                        size="xs"
-                        shape="circle"
-                      />
-                      <span className="text-[11px] font-semibold text-[#5C5449]">
-                        {activeCompanionPersona.name}
-                      </span>
-                    </button>
-                  </div>
+                {activePillar === 'companion' && activeCompanionPersona && (
+                  <p className="text-[11px] font-semibold text-[#5C5449]">
+                    {activeCompanionPersona.name}
+                  </p>
                 )}
                 {activePillar === 'clarity' && (
                   <p className="text-[11px] font-medium text-[#8B8275]">Clarity</p>
@@ -2029,21 +1770,17 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                       vedicMeta!.intent === 'PEER_AUDIT');
                   return (
                     <div className="flex flex-wrap items-center gap-2">
-                      {!isBubbleMsg && (
-                        <p className="text-[11px] font-medium text-[#8B8275]">
-                          {msg.expert_used === 'western_astrologer'
-                            ? 'Western Astrologer (Western)'
-                            : msg.expert_used === 'modern_astrologer'
-                            ? 'Modern Astrologer (Western)'
-                            : msg.expert_used === 'hellenistic_astrologer'
-                            ? 'Hellenistic Astrologer (Hellenistic)'
-                            : msg.expert_used === 'tarot_reader'
-                            ? 'Tarot'
-                            : msg.expert_used === 'numerologist'
-                            ? 'Numerology'
-                            : 'Vedic Astrologer (Vedic)'}
-                        </p>
-                      )}
+                      <p className="text-[11px] font-medium text-[#8B8275]">
+                        {msg.expert_used === 'western_astrologer'
+                          ? 'Western Astrologer (Western)'
+                          : msg.expert_used === 'modern_astrologer'
+                          ? 'Modern Astrologer (Western)'
+                          : msg.expert_used === 'tarot_reader'
+                          ? 'Tarot'
+                          : msg.expert_used === 'numerologist'
+                          ? 'Numerology'
+                          : 'Vedic Astrologer (Vedic)'}
+                      </p>
                       {showBadge && vedicMeta && (
                         <Tooltip
                           content={
@@ -2083,235 +1820,23 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   );
                 })()}
 
-                {/* 5-Style Adaptive Message Body Renderer */}
                 {(() => {
                   const hasTechBreakdown = Boolean(msg.suggestions_json?.tech_breakdown);
-                  const cleanText = cleanCompanionMarkupText(msg.content);
-                  const msgTarotSpread =
-                    msg.suggestions_json?.tarot_spread &&
-                    Array.isArray(msg.suggestions_json.tarot_spread.cards) &&
-                    msg.suggestions_json.tarot_spread.cards.length > 0
-                      ? msg.suggestions_json.tarot_spread
-                      : null;
-                  const tarotStartRevealed = !freshTarotMsgIds?.has(msg.id);
-
-                  if (isBubbleMsg) {
-                    const bubbles = splitCompanionBubbles(msg.content);
-                    const bubbleList = bubbles.length > 0 ? bubbles : [cleanText || msg.content];
-                    const bubbleWidgetMap = new Map<string, TimingProgressWidget>();
-                    if (Array.isArray(msg.suggestions_json?.timing_widgets)) {
-                      for (const w of msg.suggestions_json.timing_widgets) {
-                        if (w && w.id) bubbleWidgetMap.set(w.id.toLowerCase(), w);
-                      }
-                    }
-                    const bubbleSpeakerName =
-                      activePillar === 'companion' && activeCompanionPersona
-                        ? activeCompanionPersona.name
-                        : getCouncilSpeakerLabel(msg.expert_used || expertSlug);
-
-                    return (
-                      <div className="flex items-start gap-2.5 min-w-0">
-                        {activePillar === 'companion' && activeCompanionPersona ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onOpenCompanionProfile?.(activeCompanionCard || undefined)
-                            }
-                            aria-label={`View ${activeCompanionPersona.name}'s profile`}
-                            className="mt-0.5 shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A] cursor-pointer"
-                          >
-                            <CompanionAvatar
-                              name={activeCompanionPersona.name}
-                              avatarUrl={
-                                activeCompanionCard?.avatar_url ??
-                                activeCompanionPersona.avatar_url
-                              }
-                              palette={
-                                activeCompanionCard?.monogram_palette ??
-                                activeCompanionPersona.monogram_palette
-                              }
-                              size="sm"
-                              shape="circle"
-                            />
-                          </button>
-                        ) : (
-                          <div
-                            aria-hidden="true"
-                            className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#B8965A]/30 bg-[#F1ECE3] text-[#8B7355]"
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-                          </div>
-                        )}
-                        <div className="flex flex-col items-start gap-1.5 min-w-0 flex-1">
-                          <span className="px-1 text-[11px] font-medium text-[#8B8275]">
-                            {bubbleSpeakerName}
-                          </span>
-                          {msgTarotSpread && (
-                            <div className="w-full max-w-xl">
-                              <TarotCardSpread
-                                spread={msgTarotSpread}
-                                initialRevealed={tarotStartRevealed}
-                                compact
-                              />
-                            </div>
-                          )}
-                          {bubbleList.map((bubbleText, bIdx) => (
-                            <div
-                              key={`${msg.id}-b-${bIdx}`}
-                              className="w-fit max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm border border-[#3D3830]/12 bg-[#FDFBF7] px-4 py-2.5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0"
-                            >
-                              {renderMarkdownWithWidgets(
-                                stripInlineTechBreakdown(bubbleText),
-                                cardMarkdownComponents,
-                                bubbleWidgetMap,
-                                true,
-                                `space-y-1.5 min-w-0 ${sizeTokens.body} text-[#3D3830]`
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  const spreadBanner = msgTarotSpread ? (
-                    <TarotCardSpread
-                      spread={msgTarotSpread}
-                      initialRevealed={tarotStartRevealed}
-                    />
-                  ) : null;
-
-                  if (msgRenderStyle === 'dialogue') {
-                    return (
-                      <div className="space-y-3 min-w-0">
-                        {spreadBanner}
-                        <div className="rounded-3xl border border-[#B8965A]/25 border-l-[3px] border-l-[#B8965A] bg-[#FDFBF7] px-5 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
-                          {renderEditorialContent(
-                            cleanText,
-                            false,
-                            msg.suggestions_json?.timing_widgets
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  if (msgRenderStyle === 'concise_brief') {
-                    return (
-                      <div className="space-y-3 min-w-0">
-                        {spreadBanner}
-                        <div className="rounded-2xl border border-[#3D3830]/14 bg-[#FDFBF7] px-4 py-3.5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#8B8275] mb-1.5">
-                            Quick Brief
-                          </p>
-                          {renderEditorialContent(
-                            cleanText,
-                            false,
-                            msg.suggestions_json?.timing_widgets
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  if (msgRenderStyle === 'editorial') {
-                    return (
-                      <div className="space-y-3 min-w-0">
-                        {spreadBanner}
-                        {renderEditorialContent(
-                          cleanText,
-                          false,
-                          msg.suggestions_json?.timing_widgets
-                        )}
-                      </div>
-                    );
-                  }
-
                   const useDetailedCards =
+                    activePillar === 'council' &&
                     !hasTechBreakdown &&
                     msg.output_format_used !== 'short' &&
                     msg.output_format_used !== 'concise' &&
                     msg.output_format_used !== 'conversational' &&
-                    (msgRenderStyle === 'structured' ||
-                      msg.output_format_used === 'detailed' ||
+                    (msg.output_format_used === 'detailed' ||
                       msg.output_format_used === 'bullets' ||
                       msg.output_format_used === 'marriage_master' ||
                       msg.output_format_used === 'dual_view' ||
                       responseMode === 'detailed');
-                  return (
-                    <div className="space-y-3 min-w-0">
-                      {spreadBanner}
-                      {renderEditorialContent(
-                        cleanText,
-                        useDetailedCards,
-                        msg.suggestions_json?.timing_widgets
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {/* Soft Specialist Companion Referral Handoff Card */}
-                {referralPayload?.slug && (() => {
-                  const targetName =
-                    referralPayload.name ||
-                    referredCard?.name ||
-                    referralPayload.slug;
-                  const handoffContext =
-                    referralPayload.handoff_note || referralPayload.reason;
-                  return (
-                    <div className="mt-2 rounded-2xl border border-[#B8965A]/30 bg-[#F1ECE3]/65 px-4 py-3.5 space-y-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <CompanionAvatar
-                          name={targetName}
-                          avatarUrl={referredCard?.avatar_url}
-                          palette={referredCard?.monogram_palette}
-                          size="sm"
-                          shape="circle"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-[#3D3830] truncate">
-                            {targetName}
-                            {referredCard?.primary_expertise
-                              ? ` · ${referredCard.primary_expertise}`
-                              : ''}
-                          </p>
-                          <p className="text-[11px] text-[#5C5449] leading-snug line-clamp-2">
-                            {referralPayload.reason ||
-                              referredCard?.tagline ||
-                              'Can help with a specialist look at this.'}
-                          </p>
-                        </div>
-                      </div>
-                      {onSwitchToReferredCompanion && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onSwitchToReferredCompanion(referralPayload.slug, {
-                                mode: 'handoff',
-                                handoffNote: handoffContext,
-                                fromName: activeCompanionPersona?.name,
-                              })
-                            }
-                            className="min-h-[38px] inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-3.5 py-1.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors cursor-pointer"
-                          >
-                            <span>Let {targetName} know what we talked about</span>
-                            <ArrowRight className="h-3 w-3 shrink-0" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onSwitchToReferredCompanion(referralPayload.slug, {
-                                mode: 'fresh',
-                              })
-                            }
-                            className="min-h-[38px] inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7] transition-colors cursor-pointer"
-                          >
-                            <span>Start fresh</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                  return renderEditorialContent(
+                    msg.content,
+                    useDetailedCards,
+                    msg.suggestions_json?.timing_widgets
                   );
                 })()}
 
@@ -2516,11 +2041,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     defaultExpanded={suggestionsDefaultExpanded}
                     disabled={isStreaming}
                     utilityBar={utilityFooterContent}
-                    triggerLabel={activePillar === 'companion' ? 'Continue' : 'Suggestions'}
-                    followupHeading={
-                      activePillar === 'companion' ? 'Suggested replies' : 'Followup'
-                    }
-                    actionVerb={activePillar === 'companion' ? 'Send' : 'Ask'}
                     onSubmitSuggestion={(item) => {
                       if (onSubmitSuggestion) {
                         onSubmitSuggestion(item);
@@ -2539,55 +2059,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     onLoadMoreSuggestions={onLoadMoreSuggestions}
                   />
                 ) : (
-                  <div
-                    className={
-                      isBubbleMsg
-                        ? 'pl-11 flex flex-wrap items-center justify-center sm:justify-between gap-2 pt-0.5'
-                        : 'mt-2 border-t border-[#3D3830]/[0.08] pt-2.5 flex flex-wrap items-center justify-center sm:justify-end gap-2'
-                    }
-                  >
+                  <div className="mt-2 border-t border-[#3D3830]/[0.08] pt-2.5 flex flex-wrap items-center justify-end gap-2">
                     {utilityFooterContent}
                   </div>
                 )}
               </article>
             );
           })}
-
-          {/* Companion-specific "Talk about nothing" & ambient starters before Turn 1 */}
-          {activePillar === 'companion' &&
-            activeCompanionPersona &&
-            !isStreaming &&
-            messages.length > 0 &&
-            messages.every((m) => m.role === 'assistant') && (() => {
-              const starters = getAmbientStartersForCompanion(
-                activeCompanionPersona,
-                activeCompanionCard
-              );
-              if (!starters.length) return null;
-              return (
-                <div
-                  className={`${
-                    isBubbleThread ? 'pl-11' : ''
-                  } pt-1 space-y-2 animate-cc-message-in`}
-                >
-                  <p className="text-[11px] text-[#8B8275]">
-                    Start anywhere — even about nothing at all
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {starters.map((starter) => (
-                      <button
-                        key={starter}
-                        type="button"
-                        onClick={() => onSelectFollowUp(starter)}
-                        className="min-h-[36px] rounded-full border border-[#3D3830]/14 bg-[#FDFBF7] px-3.5 py-1.5 text-xs text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] hover:border-[#3D3830]/25 active:scale-[0.99] transition-all text-left cursor-pointer"
-                      >
-                        {starter}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
 
           {/* Phase 3: Inline Chart Creation Status & Progress */}
           {activePillar === 'council' && inlineChartCreation && (
@@ -2610,171 +2088,37 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           {/* Live Streaming Response */}
           {isStreaming && (
             <article className="animate-cc-message-in space-y-3 pb-6">
-              {isBubbleThread ? (() => {
-                const liveSpeakerName =
-                  activePillar === 'companion' && activeCompanionPersona
-                    ? activeCompanionPersona.name
-                    : getCouncilSpeakerLabel(expertSlug);
-                const liveBubbles = splitCompanionBubbles(streamingText);
-                const visibleBubbles = liveBubbles.slice(0, revealedBubbleCount);
-                const liveTimingMap = new Map<string, TimingProgressWidget>();
-                if (Array.isArray(streamingTimingWidgets)) {
-                  for (const w of streamingTimingWidgets) {
-                    if (w && w.id) liveTimingMap.set(w.id.toLowerCase(), w);
-                  }
-                }
-                const showTrailingTyping =
-                  !streamingText ||
-                  liveBubbles.length > revealedBubbleCount ||
-                  /\[\[BUBBLE\]\]\s*$/i.test(streamingText);
-
-                return (
-                  <div className="flex items-start gap-2.5 min-w-0">
-                    {activePillar === 'companion' && activeCompanionPersona ? (
-                      <CompanionAvatar
-                        name={activeCompanionPersona.name}
-                        avatarUrl={
-                          activeCompanionCard?.avatar_url ??
-                          activeCompanionPersona.avatar_url
-                        }
-                        palette={
-                          activeCompanionCard?.monogram_palette ??
-                          activeCompanionPersona.monogram_palette
-                        }
-                        size="sm"
-                        shape="circle"
-                        className="mt-0.5"
-                      />
-                    ) : (
-                      <div
-                        aria-hidden="true"
-                        className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#B8965A]/30 bg-[#F1ECE3] text-[#8B7355]"
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                      </div>
-                    )}
-                    <div className="flex flex-col items-start gap-1.5 min-w-0 flex-1">
-                      <span className="px-1 text-[11px] font-medium text-[#8B8275]">
-                        {liveSpeakerName}
-                      </span>
-                      {streamingTarotSpread && streamingTarotSpread.cards?.length > 0 && (
-                        <div className="w-full max-w-xl">
-                          <TarotCardSpread
-                            spread={streamingTarotSpread}
-                            initialRevealed={false}
-                            compact
-                          />
-                        </div>
-                      )}
-                      {visibleBubbles.map((bubbleText, bIdx) => (
-                        <div
-                          key={`live-b-${bIdx}`}
-                          className="animate-cc-message-in w-fit max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-tl-sm border border-[#3D3830]/12 bg-[#FDFBF7] px-4 py-2.5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0"
-                        >
-                          {renderMarkdownWithWidgets(
-                            stripInlineTechBreakdown(bubbleText),
-                            cardMarkdownComponents,
-                            liveTimingMap,
-                            true,
-                            `space-y-1.5 min-w-0 ${sizeTokens.body} text-[#3D3830]`
-                          )}
-                        </div>
-                      ))}
-                      {showTrailingTyping && (
-                        <div
-                          className="inline-flex items-center gap-2.5 rounded-2xl rounded-tl-sm border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-2.5 shadow-[0_1px_2px_rgba(61,56,48,0.03)]"
-                          aria-label={`${liveSpeakerName} is typing`}
-                        >
-                          <span className="inline-flex items-center gap-1" aria-hidden="true">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#8B8275] animate-bounce [animation-delay:-0.25s]" />
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#8B8275] animate-bounce [animation-delay:-0.12s]" />
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#8B8275] animate-bounce" />
-                          </span>
-                          <span className="text-[11px] text-[#8B8275]">
-                            {liveSpeakerName} is typing…
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })() : (
-                <>
-                  {activePillar === 'companion' && activeCompanionPersona && (
-                    <div className="flex items-center gap-2">
-                      <CompanionAvatar
-                        name={activeCompanionPersona.name}
-                        avatarUrl={
-                          activeCompanionCard?.avatar_url ??
-                          activeCompanionPersona.avatar_url
-                        }
-                        palette={
-                          activeCompanionCard?.monogram_palette ??
-                          activeCompanionPersona.monogram_palette
-                        }
-                        size="xs"
-                        shape="circle"
-                      />
-                      <span className="text-[11px] font-semibold text-[#5C5449]">
-                        {activeCompanionPersona.name}
-                      </span>
-                    </div>
+              {activePillar === 'companion' && activeCompanionPersona && (
+                <p className="text-[11px] font-semibold text-[#5C5449]">
+                  {activeCompanionPersona.name}
+                </p>
+              )}
+              {activePillar === 'clarity' && (
+                <p className="text-[11px] font-medium text-[#8B8275]">Clarity</p>
+              )}
+              {streamingText ? (
+                renderEditorialContent(
+                  streamingText,
+                  activePillar === 'council' && responseMode === 'detailed',
+                  streamingTimingWidgets
+                )
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-[#8B8275]">
+                  {streamingStatus && (
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#B8965A] animate-pulse shrink-0" />
                   )}
-                  {activePillar === 'clarity' && (
-                    <p className="text-[11px] font-medium text-[#8B8275]">Clarity</p>
-                  )}
-                  {streamingTarotSpread && streamingTarotSpread.cards?.length > 0 && (
-                    <TarotCardSpread
-                      spread={streamingTarotSpread}
-                      initialRevealed={false}
-                    />
-                  )}
-                  {streamingText ? (
-                    activeThreadChatStyle === 'dialogue' ? (
-                      <div className="rounded-3xl border border-[#B8965A]/25 border-l-[3px] border-l-[#B8965A] bg-[#FDFBF7] px-5 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
-                        {renderEditorialContent(
-                          cleanCompanionMarkupText(streamingText),
-                          false,
-                          streamingTimingWidgets
-                        )}
-                      </div>
-                    ) : activeThreadChatStyle === 'concise_brief' ? (
-                      <div className="rounded-2xl border border-[#3D3830]/14 bg-[#FDFBF7] px-4 py-3.5 shadow-[0_1px_2px_rgba(61,56,48,0.03)] min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#8B8275] mb-1.5">
-                          Quick Brief
-                        </p>
-                        {renderEditorialContent(
-                          cleanCompanionMarkupText(streamingText),
-                          false,
-                          streamingTimingWidgets
-                        )}
-                      </div>
-                    ) : (
-                      renderEditorialContent(
-                        cleanCompanionMarkupText(streamingText),
-                        activeThreadChatStyle === 'structured',
-                        streamingTimingWidgets
-                      )
-                    )
-                  ) : (
-                    <div className="flex items-center gap-2 text-xs text-[#8B8275]">
-                      {streamingStatus && (
-                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#B8965A] animate-pulse shrink-0" />
-                      )}
-                      <span>
-                        {streamingStatus
-                          ? streamingStatus
-                          : activePillar === 'companion'
-                          ? `${activeCompanionPersona?.name || 'Companion'} is typing...`
-                          : activePillar === 'clarity'
-                          ? 'Thinking clearly...'
-                          : isWesternSystem
-                          ? 'Synthesizing Tropical chart positions, houses, aspects, and transits...'
-                          : 'Synthesizing chart positions, Dasha periods, and Gochar transits...'}
-                      </span>
-                    </div>
-                  )}
-                </>
+                  <span>
+                    {streamingStatus
+                      ? streamingStatus
+                      : activePillar === 'companion'
+                      ? `${activeCompanionPersona?.name || 'Companion'} is typing...`
+                      : activePillar === 'clarity'
+                      ? 'Thinking clearly...'
+                      : isWesternSystem
+                      ? 'Synthesizing Tropical chart positions, houses, aspects, and transits...'
+                      : 'Synthesizing chart positions, Dasha periods, and Gochar transits...'}
+                  </span>
+                </div>
               )}
             </article>
           )}

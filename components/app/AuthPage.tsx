@@ -2,10 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, KeyRound, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { getSupabaseClient, loadSupabasePublicConfig } from '../../lib/supabaseClient';
-import {
-  formatPendingBirthSummary,
-  getPendingOnboardingDraft,
-} from '../../lib/pendingOnboarding';
 import { useAuth, getPendingReferral, storePendingReferral } from './AuthContext';
 
 type AuthView = 'signin' | 'signup' | 'forgot';
@@ -214,22 +210,6 @@ const AuthPage: React.FC = () => {
               {view === 'forgot' && 'Enter your email address to receive a secure password reset link.'}
             </p>
           </div>
-
-          {(() => {
-            const pendingDraft = view !== 'forgot' ? getPendingOnboardingDraft() : null;
-            if (!pendingDraft) return null;
-            return (
-              <div className="mb-5 rounded-2xl border border-[#B8965A]/30 bg-[#FAF7F2] px-4 py-3 text-left space-y-1">
-                <p className="text-[11px] font-medium text-[#2D6A4F]">
-                  Birth details saved — ready after sign-in
-                </p>
-                <p className="text-xs text-[#3D3830] leading-relaxed">
-                  {formatPendingBirthSummary(pendingDraft)}
-                  {pendingDraft.companion_name ? ` · Opening ${pendingDraft.companion_name}` : ''}
-                </p>
-              </div>
-            );
-          })()}
 
           {view !== 'forgot' && (
             <div className="space-y-4">

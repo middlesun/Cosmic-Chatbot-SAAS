@@ -23,7 +23,6 @@ export interface AppUser {
   default_astrology_mode?: AstrologyMode | null;
   preferred_call_name?: string | null;
   chat_font_size?: 'sm' | 'base' | 'lg' | null;
-  chat_numeric_font?: 'dm_sans' | 'inter' | 'plus_jakarta' | 'roboto' | 'cormorant' | 'jetbrains_mono' | null;
   suggestions_auto_expand?: boolean | null;
   referral_code: string;
   referred_by: string | null;
@@ -296,10 +295,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useOptionalAuth = (): AuthContextValue | undefined => {
-  return useContext(AuthContext);
 };
 
 export const useAuth = (): AuthContextValue => {

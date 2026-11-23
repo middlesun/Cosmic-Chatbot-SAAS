@@ -26,7 +26,7 @@ import {
   safeExtractJson,
 } from './openrouter';
 
-export const CURRENT_NATAL_DOSSIER_VERSION = 2;
+export const CURRENT_NATAL_DOSSIER_VERSION = 1;
 
 export type KpHouseVerdict = 'supportive' | 'conditional' | 'delayed' | 'mixed' | 'obstructed';
 

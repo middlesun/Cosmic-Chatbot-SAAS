@@ -105,75 +105,21 @@ function buildFluencyBridgeDirective(
   return `Current fluency is "practitioner": write "followups" cleanly at intermediate-to-peer clarity. Write "deeper_analysis" as rigorous cross-divisional falsification probes testing KP Cuspal Sub-Lords, Shadbala/PHI, SAV bindu thresholds, and Nakshatra-lord overrides.`;
 }
 
-const TOPIC_STOPWORDS = new Set([
-  'about', 'above', 'after', 'again', 'against', 'almost', 'alone', 'along', 'already',
-  'also', 'although', 'always', 'among', 'another', 'answer', 'anything', 'around',
-  'asked', 'astrology', 'because', 'become', 'before', 'being', 'below', 'between',
-  'birth', 'chart', 'could', 'current', 'currently', 'doing', 'during', 'each',
-  'either', 'enough', 'especially', 'every', 'everyone', 'everything', 'feel', 'feeling',
-  'first', 'focus', 'from', 'further', 'general', 'getting', 'going', 'good', 'great',
-  'having', 'here', 'hers', 'herself', 'himself', 'house', 'houses', 'however', 'into',
-  'itself', 'just', 'keep', 'kind', 'know', 'last', 'later', 'least', 'less', 'life',
-  'like', 'likely', 'little', 'look', 'looking', 'made', 'make', 'making', 'many',
-  'mean', 'means', 'might', 'more', 'most', 'much', 'must', 'myself', 'native',
-  'natural', 'need', 'needs', 'never', 'next', 'none', 'nothing', 'often', 'only',
-  'other', 'others', 'over', 'part', 'period', 'person', 'phase', 'place', 'planet',
-  'planets', 'please', 'point', 'possible', 'potential', 'present', 'really', 'recent',
-  'right', 'said', 'same', 'season', 'seems', 'seen', 'several', 'should', 'shows',
-  'since', 'some', 'someone', 'something', 'somewhat', 'still', 'strong', 'such',
-  'sure', 'take', 'taking', 'tell', 'than', 'that', 'their', 'theirs', 'them', 'then',
-  'there', 'these', 'they', 'thing', 'things', 'think', 'this', 'those', 'though',
-  'through', 'time', 'timing', 'today', 'together', 'toward', 'towards', 'turn',
-  'under', 'until', 'very', 'want', 'wants', 'well', 'were', 'what', 'when', 'where',
-  'whether', 'which', 'while', 'will', 'with', 'within', 'without', 'would', 'year',
-  'years', 'your', 'yours', 'yourself',
-]);
-
-function extractTopicAnchorTokens(text: string): Set<string> {
-  const tokens = String(text || '')
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 4 && !TOPIC_STOPWORDS.has(t));
-  return new Set(tokens);
-}
-
-function scoreTopicOverlap(candidateText: string, anchorTokens: Set<string>): number {
-  if (anchorTokens.size === 0) return 0;
-  const words = String(candidateText || '')
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 4 && !TOPIC_STOPWORDS.has(t));
-  const matched = new Set<string>();
-  for (const w of words) {
-    if (anchorTokens.has(w)) {
-      matched.add(w);
-    }
-  }
-  return matched.size;
-}
-
 /**
  * Pure deterministic Stage 4 seed extractor (0ms, $0 LLM cost).
- * Filters Dossier contradictions, Bhava-Chalit shifts, Yogas/Doshas, and Next-Hops
- * strictly by relevance to the user's immediate question & just-delivered answer.
+ * Identifies unused dossier contradictions, Bhava-Chalit shifts / Western aspect patterns,
+ * Playbook Next-Hops, Cancellation/Low-Convergence Deep Audit escalation, and the +1 Fluency Ladder.
  */
 export function buildStage4StructuredSeeds(params: {
   stage2Pkg: Stage2ContextPackage;
   dossier?: NatalTruthDossierV1 | null;
   routerResult?: Stage1RouterResult | null;
   vedicMeta: VedicSynthesisMeta;
-  userQuestion?: string;
   assistantAnswer: string;
   userFluency?: UserFluencyTier;
 }): Stage4StructuredSeeds {
   const isWestern = params.stage2Pkg.tradition === 'western';
-  const questionLower = String(params.userQuestion || '').toLowerCase();
   const answerLower = String(params.assistantAnswer || '').toLowerCase();
-  const turnAnchorTokens = extractTopicAnchorTokens(
-    `${params.userQuestion || ''}\n${params.assistantAnswer || ''}`
-  );
   const currentFluency =
     params.userFluency || params.vedicMeta.effectiveFluency || 'beginner';
   const deeperTargetFluency = nextFluencyRung(currentFluency);
@@ -325,61 +271,31 @@ export function buildStage4StructuredSeeds(params: {
     }
   }
 
-  // Deduplicate and strictly filter contradictions/features to those relevant to the current Q&A topic
+  // Deduplicate by title and cap to 8 highest-signal seeds
   const seenTitles = new Set<string>();
-  const scoredContradictions: Array<{ seed: Stage4ContradictionSeed; score: number }> = [];
+  const dedupedContradictions: Stage4ContradictionSeed[] = [];
   for (const seed of unusedContradictions) {
     const key = seed.title.toLowerCase();
     if (seenTitles.has(key)) continue;
     seenTitles.add(key);
-    const overlap = scoreTopicOverlap(`${seed.title} ${seed.mechanism}`, turnAnchorTokens);
-    // Keep only features that share topic/planet/house overlap with the active exchange (or high-signal cancellations)
-    if (overlap > 0 || (seed.kind === 'cancellation' && turnAnchorTokens.size === 0)) {
-      scoredContradictions.push({
-        seed,
-        score: overlap + (seed.kind === 'cancellation' || seed.kind === 'contradiction' ? 1 : 0),
-      });
-    }
+    dedupedContradictions.push(seed);
+    if (dedupedContradictions.length >= 8) break;
   }
-  scoredContradictions.sort((a, b) => b.score - a.score);
-  const dedupedContradictions = scoredContradictions
-    .slice(0, 6)
-    .map((entry) => entry.seed);
 
-  // Input 2: Playbook Next-Hop Graph — filter strictly to hops matching the active question/domain (prevent domain drift like marriage/contracts when asking about income/Dasha)
+  // Input 2: Playbook Next-Hop Graph
   const nextHops: Stage4NextHopSeed[] = [];
-  const activeDomainLower = String(params.stage2Pkg.domain || '').toLowerCase();
-  const candidateHops: Array<{ hop: Stage4NextHopSeed; score: number }> = [];
   for (const hopId of playbook?.nextHops || []) {
     const hop = getPlaybookById(hopId);
     if (!hop || hop.id === params.stage2Pkg.playbookId) continue;
     const localized = isWestern
       ? localizePlaybookForWestern(hop)
       : { shortLabel: hop.shortLabel, title: hop.title };
-    const hopSeed: Stage4NextHopSeed = {
+    nextHops.push({
       playbookId: hop.id,
       shortLabel: localized.shortLabel,
       title: localized.title,
       domain: hop.domain,
-    };
-    const textOverlap = scoreTopicOverlap(
-      `${localized.shortLabel} ${localized.title}`,
-      turnAnchorTokens
-    );
-    const sameDomain = hop.domain.toLowerCase() === activeDomainLower;
-    const explicitDomainMention =
-      questionLower.includes(hop.domain.toLowerCase()) ||
-      answerLower.includes(hop.domain.toLowerCase());
-    if (textOverlap > 0 || sameDomain || explicitDomainMention) {
-      candidateHops.push({
-        hop: hopSeed,
-        score: textOverlap * 2 + (sameDomain ? 2 : 0) + (explicitDomainMention ? 1 : 0),
-      });
-    }
-  }
-  candidateHops.sort((a, b) => b.score - a.score);
-  for (const item of candidateHops.slice(0, 4)) {
-    nextHops.push(item.hop);
+    });
   }
 
   // Input 3: Cancellation & Low-Convergence Escalation
@@ -531,8 +447,7 @@ export function buildDeterministicFallbackSuggestions(
   seeds: Stage4StructuredSeeds,
   maxF: number,
   maxD: number,
-  seenKeys: Set<string>,
-  userQuestion = ''
+  seenKeys: Set<string>
 ): MessageSuggestions {
   const followups: SuggestionItem[] = [];
   for (let i = 0; i < seeds.nextHops.length && followups.length < maxF; i++) {
@@ -548,57 +463,29 @@ export function buildDeterministicFallbackSuggestions(
     });
   }
 
-  // Topic-locked fallback followups if Playbook had zero same-domain nextHops
-  const domainLabel = seeds.domain.replace(/_/g, ' ').toLowerCase();
-  const hasDashaContext = /\b(dasha|antardasha|mahadasha|period|phase)\b/i.test(userQuestion);
-  const topicFallbacks = hasDashaContext
-    ? [
-        'Which upcoming sub-period brings the clearest turning point in this exact cycle?',
-        'What practical steps make the most of this current phase without forcing outcomes?',
-        'How will the next transit shift interact with this same planetary period?',
-        'Where might subtle friction show up in this phase so I can plan around it?',
-      ]
-    : [
-        `What upcoming timing shift directly changes this ${domainLabel} outlook next?`,
-        `What practical approach supports the best outcome here right now?`,
-        `What could slow down or delay this exact ${domainLabel} trajectory?`,
-        `How does the next planetary transit interact with this specific area?`,
-      ];
-  for (let i = 0; i < topicFallbacks.length && followups.length < maxF; i++) {
-    const text = topicFallbacks[i];
-    const key = text.toLowerCase();
-    if (seenKeys.has(key)) continue;
-    seenKeys.add(key);
-    followups.push({
-      id: `fu_s4_topic_${i + 1}`,
-      text,
-      playbook_id: seeds.playbookId,
-    });
-  }
-
   const deeper: SuggestionItem[] = [];
 
   for (let i = 0; i < seeds.unusedContradictions.length && deeper.length < maxD; i++) {
     const c = seeds.unusedContradictions[i];
     const text = seeds.isWestern
       ? c.kind === 'configuration'
-        ? `Explore how ${c.title} directly shapes this exact topic`
+        ? `Explore how ${c.title} shapes this chapter in daily life`
         : c.kind === 'mutual_reception'
-        ? `Check how ${c.title} turns friction on this issue into skill`
+        ? `Check how ${c.title} turns friction into steady skill`
         : c.kind === 'tight_aspect'
-        ? `Test how your tight ${c.title} reacts to current transits on this theme`
+        ? `Test how your tight ${c.title} wiring reacts to current transits`
         : c.kind === 'cancellation'
-        ? `Examine whether ${c.title} softens or redirects this exact timing`
-        : `Resolve the chart tension around ${c.title} for this question`
+        ? `Examine whether ${c.title} softens or redirects this timing`
+        : `Resolve the chart tension around ${c.title}`
       : c.kind === 'chalit_shift'
-      ? `Check how ${c.title} modifies real-world results on this exact question`
+      ? `Check how ${c.title} changes real-world results vs. my Rashi chart`
       : c.kind === 'cancellation'
-      ? `Test whether ${c.title} softens or reverses this exact timing`
+      ? `Test whether ${c.title} softens or reverses the timing tension`
       : c.kind === 'yoga'
-      ? `Verify how ${c.title} activates in the current sub-period for this topic`
+      ? `Check when ${c.title} actually activates in my upcoming Dasha`
       : c.kind === 'dosha'
-      ? `Check if ${c.title} affects this exact area or stays neutralized`
-      : `Examine how ${c.title} influences this specific reading`;
+      ? `Verify if ${c.title} affects this area or stays neutralized`
+      : `Resolve the chart tension around ${c.title}`;
     const key = text.toLowerCase();
     if (seenKeys.has(key)) continue;
     seenKeys.add(key);
@@ -607,42 +494,8 @@ export function buildDeterministicFallbackSuggestions(
       text,
       playbook_id: seeds.playbookId,
       technical_directive: seeds.isWestern
-        ? `Audit ${c.title} (${seeds.deeperTargetFluency}) strictly for this turn's question: verify Sect polarity, Placidus cusp ruler, tight <=2° aspects, and Profection/Transit timing.`
-        : `Audit ${c.title} (${seeds.deeperTargetFluency}) strictly for this turn's question: verify KP Cuspal Sub-Lord, D9 endurance, Bhava-Chalit placement, and active MD/AD timing.`,
-    });
-  }
-
-  const deeperTopicFallbacks = seeds.isWestern
-    ? [
-        {
-          text: 'Verify the exact Placidus house ruler and Sect condition behind this answer',
-          directive: `Audit the primary Placidus cusp ruler, Diurnal/Nocturnal Sect role, and tight <=2° aspects directly governing the user's last question.`,
-        },
-        {
-          text: 'Cross-check Annual Profection and Progressed Moon timing on this same topic',
-          directive: `Test Annual Profection Lord of the Year and Secondary Progressed Moon timing strictly for the user's last question.`,
-        },
-      ]
-    : [
-        {
-          text: 'Verify the KP Sub-Lord promise and Navamsa strength behind this exact reading',
-          directive: `Check KP Cuspal Sub-Lord, D9 Navamsa dignity, and Ashtakavarga SAV bindus specifically for the house and planet in the user's last question.`,
-        },
-        {
-          text: 'Cross-check Pratyantardasha and Saturn-Jupiter Double Transit for this exact window',
-          directive: `Trace Vimshottari MD/AD/PD shifts and Saturn/Jupiter Gochar from Lagna & Moon strictly for the timing question just asked.`,
-        },
-      ];
-  for (let i = 0; i < deeperTopicFallbacks.length && deeper.length < maxD; i++) {
-    const fb = deeperTopicFallbacks[i];
-    const key = fb.text.toLowerCase();
-    if (seenKeys.has(key)) continue;
-    seenKeys.add(key);
-    deeper.push({
-      id: `da_s4_topic_${i + 1}`,
-      text: fb.text,
-      playbook_id: seeds.playbookId,
-      technical_directive: fb.directive,
+        ? `Audit ${c.title} (${seeds.deeperTargetFluency}): verify Sect polarity, Placidus cusp ruler, tight <=2° aspects, and Annual Profection/Transit timing.`
+        : `Audit ${c.title} (${seeds.deeperTargetFluency}): verify KP Cuspal Sub-Lord, D9 endurance, Bhava-Chalit placement, and active MD/AD timing.`,
     });
   }
 
@@ -654,8 +507,11 @@ export function buildDeterministicFallbackSuggestions(
 
 /**
  * Stage 4 Decoupled Chart-Aligned Suggestions Engine.
- * Strictly anchored to the user's last question & just-delivered answer,
- * filtered by topic relevance and +1 Fluency Ladder progression.
+ * Strictly seeded by:
+ * 1. Unused Dossier contradictions, Bhava-Chalit shifts, Yogas & Doshas
+ * 2. Playbook Next-Hop Graph (`canonicalPlaybooks.ts`)
+ * 3. Cancellation & Low-Convergence Escalation (`Deep Council Audit` trigger)
+ * 4. `+1` Fluency Ladder progression with hidden `technical_directive`
  */
 export async function generateAlignedStage4Suggestions(
   params: GenerateAlignedStage4Params
@@ -665,7 +521,6 @@ export async function generateAlignedStage4Suggestions(
     dossier: params.dossier,
     routerResult: params.routerResult,
     vedicMeta: params.vedicMeta,
-    userQuestion: params.userQuestion,
     assistantAnswer: params.assistantAnswer,
     userFluency: params.userFluency,
   });
@@ -719,9 +574,7 @@ export async function generateAlignedStage4Suggestions(
     deeperRules = sugCfg.deeper_analysis_rules || '';
     utilityModel = runtime.utilityModel || utilityModel;
     utilityMaxTokens = Math.max(700, runtime.tokenLimits.utility || 750);
-    if (isWestern && engineOverrides.western_stage4_aligned_suggestions_prompt?.trim()) {
-      stage4Template = engineOverrides.western_stage4_aligned_suggestions_prompt.trim();
-    } else if (!isWestern && engineOverrides.stage4_aligned_suggestions_prompt?.trim()) {
+    if (!isWestern && engineOverrides.stage4_aligned_suggestions_prompt?.trim()) {
       stage4Template = engineOverrides.stage4_aligned_suggestions_prompt.trim();
     }
   } catch {
@@ -736,13 +589,7 @@ export async function generateAlignedStage4Suggestions(
     isOpenRouterConfigured()
   );
   if (!openRouterReady) {
-    return buildDeterministicFallbackSuggestions(
-      seeds,
-      maxF,
-      maxD,
-      existingSeen,
-      params.userQuestion
-    );
+    return buildDeterministicFallbackSuggestions(seeds, maxF, maxD, existingSeen);
   }
 
   const nextHopsText =
@@ -750,7 +597,7 @@ export async function generateAlignedStage4Suggestions(
       ? seeds.nextHops
           .map((h) => `- [${h.playbookId}] ${h.shortLabel} — ${h.title}`)
           .join('\n')
-      : `- [${seeds.playbookId}] Stay strictly on the exact Dasha, planetary period, or life topic from the user's last question.`;
+      : `- [${seeds.playbookId}] Continue exploring ${seeds.domain} timing and practical next steps`;
 
   const contradictionsText =
     seeds.unusedContradictions.length > 0
@@ -758,8 +605,8 @@ export async function generateAlignedStage4Suggestions(
           .map((c) => `- (${c.kind}) ${c.title}: ${c.mechanism}`)
           .join('\n')
       : isWestern
-      ? '- Focus strictly on stress-testing the exact house ruler, tight aspects, Sect polarity, or Profection/Transit cycle directly governing this question.'
-      : '- Focus strictly on stress-testing the exact Dasha planet, relevant house KP Sub-Lord, D9 endurance, dispositor/cancellation, and SAV bindus governing this question.';
+      ? '- No unmentioned contradictions; check Annual Profection Lord of the Year, Progressed Moon sign shift, Sect polarity, and tight outer transits.'
+      : '- No unmentioned contradictions; check D9 endurance vs. current Vimshottari Antardasha & SAV volume.';
 
   const dedupBlock =
     existingSeen.size > 0
@@ -777,15 +624,15 @@ export async function generateAlignedStage4Suggestions(
     .replace(/\{\{CONTRADICTIONS_TEXT\}\}/g, contradictionsText)
     .replace(/\{\{FLUENCY_BRIDGE_DIRECTIVE\}\}/g, seeds.fluencyBridgeDirective);
 
-  const prompt = `IMMEDIATE CONVERSATION ANCHOR (PRIMARY — EVERY SUGGESTION MUST RELATE DIRECTLY TO THIS EXACT Q&A):
-Playbook: ${seeds.playbookId} | Domain: ${seeds.domain} | Convergence: ${params.vedicMeta.convergenceBandLabel}
-User's Last Question: ${params.userQuestion.slice(0, 600)}
-Just-Delivered Answer Summary: ${params.assistantAnswer.slice(0, 1500)}
-
-${stage4Core}
+  const prompt = `${stage4Core}
 ${followupsRules ? `\nADMIN FOLLOWUP STYLE:\n${followupsRules}` : ''}
 ${deeperRules ? `\nADMIN DEEPER ANALYSIS STYLE:\n${deeperRules}` : ''}
 ${dedupBlock}
+CONVERSATION CONTEXT:
+Playbook: ${seeds.playbookId} | Domain: ${seeds.domain} | Convergence: ${params.vedicMeta.convergenceBandLabel}
+User Question: ${params.userQuestion.slice(0, 450)}
+Answer Summary: ${params.assistantAnswer.slice(0, 1200)}
+
 Return STRICTLY JSON:
 {
   "followups": ${maxF > 0 ? `[{ "text": "...", "playbook_id": "OPTIONAL_ID" }] (up to ${maxF} items)` : '[]'},
@@ -798,7 +645,7 @@ Return STRICTLY JSON:
       maxTokens: Math.min(utilityMaxTokens, 680),
       jsonMode: true,
       disableReasoning: true,
-      temperature: params.existingTexts?.length ? 0.5 : 0.35,
+      temperature: params.existingTexts?.length ? 0.6 : 0.4,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -820,14 +667,13 @@ Return STRICTLY JSON:
     const deeper =
       maxD > 0 ? deduplicateList(parsedDa, existingSeen, maxD) : [];
 
-    // Backfill cleanly from topic-locked deterministic seeds if LLM returned fewer items
+    // Backfill cleanly from deterministic seeds if LLM returned fewer items
     if (followups.length === 0 || deeper.length === 0) {
       const fallback = buildDeterministicFallbackSuggestions(
         seeds,
         Math.max(0, maxF - followups.length),
         Math.max(0, maxD - deeper.length),
-        existingSeen,
-        params.userQuestion
+        existingSeen
       );
       return {
         followups: followups.length > 0 ? followups : fallback.followups,
@@ -837,13 +683,7 @@ Return STRICTLY JSON:
 
     return { followups, deeper_analysis: deeper };
   } catch {
-    return buildDeterministicFallbackSuggestions(
-      seeds,
-      maxF,
-      maxD,
-      existingSeen,
-      params.userQuestion
-    );
+    return buildDeterministicFallbackSuggestions(seeds, maxF, maxD, existingSeen);
   }
 }
 
@@ -880,27 +720,11 @@ export async function generateFastMoreStage4Suggestions(params: {
   existingTexts: string[];
   count?: number;
 }): Promise<MessageSuggestions> {
-  const isWestern =
-    params.expertSlug === 'western_astrologer' ||
-    params.expertSlug === 'modern_astrologer' ||
-    params.expertSlug === 'hellenistic_astrologer';
-  const rawPlaybook = getPlaybookById(params.playbookId);
-  const playbook = isWestern
-    ? { ...rawPlaybook, ...localizePlaybookForWestern(rawPlaybook) }
-    : rawPlaybook;
-  const fastAnchorTokens = extractTopicAnchorTokens(
-    `${params.userQuestion || ''}\n${params.assistantAnswer || ''}`
-  );
+  const playbook = getPlaybookById(params.playbookId);
   const nextHops: Stage4NextHopSeed[] = [];
   for (const hopId of playbook?.nextHops || []) {
-    const rawHop = getPlaybookById(hopId);
-    if (!rawHop || rawHop.id === playbook.id) continue;
-    const hop = isWestern
-      ? { ...rawHop, ...localizePlaybookForWestern(rawHop) }
-      : rawHop;
-    const sameDomain = hop.domain.toLowerCase() === playbook.domain.toLowerCase();
-    const overlap = scoreTopicOverlap(`${hop.shortLabel} ${hop.title}`, fastAnchorTokens);
-    if (!sameDomain && overlap === 0) continue;
+    const hop = getPlaybookById(hopId);
+    if (!hop || hop.id === playbook.id) continue;
     nextHops.push({
       playbookId: hop.id,
       shortLabel: hop.shortLabel,
@@ -909,6 +733,9 @@ export async function generateFastMoreStage4Suggestions(params: {
     });
   }
 
+  const isWestern =
+    params.expertSlug === 'western_astrologer' ||
+    params.expertSlug === 'modern_astrologer';
   const totalTarget = Math.max(2, Math.min(12, params.count || 8));
   let countF = Math.ceil(totalTarget / 2);
   let countD = Math.floor(totalTarget / 2);
@@ -948,9 +775,7 @@ export async function generateFastMoreStage4Suggestions(params: {
     followupsRules = sugCfg.followups_rules || '';
     deeperRules = sugCfg.deeper_analysis_rules || '';
     utilityModel = runtime.utilityModel || utilityModel;
-    if (isWestern && engineOverrides.western_stage4_fast_more_suggestions_prompt?.trim()) {
-      fastMoreTemplate = engineOverrides.western_stage4_fast_more_suggestions_prompt.trim();
-    } else if (!isWestern && engineOverrides.stage4_fast_more_suggestions_prompt?.trim()) {
+    if (!isWestern && engineOverrides.stage4_fast_more_suggestions_prompt?.trim()) {
       fastMoreTemplate = engineOverrides.stage4_fast_more_suggestions_prompt.trim();
     }
   } catch {
@@ -993,7 +818,7 @@ export async function generateFastMoreStage4Suggestions(params: {
           .slice(0, 6)
           .map((h) => `- [${h.playbookId}] ${h.shortLabel}`)
           .join('\n')
-      : `- [${playbook.id}] Explore ${playbook.domain} timing and practical next steps`;
+      : `- [${playbook.id}] Explore ${params.domain} timing and practical next steps`;
 
   const dedupBlock =
     existingSeen.size > 0
@@ -1009,15 +834,14 @@ export async function generateFastMoreStage4Suggestions(params: {
     .replace(/\{\{NEXT_HOPS_TEXT\}\}/g, nextHopsText)
     .replace(/\{\{FLUENCY_DIRECTIVE\}\}/g, fluencyDirective);
 
-  const prompt = `IMMEDIATE CONVERSATION ANCHOR (PRIMARY — STAY STRICTLY ON THIS EXACT QUESTION):
-CONTEXT: ${playbook.id} (${playbook.domain})
-Q: ${params.userQuestion.slice(0, 480)}
-A EXCERPT: ${params.assistantAnswer.slice(0, 1200)}
-
-${corePrompt}
+  const prompt = `${corePrompt}
 ${followupsRules ? `\nFOLLOWUP STYLE:\n${followupsRules.slice(0, 500)}` : ''}
 ${deeperRules ? `\nDEEPER STYLE:\n${deeperRules.slice(0, 500)}` : ''}
 ${dedupBlock}
+CONTEXT: ${playbook.id} (${params.domain})
+Q: ${params.userQuestion.slice(0, 320)}
+A EXCERPT: ${params.assistantAnswer.slice(0, 900)}
+
 Return STRICTLY JSON:
 {
   "followups": ${countF > 0 ? `[{ "text": "...", "playbook_id": "OPTIONAL_ID" }] (up to ${countF})` : '[]'},

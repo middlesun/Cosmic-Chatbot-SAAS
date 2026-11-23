@@ -4,7 +4,6 @@ import {
   Bookmark,
   ChevronDown,
   ChevronRight,
-  ChevronUp,
   Coins,
   Database,
   FolderOpen,
@@ -37,16 +36,13 @@ import type {
   ChatProfile,
   ConversationRecord,
   FavoriteMessageRecord,
-  PublicCompanionCard,
 } from './chatTypes';
-import CompanionAvatar from './CompanionAvatar';
 import CustomSelect from './CustomSelect';
 import Tooltip from './Tooltip';
 
 interface ChatSidebarProps {
   profiles: ChatProfile[];
   conversations: ConversationRecord[];
-  companionCatalog?: PublicCompanionCard[];
   activeConversationId: string | null;
   activeTabConversationIds: string[];
   maxActiveTabs?: number;
@@ -87,7 +83,6 @@ const getProfileDisplayLabel = (p: ChatProfile): string => {
 const ChatSidebar: React.FC<ChatSidebarProps> = ({
   profiles,
   conversations,
-  companionCatalog = [],
   activeConversationId,
   activeTabConversationIds,
   maxActiveTabs = 10,
@@ -126,39 +121,22 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   });
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
-  const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editingConvTitle, setEditingConvTitle] = useState<string>('');
   const [favFilterProfile, setFavFilterProfile] = useState<string>('');
   const [showNewMenu, setShowNewMenu] = useState(false);
-  const [mobileFooterExpanded, setMobileFooterExpanded] = useState(false);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (!showMobileDrawer) {
-      setMobileFooterExpanded(false);
-    }
-  }, [showMobileDrawer]);
-
-  const companionCatalogBySlug = useMemo(() => {
-    const map = new Map<string, PublicCompanionCard>();
-    for (const c of companionCatalog) {
-      map.set(c.slug, c);
-    }
-    return map;
-  }, [companionCatalog]);
-
-  useEffect(() => {
-    if (!editingRowId) return;
+    if (!editingConvId) return;
     const raf = window.requestAnimationFrame(() => {
       renameInputRef.current?.focus();
       renameInputRef.current?.select();
     });
     return () => window.cancelAnimationFrame(raf);
-  }, [editingRowId]);
+  }, [editingConvId]);
 
-  const startRenameConversation = (rowId: string, convId: string, currentTitle: string) => {
+  const startRenameConversation = (convId: string, currentTitle: string) => {
     setConfirmDeleteId(null);
-    setEditingRowId(rowId);
     setEditingConvId(convId);
     setEditingConvTitle(currentTitle);
   };
@@ -170,13 +148,11 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
       onRenameConversation(editingConvId, clean);
     }
     setEditingConvId(null);
-    setEditingRowId(null);
     setEditingConvTitle('');
   };
 
   const cancelRenameConversation = () => {
     setEditingConvId(null);
-    setEditingRowId(null);
     setEditingConvTitle('');
   };
 
@@ -216,20 +192,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return { general, companions, byProfile };
   }, [conversations, profiles]);
 
-  const recentConversations = useMemo(() => {
-    return conversations
-      .filter((conv) => {
-        if (conv.pillar === 'clarity') return false;
-        const isComp = conv.pillar === 'companion' || Boolean(conv.companion_persona_json);
-        if (pillarFilter === 'companion' && !isComp) return false;
-        if (pillarFilter === 'council' && isComp) return false;
-        return true;
-      })
-      .slice()
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-      .slice(0, 5);
-  }, [conversations, pillarFilter]);
-
   const handleOpenFavoritesTab = () => {
     setSidebarTab('favorites');
     onLoadFavorites(favFilterProfile || undefined);
@@ -239,48 +201,26 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return null;
   }
 
-  const renderConversationRow = (
-    conv: ConversationRecord,
-    rowKeyPrefix = '',
-    options?: { inPersonGroup?: boolean }
-  ) => {
-    const rowId = `${rowKeyPrefix}${conv.id}`;
+  const renderConversationRow = (conv: ConversationRecord) => {
     const isActive = conv.id === activeConversationId;
-    const isConfirming = confirmDeleteId === rowId;
-    const isEditing = editingRowId === rowId;
+    const isConfirming = confirmDeleteId === conv.id;
+    const isEditing = editingConvId === conv.id;
     const isPinnedTab = activeTabConversationIds.includes(conv.id);
     const isCompanion = conv.pillar === 'companion' || Boolean(conv.companion_persona_json);
-    const companionSlug = conv.companion_slug || conv.companion_persona_json?.slug || null;
-    const catalogCard = companionSlug ? companionCatalogBySlug.get(companionSlug) : undefined;
-    const companionName = catalogCard?.name || conv.companion_persona_json?.name;
-    const previewSnippet = (conv.last_message_preview || '').trim();
-    const rawTitle = (conv.title || '').trim();
-    const isGenericCompanionTitle =
-      !rawTitle ||
-      rawTitle === 'Companion Chat' ||
-      (Boolean(companionName) && rawTitle.toLowerCase() === companionName!.toLowerCase());
-    const strippedTopicTitle =
-      companionName && rawTitle.startsWith(`${companionName} ·`)
-        ? rawTitle.slice(`${companionName} ·`.length).trim()
-        : rawTitle;
-    const displayTitle = isCompanion
-      ? options?.inPersonGroup
-        ? isGenericCompanionTitle
-          ? previewSnippet
-            ? previewSnippet.slice(0, 48) + (previewSnippet.length > 48 ? '…' : '')
-            : 'Conversation'
-          : strippedTopicTitle || 'Conversation'
-        : companionName &&
-          (!rawTitle ||
-            rawTitle === 'Companion Chat' ||
-            rawTitle.startsWith(`${companionName} ·`))
+    const companionName = conv.companion_persona_json?.name;
+    const companionRole = conv.companion_persona_json?.role_label;
+    const displayTitle =
+      isCompanion &&
+      companionName &&
+      (!conv.title ||
+        conv.title === 'Companion Chat' ||
+        conv.title.startsWith(`${companionName} ·`))
         ? companionName
-        : conv.title
-      : conv.title;
+        : conv.title;
 
     return (
       <div
-        key={rowId}
+        key={conv.id}
         className={`group flex items-start justify-between gap-1.5 rounded-xl px-2.5 py-2 text-left transition-all ${
           isActive
             ? 'bg-[#FAF7F2] text-[#3D3830] shadow-xs border border-[#3D3830]/12'
@@ -320,36 +260,23 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             onDoubleClick={(e) => {
               if (!onRenameConversation) return;
               e.stopPropagation();
-              startRenameConversation(rowId, conv.id, displayTitle);
+              startRenameConversation(conv.id, displayTitle);
             }}
-            className="flex flex-1 items-center gap-2 min-w-0 text-left cursor-pointer"
+            className="flex-1 min-w-0 text-left cursor-pointer"
           >
-            {isCompanion && !options?.inPersonGroup && (
-              <CompanionAvatar
-                name={companionName || displayTitle}
-                avatarUrl={catalogCard?.avatar_url ?? conv.companion_persona_json?.avatar_url}
-                palette={
-                  catalogCard?.monogram_palette ??
-                  conv.companion_persona_json?.monogram_palette
-                }
-                size="xs"
-                shape="circle"
-              />
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                {conv.is_bookmarked && (
-                  <Bookmark className="h-3 w-3 shrink-0 fill-[#8B7355] text-[#8B7355]" />
-                )}
-                <span className="truncate text-xs font-medium text-[#3D3830]">
-                  {displayTitle}
-                </span>
-              </div>
-              {isCompanion && previewSnippet && (
-                <p className="mt-0.5 text-[11px] leading-snug text-[#5C5449]/85 line-clamp-1">
-                  {previewSnippet}
-                </p>
+            <div className="flex items-center gap-1.5">
+              {conv.is_bookmarked && (
+                <Bookmark className="h-3 w-3 shrink-0 fill-[#8B7355] text-[#8B7355]" />
               )}
+              <span className="truncate text-xs font-medium text-[#3D3830]">
+                {displayTitle}
+              </span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
+              {isCompanion && companionRole && (
+                <span className="truncate max-w-[115px] text-[#5C5449]">{companionRole} ·</span>
+              )}
+              <span className="shrink-0">{new Date(conv.updated_at).toLocaleDateString()}</span>
             </div>
           </button>
         )}
@@ -360,8 +287,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={() => {
                     onDeleteConversation(conv.id);
                     setConfirmDeleteId(null);
                   }}
@@ -371,32 +297,26 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmDeleteId(null);
-                  }}
+                  onClick={() => setConfirmDeleteId(null)}
                   className="rounded px-1 py-0.5 text-[10px] text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
                 >
                   No
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity">
+              <>
                 <Tooltip
                   content={isPinnedTab ? 'Remove from chat' : 'Add to chat'}
                   placement="top"
                 >
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleActiveTab(conv);
-                    }}
+                    onClick={() => onToggleActiveTab(conv)}
                     aria-label={isPinnedTab ? 'Remove from chat' : 'Add to chat'}
-                    className={`p-1 rounded hover:bg-[#3D3830]/10 transition-colors cursor-pointer ${
+                    className={`p-1 rounded hover:bg-[#3D3830]/10 transition-all cursor-pointer ${
                       isPinnedTab
-                        ? 'text-[#B8965A] bg-[#B8965A]/12'
-                        : 'text-[#8B8275] hover:text-[#3D3830]'
+                        ? 'opacity-100 text-[#B8965A] bg-[#B8965A]/12'
+                        : 'opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275] hover:text-[#3D3830]'
                     }`}
                   >
                     <Layers className="h-3 w-3" />
@@ -408,10 +328,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        startRenameConversation(rowId, conv.id, displayTitle);
+                        startRenameConversation(conv.id, displayTitle);
                       }}
                       aria-label={`Rename ${displayTitle}`}
-                      className="p-1 rounded hover:bg-[#3D3830]/10 text-[#8B8275] hover:text-[#3D3830] transition-colors cursor-pointer"
+                      className="p-1 rounded hover:bg-[#3D3830]/10 opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275] hover:text-[#3D3830] transition-opacity cursor-pointer"
                     >
                       <Pencil className="h-3 w-3" />
                     </button>
@@ -419,31 +339,25 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 )}
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleBookmark(conv);
-                  }}
+                  onClick={() => onToggleBookmark(conv)}
                   aria-label={conv.is_bookmarked ? 'Remove bookmark' : 'Pin to top'}
-                  className={`p-1 rounded hover:bg-[#3D3830]/10 transition-colors cursor-pointer ${
+                  className={`p-1 rounded hover:bg-[#3D3830]/10 transition-opacity cursor-pointer ${
                     conv.is_bookmarked
-                      ? 'text-[#8B7355]'
-                      : 'text-[#8B8275] hover:text-[#3D3830]'
+                      ? 'opacity-100 text-[#8B7355]'
+                      : 'opacity-55 sm:opacity-0 group-hover:opacity-100 text-[#8B8275]'
                   }`}
                 >
                   <Bookmark className={`h-3 w-3 ${conv.is_bookmarked ? 'fill-current' : ''}`} />
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmDeleteId(rowId);
-                  }}
+                  onClick={() => setConfirmDeleteId(conv.id)}
                   aria-label="Delete chat"
-                  className="p-1 rounded text-[#8B8275] hover:text-[#7A3E36] hover:bg-[#3D3830]/10 transition-colors cursor-pointer"
+                  className="p-1 rounded text-[#8B8275] hover:text-[#7A3E36] hover:bg-[#3D3830]/10 opacity-55 sm:opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
-              </div>
+              </>
             )}
           </div>
         )}
@@ -703,34 +617,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             </div>
           </div>
 
-          {/* Root Recent 5 Chats + Profile-Grouped Folders & Companions Library */}
+          {/* Profile-Grouped Folders & Companions Library */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-            {/* Last 5 Recent Chats in Root */}
-            {recentConversations.length > 0 && (
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => toggleFolder('recent')}
-                  className="flex items-center gap-1.5 w-full px-1.5 py-0.5 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
-                >
-                  {isFolderOpen('recent') ? (
-                    <ChevronDown className="h-3 w-3 shrink-0" />
-                  ) : (
-                    <ChevronRight className="h-3 w-3 shrink-0" />
-                  )}
-                  <span>Recent</span>
-                  <span className="text-[10px] font-medium font-['DM_Sans',sans-serif] tabular-nums">
-                    ({recentConversations.length})
-                  </span>
-                </button>
-                {isFolderOpen('recent') && (
-                  <div className="space-y-1">
-                    {recentConversations.map((conv) => renderConversationRow(conv, 'recent-'))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Companions Folder (shown in All & Companion filters) */}
             {(pillarFilter === 'all' || pillarFilter === 'companion') && (
               <div className="rounded-2xl bg-[#EAE3D7]/60 border border-[#3D3830]/10 p-2 space-y-1.5">
@@ -751,23 +639,21 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       ({groupedConversations.companions.length})
                     </span>
                   </button>
-                  <Tooltip content="Browse all companions" placement="top">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onStartNewCompanion();
-                        onCloseMobileDrawer();
-                      }}
-                      aria-label="Browse all companions"
-                      className="p-1 text-[#8B8275] hover:text-[#3D3830] rounded cursor-pointer"
-                    >
-                      <MessageSquarePlus className="h-3.5 w-3.5" />
-                    </button>
-                  </Tooltip>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onStartNewCompanion();
+                      onCloseMobileDrawer();
+                    }}
+                    aria-label="Find a new companion"
+                    className="p-1 text-[#8B8275] hover:text-[#3D3830] rounded cursor-pointer"
+                  >
+                    <MessageSquarePlus className="h-3.5 w-3.5" />
+                  </button>
                 </div>
 
                 {isFolderOpen('companions') && (
-                  <div className="space-y-2 pl-1">
+                  <div className="space-y-1 pl-1">
                     {groupedConversations.companions.length === 0 ? (
                       <div className="px-2.5 py-2 space-y-2">
                         <p className="text-[11px] text-[#8B8275]">
@@ -784,132 +670,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                           Find a Companion
                         </button>
                       </div>
-                    ) : (() => {
-                      const personGroups: Array<{
-                        key: string;
-                        name: string;
-                        role?: string;
-                        avatarUrl?: string | null;
-                        palette?: typeof groupedConversations.companions[0]['companion_persona_json'] extends infer P
-                          ? P extends { monogram_palette?: infer M }
-                            ? M
-                            : undefined
-                          : undefined;
-                        items: ConversationRecord[];
-                      }> = [];
-                      const groupMap = new Map<string, (typeof personGroups)[number]>();
-
-                      for (const conv of groupedConversations.companions) {
-                        const slug =
-                          conv.companion_slug ||
-                          conv.companion_persona_json?.slug ||
-                          null;
-                        const card = slug ? companionCatalogBySlug.get(slug) : undefined;
-                        const name =
-                          card?.name ||
-                          conv.companion_persona_json?.name ||
-                          conv.title ||
-                          'Companion';
-                        const key = (slug || name).toLowerCase();
-                        let group = groupMap.get(key);
-                        if (!group) {
-                          group = {
-                            key,
-                            name,
-                            role:
-                              card?.primary_expertise ||
-                              conv.companion_persona_json?.role_label,
-                            avatarUrl:
-                              card?.avatar_url ??
-                              conv.companion_persona_json?.avatar_url,
-                            palette:
-                              card?.monogram_palette ??
-                              conv.companion_persona_json?.monogram_palette,
-                            items: [],
-                          };
-                          groupMap.set(key, group);
-                          personGroups.push(group);
-                        }
-                        group.items.push(conv);
-                      }
-
-                      return personGroups.map((group, gIdx) => {
-                        const folderKey = `comp-person:${group.key}`;
-                        const containsActive = group.items.some(
-                          (c) => c.id === activeConversationId
-                        );
-                        const isOpen =
-                          expandedFolders[folderKey] !== undefined
-                            ? expandedFolders[folderKey]
-                            : containsActive || gIdx < 5;
-
-                        return (
-                          <div key={group.key} className="space-y-1">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedFolders((prev) => ({
-                                  ...prev,
-                                  [folderKey]: !isOpen,
-                                }))
-                              }
-                              className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left hover:bg-[#FAF7F2]/60 transition-colors cursor-pointer"
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <CompanionAvatar
-                                  name={group.name}
-                                  avatarUrl={group.avatarUrl}
-                                  palette={group.palette}
-                                  size="xs"
-                                  shape="circle"
-                                />
-                                <div className="min-w-0 flex items-center gap-1.5">
-                                  <span className="truncate text-[11px] font-semibold text-[#3D3830]">
-                                    {group.name}
-                                  </span>
-                                  {group.items.length > 1 ? (
-                                    <span className="text-[10px] font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] shrink-0">
-                                      ({group.items.length})
-                                    </span>
-                                  ) : group.role ? (
-                                    <span className="truncate text-[10px] text-[#8B8275]">
-                                      · {group.role}
-                                    </span>
-                                  ) : null}
-                                </div>
-                              </div>
-                              {isOpen ? (
-                                <ChevronDown className="h-3 w-3 text-[#8B8275] shrink-0" />
-                              ) : (
-                                <ChevronRight className="h-3 w-3 text-[#8B8275] shrink-0" />
-                              )}
-                            </button>
-                            {isOpen && (
-                              <div className="space-y-1 pl-2.5 ml-3 border-l border-[#3D3830]/10">
-                                {group.items.map((conv) =>
-                                  renderConversationRow(conv, 'folder-comp-', {
-                                    inPersonGroup: true,
-                                  })
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      });
-                    })()}
-
-                    {groupedConversations.companions.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onStartNewCompanion();
-                          onCloseMobileDrawer();
-                        }}
-                        className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-[#3D3830]/12 bg-[#FAF7F2]/80 px-2.5 py-1.5 text-[11px] font-medium text-[#5C5449] hover:bg-[#FDFBF7] hover:text-[#3D3830] transition-colors cursor-pointer"
-                      >
-                        <HeartHandshake className="h-3 w-3 text-[#8B7355]" />
-                        <span>Browse all companions</span>
-                      </button>
+                    ) : (
+                      groupedConversations.companions.map(renderConversationRow)
                     )}
                   </div>
                 )}
@@ -1000,7 +762,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                               No consultations yet.
                             </p>
                           ) : (
-                            items.map((conv) => renderConversationRow(conv, `folder-prof-${profile.id}-`))
+                            items.map(renderConversationRow)
                           )}
                         </div>
                       )}
@@ -1008,7 +770,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   );
                 })}
 
-                {/* Astrology lessons Folder */}
+                {/* General & Learn Astrology Folder */}
                 <div className="rounded-2xl bg-[#EAE3D7]/60 border border-[#3D3830]/10 p-2 space-y-1.5">
                   <div className="flex items-center justify-between px-1">
                     <button
@@ -1021,7 +783,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       ) : (
                         <ChevronRight className="h-3.5 w-3.5 text-[#5C5449] shrink-0" />
                       )}
-                      <span className="truncate">Astrology lessons</span>
+                      <span className="truncate">General &amp; Learn Astrology</span>
                       <span className="text-[10px] font-medium text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
                         ({groupedConversations.general.length})
                       </span>
@@ -1046,9 +808,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                           Start a general reading or Jyotish lesson.
                         </p>
                       ) : (
-                        groupedConversations.general.map((conv) =>
-                          renderConversationRow(conv, 'folder-gen-')
-                        )
+                        groupedConversations.general.map(renderConversationRow)
                       )}
                     </div>
                   )}
@@ -1073,7 +833,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               className="w-full"
               options={[
                 { value: '', label: 'All Profiles & General' },
-                { value: 'general', label: 'Astrology lessons' },
+                { value: 'general', label: 'General & Learn Astrology' },
                 ...profiles.map((p) => ({
                   value: p.id,
                   label: getProfileDisplayLabel(p),
@@ -1114,200 +874,145 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
         </div>
       )}
 
-      {/* Mobile Workspace Navigation Footer (collapsed by default; expands upward) */}
-      <div className="md:hidden border-t border-[#3D3830]/12 bg-[#EAE3D7]/65 px-3 py-2.5">
-        <div
-          className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ease-out ${
-            mobileFooterExpanded
-              ? 'grid-rows-[1fr] opacity-100 mb-2'
-              : 'grid-rows-[0fr] opacity-0 mb-0 pointer-events-none'
-          }`}
-          aria-hidden={!mobileFooterExpanded}
-        >
-          <div className="overflow-hidden min-h-0">
-            <nav className="grid grid-cols-2 gap-1 pb-1">
-              <NavLink
-                to="/app/home"
-                onClick={onCloseMobileDrawer}
-                tabIndex={mobileFooterExpanded ? 0 : -1}
-                className={mobileNavLinkClass}
+      {/* Mobile Workspace Navigation Footer (replaces outer mobile bar inside full-screen mobile Chat) */}
+      <div className="md:hidden border-t border-[#3D3830]/12 bg-[#EAE3D7]/55 px-3 py-3 space-y-2">
+        <div className="flex items-center justify-between px-2">
+          <span className="font-serif text-base font-medium text-[#3D3830]">
+            Cosmic Council
+          </span>
+          {(() => {
+            const tierBaseline =
+              appUser?.tier === 'guru' ? 8000 : appUser?.tier === 'pro' ? 2500 : 500;
+            const isLowCredits =
+              !isPreviewMode &&
+              (creditsBalance <= 0 || creditsBalance / tierBaseline < 0.1);
+            return (
+              <Tooltip
+                content={
+                  isLowCredits
+                    ? 'Under 10% credits remaining — tap to top up'
+                    : `${creditsBalance.toLocaleString()} credits remaining`
+                }
+                placement="top"
               >
-                <Home className="h-3.5 w-3.5 text-[#8B8275]" />
-                <span>Home</span>
-              </NavLink>
-              <NavLink
-                to="/app/companions"
-                onClick={onCloseMobileDrawer}
-                tabIndex={mobileFooterExpanded ? 0 : -1}
-                className={mobileNavLinkClass}
-              >
-                <HeartHandshake className="h-3.5 w-3.5 text-[#8B8275]" />
-                <span>Companions</span>
-              </NavLink>
-              <NavLink
-                to="/app/apps"
-                onClick={onCloseMobileDrawer}
-                tabIndex={mobileFooterExpanded ? 0 : -1}
-                className={mobileNavLinkClass}
-              >
-                <LayoutGrid className="h-3.5 w-3.5 text-[#8B8275]" />
-                <span>Apps</span>
-              </NavLink>
-              <NavLink
-                to="/app/profiles"
-                onClick={onCloseMobileDrawer}
-                tabIndex={mobileFooterExpanded ? 0 : -1}
-                className={mobileNavLinkClass}
-              >
-                <Users className="h-3.5 w-3.5 text-[#8B8275]" />
-                <span>Profiles</span>
-              </NavLink>
-              <NavLink
-                to="/app/reports"
-                onClick={onCloseMobileDrawer}
-                tabIndex={mobileFooterExpanded ? 0 : -1}
-                className={mobileNavLinkClass}
-              >
-                <ScrollText className="h-3.5 w-3.5 text-[#8B8275]" />
-                <span>Reports</span>
-              </NavLink>
-              <NavLink
-                to="/app/billing"
-                onClick={onCloseMobileDrawer}
-                tabIndex={mobileFooterExpanded ? 0 : -1}
-                className={mobileNavLinkClass}
-              >
-                <Coins className="h-3.5 w-3.5 text-[#8B8275]" />
-                <span>Credits</span>
-              </NavLink>
-              <button
-                type="button"
-                tabIndex={mobileFooterExpanded ? 0 : -1}
-                onClick={() => {
-                  onCloseMobileDrawer();
-                  openSupport();
-                }}
-                className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
-              >
-                <LifeBuoy className="h-3.5 w-3.5 text-[#8B8275]" />
-                <span>Support</span>
-              </button>
-              <button
-                type="button"
-                tabIndex={mobileFooterExpanded ? 0 : -1}
-                onClick={() => {
-                  onCloseMobileDrawer();
-                  openAccountSettings();
-                }}
-                className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
-              >
-                <Settings className="h-3.5 w-3.5 text-[#8B8275]" />
-                <span>Settings</span>
-              </button>
-              <button
-                type="button"
-                tabIndex={mobileFooterExpanded ? 0 : -1}
-                onClick={() => {
-                  onCloseMobileDrawer();
-                  openBackup();
-                }}
-                className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
-              >
-                <Database className="h-3.5 w-3.5 text-[#8B8275]" />
-                <span>Backup</span>
-              </button>
-              {appUser?.is_admin && !isPreviewMode && (
-                <NavLink
-                  to="/app/admin"
+                <Link
+                  to="/app/billing"
                   onClick={onCloseMobileDrawer}
-                  tabIndex={mobileFooterExpanded ? 0 : -1}
-                  className={mobileNavLinkClass}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-['DM_Sans',sans-serif] tabular-nums transition-colors ${
+                    isLowCredits
+                      ? 'bg-[#FAF0EE] border-[#7A3E36]/30 text-[#7A3E36] font-medium'
+                      : 'bg-[#FAF7F2] border-[#3D3830]/10 text-[#3D3830]'
+                  }`}
                 >
-                  <ShieldCheck className="h-3.5 w-3.5 text-[#8B7355]" />
-                  <span>Admin</span>
-                </NavLink>
-              )}
-              {onSignOut && (
-                <button
-                  type="button"
-                  tabIndex={mobileFooterExpanded ? 0 : -1}
-                  onClick={() => {
-                    onCloseMobileDrawer();
-                    onSignOut();
-                  }}
-                  className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#7A3E36] hover:bg-[#FAF7F2]/70 transition-colors"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  <span>{isPreviewMode ? 'Exit Preview' : 'Sign Out'}</span>
-                </button>
-              )}
-            </nav>
-          </div>
+                  <Coins
+                    className={`h-3 w-3 ${isLowCredits ? 'text-[#7A3E36]' : 'text-[#8B7355]'}`}
+                  />
+                  {isLowCredits && <span className="text-[10px] font-semibold">Low ·</span>}
+                  <span>{creditsBalance.toLocaleString()}</span>
+                </Link>
+              </Tooltip>
+            );
+          })()}
         </div>
 
-        <div className="flex items-center justify-between gap-2 px-1">
+        <nav className="grid grid-cols-2 gap-1">
+          <NavLink
+            to="/app/home"
+            onClick={onCloseMobileDrawer}
+            className={mobileNavLinkClass}
+          >
+            <Home className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Home</span>
+          </NavLink>
+          <NavLink
+            to="/app/apps"
+            onClick={onCloseMobileDrawer}
+            className={mobileNavLinkClass}
+          >
+            <LayoutGrid className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Apps</span>
+          </NavLink>
+          <NavLink
+            to="/app/profiles"
+            onClick={onCloseMobileDrawer}
+            className={mobileNavLinkClass}
+          >
+            <Users className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Profiles</span>
+          </NavLink>
+          <NavLink
+            to="/app/reports"
+            onClick={onCloseMobileDrawer}
+            className={mobileNavLinkClass}
+          >
+            <ScrollText className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Reports</span>
+          </NavLink>
+          <NavLink
+            to="/app/billing"
+            onClick={onCloseMobileDrawer}
+            className={mobileNavLinkClass}
+          >
+            <Coins className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Credits</span>
+          </NavLink>
           <button
             type="button"
-            onClick={() => setMobileFooterExpanded((v) => !v)}
-            aria-expanded={mobileFooterExpanded}
-            aria-label={mobileFooterExpanded ? 'Collapse workspace menu' : 'Expand workspace menu'}
-            className="flex items-center gap-2 min-w-0 text-left py-0.5 cursor-pointer"
+            onClick={() => {
+              onCloseMobileDrawer();
+              openSupport();
+            }}
+            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
           >
-            <span className="font-serif text-base font-medium text-[#3D3830] truncate">
-              Cosmic Council
-            </span>
+            <LifeBuoy className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Support</span>
           </button>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            {(() => {
-              const tierBaseline =
-                appUser?.tier === 'guru' ? 8000 : appUser?.tier === 'pro' ? 2500 : 500;
-              const isLowCredits =
-                !isPreviewMode &&
-                (creditsBalance <= 0 || creditsBalance / tierBaseline < 0.1);
-              return (
-                <Tooltip
-                  content={
-                    isLowCredits
-                      ? 'Under 10% credits remaining — tap to top up'
-                      : `${creditsBalance.toLocaleString()} credits remaining`
-                  }
-                  placement="top"
-                >
-                  <Link
-                    to="/app/billing"
-                    onClick={onCloseMobileDrawer}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-['DM_Sans',sans-serif] tabular-nums transition-colors ${
-                      isLowCredits
-                        ? 'bg-[#FAF0EE] border-[#7A3E36]/30 text-[#7A3E36] font-medium'
-                        : 'bg-[#FAF7F2] border-[#3D3830]/10 text-[#3D3830]'
-                    }`}
-                  >
-                    <Coins
-                      className={`h-3 w-3 ${isLowCredits ? 'text-[#7A3E36]' : 'text-[#8B7355]'}`}
-                    />
-                    {isLowCredits && <span className="text-[10px] font-semibold">Low ·</span>}
-                    <span>{creditsBalance.toLocaleString()}</span>
-                  </Link>
-                </Tooltip>
-              );
-            })()}
-
+          <button
+            type="button"
+            onClick={() => {
+              onCloseMobileDrawer();
+              openAccountSettings();
+            }}
+            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
+          >
+            <Settings className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Settings</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onCloseMobileDrawer();
+              openBackup();
+            }}
+            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors"
+          >
+            <Database className="h-3.5 w-3.5 text-[#8B8275]" />
+            <span>Backup</span>
+          </button>
+          {appUser?.is_admin && (
+            <NavLink
+              to="/app/admin"
+              onClick={onCloseMobileDrawer}
+              className={mobileNavLinkClass}
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-[#8B7355]" />
+              <span>Admin</span>
+            </NavLink>
+          )}
+          {onSignOut && (
             <button
               type="button"
-              onClick={() => setMobileFooterExpanded((v) => !v)}
-              aria-expanded={mobileFooterExpanded}
-              aria-label={mobileFooterExpanded ? 'Collapse workspace menu' : 'Expand workspace menu'}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[#3D3830]/12 bg-[#FAF7F2]/80 text-[#5C5449] hover:text-[#3D3830] hover:bg-[#FAF7F2] transition-colors cursor-pointer"
+              onClick={() => {
+                onCloseMobileDrawer();
+                onSignOut();
+              }}
+              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-[#7A3E36] hover:bg-[#FAF7F2]/70 transition-colors"
             >
-              <ChevronUp
-                className={`h-4 w-4 transition-transform duration-200 ${
-                  mobileFooterExpanded ? 'rotate-180' : ''
-                }`}
-              />
+              <LogOut className="h-3.5 w-3.5" />
+              <span>{isPreviewMode ? 'Exit Preview' : 'Sign Out'}</span>
             </button>
-          </div>
-        </div>
+          )}
+        </nav>
       </div>
     </aside>
   );

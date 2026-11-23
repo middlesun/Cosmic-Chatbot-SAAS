@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import {
   ChevronDown,
-  ChevronRight,
   ChevronUp,
   Compass,
   HeartHandshake,
@@ -13,13 +12,11 @@ import {
   X,
 } from 'lucide-react';
 import Tooltip from './Tooltip';
-import CompanionAvatar from './CompanionAvatar';
 import type {
   ActiveChatTab,
   ChatCatalog,
   CompanionArchetypeSlug,
   ConversationRecord,
-  PublicCompanionCard,
 } from './chatTypes';
 
 interface ComposerTabStripProps {
@@ -27,7 +24,6 @@ interface ComposerTabStripProps {
   activeTabId: string;
   maxTabs?: number;
   catalog: ChatCatalog | null;
-  companionCatalog?: PublicCompanionCard[];
   defaultAstrologyMode?: 'vedic' | 'western';
   activeTabLocked?: boolean;
   pastCompanionConversations: ConversationRecord[];
@@ -45,11 +41,6 @@ interface ComposerTabStripProps {
     targetTabId: string,
     archetype: CompanionArchetypeSlug
   ) => void;
-  onReplaceTabWithPresetCompanion?: (
-    targetTabId: string,
-    card: PublicCompanionCard
-  ) => void;
-  onOpenCompanionsDirectory?: () => void;
   onReplaceTabWithConversation: (targetTabId: string, conv: ConversationRecord) => void;
   onReplaceTabWithClarity: (targetTabId: string) => void;
 }
@@ -61,8 +52,8 @@ interface PopoverCoords {
 }
 
 const MOBILE_MAX_VISIBLE_TABS = 3;
-const TAB_LABEL_MAX_CHARS = 9;
-const FIXED_DESKTOP_TAB_WIDTH = 108;
+const TAB_LABEL_MAX_CHARS = 11;
+const FIXED_DESKTOP_TAB_WIDTH = 148;
 
 function formatFixedTabLabel(label: string): string {
   const clean = label.trim();
@@ -92,7 +83,6 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
   activeTabId,
   maxTabs = 10,
   catalog,
-  companionCatalog = [],
   defaultAstrologyMode = 'vedic',
   activeTabLocked = false,
   pastCompanionConversations,
@@ -107,8 +97,6 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
   onQuickAddTab,
   onReplaceTabWithCouncil,
   onReplaceTabWithCompanionArchetype,
-  onReplaceTabWithPresetCompanion,
-  onOpenCompanionsDirectory,
   onReplaceTabWithConversation,
   onReplaceTabWithClarity,
 }) => {
@@ -449,36 +437,6 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
     return experts;
   }, [catalog?.experts, defaultAstrologyMode]);
 
-  const companionBySlug = useMemo(() => {
-    const map = new Map<string, PublicCompanionCard>();
-    for (const card of companionCatalog) {
-      map.set(card.slug.toLowerCase(), card);
-    }
-    return map;
-  }, [companionCatalog]);
-
-  const { displayedPastCompanions, otherPresetCompanions } = useMemo(() => {
-    const pastSlice = pastCompanionConversations.slice(0, 6);
-    const seenSlugs = new Set<string>();
-    for (const conv of pastSlice) {
-      const slug = (
-        conv.companion_slug ||
-        conv.companion_persona_json?.slug ||
-        ''
-      )
-        .trim()
-        .toLowerCase();
-      if (slug) seenSlugs.add(slug);
-    }
-    const others = companionCatalog.filter(
-      (c) => !seenSlugs.has(c.slug.toLowerCase())
-    );
-    return {
-      displayedPastCompanions: pastSlice,
-      otherPresetCompanions: others,
-    };
-  }, [pastCompanionConversations, companionCatalog]);
-
   const closeCustomizeMenu = () => {
     setCustomizeTabId(null);
     setCustomizeAnchorEl(null);
@@ -571,7 +529,8 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                               ? 'Companion'
                               : conv.pillar === 'clarity'
                               ? 'Clarity'
-                              : 'Council'}
+                              : 'Council'}{' '}
+                            · {new Date(conv.updated_at).toLocaleDateString()}
                           </p>
                         </div>
                       </button>
@@ -634,46 +593,17 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
 
               {pickerTab === 'companions' && (
                 <>
-                  {onOpenCompanionsDirectory && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        closeCustomizeMenu();
-                        onOpenCompanionsDirectory();
-                      }}
-                      className="w-full flex items-center justify-between gap-2 rounded-xl border border-[#3D3830]/12 bg-[#FAF7F2] px-2.5 py-2 mb-1 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                    >
-                      <span className="inline-flex items-center gap-2 min-w-0">
-                        <HeartHandshake className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
-                        <span className="text-xs font-medium text-[#3D3830] truncate">
-                          Browse all companions
-                        </span>
-                      </span>
-                      <ChevronRight className="h-3.5 w-3.5 text-[#8B8275] shrink-0" />
-                    </button>
-                  )}
-
-                  {displayedPastCompanions.length > 0 && (
+                  {pastCompanionConversations.length > 0 && (
                     <div className="pb-1.5 mb-1.5 border-b border-[#3D3830]/10 space-y-0.5">
                       <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
                         Past companions
                       </p>
-                      {displayedPastCompanions.map((conv) => {
-                        const slug = (
-                          conv.companion_slug ||
-                          conv.companion_persona_json?.slug ||
-                          ''
-                        )
-                          .trim()
-                          .toLowerCase();
-                        const card = slug ? companionBySlug.get(slug) : undefined;
+                      {pastCompanionConversations.slice(0, 6).map((conv) => {
                         const name =
-                          card?.name ||
                           conv.companion_persona_json?.name ||
                           conv.title.split('·')[0].trim();
                         const previewSnippet =
                           conv.last_message_preview?.trim() ||
-                          card?.primary_expertise ||
                           conv.companion_persona_json?.role_label ||
                           conv.title;
                         return (
@@ -685,21 +615,8 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                               closeCustomizeMenu();
                               if (targetId) onReplaceTabWithConversation(targetId, conv);
                             }}
-                            className="w-full flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                            className="w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
                           >
-                            <CompanionAvatar
-                              name={name}
-                              avatarUrl={
-                                card?.avatar_url ??
-                                conv.companion_persona_json?.avatar_url
-                              }
-                              palette={
-                                card?.monogram_palette ??
-                                conv.companion_persona_json?.monogram_palette
-                              }
-                              size="xs"
-                              shape="circle"
-                            />
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-medium text-[#3D3830] truncate">
                                 {name}
@@ -711,46 +628,6 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                           </button>
                         );
                       })}
-                    </div>
-                  )}
-
-                  {otherPresetCompanions.length > 0 && onReplaceTabWithPresetCompanion && (
-                    <div className="pb-1.5 mb-1.5 border-b border-[#3D3830]/10 space-y-0.5">
-                      <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
-                        {displayedPastCompanions.length > 0
-                          ? 'Other companions'
-                          : 'Companions'}
-                      </p>
-                      {otherPresetCompanions.map((card) => (
-                        <button
-                          key={card.slug}
-                          type="button"
-                          onClick={() => {
-                            const targetId = customizeTabId;
-                            closeCustomizeMenu();
-                            if (targetId) {
-                              onReplaceTabWithPresetCompanion(targetId, card);
-                            }
-                          }}
-                          className="w-full flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                        >
-                          <CompanionAvatar
-                            name={card.name}
-                            avatarUrl={card.avatar_url}
-                            palette={card.monogram_palette}
-                            size="xs"
-                            shape="circle"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-medium text-[#3D3830] truncate">
-                              {card.name}
-                            </p>
-                            <p className="text-[11px] text-[#8B8275] truncate">
-                              {card.primary_expertise}
-                            </p>
-                          </div>
-                        </button>
-                      ))}
                     </div>
                   )}
 
@@ -957,7 +834,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
           const isActive = tab.tabId === activeTabId;
           const isClosable = tabs.length > 1;
           const canCustomizeTab =
-            (tab.pillar === 'council' || tab.pillar === 'companion') &&
+            tab.pillar === 'council' &&
             !tab.conversationId &&
             !(isActive && activeTabLocked);
           const isTabStreaming = isStreamingTabId === tab.tabId;
@@ -1082,7 +959,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                   }
                 }}
                 className={`group relative flex items-center gap-1 h-[31px] text-[11px] transition-colors duration-150 ${
-                  isMobile ? 'flex-1 basis-0 min-w-0' : 'w-[108px] shrink-0'
+                  isMobile ? 'flex-1 basis-0 min-w-0' : 'w-[148px] shrink-0'
                 } ${
                   isActive
                     ? `bg-[#FDFBF7] text-[#3D3830] font-semibold ${
@@ -1091,7 +968,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                     : 'bg-transparent text-[#5C5449] font-medium hover:bg-[#FDFBF7]/50 hover:text-[#3D3830]'
                 } ${isBeingDragged ? 'opacity-45' : ''} ${
                   isDropTarget ? 'ring-1 ring-inset ring-[#B8965A] bg-[#FDFBF7]/85' : ''
-                } px-2`}
+                } px-2 sm:px-2.5`}
               >
                 {isEditing ? (
                   <div className="inline-flex items-center gap-1 min-w-0 w-full">
@@ -1143,76 +1020,62 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                   </Tooltip>
                 )}
 
-                {!isEditing && (canCustomizeTab || isClosable) && (
-                  <div
-                    className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex items-center gap-0.5 rounded-full pl-1.5 pr-0.5 py-0.5 transition-opacity ${
-                      isActive
-                        ? 'bg-gradient-to-l from-[#FDFBF7] via-[#FDFBF7]/92 to-transparent'
-                        : 'bg-gradient-to-l from-[#EFE9DF] via-[#EFE9DF]/92 to-transparent'
-                    } ${
-                      canCustomizeTab || isActive
-                        ? 'opacity-100'
-                        : 'opacity-0 pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto'
+                {!isEditing && canCustomizeTab && (
+                  <button
+                    type="button"
+                    data-tab-action="true"
+                    data-tab-customize-trigger="true"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowOverflowMenu(false);
+                      if (customizeTabId === tab.tabId) {
+                        closeCustomizeMenu();
+                        return;
+                      }
+                      const tabCard = (e.currentTarget.closest('[data-tab-id]') as HTMLElement) || e.currentTarget;
+                      if (tab.tabId !== activeTabId) {
+                        onSelectTab(tab.tabId);
+                      }
+                      setPickerTab('council');
+                      setCustomizeAnchorEl(tabCard);
+                      setCustomizeTabId(tab.tabId);
+                    }}
+                    aria-expanded={customizeTabId === tab.tabId}
+                    aria-label={`Customize ${tab.label} tab`}
+                    className={`inline-flex items-center justify-center p-0.5 rounded-md transition-colors cursor-pointer shrink-0 ${
+                      customizeTabId === tab.tabId
+                        ? 'bg-[#3D3830]/12 text-[#3D3830]'
+                        : 'text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/10'
                     }`}
                   >
-                    {canCustomizeTab && (
-                      <button
-                        type="button"
-                        data-tab-action="true"
-                        data-tab-customize-trigger="true"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowOverflowMenu(false);
-                          if (customizeTabId === tab.tabId) {
-                            closeCustomizeMenu();
-                            return;
-                          }
-                          const tabCard = (e.currentTarget.closest('[data-tab-id]') as HTMLElement) || e.currentTarget;
-                          if (tab.tabId !== activeTabId) {
-                            onSelectTab(tab.tabId);
-                          }
-                          setPickerTab('council');
-                          setCustomizeAnchorEl(tabCard);
-                          setCustomizeTabId(tab.tabId);
-                        }}
-                        aria-expanded={customizeTabId === tab.tabId}
-                        aria-label={`Customize ${tab.label} tab`}
-                        className={`inline-flex items-center justify-center p-0.5 rounded-md transition-colors cursor-pointer shrink-0 ${
-                          customizeTabId === tab.tabId
-                            ? 'bg-[#3D3830]/12 text-[#3D3830]'
-                            : 'text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/10'
-                        }`}
-                      >
-                        <ChevronDown
-                          className={`h-2.5 w-2.5 transition-transform duration-150 ${
-                            customizeTabId === tab.tabId ? 'rotate-180' : ''
-                          }`}
-                        />
-                      </button>
-                    )}
+                    <ChevronDown
+                      className={`h-2.5 w-2.5 transition-transform duration-150 ${
+                        customizeTabId === tab.tabId ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                )}
 
-                    {isClosable && (
-                      <button
-                        type="button"
-                        data-tab-action="true"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (customizeTabId === tab.tabId) {
-                            closeCustomizeMenu();
-                          }
-                          onCloseTab(tab.tabId);
-                        }}
-                        aria-label={`Close ${tab.label} tab`}
-                        className={`p-0.5 rounded-full text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/10 cursor-pointer shrink-0 ${
-                          isActive
-                            ? 'inline-flex opacity-75 hover:opacity-100'
-                            : 'hidden sm:group-hover:inline-flex opacity-70 hover:opacity-100'
-                        }`}
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    )}
-                  </div>
+                {!isEditing && isClosable && (
+                  <button
+                    type="button"
+                    data-tab-action="true"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (customizeTabId === tab.tabId) {
+                        closeCustomizeMenu();
+                      }
+                      onCloseTab(tab.tabId);
+                    }}
+                    aria-label={`Close ${tab.label} tab`}
+                    className={`p-0.5 rounded-full text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/10 cursor-pointer shrink-0 ${
+                      isActive
+                        ? 'inline-flex opacity-75 hover:opacity-100'
+                        : 'hidden sm:group-hover:inline-flex opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
                 )}
               </div>
 

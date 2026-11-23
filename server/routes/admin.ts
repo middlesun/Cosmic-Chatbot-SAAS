@@ -37,28 +37,11 @@ import {
   DEFAULT_FORMAT_CONTRACTS,
   DEFAULT_VEDIC_ANTI_CLICHE_RULES,
   DEFAULT_VEDIC_TIER1_REASONING_LAWS,
-  WESTERN_ANTI_CLICHE_RULES,
-  WESTERN_CORE_COUNCIL_CONSTITUTION,
-  WESTERN_FORMAT_CONTRACTS,
-  WESTERN_TIER1_REASONING_LAWS,
   GUIDE_SLUGS,
   getGuideCatalogMeta,
   isValidGuideSlug,
-  normalizeChatStyle,
   type GuideSlug,
 } from '../services/enginePromptDefaults';
-import {
-  COMPANION_MONOGRAM_PALETTES,
-  COMPANION_PORTRAIT_GALLERY,
-  DEFAULT_COMPANION_PRESETS,
-  deleteAdminCompanion,
-  getAdminCompanionsList,
-  invalidateCompanionsCache,
-  isCompanionsTableReady,
-  reorderAdminCompanions,
-  resetAdminCompanionToDefault,
-  upsertAdminCompanion,
-} from '../services/companionPresets';
 import {
   BUILTIN_MODEL_SUGGESTIONS,
   DEFAULT_CONVERSATIONAL_RULES,
@@ -94,20 +77,7 @@ import {
   CANONICAL_PLAYBOOKS,
   getPlaybooksCatalogSummary,
 } from '../services/canonicalPlaybooks';
-import {
-  createDynamicCategory,
-  createDynamicMiniApp,
-  deleteDynamicCategory,
-  deleteDynamicMiniApp,
-  getDynamicMiniAppsAdminCatalog,
-  invalidateMiniAppsRegistryCache,
-  reorderDynamicCategories,
-  reorderDynamicMiniApps,
-  syncMiniAppsConfigOverridesToRegistry,
-  updateDynamicCategory,
-  updateDynamicMiniApp,
-  type MiniAppMutationPayload,
-} from '../services/miniAppsRegistry';
+import { MINI_APPS_CATALOG } from '../services/miniAppsCatalog';
 import { clearMiniAppsMemoryCache } from './apps';
 import { ensureReportCatalogSeeded } from '../services/reportDefaults';
 import { isSanityConfigured } from '../../lib/sanity';
@@ -2280,13 +2250,6 @@ router.put('/settings/chatbot', async (req: AuthenticatedRequest, res) => {
       body.default_response_length === 'short' || body.default_response_length === 'detailed'
         ? body.default_response_length
         : current.default_response_length,
-    chat_numeric_font:
-      typeof body.chat_numeric_font === 'string' &&
-      ['dm_sans', 'inter', 'plus_jakarta', 'roboto', 'cormorant', 'jetbrains_mono'].includes(
-        body.chat_numeric_font
-      )
-        ? body.chat_numeric_font
-        : current.chat_numeric_font,
     expert_order: Array.isArray(body.expert_order)
       ? Array.from(new Set(body.expert_order.map((s) => normalizeCouncilSlug(String(s))).filter(Boolean)))
       : current.expert_order,
@@ -2347,9 +2310,6 @@ router.put('/settings/chatbot/guide/:guideSlug', async (req: AuthenticatedReques
   }
   if (typeof body.composer_placeholder === 'string') {
     nextEntry.composer_placeholder = body.composer_placeholder.trim().slice(0, 200);
-  }
-  if (typeof body.chat_style === 'string') {
-    nextEntry.chat_style = normalizeChatStyle(body.chat_style, meta.defaultChatStyle);
   }
   if (body.features && typeof body.features === 'object') {
     const f = body.features as Record<string, unknown>;
@@ -2589,7 +2549,6 @@ router.post('/settings/chatbot/guide/:guideSlug/reset', async (req: Authenticate
       delete entry.welcome_subtitle;
       delete entry.general_ready_message;
       delete entry.composer_placeholder;
-      delete entry.chat_style;
     } else if (scope === 'features') {
       delete entry.features;
     } else if (scope === 'rules') {
@@ -2706,12 +2665,6 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     | 'deep_audit_adjudicator_mandate'
     | 'stage4_aligned_suggestions_prompt'
     | 'stage4_fast_more_suggestions_prompt'
-    | 'western_core_council_constitution'
-    | 'western_tier1_reasoning_laws'
-    | 'western_anti_cliche_rules'
-    | 'western_deep_audit_adjudicator_mandate'
-    | 'western_stage4_aligned_suggestions_prompt'
-    | 'western_stage4_fast_more_suggestions_prompt'
   > = [
     'core_council_constitution',
     'companion_constitution',
@@ -2723,12 +2676,6 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     'deep_audit_adjudicator_mandate',
     'stage4_aligned_suggestions_prompt',
     'stage4_fast_more_suggestions_prompt',
-    'western_core_council_constitution',
-    'western_tier1_reasoning_laws',
-    'western_anti_cliche_rules',
-    'western_deep_audit_adjudicator_mandate',
-    'western_stage4_aligned_suggestions_prompt',
-    'western_stage4_fast_more_suggestions_prompt',
   ];
 
   for (const key of scalarKeys) {
@@ -2743,23 +2690,12 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
   }
 
   const recordKeys: Array<
-    | 'intent_output_contracts'
-    | 'fluency_instructions'
-    | 'format_contracts'
-    | 'deep_audit_lenses'
-    | 'western_intent_output_contracts'
-    | 'western_fluency_instructions'
-    | 'western_format_contracts'
-    | 'western_deep_audit_lenses'
+    'intent_output_contracts' | 'fluency_instructions' | 'format_contracts' | 'deep_audit_lenses'
   > = [
     'intent_output_contracts',
     'fluency_instructions',
     'format_contracts',
     'deep_audit_lenses',
-    'western_intent_output_contracts',
-    'western_fluency_instructions',
-    'western_format_contracts',
-    'western_deep_audit_lenses',
   ];
 
   for (const rKey of recordKeys) {
@@ -2993,9 +2929,7 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
   const jevModel = runtime.jevClassifierEnabled ? runtime.jevModel : runtime.utilityModel;
 
   const isWesternManifestGuide =
-    guideSlug === 'western_astrologer' ||
-    guideSlug === 'modern_astrologer' ||
-    guideSlug === 'hellenistic_astrologer';
+    guideSlug === 'western_astrologer' || guideSlug === 'modern_astrologer';
   const isAstroPipelineManifestGuide =
     guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG || isWesternManifestGuide;
 
@@ -3127,42 +3061,19 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
 
   const promptStack: Array<ReturnType<typeof makeStackItem>> = [];
   if (guideMeta.pillar === 'council') {
-    if (isWesternManifestGuide) {
-      const hasCustomWesternConst = Boolean(
-        engineOverrides.western_core_council_constitution?.trim()
-      );
-      const westernConstText =
-        engineOverrides.western_core_council_constitution?.trim() ||
-        WESTERN_CORE_COUNCIL_CONSTITUTION;
-      promptStack.push(
-        makeStackItem(
-          1,
-          'Western Council Constitution (Anti-Extraction & Tropical Grounding)',
-          hasCustomWesternConst ? 'Database' : 'Code Default',
-          hasCustomWesternConst
-            ? 'platform_settings.engine_prompt_overrides.western_core_council_constitution'
-            : 'enginePromptDefaults.ts',
-          'Active',
-          westernConstText
-        )
-      );
-    } else {
-      const hasCustomConst = Boolean(engineOverrides.core_council_constitution?.trim());
-      const constText =
-        engineOverrides.core_council_constitution?.trim() || DEFAULT_CORE_COUNCIL_CONSTITUTION;
-      promptStack.push(
-        makeStackItem(
-          1,
-          'Core Council Constitution (Anti-Extraction & Grounding)',
-          hasCustomConst ? 'Database' : 'Code Default',
-          hasCustomConst
-            ? 'platform_settings.engine_prompt_overrides.core_council_constitution'
-            : 'enginePromptDefaults.ts',
-          'Active',
-          constText
-        )
-      );
-    }
+    const hasCustomConst = Boolean(engineOverrides.core_council_constitution?.trim());
+    const constText =
+      engineOverrides.core_council_constitution?.trim() || DEFAULT_CORE_COUNCIL_CONSTITUTION;
+    promptStack.push(
+      makeStackItem(
+        1,
+        'Core Council Constitution (Anti-Extraction & Grounding)',
+        hasCustomConst ? 'Database' : 'Code Default',
+        hasCustomConst ? 'platform_settings.engine_prompt_overrides.core_council_constitution' : 'enginePromptDefaults.ts',
+        'Active',
+        constText
+      )
+    );
 
     const expertBody = systemPromptRow?.prompt_body || seedPrompt?.prompt_body || '';
     const isExpertModifiedFromSeed =
@@ -3178,52 +3089,7 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
       )
     );
 
-    if (isWesternManifestGuide) {
-      const hasWesternLaws = Boolean(engineOverrides.western_tier1_reasoning_laws?.trim());
-      promptStack.push(
-        makeStackItem(
-          3,
-          'Western Tier-1 Adjudication Laws & Truth Gate',
-          hasWesternLaws ? 'Database' : 'Code Default',
-          hasWesternLaws
-            ? 'platform_settings.engine_prompt_overrides.western_tier1_reasoning_laws'
-            : 'enginePromptDefaults.ts',
-          'Active',
-          engineOverrides.western_tier1_reasoning_laws?.trim() || WESTERN_TIER1_REASONING_LAWS
-        )
-      );
-
-      const hasWesternAntiCliche = Boolean(engineOverrides.western_anti_cliche_rules?.trim());
-      promptStack.push(
-        makeStackItem(
-          4,
-          'Western Voice & Anti-Cliché Guardrails',
-          hasWesternAntiCliche ? 'Database' : 'Code Default',
-          hasWesternAntiCliche
-            ? 'platform_settings.engine_prompt_overrides.western_anti_cliche_rules'
-            : 'enginePromptDefaults.ts',
-          'Active',
-          engineOverrides.western_anti_cliche_rules?.trim() || WESTERN_ANTI_CLICHE_RULES
-        )
-      );
-
-      const formatKey = (chatbotCfg.default_output === 'short' ? 'short' : 'detailed') as keyof typeof WESTERN_FORMAT_CONTRACTS;
-      const hasWesternFormat = Boolean(engineOverrides.western_format_contracts?.[formatKey]?.trim());
-      promptStack.push(
-        makeStackItem(
-          5,
-          `Western Format Contract (${chatbotCfg.default_output})`,
-          hasWesternFormat ? 'Database' : 'Code Default',
-          hasWesternFormat
-            ? 'platform_settings.engine_prompt_overrides.western_format_contracts'
-            : 'enginePromptDefaults.ts',
-          'Active',
-          engineOverrides.western_format_contracts?.[formatKey]?.trim() ||
-            WESTERN_FORMAT_CONTRACTS[formatKey] ||
-            WESTERN_FORMAT_CONTRACTS.detailed
-        )
-      );
-    } else if (guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG) {
+    if (guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG) {
       const hasLawsOverride = Boolean(engineOverrides.vedic_tier1_reasoning_laws?.trim());
       promptStack.push(
         makeStackItem(
@@ -3353,7 +3219,7 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
   }
   const rulesLower = guideCfg.combined_rules_text.toLowerCase();
   if (
-    isAstroPipelineManifestGuide &&
+    guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG &&
     (rulesLower.includes('no table') ||
       rulesLower.includes('never use table') ||
       rulesLower.includes('no heading') ||
@@ -3975,10 +3841,9 @@ router.get('/apps/analytics', async (req: AuthenticatedRequest, res) => {
       ? new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
-  const [miniAppsCfg, runtime, adminCatalog] = await Promise.all([
+  const [miniAppsCfg, runtime] = await Promise.all([
     getMiniAppsConfig(),
     getResolvedOpenRouterRuntime(),
-    getDynamicMiniAppsAdminCatalog(),
   ]);
 
   let usageTableMissing = false;
@@ -4204,7 +4069,7 @@ router.get('/apps/analytics', async (req: AuthenticatedRequest, res) => {
     };
   });
 
-  const perAppRows = adminCatalog.apps.map((app) => {
+  const perAppRows = MINI_APPS_CATALOG.map((app) => {
     const agg = perAppAcc.get(app.slug);
     const ov = miniAppsCfg.overrides[app.slug] || {};
     const runs = agg?.runs || 0;
@@ -4221,10 +4086,10 @@ router.get('/apps/analytics', async (req: AuthenticatedRequest, res) => {
       categoryLabel: app.categoryLabel,
       template: app.template,
       cacheScope: app.cacheScope,
-      enabled: ov.enabled !== undefined ? ov.enabled !== false : app.isActive,
+      enabled: ov.enabled !== false,
       featuredOnHome:
         typeof ov.featured_on_home === 'boolean' ? ov.featured_on_home : app.featuredOnHome,
-      modelOverride: ov.model_id !== undefined ? ov.model_id : app.modelId,
+      modelOverride: ov.model_id || null,
       runs,
       liveRuns: appLiveRuns,
       cacheHits: appCacheHits,
@@ -4256,7 +4121,7 @@ router.get('/apps/analytics', async (req: AuthenticatedRequest, res) => {
     periodDays,
     usageTableMissing,
     summary: {
-      totalAppsCount: adminCatalog.apps.length,
+      totalAppsCount: MINI_APPS_CATALOG.length,
       activeAppsCount: perAppRows.filter((r) => r.enabled).length,
       totalRuns,
       liveRuns,
@@ -4335,177 +4200,7 @@ router.put('/apps/config', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  await syncMiniAppsConfigOverridesToRegistry(nextOverrides, req.appUser.id);
-  invalidateMiniAppsRegistryCache();
   res.json({ saved: true, config: nextConfig });
-});
-
-// Complete Mini-Apps & Categories CRUD + Reorder Endpoints
-router.get('/apps/manager', async (_req: AuthenticatedRequest, res) => {
-  const [catalog, runtime, cfg] = await Promise.all([
-    getDynamicMiniAppsAdminCatalog(),
-    getResolvedOpenRouterRuntime(),
-    getMiniAppsConfig(),
-  ]);
-  res.json({
-    apps: catalog.apps,
-    categories: catalog.categories,
-    storageSource: catalog.storageSource,
-    effectiveDefaultModel: cfg.default_model_id || runtime.utilityModel,
-  });
-});
-
-router.post('/apps/items', async (req: AuthenticatedRequest, res) => {
-  if (!req.appUser) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const body = (req.body || {}) as MiniAppMutationPayload;
-  const result = await createDynamicMiniApp(body, req.appUser.id);
-  if ('error' in result) {
-    res.status(400).json({ error: result.error });
-    return;
-  }
-  res.status(201).json({ saved: true, app: result.app });
-});
-
-router.put('/apps/items/reorder', async (req: AuthenticatedRequest, res) => {
-  if (!req.appUser) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const orderedSlugs = Array.isArray(req.body?.orderedSlugs)
-    ? req.body.orderedSlugs.map((s: unknown) => String(s || '').trim()).filter(Boolean)
-    : [];
-  if (orderedSlugs.length === 0) {
-    res.status(400).json({ error: 'orderedSlugs array is required.' });
-    return;
-  }
-  const result = await reorderDynamicMiniApps(orderedSlugs, req.appUser.id);
-  if ('error' in result) {
-    res.status(400).json({ error: result.error });
-    return;
-  }
-  res.json({ saved: true });
-});
-
-router.put('/apps/items/:slug', async (req: AuthenticatedRequest, res) => {
-  if (!req.appUser) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const slug = String(req.params.slug || '').trim();
-  const body = (req.body || {}) as Partial<MiniAppMutationPayload> & { flushCache?: boolean };
-  const result = await updateDynamicMiniApp(slug, body, req.appUser.id);
-  if ('error' in result) {
-    res.status(400).json({ error: result.error });
-    return;
-  }
-
-  let cacheFlushed = false;
-  if (body.flushCache) {
-    clearMiniAppsMemoryCache(slug);
-    const supabaseAdmin = getSupabaseAdmin();
-    if (supabaseAdmin) {
-      try {
-        await supabaseAdmin.from('app_cache').delete().eq('app_slug', slug);
-        cacheFlushed = true;
-      } catch {
-        // Non-fatal
-      }
-    }
-  }
-
-  res.json({ saved: true, app: result.app, cacheFlushed });
-});
-
-router.delete('/apps/items/:slug', async (req: AuthenticatedRequest, res) => {
-  if (!req.appUser) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const slug = String(req.params.slug || '').trim();
-  const result = await deleteDynamicMiniApp(slug, req.appUser.id);
-  if ('error' in result) {
-    res.status(400).json({ error: result.error });
-    return;
-  }
-  clearMiniAppsMemoryCache(slug);
-  const supabaseAdmin = getSupabaseAdmin();
-  if (supabaseAdmin) {
-    try {
-      await supabaseAdmin.from('app_cache').delete().eq('app_slug', slug);
-    } catch {
-      // Non-fatal
-    }
-  }
-  res.json({ deleted: true });
-});
-
-router.post('/apps/categories', async (req: AuthenticatedRequest, res) => {
-  if (!req.appUser) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const body = (req.body || {}) as { slug?: string; label?: string; isActive?: boolean };
-  const result = await createDynamicCategory(
-    { slug: body.slug, label: String(body.label || ''), isActive: body.isActive },
-    req.appUser.id
-  );
-  if ('error' in result) {
-    res.status(400).json({ error: result.error });
-    return;
-  }
-  res.status(201).json({ saved: true, category: result.category });
-});
-
-router.put('/apps/categories/reorder', async (req: AuthenticatedRequest, res) => {
-  if (!req.appUser) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const orderedSlugs = Array.isArray(req.body?.orderedSlugs)
-    ? req.body.orderedSlugs.map((s: unknown) => String(s || '').trim()).filter(Boolean)
-    : [];
-  if (orderedSlugs.length === 0) {
-    res.status(400).json({ error: 'orderedSlugs array is required.' });
-    return;
-  }
-  const result = await reorderDynamicCategories(orderedSlugs, req.appUser.id);
-  if ('error' in result) {
-    res.status(400).json({ error: result.error });
-    return;
-  }
-  res.json({ saved: true });
-});
-
-router.put('/apps/categories/:slug', async (req: AuthenticatedRequest, res) => {
-  if (!req.appUser) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const slug = String(req.params.slug || '').trim();
-  const body = (req.body || {}) as { label?: string; isActive?: boolean; sortOrder?: number };
-  const result = await updateDynamicCategory(slug, body, req.appUser.id);
-  if ('error' in result) {
-    res.status(400).json({ error: result.error });
-    return;
-  }
-  res.json({ saved: true, category: result.category });
-});
-
-router.delete('/apps/categories/:slug', async (req: AuthenticatedRequest, res) => {
-  if (!req.appUser) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const slug = String(req.params.slug || '').trim();
-  const result = await deleteDynamicCategory(slug, req.appUser.id);
-  if ('error' in result) {
-    res.status(400).json({ error: result.error });
-    return;
-  }
-  res.json({ deleted: true });
 });
 
 router.post('/apps/cache-clear', async (req: AuthenticatedRequest, res) => {
@@ -4566,13 +4261,6 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     hasAppUsageLogs,
     hasUserFavoriteApps,
     hasPipelineLogs,
-    hasCompanionsTable,
-    hasCompanionBondsTable,
-    hasCustomCompanionsTable,
-    hasMiniAppCategoriesTable,
-    hasMiniAppsTable,
-    hasMigration017Companions,
-    hasMigration017MiniApps,
   ] = await Promise.all([
     checkTable('users'),
     checkTable('profiles'),
@@ -4587,13 +4275,6 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
     checkTable('app_usage_logs'),
     checkTable('user_favorite_apps', 'user_id, app_slug'),
     isPipelineLogsTableReady(),
-    checkTable('companions'),
-    checkTable('companion_bonds'),
-    checkTable('user_custom_companions'),
-    checkTable('mini_app_categories', 'slug'),
-    checkTable('mini_apps', 'slug'),
-    checkTable('companions', 'id, backstory, soul_consciousness'),
-    checkTable('mini_apps', 'slug, rules_json'),
   ]);
 
   const migration004Ready = hasPlatformSettings && hasPromptRecipes && hasSupportTickets;
@@ -4601,9 +4282,6 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
   const migration006Ready = hasMigration006Conversations;
   const migration007Ready = hasAppCache && hasAppUsageLogs && hasUserFavoriteApps;
   const migration012Ready = hasPipelineLogs;
-  const migration015Ready = hasCompanionsTable && hasCompanionBondsTable && hasCustomCompanionsTable;
-  const migration016Ready = hasMiniAppCategoriesTable && hasMiniAppsTable;
-  const migration017Ready = hasMigration017Companions && hasMigration017MiniApps;
 
   res.json({
     integrations: {
@@ -4632,21 +4310,12 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
       app_usage_logs: hasAppUsageLogs,
       user_favorite_apps: hasUserFavoriteApps,
       chatbot_pipeline_logs: hasPipelineLogs,
-      companions: hasCompanionsTable,
-      companion_bonds: hasCompanionBondsTable,
-      user_custom_companions: hasCustomCompanionsTable,
-      mini_app_categories: hasMiniAppCategoriesTable,
-      mini_apps: hasMiniAppsTable,
-      migration_017_columns: migration017Ready,
     },
     migration004Ready,
     migration005Ready,
     migration006Ready,
     migration007Ready,
     migration012Ready,
-    migration015Ready,
-    migration016Ready,
-    migration017Ready,
     timestamp: new Date().toISOString(),
   });
 });
@@ -4708,132 +4377,8 @@ router.delete('/chatbot-logs', async (_req: AuthenticatedRequest, res) => {
 router.post('/platform/cache-flush', async (_req: AuthenticatedRequest, res) => {
   invalidatePromptCache();
   invalidateAllPlatformCaches();
-  invalidateCompanionsCache();
   const miniAppsMemoryCleared = clearMiniAppsMemoryCache();
   res.json({ flushed: true, miniAppsMemoryCleared, timestamp: new Date().toISOString() });
-});
-
-// 15. Companions Manager (Full CRUD, DP Upload, Ordering, Portrait Library & Defaults Reset)
-router.post('/companions/upload-dp', async (req: AuthenticatedRequest, res) => {
-  const rawDataUrl = typeof req.body?.dataUrl === 'string' ? req.body.dataUrl.trim() : '';
-  const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(rawDataUrl);
-  if (!match) {
-    res.status(400).json({ error: 'Portrait must be a PNG, JPEG, or WebP image.' });
-    return;
-  }
-
-  const mimeSubtype = match[1].toLowerCase();
-  const base64Body = match[2];
-  let buf: Buffer;
-  try {
-    buf = Buffer.from(base64Body, 'base64');
-  } catch {
-    res.status(400).json({ error: 'Invalid image encoding.' });
-    return;
-  }
-
-  if (buf.length === 0 || buf.length > 250 * 1024) {
-    res.status(400).json({ error: 'Portrait image must be under 250KB.' });
-    return;
-  }
-
-  const isPng =
-    mimeSubtype === 'png' &&
-    buf.length >= 8 &&
-    buf[0] === 0x89 &&
-    buf[1] === 0x50 &&
-    buf[2] === 0x4e &&
-    buf[3] === 0x47;
-  const isJpeg =
-    mimeSubtype === 'jpeg' &&
-    buf.length >= 3 &&
-    buf[0] === 0xff &&
-    buf[1] === 0xd8 &&
-    buf[2] === 0xff;
-  const isWebp =
-    mimeSubtype === 'webp' &&
-    buf.length >= 12 &&
-    buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
-    buf.subarray(8, 12).toString('ascii') === 'WEBP';
-
-  if (!isPng && !isJpeg && !isWebp) {
-    res.status(400).json({ error: 'Uploaded file signature does not match PNG, JPEG, or WebP.' });
-    return;
-  }
-
-  const normalizedUrl = `data:image/${mimeSubtype};base64,${buf.toString('base64')}`;
-  res.status(201).json({ avatar_url: normalizedUrl });
-});
-
-router.get('/companions', async (_req: AuthenticatedRequest, res) => {
-  try {
-    const [companions, tableReady] = await Promise.all([
-      getAdminCompanionsList(),
-      isCompanionsTableReady(),
-    ]);
-    res.json({
-      companions,
-      tableReady,
-      defaultSlugs: DEFAULT_COMPANION_PRESETS.map((p) => p.slug),
-      availablePortraits: COMPANION_PORTRAIT_GALLERY,
-      monogramPalettes: COMPANION_MONOGRAM_PALETTES,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to load companions' });
-  }
-});
-
-router.post('/companions', async (req: AuthenticatedRequest, res) => {
-  const result = await upsertAdminCompanion((req.body || {}) as Record<string, unknown>, {
-    isNew: true,
-  });
-  if (!result.ok) {
-    res.status(result.status || 400).json({ error: result.error || 'Failed to create companion' });
-    return;
-  }
-  res.status(201).json({ companion: result.companion });
-});
-
-router.patch('/companions/reorder', async (req: AuthenticatedRequest, res) => {
-  const orderedIds = Array.isArray(req.body?.orderedIds)
-    ? req.body.orderedIds.map(String)
-    : [];
-  const result = await reorderAdminCompanions(orderedIds);
-  if (!result.ok) {
-    res.status(400).json({ error: result.error || 'Failed to reorder companions' });
-    return;
-  }
-  res.json({ reordered: true });
-});
-
-router.put('/companions/:id', async (req: AuthenticatedRequest, res) => {
-  const result = await upsertAdminCompanion((req.body || {}) as Record<string, unknown>, {
-    isNew: false,
-    targetId: String(req.params.id || ''),
-  });
-  if (!result.ok) {
-    res.status(result.status || 400).json({ error: result.error || 'Failed to update companion' });
-    return;
-  }
-  res.json({ companion: result.companion });
-});
-
-router.post('/companions/:slug/reset', async (req: AuthenticatedRequest, res) => {
-  const result = await resetAdminCompanionToDefault(String(req.params.slug || ''));
-  if (!result.ok) {
-    res.status(result.status || 400).json({ error: result.error || 'Failed to reset companion' });
-    return;
-  }
-  res.json({ companion: result.companion });
-});
-
-router.delete('/companions/:id', async (req: AuthenticatedRequest, res) => {
-  const result = await deleteAdminCompanion(String(req.params.id || ''));
-  if (!result.ok) {
-    res.status(result.status || 400).json({ error: result.error || 'Failed to delete companion' });
-    return;
-  }
-  res.json({ deleted: true });
 });
 
 export default router;
