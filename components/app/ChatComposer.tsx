@@ -66,10 +66,16 @@ interface ChatComposerProps {
     targetTabId: string,
     archetype: CompanionArchetypeSlug
   ) => void;
+  onReplaceTabWithPresetCompanion?: (
+    targetTabId: string,
+    card: PublicCompanionCard
+  ) => void;
+  onOpenCompanionsDirectory?: () => void;
   onReplaceTabWithConversation: (targetTabId: string, conv: ConversationRecord) => void;
   onReplaceTabWithClarity: (targetTabId: string) => void;
   onResetClarity?: () => void;
   onStartNewCompanion?: () => void;
+  companionCatalog?: PublicCompanionCard[];
   draftText: string;
   onDraftChange: (text: string) => void;
   catalog: ChatCatalog | null;
@@ -247,10 +253,13 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   onQuickAddTab,
   onReplaceTabWithCouncil,
   onReplaceTabWithCompanionArchetype,
+  onReplaceTabWithPresetCompanion,
+  onOpenCompanionsDirectory,
   onReplaceTabWithConversation,
   onReplaceTabWithClarity,
   onResetClarity,
   onStartNewCompanion,
+  companionCatalog = [],
   draftText,
   onDraftChange,
   catalog,
@@ -584,7 +593,9 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
           profileId: activeProfileId,
           expertSlug,
           tradition:
-            expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer'
+            expertSlug === 'western_astrologer' ||
+            expertSlug === 'modern_astrologer' ||
+            expertSlug === 'hellenistic_astrologer'
               ? 'western'
               : 'vedic',
         }),
@@ -638,7 +649,9 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
           profileId: activeProfileId,
           expertSlug,
           tradition:
-            expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer'
+            expertSlug === 'western_astrologer' ||
+            expertSlug === 'modern_astrologer' ||
+            expertSlug === 'hellenistic_astrologer'
               ? 'western'
               : 'vedic',
         }),
@@ -983,6 +996,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
             activeTabId={activeTabId}
             maxTabs={maxActiveTabs}
             catalog={catalog}
+            companionCatalog={companionCatalog}
             defaultAstrologyMode={defaultAstrologyMode}
             activeTabLocked={isThreadLocked}
             pastCompanionConversations={pastCompanionConversations}
@@ -1006,6 +1020,8 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
             onQuickAddTab={onQuickAddTab}
             onReplaceTabWithCouncil={onReplaceTabWithCouncil}
             onReplaceTabWithCompanionArchetype={onReplaceTabWithCompanionArchetype}
+            onReplaceTabWithPresetCompanion={onReplaceTabWithPresetCompanion}
+            onOpenCompanionsDirectory={onOpenCompanionsDirectory}
             onReplaceTabWithConversation={onReplaceTabWithConversation}
             onReplaceTabWithClarity={onReplaceTabWithClarity}
           />

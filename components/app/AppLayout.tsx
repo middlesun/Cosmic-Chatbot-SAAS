@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import {
   Coins,
   Database,
+  HeartHandshake,
   Home,
   LayoutGrid,
   LifeBuoy,
@@ -224,6 +225,11 @@ const AppLayout: React.FC = () => {
             <NavLink to="/app/chat" aria-label="Chat" className={desktopNavLinkClass}>
               <MessageSquare className="h-4 w-4 shrink-0 text-[#8B7355]" />
               {isDesktopSidebarOpen && <span>Chat</span>}
+            </NavLink>
+
+            <NavLink to="/app/companions" aria-label="Companions" className={desktopNavLinkClass}>
+              <HeartHandshake className="h-4 w-4 shrink-0 text-[#8B7355]" />
+              {isDesktopSidebarOpen && <span>Companions</span>}
             </NavLink>
 
             <NavLink to="/app/notes" aria-label="Notes" className={desktopNavLinkClass}>
@@ -484,6 +490,14 @@ const AppLayout: React.FC = () => {
                   >
                     <MessageSquare className="h-4 w-4 text-[#8B7355]" />
                     <span>Chat</span>
+                  </NavLink>
+                  <NavLink
+                    to="/app/companions"
+                    onClick={() => setShowMobileNavDrawer(false)}
+                    className={mobileNavLinkClass}
+                  >
+                    <HeartHandshake className="h-4 w-4 text-[#8B7355]" />
+                    <span>Companions</span>
                   </NavLink>
                   <NavLink
                     to="/app/notes"

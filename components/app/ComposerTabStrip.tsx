@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import {
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Compass,
   HeartHandshake,
@@ -12,11 +13,13 @@ import {
   X,
 } from 'lucide-react';
 import Tooltip from './Tooltip';
+import CompanionAvatar from './CompanionAvatar';
 import type {
   ActiveChatTab,
   ChatCatalog,
   CompanionArchetypeSlug,
   ConversationRecord,
+  PublicCompanionCard,
 } from './chatTypes';
 
 interface ComposerTabStripProps {
@@ -24,6 +27,7 @@ interface ComposerTabStripProps {
   activeTabId: string;
   maxTabs?: number;
   catalog: ChatCatalog | null;
+  companionCatalog?: PublicCompanionCard[];
   defaultAstrologyMode?: 'vedic' | 'western';
   activeTabLocked?: boolean;
   pastCompanionConversations: ConversationRecord[];
@@ -41,6 +45,11 @@ interface ComposerTabStripProps {
     targetTabId: string,
     archetype: CompanionArchetypeSlug
   ) => void;
+  onReplaceTabWithPresetCompanion?: (
+    targetTabId: string,
+    card: PublicCompanionCard
+  ) => void;
+  onOpenCompanionsDirectory?: () => void;
   onReplaceTabWithConversation: (targetTabId: string, conv: ConversationRecord) => void;
   onReplaceTabWithClarity: (targetTabId: string) => void;
 }
@@ -83,6 +92,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
   activeTabId,
   maxTabs = 10,
   catalog,
+  companionCatalog = [],
   defaultAstrologyMode = 'vedic',
   activeTabLocked = false,
   pastCompanionConversations,
@@ -97,6 +107,8 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
   onQuickAddTab,
   onReplaceTabWithCouncil,
   onReplaceTabWithCompanionArchetype,
+  onReplaceTabWithPresetCompanion,
+  onOpenCompanionsDirectory,
   onReplaceTabWithConversation,
   onReplaceTabWithClarity,
 }) => {
@@ -437,6 +449,36 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
     return experts;
   }, [catalog?.experts, defaultAstrologyMode]);
 
+  const companionBySlug = useMemo(() => {
+    const map = new Map<string, PublicCompanionCard>();
+    for (const card of companionCatalog) {
+      map.set(card.slug.toLowerCase(), card);
+    }
+    return map;
+  }, [companionCatalog]);
+
+  const { displayedPastCompanions, otherPresetCompanions } = useMemo(() => {
+    const pastSlice = pastCompanionConversations.slice(0, 6);
+    const seenSlugs = new Set<string>();
+    for (const conv of pastSlice) {
+      const slug = (
+        conv.companion_slug ||
+        conv.companion_persona_json?.slug ||
+        ''
+      )
+        .trim()
+        .toLowerCase();
+      if (slug) seenSlugs.add(slug);
+    }
+    const others = companionCatalog.filter(
+      (c) => !seenSlugs.has(c.slug.toLowerCase())
+    );
+    return {
+      displayedPastCompanions: pastSlice,
+      otherPresetCompanions: others,
+    };
+  }, [pastCompanionConversations, companionCatalog]);
+
   const closeCustomizeMenu = () => {
     setCustomizeTabId(null);
     setCustomizeAnchorEl(null);
@@ -529,8 +571,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                               ? 'Companion'
                               : conv.pillar === 'clarity'
                               ? 'Clarity'
-                              : 'Council'}{' '}
-                            · {new Date(conv.updated_at).toLocaleDateString()}
+                              : 'Council'}
                           </p>
                         </div>
                       </button>
@@ -593,17 +634,46 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
 
               {pickerTab === 'companions' && (
                 <>
-                  {pastCompanionConversations.length > 0 && (
+                  {onOpenCompanionsDirectory && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        closeCustomizeMenu();
+                        onOpenCompanionsDirectory();
+                      }}
+                      className="w-full flex items-center justify-between gap-2 rounded-xl border border-[#3D3830]/12 bg-[#FAF7F2] px-2.5 py-2 mb-1 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                    >
+                      <span className="inline-flex items-center gap-2 min-w-0">
+                        <HeartHandshake className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
+                        <span className="text-xs font-medium text-[#3D3830] truncate">
+                          Browse all companions
+                        </span>
+                      </span>
+                      <ChevronRight className="h-3.5 w-3.5 text-[#8B8275] shrink-0" />
+                    </button>
+                  )}
+
+                  {displayedPastCompanions.length > 0 && (
                     <div className="pb-1.5 mb-1.5 border-b border-[#3D3830]/10 space-y-0.5">
                       <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
                         Past companions
                       </p>
-                      {pastCompanionConversations.slice(0, 6).map((conv) => {
+                      {displayedPastCompanions.map((conv) => {
+                        const slug = (
+                          conv.companion_slug ||
+                          conv.companion_persona_json?.slug ||
+                          ''
+                        )
+                          .trim()
+                          .toLowerCase();
+                        const card = slug ? companionBySlug.get(slug) : undefined;
                         const name =
+                          card?.name ||
                           conv.companion_persona_json?.name ||
                           conv.title.split('·')[0].trim();
                         const previewSnippet =
                           conv.last_message_preview?.trim() ||
+                          card?.primary_expertise ||
                           conv.companion_persona_json?.role_label ||
                           conv.title;
                         return (
@@ -615,8 +685,21 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                               closeCustomizeMenu();
                               if (targetId) onReplaceTabWithConversation(targetId, conv);
                             }}
-                            className="w-full flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                            className="w-full flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
                           >
+                            <CompanionAvatar
+                              name={name}
+                              avatarUrl={
+                                card?.avatar_url ??
+                                conv.companion_persona_json?.avatar_url
+                              }
+                              palette={
+                                card?.monogram_palette ??
+                                conv.companion_persona_json?.monogram_palette
+                              }
+                              size="xs"
+                              shape="circle"
+                            />
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-medium text-[#3D3830] truncate">
                                 {name}
@@ -628,6 +711,46 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                           </button>
                         );
                       })}
+                    </div>
+                  )}
+
+                  {otherPresetCompanions.length > 0 && onReplaceTabWithPresetCompanion && (
+                    <div className="pb-1.5 mb-1.5 border-b border-[#3D3830]/10 space-y-0.5">
+                      <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
+                        {displayedPastCompanions.length > 0
+                          ? 'Other companions'
+                          : 'Companions'}
+                      </p>
+                      {otherPresetCompanions.map((card) => (
+                        <button
+                          key={card.slug}
+                          type="button"
+                          onClick={() => {
+                            const targetId = customizeTabId;
+                            closeCustomizeMenu();
+                            if (targetId) {
+                              onReplaceTabWithPresetCompanion(targetId, card);
+                            }
+                          }}
+                          className="w-full flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-left hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                        >
+                          <CompanionAvatar
+                            name={card.name}
+                            avatarUrl={card.avatar_url}
+                            palette={card.monogram_palette}
+                            size="xs"
+                            shape="circle"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium text-[#3D3830] truncate">
+                              {card.name}
+                            </p>
+                            <p className="text-[11px] text-[#8B8275] truncate">
+                              {card.primary_expertise}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   )}
 
@@ -834,7 +957,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
           const isActive = tab.tabId === activeTabId;
           const isClosable = tabs.length > 1;
           const canCustomizeTab =
-            tab.pillar === 'council' &&
+            (tab.pillar === 'council' || tab.pillar === 'companion') &&
             !tab.conversationId &&
             !(isActive && activeTabLocked);
           const isTabStreaming = isStreamingTabId === tab.tabId;

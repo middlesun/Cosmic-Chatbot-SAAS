@@ -151,8 +151,8 @@ function humanizeIntensity(intensity: ConvergenceWindow['intensity']): {
   if (intensity === 'Peak Alignment') {
     return {
       label: 'Strong Momentum',
-      barColor: '#4EA87E',
-      badgeColor: 'text-[#6CD4A0] bg-[#4EA87E]/15 border-[#4EA87E]/25',
+      barColor: '#2D6A4F',
+      badgeColor: 'text-[#2D6A4F] bg-[#2D6A4F]/10 border-[#2D6A4F]/25',
       fillPercent: 86,
     };
   }
@@ -160,14 +160,14 @@ function humanizeIntensity(intensity: ConvergenceWindow['intensity']): {
     return {
       label: 'Steady Growth',
       barColor: '#B8965A',
-      badgeColor: 'text-[#E3C184] bg-[#B8965A]/15 border-[#B8965A]/25',
+      badgeColor: 'text-[#8B7355] bg-[#B8965A]/15 border-[#B8965A]/30',
       fillPercent: 62,
     };
   }
   return {
     label: 'Quiet Reset',
-    barColor: '#8B9EB7',
-    badgeColor: 'text-[#AFC2DA] bg-[#8B9EB7]/15 border-[#8B9EB7]/25',
+    barColor: '#7A6F61',
+    badgeColor: 'text-[#5C5449] bg-[#3D3830]/8 border-[#3D3830]/15',
     fillPercent: 40,
   };
 }
@@ -248,8 +248,8 @@ const CyclePieChart: React.FC<CyclePieProps> = ({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          fill="rgba(244, 239, 230, 0.04)"
-          stroke="rgba(244, 239, 230, 0.14)"
+          fill="rgba(61, 56, 48, 0.03)"
+          stroke="rgba(61, 56, 48, 0.12)"
           strokeWidth={strokeWidth}
         />
         <circle
@@ -265,7 +265,7 @@ const CyclePieChart: React.FC<CyclePieProps> = ({
           className="transition-all duration-500"
         />
       </svg>
-      <span className="absolute text-[11px] font-['DM_Sans',sans-serif] font-medium tabular-nums text-[#F4EFE6]">
+      <span className="absolute text-[11px] font-['DM_Sans',sans-serif] font-medium tabular-nums text-[#3D3830]">
         {clamped}%
       </span>
     </div>
@@ -287,9 +287,9 @@ const SkyBalancePie: React.FC<SkyBalancePieProps> = ({ supportive, neutral, inte
   const circumference = 2 * Math.PI * radius;
 
   const segments = [
-    { count: supportive, color: '#4EA87E' },
+    { count: supportive, color: '#2D6A4F' },
     { count: neutral, color: '#B8965A' },
-    { count: intense, color: '#D97C6E' },
+    { count: intense, color: '#A94438' },
   ].filter((s) => s.count > 0);
 
   let cumulativeOffset = 0;
@@ -318,14 +318,14 @@ const SkyBalancePie: React.FC<SkyBalancePieProps> = ({ supportive, neutral, inte
             );
           })}
         </svg>
-        <span className="absolute text-[11px] font-['DM_Sans',sans-serif] font-medium tabular-nums text-[#F4EFE6]">
+        <span className="absolute text-[11px] font-['DM_Sans',sans-serif] font-medium tabular-nums text-[#3D3830]">
           {total}
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#F4EFE6]/80">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#5C5449]">
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-[#4EA87E]" />
+          <span className="h-2 w-2 rounded-full bg-[#2D6A4F]" />
           {supportive} Supportive
         </span>
         <span className="inline-flex items-center gap-1.5">
@@ -333,7 +333,7 @@ const SkyBalancePie: React.FC<SkyBalancePieProps> = ({ supportive, neutral, inte
           {neutral} Steady
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-[#D97C6E]" />
+          <span className="h-2 w-2 rounded-full bg-[#A94438]" />
           {intense} Take Care
         </span>
       </div>
@@ -408,9 +408,9 @@ const TimingRadarDashboard: React.FC = () => {
 
   if (isLoading) {
     return (
-      <section className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-7 md:p-9 text-[#F4EFE6]">
-        <p className="text-xs text-[#F4EFE6]/60">Planetary Overview</p>
-        <p className="mt-2 font-serif text-2xl font-medium">
+      <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-7 md:p-9 text-[#3D3830]">
+        <p className="text-xs text-[#8B8275]">Planetary Overview</p>
+        <p className="mt-2 font-serif text-2xl font-medium text-[#3D3830]">
           Loading your current life cycles and sky positions...
         </p>
       </section>
@@ -419,23 +419,23 @@ const TimingRadarDashboard: React.FC = () => {
 
   if (!hasActivated || !radar) {
     return (
-      <section className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-7 md:p-9 text-[#F4EFE6] shadow-[0_24px_60px_-24px_rgba(31,34,41,0.45)]">
+      <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-7 md:p-9 text-[#3D3830]">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2 max-w-xl">
-            <div className="flex items-center gap-2 text-xs text-[#F4EFE6]/65">
-              <Compass className="h-4 w-4 text-[#B8965A]" />
+            <div className="flex items-center gap-2 text-xs text-[#8B8275]">
+              <Compass className="h-4 w-4 text-[#8B7355]" />
               <span>Planetary Overview</span>
             </div>
-            <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#F4EFE6]">
+            <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
               Add Birth Details to See Your Planetary Timing
             </h2>
-            <p className="text-sm text-[#F4EFE6]/70 leading-relaxed">
+            <p className="text-sm text-[#5C5449] leading-relaxed">
               Once you save a birth chart, you can track your active life chapters, see how much time is left in each period, and follow where slow planets are moving right now.
             </p>
           </div>
           <Link
             to="/app/profiles"
-            className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#F4EFE6] px-6 py-3 text-xs font-medium text-[#1F2229] hover:bg-[#EAE3D7] transition-colors whitespace-nowrap shrink-0"
+            className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-6 py-3 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors whitespace-nowrap shrink-0"
           >
             <span>Add Birth Details</span>
             <ArrowRight className="h-3.5 w-3.5" />
@@ -475,15 +475,15 @@ const TimingRadarDashboard: React.FC = () => {
 
   return (
     <section className="space-y-5">
-      <div className="rounded-3xl bg-gradient-to-br from-[#1F2229] to-[#292D36] p-6 sm:p-7 md:p-9 text-[#F4EFE6] shadow-[0_24px_60px_-24px_rgba(31,34,41,0.45)] space-y-7">
+      <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-6 sm:p-7 md:p-9 text-[#3D3830] space-y-7">
         {/* Header & Profile Switcher */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#F4EFE6]/10 pb-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#3D3830]/10 pb-5">
           <div>
-            <p className="text-xs text-[#F4EFE6]/65 mb-1">
+            <p className="text-xs text-[#8B8275] mb-1">
               {radar.ascendantSign} {isWesternView ? 'Rising' : 'Lagna'} · {radar.moonSign} Moon
               {radar.transitsDate ? ` · ${formatFriendlyDate(radar.transitsDate)}` : ''}
             </p>
-            <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#F4EFE6]">
+            <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
               Quick overview for {radar.profileName}
             </h2>
           </div>
@@ -493,7 +493,7 @@ const TimingRadarDashboard: React.FC = () => {
               <div
                 role="tablist"
                 aria-label="Switch birth profile"
-                className="inline-flex items-center gap-1 rounded-full bg-[#F4EFE6]/8 border border-[#F4EFE6]/12 p-1 overflow-x-auto no-scrollbar max-w-full"
+                className="inline-flex items-center gap-1 rounded-full bg-[#F1ECE3] border border-[#3D3830]/12 p-1 overflow-x-auto no-scrollbar max-w-full"
               >
                 {profiles.map((p) => {
                   const isActive = p.id === selectedProfileId;
@@ -509,8 +509,8 @@ const TimingRadarDashboard: React.FC = () => {
                       }}
                       className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs transition-colors ${
                         isActive
-                          ? 'bg-[#F4EFE6] text-[#1F2229] font-medium'
-                          : 'text-[#F4EFE6]/70 hover:text-[#F4EFE6] hover:bg-[#F4EFE6]/10'
+                          ? 'bg-[#4A453D] text-[#FAF7F2] font-medium'
+                          : 'text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EAE3D7]'
                       }`}
                     >
                       {label}
@@ -522,9 +522,9 @@ const TimingRadarDashboard: React.FC = () => {
 
             <Link
               to={discussPhaseUrl}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#F4EFE6]/12 border border-[#F4EFE6]/15 px-4 py-2 text-xs font-medium text-[#F4EFE6] hover:bg-[#F4EFE6]/20 transition-colors shrink-0"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#F1ECE3] border border-[#3D3830]/12 px-4 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7] transition-colors shrink-0"
             >
-              <Sparkles className="h-3.5 w-3.5 text-[#B8965A]" />
+              <Sparkles className="h-3.5 w-3.5 text-[#8B7355]" />
               <span>Ask astrologer about this phase →</span>
             </Link>
           </div>
@@ -535,15 +535,15 @@ const TimingRadarDashboard: React.FC = () => {
           <div className="lg:col-span-6 space-y-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <div>
-                <h3 className="text-xs font-medium text-[#F4EFE6]/80 uppercase tracking-wider">
+                <h3 className="text-xs font-medium text-[#3D3830]/85 uppercase tracking-wider">
                   {isWesternView ? 'Current Timing Cycles' : 'Current Life Chapters (Dasha)'}
                 </h3>
-                <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
+                <p className="text-[11px] text-[#8B8275] mt-0.5">
                   When each period started, how far along you are, and time left
                 </p>
               </div>
               {radar.upcomingShift && (
-                <span className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#B8965A]">
+                <span className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#8B7355]">
                   Next change: {radar.upcomingShift.toLord} ({formatFriendlyDate(radar.upcomingShift.transitionDate)})
                 </span>
               )}
@@ -552,11 +552,11 @@ const TimingRadarDashboard: React.FC = () => {
             <div className="space-y-3">
               {radar.dashaLadder.map((item, idx) => {
                 const ringColor =
-                  idx === 0 ? '#B8965A' : idx === 1 ? '#D4B072' : '#8DB49E';
+                  idx === 0 ? '#B8965A' : idx === 1 ? '#8B7355' : '#2D6A4F';
                 return (
                   <div
                     key={item.level}
-                    className="rounded-2xl bg-[#F4EFE6]/5 border border-[#F4EFE6]/10 p-4 flex items-center gap-4"
+                    className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4 flex items-center gap-4"
                   >
                     <CyclePieChart percent={item.percentElapsed} color={ringColor} />
 
@@ -564,24 +564,24 @@ const TimingRadarDashboard: React.FC = () => {
                       <div className="flex items-start justify-between gap-2 text-xs">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-baseline gap-x-2">
-                            <span className="font-medium text-[#F4EFE6] text-sm">
+                            <span className="font-medium text-[#3D3830] text-sm">
                               {item.lord}
                             </span>
-                            <span className="text-[#F4EFE6]/65 text-xs">
+                            <span className="text-[#8B8275] text-xs">
                               {item.level}
                             </span>
                           </div>
-                          <p className="text-[11px] text-[#F4EFE6]/50">
+                          <p className="text-[11px] text-[#8B8275]">
                             {DASHA_LEVEL_HINTS[item.level]}
                           </p>
                         </div>
 
-                        <span className="font-['DM_Sans',sans-serif] tabular-nums text-xs font-medium text-[#E3C184] shrink-0">
+                        <span className="font-['DM_Sans',sans-serif] tabular-nums text-xs font-medium text-[#8B7355] shrink-0">
                           {formatTimeLeft(item.daysRemaining)}
                         </span>
                       </div>
 
-                      <div className="h-1.5 w-full rounded-full bg-[#F4EFE6]/10 overflow-hidden">
+                      <div className="h-1.5 w-full rounded-full bg-[#3D3830]/10 overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all duration-500"
                           style={{
@@ -591,7 +591,7 @@ const TimingRadarDashboard: React.FC = () => {
                         />
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#F4EFE6]/55">
+                      <div className="flex items-center justify-between text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
                         <span>Started {formatFriendlyDate(item.startDate)}</span>
                         <span>Ends {formatFriendlyDate(item.endDate)}</span>
                       </div>
@@ -603,11 +603,11 @@ const TimingRadarDashboard: React.FC = () => {
           </div>
 
           {/* Cached Daily & Monthly Brief */}
-          <div className="lg:col-span-6 flex flex-col justify-between rounded-2xl bg-[#F4EFE6]/5 border border-[#F4EFE6]/10 p-5 md:p-6">
+          <div className="lg:col-span-6 flex flex-col justify-between rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-5 md:p-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-xs text-[#F4EFE6]/75">
-                  <CalendarClock className="h-4 w-4 text-[#B8965A]" />
+                <div className="flex items-center gap-2 text-xs text-[#5C5449]">
+                  <CalendarClock className="h-4 w-4 text-[#8B7355]" />
                   <span>Daily & Monthly Guidance</span>
                 </div>
 
@@ -617,8 +617,8 @@ const TimingRadarDashboard: React.FC = () => {
                     onClick={() => setBriefView('daily')}
                     className={`pb-0.5 border-b transition-colors ${
                       briefView === 'daily'
-                        ? 'text-[#F4EFE6] border-[#B8965A] font-medium'
-                        : 'text-[#F4EFE6]/55 border-transparent hover:text-[#F4EFE6]'
+                        ? 'text-[#3D3830] border-[#8B7355] font-medium'
+                        : 'text-[#8B8275] border-transparent hover:text-[#3D3830]'
                     }`}
                   >
                     Today
@@ -628,8 +628,8 @@ const TimingRadarDashboard: React.FC = () => {
                     onClick={() => setBriefView('monthly')}
                     className={`pb-0.5 border-b transition-colors ${
                       briefView === 'monthly'
-                        ? 'text-[#F4EFE6] border-[#B8965A] font-medium'
-                        : 'text-[#F4EFE6]/55 border-transparent hover:text-[#F4EFE6]'
+                        ? 'text-[#3D3830] border-[#8B7355] font-medium'
+                        : 'text-[#8B8275] border-transparent hover:text-[#3D3830]'
                     }`}
                   >
                     Monthly Forecast
@@ -639,32 +639,32 @@ const TimingRadarDashboard: React.FC = () => {
 
               {briefView === 'daily' ? (
                 <div className="space-y-3">
-                  <p className="text-[11px] font-['DM_Sans',sans-serif] text-[#F4EFE6]/50">
+                  <p className="text-[11px] font-['DM_Sans',sans-serif] text-[#8B8275]">
                     {formatFriendlyDate(radar.dailyBrief.date)}
                   </p>
-                  <h4 className="font-serif text-2xl font-medium text-[#F4EFE6]">
+                  <h4 className="font-serif text-2xl font-medium text-[#3D3830]">
                     {radar.dailyBrief.headline}
                   </h4>
-                  <p className="text-sm text-[#F4EFE6]/80 leading-relaxed">
+                  <p className="text-sm text-[#5C5449] leading-relaxed">
                     {radar.dailyBrief.guidance}
                   </p>
-                  <div className="pt-3 border-t border-[#F4EFE6]/10 text-xs text-[#B8965A]">
-                    Focus: <span className="text-[#F4EFE6]/90">{radar.dailyBrief.focusAction}</span>
+                  <div className="pt-3 border-t border-[#3D3830]/10 text-xs text-[#8B7355]">
+                    Focus: <span className="text-[#3D3830]">{radar.dailyBrief.focusAction}</span>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-[11px] font-['DM_Sans',sans-serif] text-[#F4EFE6]/50">
+                  <p className="text-[11px] font-['DM_Sans',sans-serif] text-[#8B8275]">
                     {radar.monthlyBrief.month}
                   </p>
-                  <h4 className="font-serif text-2xl font-medium text-[#F4EFE6]">
+                  <h4 className="font-serif text-2xl font-medium text-[#3D3830]">
                     {radar.monthlyBrief.headline}
                   </h4>
-                  <p className="text-sm text-[#F4EFE6]/80 leading-relaxed">
+                  <p className="text-sm text-[#5C5449] leading-relaxed">
                     {radar.monthlyBrief.guidance}
                   </p>
-                  <div className="pt-3 border-t border-[#F4EFE6]/10 text-xs text-[#B8965A]">
-                    Watch: <span className="text-[#F4EFE6]/90">{radar.monthlyBrief.themeWatch}</span>
+                  <div className="pt-3 border-t border-[#3D3830]/10 text-xs text-[#8B7355]">
+                    Watch: <span className="text-[#3D3830]">{radar.monthlyBrief.themeWatch}</span>
                   </div>
                 </div>
               )}
@@ -673,12 +673,12 @@ const TimingRadarDashboard: React.FC = () => {
         </div>
 
         {/* Row 2: Upcoming Highlights (Plain English + Progress Visuals) */}
-        <div className="space-y-3 pt-2 border-t border-[#F4EFE6]/10">
+        <div className="space-y-3 pt-2 border-t border-[#3D3830]/10">
           <div>
-            <h3 className="text-xs font-medium text-[#F4EFE6]/80 uppercase tracking-wider">
+            <h3 className="text-xs font-medium text-[#3D3830]/85 uppercase tracking-wider">
               Upcoming Highlights
             </h3>
-            <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
+            <p className="text-[11px] text-[#8B8275] mt-0.5">
               Key dates ahead when your life chapters and moving planets line up
             </p>
           </div>
@@ -690,11 +690,11 @@ const TimingRadarDashboard: React.FC = () => {
               return (
                 <div
                   key={idx}
-                  className="rounded-2xl bg-[#F4EFE6]/5 border border-[#F4EFE6]/10 p-4 flex flex-col justify-between gap-3"
+                  className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4 flex flex-col justify-between gap-3"
                 >
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#E3C184]">
+                      <p className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#8B7355]">
                         {parsedRange.text}
                       </p>
                       <span
@@ -703,19 +703,19 @@ const TimingRadarDashboard: React.FC = () => {
                         {mood.label}
                       </span>
                     </div>
-                    <p className="text-sm font-medium text-[#F4EFE6]">
+                    <p className="text-sm font-medium text-[#3D3830]">
                       {humanizeWindowLabel(win.label)}
                     </p>
-                    <p className="text-[11px] text-[#F4EFE6]/55">
+                    <p className="text-[11px] text-[#8B8275]">
                       {humanizeFocusDomain(win.focusDomain)}
                     </p>
-                    <p className="text-xs text-[#F4EFE6]/80 leading-relaxed pt-1">
+                    <p className="text-xs text-[#5C5449] leading-relaxed pt-1">
                       {humanizePlanetNote(win.drivers)}
                     </p>
                   </div>
 
                   <div className="space-y-1 pt-1">
-                    <div className="h-1.5 w-full rounded-full bg-[#F4EFE6]/10 overflow-hidden">
+                    <div className="h-1.5 w-full rounded-full bg-[#3D3830]/10 overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
@@ -733,13 +733,13 @@ const TimingRadarDashboard: React.FC = () => {
 
         {/* Row 3: Where Moving Planets Are Now (Pie Chart + 12-House Bars) */}
         {radar.slowPlanetShifts.length > 0 && (
-          <div className="space-y-4 pt-2 border-t border-[#F4EFE6]/10">
+          <div className="space-y-4 pt-2 border-t border-[#3D3830]/10">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-xs font-medium text-[#F4EFE6]/80 uppercase tracking-wider">
+                <h3 className="text-xs font-medium text-[#3D3830]/85 uppercase tracking-wider">
                   Where Slow Planets Are Now
                 </h3>
-                <p className="text-[11px] text-[#F4EFE6]/55 mt-0.5">
+                <p className="text-[11px] text-[#8B8275] mt-0.5">
                   Which of the 12 areas of your chart each planet is moving through
                 </p>
               </div>
@@ -754,10 +754,10 @@ const TimingRadarDashboard: React.FC = () => {
               {radar.slowPlanetShifts.map((t) => {
                 const sigColor =
                   t.signal === 'supportive'
-                    ? '#4EA87E'
+                    ? '#2D6A4F'
                     : t.signal === 'intense'
-                    ? '#D97C6E'
-                    : '#B8965A';
+                    ? '#A94438'
+                    : '#8B7355';
                 const sigLabel =
                   t.signal === 'supportive'
                     ? 'Supportive'
@@ -770,7 +770,7 @@ const TimingRadarDashboard: React.FC = () => {
                 return (
                   <div
                     key={t.planet}
-                    className="rounded-2xl bg-[#1F2229]/75 border border-[#F4EFE6]/10 p-4 space-y-2.5"
+                    className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4 space-y-2.5"
                   >
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <div className="flex items-center gap-1.5 min-w-0">
@@ -778,13 +778,13 @@ const TimingRadarDashboard: React.FC = () => {
                           className="h-2 w-2 rounded-full shrink-0"
                           style={{ backgroundColor: sigColor }}
                         />
-                        <span className="font-medium text-[#F4EFE6] truncate">
+                        <span className="font-medium text-[#3D3830] truncate">
                           {t.planet}
                           {t.isRetrograde ? ' (Retrograde)' : ''}
                         </span>
                       </div>
                       <span
-                        className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F4EFE6]/6 border border-[#F4EFE6]/10 shrink-0"
+                        className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F1ECE3] border border-[#3D3830]/10 shrink-0"
                         style={{ color: sigColor }}
                       >
                         {sigLabel}
@@ -793,7 +793,7 @@ const TimingRadarDashboard: React.FC = () => {
 
                     {/* 12-House Position Strip */}
                     <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#F4EFE6]/75">
+                      <div className="flex items-center justify-between text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#5C5449]">
                         <span>{t.sign}</span>
                         <span>House {t.houseFromLagna} of 12</span>
                       </div>
@@ -811,7 +811,7 @@ const TimingRadarDashboard: React.FC = () => {
                               style={{
                                 backgroundColor: isActive
                                   ? sigColor
-                                  : 'rgba(244, 239, 230, 0.12)',
+                                  : 'rgba(61, 56, 48, 0.10)',
                               }}
                             />
                           );
@@ -821,13 +821,13 @@ const TimingRadarDashboard: React.FC = () => {
 
                     {t.savBindus > 0 && (
                       <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] text-[#F4EFE6]/55">
+                        <div className="flex items-center justify-between text-[10px] text-[#8B8275]">
                           <span>House strength</span>
                           <span className="font-['DM_Sans',sans-serif] tabular-nums">
                             {t.savBindus}/40
                           </span>
                         </div>
-                        <div className="h-1 w-full rounded-full bg-[#F4EFE6]/10 overflow-hidden">
+                        <div className="h-1 w-full rounded-full bg-[#3D3830]/10 overflow-hidden">
                           <div
                             className="h-full rounded-full"
                             style={{
@@ -839,7 +839,7 @@ const TimingRadarDashboard: React.FC = () => {
                       </div>
                     )}
 
-                    <p className="text-[11px] text-[#F4EFE6]/65 leading-relaxed">
+                    <p className="text-[11px] text-[#5C5449] leading-relaxed">
                       {humanizePlanetNote(t.note)}
                     </p>
                   </div>

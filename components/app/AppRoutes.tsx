@@ -14,6 +14,7 @@ import ReportsStore from './ReportsStore';
 import ReportOrderDetail from './ReportOrderDetail';
 import AppsHub from './AppsHub';
 import MiniAppRunner from './MiniAppRunner';
+import CompanionsPage from './CompanionsPage';
 import AdminPanel from '../admin/AdminPanel';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -67,6 +68,7 @@ const AppRoutes: React.FC = () => {
           <Route path="profiles" element={<ProfileManager />} />
           <Route path="chat" element={<ChatWorkspace />} />
           <Route path="chat/:conversationId" element={<ChatWorkspace />} />
+          <Route path="companions" element={<CompanionsPage />} />
           <Route path="reports" element={<ReportsStore />} />
           <Route path="reports/:orderId" element={<ReportOrderDetail />} />
           <Route path="billing" element={<BillingCredits />} />

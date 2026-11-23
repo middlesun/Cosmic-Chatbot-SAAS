@@ -882,7 +882,8 @@ export async function generateFastMoreStage4Suggestions(params: {
 }): Promise<MessageSuggestions> {
   const isWestern =
     params.expertSlug === 'western_astrologer' ||
-    params.expertSlug === 'modern_astrologer';
+    params.expertSlug === 'modern_astrologer' ||
+    params.expertSlug === 'hellenistic_astrologer';
   const rawPlaybook = getPlaybookById(params.playbookId);
   const playbook = isWestern
     ? { ...rawPlaybook, ...localizePlaybookForWestern(rawPlaybook) }

@@ -751,17 +751,19 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       ({groupedConversations.companions.length})
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onStartNewCompanion();
-                      onCloseMobileDrawer();
-                    }}
-                    aria-label="Find a new companion"
-                    className="p-1 text-[#8B8275] hover:text-[#3D3830] rounded cursor-pointer"
-                  >
-                    <MessageSquarePlus className="h-3.5 w-3.5" />
-                  </button>
+                  <Tooltip content="Browse all companions" placement="top">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onStartNewCompanion();
+                        onCloseMobileDrawer();
+                      }}
+                      aria-label="Browse all companions"
+                      className="p-1 text-[#8B8275] hover:text-[#3D3830] rounded cursor-pointer"
+                    >
+                      <MessageSquarePlus className="h-3.5 w-3.5" />
+                    </button>
+                  </Tooltip>
                 </div>
 
                 {isFolderOpen('companions') && (
@@ -895,6 +897,20 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                         );
                       });
                     })()}
+
+                    {groupedConversations.companions.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onStartNewCompanion();
+                          onCloseMobileDrawer();
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-[#3D3830]/12 bg-[#FAF7F2]/80 px-2.5 py-1.5 text-[11px] font-medium text-[#5C5449] hover:bg-[#FDFBF7] hover:text-[#3D3830] transition-colors cursor-pointer"
+                      >
+                        <HeartHandshake className="h-3 w-3 text-[#8B7355]" />
+                        <span>Browse all companions</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1118,6 +1134,15 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               >
                 <Home className="h-3.5 w-3.5 text-[#8B8275]" />
                 <span>Home</span>
+              </NavLink>
+              <NavLink
+                to="/app/companions"
+                onClick={onCloseMobileDrawer}
+                tabIndex={mobileFooterExpanded ? 0 : -1}
+                className={mobileNavLinkClass}
+              >
+                <HeartHandshake className="h-3.5 w-3.5 text-[#8B8275]" />
+                <span>Companions</span>
               </NavLink>
               <NavLink
                 to="/app/apps"

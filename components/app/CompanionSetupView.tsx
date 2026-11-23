@@ -37,6 +37,7 @@ export interface CustomCompanionSummary {
 }
 
 interface CompanionSetupViewProps {
+  variant?: 'chat' | 'page';
   initialArchetype?: CompanionArchetypeSlug | null;
   pastCompanionConversations: ConversationRecord[];
   archetypeConfigs?: CompanionArchetypeConfigItem[];
@@ -230,6 +231,7 @@ const getReligiousnessCaption = (score: number): string => {
 };
 
 const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
+  variant = 'chat',
   initialArchetype = null,
   pastCompanionConversations,
   archetypeConfigs,
@@ -574,8 +576,14 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 pt-6 pb-40">
-      <div className="mx-auto max-w-4xl">
+    <div
+      className={
+        variant === 'page'
+          ? 'w-full pb-8'
+          : 'flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 pt-6 pb-40'
+      }
+    >
+      <div className={variant === 'page' ? 'mx-auto max-w-5xl' : 'mx-auto max-w-4xl'}>
         {/* HUB: Preset Companion Directory (2-col desktop / 1-col mobile) + "Find someone new" LAST */}
         {step === 'hub' && (
           <div className="space-y-6 animate-cc-message-in">

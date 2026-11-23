@@ -11,6 +11,7 @@ export type GuideSlug =
   | 'modern_astrologer'
   | 'tarot_reader'
   | 'numerologist'
+  | 'hellenistic_astrologer'
   | 'learn_astrology'
   | 'companion'
   | 'clarity';
@@ -121,6 +122,20 @@ export const ALL_GUIDE_CATALOG_META: GuideCatalogMeta[] = [
     defaultGeneralReadyMessage:
       "I'm ready to calculate and interpret your Pythagorean Numerology profile and current cycles.",
     defaultComposerPlaceholder: 'Ask about your Life Path, Expression, or Personal Year...',
+  },
+  {
+    slug: 'hellenistic_astrologer',
+    displayName: 'Hellenistic Astrologer',
+    subtitle: 'Whole Sign houses, Sect, Hermetic Lots, Egyptian Bounds & Annual Profections.',
+    pillar: 'council',
+    hasSystemPromptRow: true,
+    defaultSuggestionsEnabled: true,
+    defaultChatStyle: 'structured',
+    defaultWelcomeTitle: "I'm ready",
+    defaultWelcomeSubtitle: '',
+    defaultGeneralReadyMessage:
+      "Great, I'm ready to examine your Whole Sign chart, Sect, Hermetic Lots, Profections, and Zodiacal Releasing.",
+    defaultComposerPlaceholder: 'Ask about your Sect, Hermetic Lots, Profections, or time-lords...',
   },
   {
     slug: 'learn_astrology',

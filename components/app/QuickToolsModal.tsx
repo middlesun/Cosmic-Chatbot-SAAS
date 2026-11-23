@@ -77,7 +77,9 @@ const QuickToolsModal: React.FC<QuickToolsModalProps> = ({
           profileId,
           expertSlug,
           tradition:
-            expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer'
+            expertSlug === 'western_astrologer' ||
+            expertSlug === 'modern_astrologer' ||
+            expertSlug === 'hellenistic_astrologer'
               ? 'western'
               : 'vedic',
         }),

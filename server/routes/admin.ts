@@ -2993,7 +2993,9 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
   const jevModel = runtime.jevClassifierEnabled ? runtime.jevModel : runtime.utilityModel;
 
   const isWesternManifestGuide =
-    guideSlug === 'western_astrologer' || guideSlug === 'modern_astrologer';
+    guideSlug === 'western_astrologer' ||
+    guideSlug === 'modern_astrologer' ||
+    guideSlug === 'hellenistic_astrologer';
   const isAstroPipelineManifestGuide =
     guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG || isWesternManifestGuide;
 

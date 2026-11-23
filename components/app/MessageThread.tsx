@@ -206,6 +206,8 @@ const getCouncilSpeakerLabel = (expertSlug?: string | null): string => {
       return 'Western Astrologer';
     case 'modern_astrologer':
       return 'Modern Astrologer';
+    case 'hellenistic_astrologer':
+      return 'Hellenistic Astrologer';
     case 'tarot_reader':
       return 'Tarot';
     case 'numerologist':
@@ -678,6 +680,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const isWesternSystem =
     normalizedExpertSlug === 'western_astrologer' ||
     normalizedExpertSlug === 'modern_astrologer' ||
+    normalizedExpertSlug === 'hellenistic_astrologer' ||
     (astrologyMode === 'western' &&
       normalizedExpertSlug !== DEFAULT_COUNCIL_EXPERT_SLUG &&
       normalizedExpertSlug !== 'tarot_reader' &&
@@ -2026,6 +2029,8 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                             ? 'Western Astrologer (Western)'
                             : msg.expert_used === 'modern_astrologer'
                             ? 'Modern Astrologer (Western)'
+                            : msg.expert_used === 'hellenistic_astrologer'
+                            ? 'Hellenistic Astrologer (Hellenistic)'
                             : msg.expert_used === 'tarot_reader'
                             ? 'Tarot'
                             : msg.expert_used === 'numerologist'

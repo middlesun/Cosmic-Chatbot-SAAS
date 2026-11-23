@@ -171,6 +171,7 @@ const COUNCIL_EXPERT_FALLBACK_NAMES: Record<string, string> = {
   modern_astrologer: 'Modern Astrologer',
   tarot_reader: 'Tarot',
   numerologist: 'Numerology',
+  hellenistic_astrologer: 'Hellenistic Astrologer',
   learn_astrology: 'Learn Astrology',
 };
 
@@ -456,8 +457,9 @@ router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res
     const publicCatalog = await getPublicChatCatalogCached();
     const fallbackCouncilExpert =
       req.appUser.default_astrology_mode === 'western'
-        ? req.appUser.default_expert === 'modern_astrologer'
-          ? 'modern_astrologer'
+        ? req.appUser.default_expert === 'modern_astrologer' ||
+          req.appUser.default_expert === 'hellenistic_astrologer'
+          ? req.appUser.default_expert
           : 'western_astrologer'
         : normalizeCouncilSlug(req.appUser.default_expert);
     const initialExpertSlug =
@@ -2313,8 +2315,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
   const fallbackCouncilExpert =
     req.appUser.default_astrology_mode === 'western'
-      ? req.appUser.default_expert === 'modern_astrologer'
-        ? 'modern_astrologer'
+      ? req.appUser.default_expert === 'modern_astrologer' ||
+        req.appUser.default_expert === 'hellenistic_astrologer'
+        ? req.appUser.default_expert
         : 'western_astrologer'
       : normalizeCouncilSlug(req.appUser.default_expert);
 
@@ -2357,7 +2360,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
   const isWesternCouncilTurn =
     activePillar === 'council' &&
-    (expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer');
+    (expertSlug === 'western_astrologer' ||
+      expertSlug === 'modern_astrologer' ||
+      expertSlug === 'hellenistic_astrologer');
   const isVedicCouncilTurn =
     activePillar === 'council' &&
     !isWesternCouncilTurn &&
@@ -3492,7 +3497,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       !wasLeakIntercepted
     ) {
       const archivistTradition: 'vedic' | 'western' =
-        expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer'
+        expertSlug === 'western_astrologer' ||
+        expertSlug === 'modern_astrologer' ||
+        expertSlug === 'hellenistic_astrologer'
           ? 'western'
           : 'vedic';
       void updateProfileMemoryAfterTurn(conversation.profile_id, req.appUser.id, {
@@ -4237,7 +4244,9 @@ router.post('/tools', requireAuth, async (req: AuthenticatedRequest, res) => {
   const safeTradition: 'vedic' | 'western' | undefined =
     tradition === 'western' || tradition === 'vedic'
       ? tradition
-      : safeExpertSlug === 'western_astrologer' || safeExpertSlug === 'modern_astrologer'
+      : safeExpertSlug === 'western_astrologer' ||
+        safeExpertSlug === 'modern_astrologer' ||
+        safeExpertSlug === 'hellenistic_astrologer'
       ? 'western'
       : undefined;
 

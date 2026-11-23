@@ -349,6 +349,7 @@ export const DEFAULT_CHATBOT_CONFIG: ChatbotConfig = {
     'modern_astrologer',
     'tarot_reader',
     'numerologist',
+    'hellenistic_astrologer',
     'learn_astrology',
   ],
   mode_order: ['general', 'life', 'career', 'love', 'marriage', 'health', 'wealth'],
@@ -964,6 +965,7 @@ export function buildDefaultModularRulesForGuide(
     slug === DEFAULT_COUNCIL_EXPERT_SLUG ||
     slug === 'western_astrologer' ||
     slug === 'modern_astrologer' ||
+    slug === 'hellenistic_astrologer' ||
     slug === 'learn_astrology'
   ) {
     baseRules.push({

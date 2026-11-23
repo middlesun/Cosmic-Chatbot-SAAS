@@ -23,6 +23,7 @@ const FALLBACK_EXPERTS = [
   { value: 'modern_astrologer', label: 'Modern Astrologer' },
   { value: 'tarot_reader', label: 'Tarot' },
   { value: 'numerologist', label: 'Numerology' },
+  { value: 'hellenistic_astrologer', label: 'Hellenistic Astrologer' },
   { value: 'learn_astrology', label: 'Learn Astrology' },
 ];
 
@@ -249,7 +250,12 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
                 setDefaultAstrologyMode(mode);
                 if (mode === 'western' && normalizeCouncilSlug(defaultExpert) === DEFAULT_COUNCIL_EXPERT_SLUG) {
                   setDefaultExpert('western_astrologer');
-                } else if (mode === 'vedic' && defaultExpert === 'western_astrologer') {
+                } else if (
+                  mode === 'vedic' &&
+                  (defaultExpert === 'western_astrologer' ||
+                    defaultExpert === 'modern_astrologer' ||
+                    defaultExpert === 'hellenistic_astrologer')
+                ) {
                   setDefaultExpert(DEFAULT_COUNCIL_EXPERT_SLUG);
                 }
               }}

@@ -651,6 +651,19 @@ export async function compileWesternStage2ContextPackage(
     ...(westernDossier.dignity_hierarchy.dispositor_backbone.summary
       ? { dispositorTree: westernDossier.dignity_hierarchy.dispositor_backbone.summary }
       : {}),
+    ...(w.hellenistic
+      ? {
+          hellenistic: {
+            lots: w.hellenistic.lots.map(
+              (l) => `${l.name}: ${l.sign} ${l.dms} (WS H${l.wholeSignHouse}, Lord ${l.lord}, Bound ${l.boundLord})`
+            ),
+            bounds: w.hellenistic.bounds.map(
+              (b) => `${b.body}: ${b.sign} ${b.degree} WS-H${b.wholeSignHouse} [Bound ${b.termLord}, Decan ${b.decanLord}]`
+            ),
+            zodiacalReleasing: w.hellenistic.zodiacalReleasing,
+          },
+        }
+      : {}),
     ...(timingSnapshot
       ? {
           timing: {

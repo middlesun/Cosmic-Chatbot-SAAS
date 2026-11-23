@@ -550,8 +550,11 @@ async function buildStaticSystemInstruction(params: {
     (isLearnAstrology ? promptBodies['learn_astrology'] : '') ||
     '';
 
+  const isHellenistic = params.expertSlug === 'hellenistic_astrologer';
   const isWesternOrModern =
-    params.expertSlug === 'western_astrologer' || params.expertSlug === 'modern_astrologer';
+    params.expertSlug === 'western_astrologer' ||
+    params.expertSlug === 'modern_astrologer' ||
+    isHellenistic;
   const isTarot = params.expertSlug === 'tarot_reader';
   const isNumerology = params.expertSlug === 'numerologist';
   const westernConstitution = isWesternOrModern
@@ -571,6 +574,10 @@ async function buildStaticSystemInstruction(params: {
       isWesternOrModern
         ? `COMMUNICATION DEPTH — FRIENDLY MODE (NON-TECHNICAL): Perform all analytical synthesis silently behind the scenes, then explain your answer in warm, clear, everyday conversational language. Avoid overwhelming technical jargon, raw degrees, or dense aspect chains unless the user explicitly asks to see the technical breakdown. Translate factors directly into relatable life guidance and clear calendar timing windows.`
         : `COMMUNICATION DEPTH — FRIENDLY MODE (NON-TECHNICAL): Perform all analytical synthesis silently behind the scenes, then explain your answer in warm, clear, everyday conversational language. Avoid overwhelming technical jargon, raw planetary degrees, Nakshatra pada math, or dense chains unless the user explicitly asks to see the technical breakdown. Translate factors directly into relatable life guidance and clear calendar timing windows.`
+    );
+  } else if (isHellenistic) {
+    sections.push(
+      `COMMUNICATION DEPTH — DETAILED MODE (HELLENISTIC CLASSICAL): Ground your analysis in Tropical Whole Sign houses (wsH), Day/Night Sect (lights & benefics/malefics of and contrary to sect), essential dignity & Egyptian Bounds (terms), the Hermetic Lots (Fortune, Spirit, Eros, Necessity), Annual Profections & Lord of the Year, and Zodiacal Releasing (Spirit/Fortune L1–L2 chapters) wherever it sharpens and illuminates the answer, keeping prose calm and cohesive.`
     );
   } else if (isWesternOrModern) {
     sections.push(
@@ -849,7 +856,8 @@ User's specific question: ${finalUserText}`;
   const isWesternCouncilTurn =
     activePillar === 'council' &&
     (normalizedExpertSlug === 'western_astrologer' ||
-      normalizedExpertSlug === 'modern_astrologer') &&
+      normalizedExpertSlug === 'modern_astrologer' ||
+      normalizedExpertSlug === 'hellenistic_astrologer') &&
     params.modeSlug !== 'learn_astrology' &&
     params.conversation.mode_type !== 'learn_astrology' &&
     params.conversation.mode_type !== 'report_followup' &&
@@ -860,6 +868,7 @@ User's specific question: ${finalUserText}`;
     !isWesternCouncilTurn &&
     normalizedExpertSlug !== 'western_astrologer' &&
     normalizedExpertSlug !== 'modern_astrologer' &&
+    normalizedExpertSlug !== 'hellenistic_astrologer' &&
     normalizedExpertSlug !== 'tarot_reader' &&
     normalizedExpertSlug !== 'numerologist' &&
     normalizedExpertSlug !== 'learn_astrology' &&
@@ -1353,7 +1362,9 @@ User's specific question: ${finalUserText}`;
       try {
         const daily = await getOrFetchDailyTransits();
         gocharContext =
-          params.expertSlug === 'western_astrologer' || params.expertSlug === 'modern_astrologer'
+          params.expertSlug === 'western_astrologer' ||
+          params.expertSlug === 'modern_astrologer' ||
+          params.expertSlug === 'hellenistic_astrologer'
             ? daily.westernTransitsText
             : daily.transitsText;
       } catch {
@@ -1918,7 +1929,8 @@ export async function runQuickTool(params: {
   const isWestern =
     params.tradition === 'western' ||
     params.expertSlug === 'western_astrologer' ||
-    params.expertSlug === 'modern_astrologer';
+    params.expertSlug === 'modern_astrologer' ||
+    params.expertSlug === 'hellenistic_astrologer';
   const [{ bodies: promptBodies, models: promptModels }, runtime] = await Promise.all([
     resolvePromptModules([params.toolSlug]),
     getResolvedOpenRouterRuntime(),

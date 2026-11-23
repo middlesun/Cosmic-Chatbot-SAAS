@@ -15,6 +15,7 @@ const FALLBACK_EXPERTS = [
   { value: 'modern_astrologer', label: 'Modern Astrologer' },
   { value: 'tarot_reader', label: 'Tarot' },
   { value: 'numerologist', label: 'Numerology' },
+  { value: 'hellenistic_astrologer', label: 'Hellenistic Astrologer' },
   { value: 'learn_astrology', label: 'Learn Astrology' },
 ];
 

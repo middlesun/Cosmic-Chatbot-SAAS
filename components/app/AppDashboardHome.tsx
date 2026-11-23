@@ -215,6 +215,7 @@ const AppDashboardHome: React.FC = () => {
       const westernPriority = [
         'expert-western_astrologer',
         'expert-modern_astrologer',
+        'expert-hellenistic_astrologer',
         'expert-vedic_astrologer',
       ];
       return [...base].sort((a, b) => {
@@ -445,7 +446,7 @@ const AppDashboardHome: React.FC = () => {
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {guidesToShow.map((guide) => {
             const href =
               guide.kind === 'companion'
@@ -462,30 +463,38 @@ const AppDashboardHome: React.FC = () => {
               <Link
                 key={guide.id}
                 to={href}
-                className="group flex flex-col items-center justify-center text-center gap-3 rounded-3xl bg-[#F1ECE3] border border-[#3D3830]/15 p-5 transition-colors hover:bg-[#EAE3D7] hover:border-[#3D3830]/25"
+                className="group rounded-3xl bg-[#F1ECE3] hover:bg-[#EAE3D7] active:scale-[0.985] p-5 sm:p-6 border border-[#3D3830]/15 hover:border-[#3D3830]/30 text-[#3D3830] hover:-translate-y-1 hover:shadow-[0_20px_44px_-22px_rgba(61,56,48,0.18)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between gap-4"
               >
-                {guide.kind === 'companion' ? (
-                  <CompanionAvatar
-                    name={cleanTitle || 'Companion'}
-                    avatarUrl={guide.avatarUrl}
-                    palette={guide.monogramPalette || undefined}
-                    size="md"
-                    shape="circle"
-                  />
-                ) : (
-                  <div className="h-12 w-12 rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/12 flex items-center justify-center text-[#8B7355] shrink-0">
-                    {guide.expertSlug === 'tarot_reader' ? (
-                      <Sparkles className="h-5 w-5" />
-                    ) : guide.expertSlug === 'numerologist' ? (
-                      <Hash className="h-5 w-5" />
-                    ) : (
-                      <Compass className="h-5 w-5" />
-                    )}
-                  </div>
-                )}
-                <h3 className="font-serif text-lg sm:text-xl font-medium text-[#3D3830] leading-snug">
-                  {cleanTitle}
-                </h3>
+                <div className="flex items-center justify-between gap-2">
+                  {guide.kind === 'companion' ? (
+                    <CompanionAvatar
+                      name={cleanTitle || 'Companion'}
+                      avatarUrl={guide.avatarUrl}
+                      palette={guide.monogramPalette || undefined}
+                      size="sm"
+                      shape="circle"
+                      className="!w-10 !h-10"
+                    />
+                  ) : (
+                    <div className="h-10 w-10 rounded-2xl bg-[#FAF7F2]/80 border border-[#3D3830]/15 flex items-center justify-center text-[#8B7355] group-hover:text-[#3D3830] transition-colors shrink-0">
+                      {guide.expertSlug === 'tarot_reader' ? (
+                        <Sparkles className="h-5 w-5" />
+                      ) : guide.expertSlug === 'numerologist' ? (
+                        <Hash className="h-5 w-5" />
+                      ) : (
+                        <Compass className="h-5 w-5" />
+                      )}
+                    </div>
+                  )}
+                  <span className="h-7 w-7 rounded-full bg-[#FAF7F2]/75 group-hover:bg-[#FAF7F2] border border-[#3D3830]/10 flex items-center justify-center transition-colors shrink-0">
+                    <ArrowRight className="h-3.5 w-3.5 text-[#3D3830] group-hover:translate-x-0.5 transition-transform" />
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-serif text-2xl font-medium text-[#3D3830] tracking-tight leading-snug">
+                    {cleanTitle}
+                  </h3>
+                </div>
               </Link>
             );
           })}
@@ -506,7 +515,7 @@ const AppDashboardHome: React.FC = () => {
                 Companions
               </h2>
               <Link
-                to="/app/chat?pillar=companion"
+                to="/app/companions"
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors whitespace-nowrap"
               >
                 <span>Browse all</span>

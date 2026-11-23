@@ -84,7 +84,12 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
     if (!isPreviewMode && appUser?.default_astrology_mode) {
       return appUser.default_astrology_mode === 'western' ? 'western' : 'vedic';
     }
-    if (!isPreviewMode && appUser?.default_expert === 'western_astrologer') {
+    if (
+      !isPreviewMode &&
+      (appUser?.default_expert === 'western_astrologer' ||
+        appUser?.default_expert === 'modern_astrologer' ||
+        appUser?.default_expert === 'hellenistic_astrologer')
+    ) {
       return 'western';
     }
     return astrologyMode === 'western' ? 'western' : 'vedic';
@@ -106,7 +111,10 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
       const resolvedMode: AstrologyMode = isPreviewMode
         ? astrologyMode
         : appUser?.default_astrology_mode === 'western' ||
-          (!appUser?.default_astrology_mode && appUser?.default_expert === 'western_astrologer')
+          (!appUser?.default_astrology_mode &&
+            (appUser?.default_expert === 'western_astrologer' ||
+              appUser?.default_expert === 'modern_astrologer' ||
+              appUser?.default_expert === 'hellenistic_astrologer'))
         ? 'western'
         : 'vedic';
       setDefaultCouncilMode(resolvedMode);

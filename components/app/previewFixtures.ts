@@ -66,6 +66,12 @@ export const PREVIEW_CHAT_CATALOG: ChatCatalog = {
       subtitle: 'Pythagorean Life Path, Expression, Soul Urge & Personal Year cycle calculations.',
     },
     {
+      slug: 'hellenistic_astrologer',
+      category: 'expert',
+      displayName: 'Hellenistic Astrologer',
+      subtitle: 'Whole Sign houses, Sect, Hermetic Lots, Egyptian Bounds & Annual Profections.',
+    },
+    {
       slug: 'learn_astrology',
       category: 'expert',
       displayName: 'Learn Astrology',

@@ -89,6 +89,10 @@ const EXPERT_META: Record<string, { title: string; subtitle: string }> = {
     title: 'Numerology',
     subtitle: 'Pythagorean Life Path & timing cycles',
   },
+  hellenistic_astrologer: {
+    title: 'Hellenistic Astrologer',
+    subtitle: 'Whole Sign houses, Sect, Hermetic Lots & Profections',
+  },
 };
 
 function formatTransitsSummary(
@@ -593,64 +597,7 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     };
   });
 
-  // 3. Guides & Companions (Always return all 5 Council guides + 1 Companion card)
-  let latestCompanion: {
-    kind: 'companion';
-    id: string;
-    title: string;
-    subtitle: string;
-    companionSlug?: string;
-    avatarUrl?: string | null;
-    monogramPalette?: { bg: string; ring: string; ink: string } | null;
-    conversationId?: string;
-    lastActiveAt?: string;
-  } | null = null;
-
-  for (const c of visibleConvs) {
-    if (c.pillar === 'companion' || c.companion_persona_json?.name) {
-      const slugKey = String(c.companion_slug || c.companion_persona_json?.slug || '')
-        .trim()
-        .toLowerCase();
-      const matchedCard = slugKey ? companionBySlug.get(slugKey) : undefined;
-      const cname =
-        matchedCard?.name || c.companion_persona_json?.name || c.title.split('·')[0].trim();
-      const crole =
-        matchedCard?.primary_expertise || c.companion_persona_json?.role_label || 'Companion';
-      latestCompanion = {
-        kind: 'companion',
-        id: `comp-${c.id}`,
-        title: cname ? `Companion · ${cname}` : 'Companion',
-        subtitle: crole,
-        ...(slugKey ? { companionSlug: slugKey } : {}),
-        avatarUrl: matchedCard?.avatar_url ?? c.companion_persona_json?.avatar_url ?? null,
-        monogramPalette:
-          matchedCard?.monogram_palette ?? c.companion_persona_json?.monogram_palette ?? null,
-        conversationId: c.id,
-        lastActiveAt: c.updated_at,
-      };
-      break;
-    }
-  }
-
-  if (!latestCompanion) {
-    const starterCard = companionBySlug.get('mira') || companionCatalog[0] || null;
-    latestCompanion = starterCard
-      ? {
-          kind: 'companion',
-          id: `comp-${starterCard.slug}`,
-          title: `Companion · ${starterCard.name}`,
-          subtitle: starterCard.tagline || starterCard.primary_expertise,
-          companionSlug: starterCard.slug,
-          avatarUrl: starterCard.avatar_url,
-          monogramPalette: starterCard.monogram_palette,
-        }
-      : {
-          kind: 'companion',
-          id: 'comp-starter',
-          title: 'Companion',
-          subtitle: 'Feel better talking through thoughts & stress',
-        };
-  }
+  // 3. Council Guides (All 6 Council experts; Companions render in the Companions grid below)
 
   const featuredSlugs = ['mira', 'aira', 'luna', 'kabir', 'rohan', 'dev', 'tara', 'marc', 'bella'];
   const featuredSet = new Set<string>();
@@ -717,6 +664,7 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     'western_astrologer',
     'tarot_reader',
     'numerologist',
+    'hellenistic_astrologer',
   ] as const;
 
   const recentGuides: Array<{
@@ -743,7 +691,6 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
         ...(act ? { conversationId: act.conversationId, lastActiveAt: act.lastActiveAt } : {}),
       };
     }),
-    latestCompanion,
   ];
 
   // 4. Favorites & recent Mini-App runs

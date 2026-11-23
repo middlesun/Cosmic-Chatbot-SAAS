@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Check,
   ChevronDown,
@@ -176,6 +176,7 @@ const COUNCIL_EXPERT_FALLBACK_NAMES: Record<string, string> = {
   modern_astrologer: 'Modern Astrologer',
   tarot_reader: 'Tarot',
   numerologist: 'Numerology',
+  hellenistic_astrologer: 'Hellenistic Astrologer',
   learn_astrology: 'Learn Astrology',
 };
 
@@ -313,6 +314,7 @@ interface ChatWorkspaceProps {
 const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }) => {
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const {
     appUser,
@@ -453,6 +455,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const companionChartMenuRef = useRef<HTMLDivElement | null>(null);
   const seededQueryRef = useRef<string>('');
   const pendingSeedCompanionRef = useRef<string | null>(null);
+  const pendingSeedNewRef = useRef<boolean>(false);
   const seededExpertRef = useRef<boolean>(false);
   const seededCouncilFreshRef = useRef<boolean>(false);
   const didLoadInitialTabConvRef = useRef<boolean>(false);
@@ -1015,15 +1018,18 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             setActiveTabId(existing.tabId);
             return prev;
           }
+          const convSlug =
+            loaded.companion_slug || loaded.companion_persona_json?.slug || undefined;
           const matchingEmpty = prev.find((t) => t.pillar === convPillar && !t.conversationId);
-          const matchingPillar = matchingEmpty || prev.find((t) => t.pillar === convPillar);
-          if (matchingPillar) {
-            setActiveTabId(matchingPillar.tabId);
+          if (matchingEmpty) {
+            delete tabCacheRef.current[matchingEmpty.tabId];
+            setActiveTabId(matchingEmpty.tabId);
             return prev.map((t) =>
-              t.tabId === matchingPillar.tabId
+              t.tabId === matchingEmpty.tabId
                 ? {
                     ...t,
                     conversationId: loaded.id,
+                    companionSlug: convSlug,
                     label: deriveTabLabelForConversation(loaded, profiles),
                   }
                 : t
@@ -1034,11 +1040,27 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
               tabId: `tab-${loaded.id}`,
               pillar: convPillar,
               conversationId: loaded.id,
+              companionSlug: convSlug,
               label: deriveTabLabelForConversation(loaded, profiles),
               isCore: false,
             };
             setActiveTabId(newTab.tabId);
             return [...prev, newTab];
+          }
+          const matchingPillar = prev.find((t) => t.pillar === convPillar);
+          if (matchingPillar) {
+            delete tabCacheRef.current[matchingPillar.tabId];
+            setActiveTabId(matchingPillar.tabId);
+            return prev.map((t) =>
+              t.tabId === matchingPillar.tabId
+                ? {
+                    ...t,
+                    conversationId: loaded.id,
+                    companionSlug: convSlug,
+                    label: deriveTabLabelForConversation(loaded, profiles),
+                  }
+                : t
+            );
           }
           const fallbackTarget = prev[0] || DEFAULT_CORE_TABS[0];
           setActiveTabId(fallbackTarget.tabId);
@@ -1091,6 +1113,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
     if (seedCompanion?.trim()) {
       pendingSeedCompanionRef.current = seedCompanion.trim().toLowerCase();
+      pendingSeedNewRef.current = seedNew;
     }
 
     if (seedPillar === 'companion' || seedCompanion) {
@@ -1132,10 +1155,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           setActiveConversation(null);
           setMessages([]);
           setAskLaterItems([]);
-          const defaultLabel =
-            seedSystem === 'western' || seedExpert === 'western_astrologer'
-              ? 'Western Astrologer'
-              : 'Vedic Astrologer';
+          const defaultLabel = seedExpert
+            ? resolveCouncilDisplayName(seedExpert, catalog)
+            : seedSystem === 'western'
+            ? 'Western Astrologer'
+            : 'Vedic Astrologer';
           setTabs((prev) =>
             prev.map((t) =>
               t.tabId === councilTab.tabId
@@ -1145,10 +1169,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           );
         }
       } else {
-        const defaultLabel =
-          seedSystem === 'western' || seedExpert === 'western_astrologer'
-            ? 'Western Astrologer'
-            : 'Vedic Astrologer';
+        const defaultLabel = seedExpert
+          ? resolveCouncilDisplayName(seedExpert, catalog)
+          : seedSystem === 'western'
+          ? 'Western Astrologer'
+          : 'Vedic Astrologer';
         const normalizedSeedExpert = seedExpert ? normalizeCouncilSlug(seedExpert) : null;
         const newCouncilTab: ActiveChatTab = {
           tabId: `tab-council-${Date.now()}`,
@@ -1177,8 +1202,18 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       }
     }
     if (seedExpert) {
+      const normalizedSeed = normalizeCouncilSlug(seedExpert);
       seededExpertRef.current = true;
-      setExpertSlug(normalizeCouncilSlug(seedExpert));
+      setExpertSlug(normalizedSeed);
+      if (
+        normalizedSeed === 'western_astrologer' ||
+        normalizedSeed === 'modern_astrologer' ||
+        normalizedSeed === 'hellenistic_astrologer'
+      ) {
+        setAstrologyMode('western');
+      } else if (normalizedSeed === DEFAULT_COUNCIL_EXPERT_SLUG) {
+        setAstrologyMode('vedic');
+      }
     }
     if (seedPrompt) setDraftText(seedPrompt);
     if (seedProfileId) setPendingProfileId(seedProfileId);
@@ -1275,7 +1310,12 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     if (!isPreviewMode && appUser?.default_astrology_mode) {
       return appUser.default_astrology_mode === 'western' ? 'western' : 'vedic';
     }
-    if (!isPreviewMode && appUser?.default_expert === 'western_astrologer') {
+    if (
+      !isPreviewMode &&
+      (appUser?.default_expert === 'western_astrologer' ||
+        appUser?.default_expert === 'modern_astrologer' ||
+        appUser?.default_expert === 'hellenistic_astrologer')
+    ) {
       return 'western';
     }
     return astrologyMode === 'western' ? 'western' : 'vedic';
@@ -1292,7 +1332,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       setExpertSlug('western_astrologer');
     } else if (
       astrologyMode === 'vedic' &&
-      (expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer')
+      (expertSlug === 'western_astrologer' ||
+        expertSlug === 'modern_astrologer' ||
+        expertSlug === 'hellenistic_astrologer')
     ) {
       setExpertSlug(DEFAULT_COUNCIL_EXPERT_SLUG);
     }
@@ -1315,12 +1357,12 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     if (!isThreadLocked) {
       const nextExpert =
         nextMode === 'western'
-          ? expertSlug === 'modern_astrologer'
-            ? 'modern_astrologer'
+          ? expertSlug === 'modern_astrologer' || expertSlug === 'hellenistic_astrologer'
+            ? expertSlug
             : 'western_astrologer'
           : DEFAULT_COUNCIL_EXPERT_SLUG;
       if (nextMode === 'western') {
-        if (expertSlug !== 'modern_astrologer') {
+        if (expertSlug !== 'modern_astrologer' && expertSlug !== 'hellenistic_astrologer') {
           setExpertSlug('western_astrologer');
         }
       } else {
@@ -1329,6 +1371,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       const nextLabel =
         nextExpert === 'modern_astrologer'
           ? 'Modern Astrologer'
+          : nextExpert === 'hellenistic_astrologer'
+          ? 'Hellenistic Astrologer'
           : nextMode === 'western'
           ? 'Western Astrologer'
           : 'Vedic Astrologer';
@@ -1625,7 +1669,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
     let targetTradition: AstrologyMode = defaultCouncilMode;
     if (activePillar === 'council') {
-      if (expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer') {
+      if (
+        expertSlug === 'western_astrologer' ||
+        expertSlug === 'modern_astrologer' ||
+        expertSlug === 'hellenistic_astrologer'
+      ) {
         targetTradition = 'western';
       } else if (expertSlug) {
         targetTradition = 'vedic';
@@ -1673,7 +1721,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     };
 
     seededExpertRef.current = true;
-    if (normalizedGuideSlug === 'western_astrologer' || normalizedGuideSlug === 'modern_astrologer') {
+    if (
+      normalizedGuideSlug === 'western_astrologer' ||
+      normalizedGuideSlug === 'modern_astrologer' ||
+      normalizedGuideSlug === 'hellenistic_astrologer'
+    ) {
       setAstrologyMode('western');
     } else if (normalizedGuideSlug === DEFAULT_COUNCIL_EXPERT_SLUG) {
       setAstrologyMode('vedic');
@@ -1838,6 +1890,22 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         setTabs((prev) => prev.map((t) => (t.tabId === anyComp.tabId ? resetComp : t)));
         delete tabCacheRef.current[anyComp.tabId];
         activateTab(resetComp);
+      } else if (!activeTab.conversationId) {
+        const resetActive: ActiveChatTab = {
+          ...activeTab,
+          pillar: 'companion',
+          conversationId: null,
+          label: 'Companion',
+          expertSlug: undefined,
+          customLabel: false,
+        };
+        setTabs((prev) => prev.map((t) => (t.tabId === activeTab.tabId ? resetActive : t)));
+        delete tabCacheRef.current[activeTab.tabId];
+        activateTab(resetActive, { skipSnapshot: true });
+      } else {
+        setErrorBanner(
+          `Up to ${MAX_ACTIVE_TABS} active tabs can be open at once. Close a tab to browse companions in chat.`
+        );
       }
     }
   };
@@ -2028,8 +2096,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       displayName: string,
       companionSlug: string | null,
       openingMsg: ChatMessageRecord | null,
-      resumed: boolean
+      resumed: boolean,
+      targetTabId?: string
     ) => {
+      const destTabId = targetTabId || activeTabId;
       setConversations((prev) => [startedConv, ...prev.filter((c) => c.id !== startedConv.id)]);
       setActiveConversation(startedConv);
 
@@ -2043,10 +2113,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         setPendingTechnicalDirective(null);
       }
 
-      delete tabCacheRef.current[activeTabId];
+      delete tabCacheRef.current[destTabId];
       setTabs((prev) =>
         prev.map((t) =>
-          t.tabId === activeTabId
+          t.tabId === destTabId
             ? {
                 ...t,
                 pillar: 'companion',
@@ -2058,6 +2128,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             : t
         )
       );
+      if (destTabId !== activeTabId) {
+        setActiveTabId(destTabId);
+      }
       setComposerFocusTrigger((n) => n + 1);
       void loadCompanionCatalog();
     },
@@ -2176,7 +2249,12 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
   const handleStartPresetCompanion = async (
     card: PublicCompanionCard,
-    options?: { forceNew?: boolean; handoffNote?: string; fromName?: string }
+    options?: {
+      forceNew?: boolean;
+      handoffNote?: string;
+      fromName?: string;
+      targetTabId?: string;
+    }
   ) => {
     setErrorBanner(null);
 
@@ -2266,7 +2344,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             : c
         )
       );
-      await activateStartedCompanionThread(previewConv, card.name, card.slug, openingMsg, false);
+      await activateStartedCompanionThread(
+        previewConv,
+        card.name,
+        card.slug,
+        openingMsg,
+        false,
+        options?.targetTabId
+      );
       return;
     }
 
@@ -2348,8 +2433,40 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       card.name,
       card.slug,
       openingMsg,
-      Boolean(data.resumed)
+      Boolean(data.resumed),
+      options?.targetTabId
     );
+  };
+
+  const handleReplaceTabWithPresetCompanion = (
+    targetTabId: string,
+    card: PublicCompanionCard
+  ) => {
+    const existingTab = tabs.find(
+      (t) =>
+        t.pillar === 'companion' &&
+        ((card.last_conversation_id && t.conversationId === card.last_conversation_id) ||
+          (t.companionSlug && t.companionSlug.toLowerCase() === card.slug.toLowerCase() && t.conversationId))
+    );
+    if (existingTab) {
+      if (existingTab.tabId !== targetTabId && tabs.length > 1) {
+        const target = tabs.find((t) => t.tabId === targetTabId);
+        if (target && !target.conversationId) {
+          delete tabCacheRef.current[targetTabId];
+          setTabs((prev) => prev.filter((t) => t.tabId !== targetTabId));
+        }
+      }
+      activateTab(existingTab, { skipSnapshot: activeTabId === targetTabId });
+      return;
+    }
+
+    if (targetTabId !== activeTabId) {
+      const targetTab = tabs.find((t) => t.tabId === targetTabId);
+      if (targetTab) {
+        activateTab(targetTab);
+      }
+    }
+    void handleStartPresetCompanion(card, { targetTabId });
   };
 
   const handleStartCustomBySlug = async (
@@ -2649,20 +2766,52 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   useEffect(() => {
     const targetSlug = pendingSeedCompanionRef.current;
     if (!targetSlug) return;
+    const forceNew = pendingSeedNewRef.current;
     if (isPreviewMode) {
       pendingSeedCompanionRef.current = null;
+      pendingSeedNewRef.current = false;
       const matched = PREVIEW_PUBLIC_COMPANIONS.find(
         (c) => c.slug.toLowerCase() === targetSlug
       );
       if (matched) {
-        void handleStartPresetCompanion(matched);
+        void handleStartPresetCompanion(matched, { forceNew });
       }
       return;
     }
     if (companionCatalog.length === 0) return;
     pendingSeedCompanionRef.current = null;
-    void handleSwitchToReferredCompanion(targetSlug);
+    pendingSeedNewRef.current = false;
+    void handleSwitchToReferredCompanion(targetSlug, forceNew ? { mode: 'fresh' } : undefined);
   }, [companionCatalog, isPreviewMode]);
+
+  // Handle matched custom persona handoff from /app/companions navigation state (primarily preview mode)
+  useEffect(() => {
+    if (embeddedPreview) return;
+    const navState = location.state as
+      | { startCompanionPersona?: CompanionPersona; forceNew?: boolean }
+      | null;
+    const incomingPersona = navState?.startCompanionPersona;
+    if (!incomingPersona) return;
+
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+
+    const existingComp = tabs.find((t) => t.pillar === 'companion' && !t.conversationId);
+    if (existingComp) {
+      activateTab(existingComp, { skipSnapshot: true });
+    } else if (tabs.length < MAX_ACTIVE_TABS) {
+      const newTab: ActiveChatTab = {
+        tabId: `tab-companion-${Date.now()}`,
+        pillar: 'companion',
+        conversationId: null,
+        label: incomingPersona.name || 'Companion',
+        isCore: false,
+      };
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabId(newTab.tabId);
+    }
+
+    void handleStartWithCompanion(incomingPersona, { forceNew: navState?.forceNew });
+  }, [embeddedPreview, location.state, location.pathname, location.search, navigate]);
 
   const handleToggleBookmark = async (conv: ConversationRecord) => {
     const token = await getAccessToken();
@@ -3644,8 +3793,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     const isWesternExpert =
       expertSlug === 'western_astrologer' ||
       expertSlug === 'modern_astrologer' ||
+      expertSlug === 'hellenistic_astrologer' ||
       (astrologyMode === 'western' && normalizeCouncilSlug(expertSlug) === DEFAULT_COUNCIL_EXPERT_SLUG);
-    const systemWord = isWesternExpert ? 'Western' : 'Vedic';
+    const systemWord =
+      expertSlug === 'hellenistic_astrologer'
+        ? 'Hellenistic'
+        : isWesternExpert
+        ? 'Western'
+        : 'Vedic';
 
     const readingPrompt = originalQuestion
       ? `The birth chart for ${createdProfile.name} is now saved and attached to this consultation. Please provide the full ${systemWord} astrology reading for: ${originalQuestion}`
@@ -3877,7 +4032,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       const msgExpert = msg.expert_used || expertSlug;
       const inferredMode: AstrologyMode | null =
         sourceType === 'council'
-          ? msgExpert === 'western_astrologer' || msgExpert === 'modern_astrologer'
+          ? msgExpert === 'western_astrologer' ||
+            msgExpert === 'modern_astrologer' ||
+            msgExpert === 'hellenistic_astrologer'
             ? 'western'
             : normalizeCouncilSlug(msgExpert) === DEFAULT_COUNCIL_EXPERT_SLUG
             ? 'vedic'
@@ -4786,6 +4943,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                   ? 'Tarot'
                   : expertSlug === 'numerologist'
                   ? 'Numerology'
+                  : expertSlug === 'hellenistic_astrologer'
+                  ? 'Hellenistic'
                   : expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer'
                   ? 'Western'
                   : 'Vedic'}
@@ -5137,7 +5296,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
               seededExpertRef.current = true;
               setExpertSlug(normalizedNext);
               if (!isThreadLocked) {
-                if (normalizedNext === 'western_astrologer' || normalizedNext === 'modern_astrologer') {
+                if (
+                  normalizedNext === 'western_astrologer' ||
+                  normalizedNext === 'modern_astrologer' ||
+                  normalizedNext === 'hellenistic_astrologer'
+                ) {
                   setAstrologyMode('western');
                 } else if (normalizedNext === DEFAULT_COUNCIL_EXPERT_SLUG) {
                   setAstrologyMode('vedic');
@@ -5184,6 +5347,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           tabs={tabs}
           activeTabId={activeTabId}
           maxActiveTabs={MAX_ACTIVE_TABS}
+          companionCatalog={companionCatalog}
           pastCompanionConversations={pastCompanionConversations}
           recentConversations={recentPinnableConversations}
           defaultAstrologyMode={defaultCouncilMode}
@@ -5197,6 +5361,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           onQuickAddTab={handleQuickAddTab}
           onReplaceTabWithCouncil={handleReplaceTabWithCouncil}
           onReplaceTabWithCompanionArchetype={handleReplaceTabWithCompanionArchetype}
+          onReplaceTabWithPresetCompanion={handleReplaceTabWithPresetCompanion}
+          onOpenCompanionsDirectory={() => handleOpenNewCompanionSetup(null)}
           onReplaceTabWithConversation={handleReplaceTabWithConversation}
           onReplaceTabWithClarity={handleReplaceTabWithClarity}
           onResetClarity={handleResetClarity}
