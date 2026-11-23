@@ -4,6 +4,7 @@ import { formatPythagoreanNumerologyContext } from './divinationEngines';
 import type {
   BreakdownDomain,
   MiniAppDefinition,
+  MiniAppRuleItem,
   MiniAppStructuredHeader,
   PlanetStrengthQuestion,
 } from '../../components/app/miniAppsTypes';
@@ -2165,6 +2166,7 @@ export function buildMiniAppPrompt(params: {
     vedicPrompt?: string | null;
     westernPrompt?: string | null;
     systemOverride?: string | null;
+    rules?: MiniAppRuleItem[] | null;
     title?: string | null;
     description?: string | null;
   } | null;
@@ -2233,9 +2235,21 @@ export function buildMiniAppPrompt(params: {
     : 'You are Cosmic Council’s senior Vedic & multi-system astrology analyst composing a focused editorial reading.';
   const guardrail = isWestern ? EDITORIAL_APP_GUARDRAIL_WESTERN : EDITORIAL_APP_GUARDRAIL_VEDIC;
   const customSys = typeof customPrompts?.systemOverride === 'string' ? customPrompts.systemOverride.trim() : '';
-  const system = customSys
-    ? `${defaultRole}\n\nADMIN APP INSTRUCTIONS:\n${customSys}\n\n${guardrail}`
-    : `${defaultRole}\n\n${guardrail}`;
+  const enabledAppRules = Array.isArray(customPrompts?.rules)
+    ? customPrompts.rules
+        .filter((r) => r && r.enabled && (r.title?.trim() || r.body?.trim()))
+        .map((r, idx) => `RULE #${idx + 1} (${r.title.trim() || 'App Rule'}):\n${r.body.trim()}`)
+        .join('\n\n')
+    : '';
+  const systemParts = [defaultRole];
+  if (enabledAppRules) {
+    systemParts.push(`APP RULES STACK (Priority Order):\n${enabledAppRules}`);
+  }
+  if (customSys) {
+    systemParts.push(`ADMIN APP INSTRUCTIONS:\n${customSys}`);
+  }
+  systemParts.push(guardrail);
+  const system = systemParts.join('\n\n');
 
   const partnerWesternCtx =
     isWestern && partnerProfile?.chart_json

@@ -2,6 +2,7 @@ import {
   DEFAULT_MINI_APP_CATEGORY_RECORDS,
   type MiniAppCategoryRecord,
   type MiniAppDefinition,
+  type MiniAppRuleItem,
   type MiniAppTemplate,
 } from '../../components/app/miniAppsTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
@@ -22,6 +23,7 @@ export interface AdminMiniAppRecord extends MiniAppDefinition {
   vedicPrompt: string;
   westernPrompt: string;
   systemOverride: string;
+  rules: MiniAppRuleItem[];
   inputLabel: string;
   inputPlaceholder: string;
   modelId: string | null;
@@ -51,6 +53,7 @@ interface StoredRegistryBlob {
     vedicPrompt: string;
     westernPrompt: string;
     systemOverride: string;
+    rules?: MiniAppRuleItem[];
     inputLabel: string;
     inputPlaceholder: string;
     modelId: string | null;
@@ -89,6 +92,27 @@ function sanitizeCategorySlug(raw: string): string {
     .slice(0, 48);
 }
 
+function sanitizeMiniAppRules(raw: unknown): MiniAppRuleItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: MiniAppRuleItem[] = [];
+  for (let i = 0; i < raw.length && out.length < 25; i++) {
+    const item = raw[i];
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as Record<string, unknown>;
+    const title = typeof rec.title === 'string' ? rec.title.trim().slice(0, 120) : '';
+    const body = typeof rec.body === 'string' ? rec.body.trim().slice(0, 4000) : '';
+    if (!title && !body) continue;
+    const idRaw = typeof rec.id === 'string' && rec.id.trim() ? rec.id.trim().slice(0, 64) : `rule_${i + 1}`;
+    out.push({
+      id: idRaw,
+      title: title || `Rule #${out.length + 1}`,
+      body,
+      enabled: rec.enabled !== false,
+    });
+  }
+  return out;
+}
+
 function buildDefaultSeedRegistry(cfg: MiniAppsGovernanceConfig): {
   categories: MiniAppCategoryRecord[];
   apps: AdminMiniAppRecord[];
@@ -109,6 +133,7 @@ function buildDefaultSeedRegistry(cfg: MiniAppsGovernanceConfig): {
       vedicPrompt: defaults.vedicPrompt,
       westernPrompt: defaults.westernPrompt,
       systemOverride: '',
+      rules: [],
       inputLabel: '',
       inputPlaceholder: '',
       modelId: ov?.model_id || null,
@@ -153,6 +178,7 @@ function enrichAdminAppRecord(
     westernPrompt:
       typeof raw.westernPrompt === 'string' ? raw.westernPrompt : defaults.westernPrompt,
     systemOverride: typeof raw.systemOverride === 'string' ? raw.systemOverride : '',
+    rules: sanitizeMiniAppRules(raw.rules),
     inputLabel: typeof raw.inputLabel === 'string' ? raw.inputLabel : '',
     inputPlaceholder: typeof raw.inputPlaceholder === 'string' ? raw.inputPlaceholder : '',
     modelId: raw.modelId || null,
@@ -185,6 +211,43 @@ function toPublicMiniAppDefinition(app: AdminMiniAppRecord): MiniAppDefinition {
     inputLabel: app.inputLabel || undefined,
     inputPlaceholder: app.inputPlaceholder || undefined,
   };
+}
+
+async function readMiniAppRulesOverlay(): Promise<Record<string, MiniAppRuleItem[]>> {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) return {};
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('platform_settings')
+      .select('value_json')
+      .eq('key', 'mini_apps_rules_overlay')
+      .maybeSingle();
+    if (error || !data || typeof data.value_json !== 'object' || data.value_json === null) {
+      return {};
+    }
+    const rawMap = data.value_json as Record<string, unknown>;
+    const result: Record<string, MiniAppRuleItem[]> = {};
+    for (const [slug, val] of Object.entries(rawMap)) {
+      result[slug] = sanitizeMiniAppRules(val);
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+async function saveMiniAppRulesOverlayEntry(
+  slug: string,
+  rules: MiniAppRuleItem[],
+  adminUserId?: string | null
+): Promise<void> {
+  try {
+    const currentMap = await readMiniAppRulesOverlay();
+    currentMap[slug] = rules;
+    await savePlatformSetting('mini_apps_rules_overlay', currentMap, adminUserId);
+  } catch {
+    // Non-fatal
+  }
 }
 
 async function readSettingsFallbackRegistry(): Promise<StoredRegistryBlob | null> {
@@ -289,9 +352,9 @@ async function loadResolvedRegistry(): Promise<{
     return { ...defaultSeed, source: 'defaults' };
   }
 
-  // 1. Try dedicated migration 016 tables first
+  // 1. Try dedicated migration 016 tables first (with optional migration 017 rules_json column)
   try {
-    const [catRes, appRes] = await Promise.all([
+    const [catRes, initialAppRes] = await Promise.all([
       supabaseAdmin
         .from('mini_app_categories')
         .select('slug, label, sort_order, is_active')
@@ -299,10 +362,34 @@ async function loadResolvedRegistry(): Promise<{
       supabaseAdmin
         .from('mini_apps')
         .select(
-          'slug, title, short_title, tagline, description, category_slug, template, icon_key, popular, featured_on_home, requires_profile, cache_scope, chat_seed_prompt, estimated_read, vedic_prompt, western_prompt, system_override, input_label, input_placeholder, model_id, is_active, sort_order'
+          'slug, title, short_title, tagline, description, category_slug, template, icon_key, popular, featured_on_home, requires_profile, cache_scope, chat_seed_prompt, estimated_read, vedic_prompt, western_prompt, system_override, rules_json, input_label, input_placeholder, model_id, is_active, sort_order'
         )
         .order('sort_order', { ascending: true }),
     ]);
+
+    let appRes = initialAppRes as {
+      data: Array<Record<string, unknown>> | null;
+      error: { message?: string; code?: string } | null;
+    };
+    let rulesOverlay: Record<string, MiniAppRuleItem[]> = {};
+
+    if (
+      appRes.error &&
+      (appRes.error.code === '42703' ||
+        String(appRes.error.message || '').toLowerCase().includes('rules_json'))
+    ) {
+      const [fallbackAppRes, overlay] = await Promise.all([
+        supabaseAdmin
+          .from('mini_apps')
+          .select(
+            'slug, title, short_title, tagline, description, category_slug, template, icon_key, popular, featured_on_home, requires_profile, cache_scope, chat_seed_prompt, estimated_read, vedic_prompt, western_prompt, system_override, input_label, input_placeholder, model_id, is_active, sort_order'
+          )
+          .order('sort_order', { ascending: true }),
+        readMiniAppRulesOverlay(),
+      ]);
+      appRes = fallbackAppRes as unknown as typeof appRes;
+      rulesOverlay = overlay;
+    }
 
     if (!catRes.error && !appRes.error && Array.isArray(catRes.data) && Array.isArray(appRes.data)) {
       if (catRes.data.length === 0 && appRes.data.length === 0) {
@@ -337,26 +424,30 @@ async function loadResolvedRegistry(): Promise<{
       }));
       const catMap = new Map(categories.map((c) => [c.slug, c]));
 
-      const apps: AdminMiniAppRecord[] = appRes.data.map((r) =>
-        enrichAdminAppRecord(
+      const apps: AdminMiniAppRecord[] = appRes.data.map((r) => {
+        const slugStr = String(r.slug);
+        const rulesSource =
+          r.rules_json !== undefined ? r.rules_json : rulesOverlay[slugStr] || [];
+        return enrichAdminAppRecord(
           {
-            slug: String(r.slug),
+            slug: slugStr,
             title: String(r.title),
             shortTitle: String(r.short_title || r.title),
             tagline: String(r.tagline || ''),
             description: String(r.description || ''),
             category: String(r.category_slug || 'self_chart'),
-            template: (String(r.template || 'auto_brief') as MiniAppTemplate),
+            template: String(r.template || 'auto_brief') as MiniAppTemplate,
             iconKey: String(r.icon_key || 'sparkles'),
             popular: Boolean(r.popular),
             featuredOnHome: Boolean(r.featured_on_home),
             requiresProfile: r.requires_profile !== false,
-            cacheScope: (String(r.cache_scope || 'monthly') as MiniAppDefinition['cacheScope']),
+            cacheScope: String(r.cache_scope || 'monthly') as MiniAppDefinition['cacheScope'],
             chatSeedPrompt: String(r.chat_seed_prompt || ''),
             estimatedRead: String(r.estimated_read || '3 min read'),
             vedicPrompt: String(r.vedic_prompt || ''),
             westernPrompt: String(r.western_prompt || ''),
             systemOverride: String(r.system_override || ''),
+            rules: sanitizeMiniAppRules(rulesSource),
             inputLabel: String(r.input_label || ''),
             inputPlaceholder: String(r.input_placeholder || ''),
             modelId: r.model_id ? String(r.model_id) : null,
@@ -364,8 +455,8 @@ async function loadResolvedRegistry(): Promise<{
             sortOrder: Number(r.sort_order ?? 0),
           },
           catMap
-        )
-      );
+        );
+      });
 
       categories.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
       apps.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
@@ -420,6 +511,7 @@ async function persistSettingsRegistrySnapshot(
       vedicPrompt: a.vedicPrompt,
       westernPrompt: a.westernPrompt,
       systemOverride: a.systemOverride,
+      rules: a.rules,
       inputLabel: a.inputLabel,
       inputPlaceholder: a.inputPlaceholder,
       modelId: a.modelId,
@@ -623,6 +715,7 @@ export interface MiniAppMutationPayload {
   vedicPrompt?: string;
   westernPrompt?: string;
   systemOverride?: string;
+  rules?: MiniAppRuleItem[];
   inputLabel?: string;
   inputPlaceholder?: string;
   modelId?: string | null;
@@ -686,6 +779,7 @@ export async function createDynamicMiniApp(
     vedicPrompt: String(input.vedicPrompt || '').trim(),
     westernPrompt: String(input.westernPrompt || '').trim(),
     systemOverride: String(input.systemOverride || '').trim(),
+    rules: sanitizeMiniAppRules(input.rules),
     inputLabel: String(input.inputLabel || '').trim(),
     inputPlaceholder: String(input.inputPlaceholder || '').trim(),
     modelId: input.modelId ? String(input.modelId).trim() : null,
@@ -697,7 +791,7 @@ export async function createDynamicMiniApp(
   const supabaseAdmin = getSupabaseAdmin();
 
   if (current.source === 'tables' && supabaseAdmin) {
-    const { error } = await supabaseAdmin.from('mini_apps').insert({
+    const baseRow = {
       slug: enriched.slug,
       title: enriched.title,
       short_title: enriched.shortTitle,
@@ -720,7 +814,21 @@ export async function createDynamicMiniApp(
       model_id: enriched.modelId,
       is_active: enriched.isActive,
       sort_order: enriched.sortOrder,
-    });
+    };
+
+    let { error } = await supabaseAdmin
+      .from('mini_apps')
+      .insert({ ...baseRow, rules_json: enriched.rules });
+    if (
+      error &&
+      (error.code === '42703' || String(error.message || '').toLowerCase().includes('rules_json'))
+    ) {
+      const retry = await supabaseAdmin.from('mini_apps').insert(baseRow);
+      error = retry.error;
+      if (!error) {
+        await saveMiniAppRulesOverlayEntry(enriched.slug, enriched.rules, adminUserId);
+      }
+    }
     if (error) {
       return { ok: false, error: error.message || 'Failed to create app in database.' };
     }
@@ -791,6 +899,7 @@ export async function updateDynamicMiniApp(
       typeof patch.westernPrompt === 'string' ? patch.westernPrompt : existing.westernPrompt,
     systemOverride:
       typeof patch.systemOverride === 'string' ? patch.systemOverride : existing.systemOverride,
+    rules: patch.rules !== undefined ? sanitizeMiniAppRules(patch.rules) : existing.rules,
     inputLabel:
       typeof patch.inputLabel === 'string' ? patch.inputLabel.trim() : existing.inputLabel,
     inputPlaceholder:
@@ -811,33 +920,47 @@ export async function updateDynamicMiniApp(
   const supabaseAdmin = getSupabaseAdmin();
 
   if (current.source === 'tables' && supabaseAdmin) {
-    const { error } = await supabaseAdmin
+    const baseUpdate = {
+      title: enriched.title,
+      short_title: enriched.shortTitle,
+      tagline: enriched.tagline,
+      description: enriched.description,
+      category_slug: enriched.category,
+      template: enriched.template,
+      icon_key: enriched.iconKey,
+      popular: enriched.popular,
+      featured_on_home: enriched.featuredOnHome,
+      requires_profile: enriched.requiresProfile,
+      cache_scope: enriched.cacheScope,
+      chat_seed_prompt: enriched.chatSeedPrompt,
+      estimated_read: enriched.estimatedRead,
+      vedic_prompt: enriched.vedicPrompt,
+      western_prompt: enriched.westernPrompt,
+      system_override: enriched.systemOverride,
+      input_label: enriched.inputLabel,
+      input_placeholder: enriched.inputPlaceholder,
+      model_id: enriched.modelId,
+      is_active: enriched.isActive,
+      sort_order: enriched.sortOrder,
+      updated_at: new Date().toISOString(),
+    };
+    let { error } = await supabaseAdmin
       .from('mini_apps')
-      .update({
-        title: enriched.title,
-        short_title: enriched.shortTitle,
-        tagline: enriched.tagline,
-        description: enriched.description,
-        category_slug: enriched.category,
-        template: enriched.template,
-        icon_key: enriched.iconKey,
-        popular: enriched.popular,
-        featured_on_home: enriched.featuredOnHome,
-        requires_profile: enriched.requiresProfile,
-        cache_scope: enriched.cacheScope,
-        chat_seed_prompt: enriched.chatSeedPrompt,
-        estimated_read: enriched.estimatedRead,
-        vedic_prompt: enriched.vedicPrompt,
-        western_prompt: enriched.westernPrompt,
-        system_override: enriched.systemOverride,
-        input_label: enriched.inputLabel,
-        input_placeholder: enriched.inputPlaceholder,
-        model_id: enriched.modelId,
-        is_active: enriched.isActive,
-        sort_order: enriched.sortOrder,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ ...baseUpdate, rules_json: enriched.rules })
       .eq('slug', cleanSlug);
+    if (
+      error &&
+      (error.code === '42703' || String(error.message || '').toLowerCase().includes('rules_json'))
+    ) {
+      const retry = await supabaseAdmin
+        .from('mini_apps')
+        .update(baseUpdate)
+        .eq('slug', cleanSlug);
+      error = retry.error;
+      if (!error) {
+        await saveMiniAppRulesOverlayEntry(enriched.slug, enriched.rules, adminUserId);
+      }
+    }
     if (error) {
       return { ok: false, error: error.message || 'Failed to update app in database.' };
     }

@@ -1216,7 +1216,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 <Database className="h-3.5 w-3.5 text-[#8B8275]" />
                 <span>Backup</span>
               </button>
-              {appUser?.is_admin && (
+              {appUser?.is_admin && !isPreviewMode && (
                 <NavLink
                   to="/app/admin"
                   onClick={onCloseMobileDrawer}

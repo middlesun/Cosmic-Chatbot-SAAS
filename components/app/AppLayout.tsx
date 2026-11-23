@@ -284,7 +284,7 @@ const AppLayout: React.FC = () => {
               )}
             </NavLink>
 
-            {appUser?.is_admin && (
+            {appUser?.is_admin && !isPreviewMode && (
               <div className="pt-2 mt-2 border-t border-[#3D3830]/10">
                 <Tooltip
                   content={!isDesktopSidebarOpen ? 'Admin panel' : undefined}
@@ -559,7 +559,7 @@ const AppLayout: React.FC = () => {
                       {appUser ? appUser.credits_balance.toLocaleString() : '0'}
                     </span>
                   </NavLink>
-                  {appUser?.is_admin && (
+                  {appUser?.is_admin && !isPreviewMode && (
                     <div className="pt-2 mt-2 border-t border-[#3D3830]/10">
                       <NavLink
                         to="/app/admin"

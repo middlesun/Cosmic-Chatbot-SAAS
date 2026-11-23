@@ -39,8 +39,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { appUser } = useAuth();
-  if (!appUser?.is_admin) {
+  const { appUser, isPreviewMode } = useAuth();
+  if (!appUser?.is_admin || isPreviewMode) {
     return <Navigate to="/app/home" replace />;
   }
   return <>{children}</>;

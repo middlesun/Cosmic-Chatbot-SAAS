@@ -5,8 +5,11 @@ import {
   ArrowUp,
   BarChart3,
   Check,
+  ChevronDown,
+  ChevronRight,
   Database,
   FolderTree,
+  GripVertical,
   LayoutGrid,
   Plus,
   RefreshCw,
@@ -24,6 +27,7 @@ import {
 } from '../app/miniAppsClientData';
 import type {
   MiniAppCategoryRecord,
+  MiniAppRuleItem,
   MiniAppTemplate,
 } from '../app/miniAppsTypes';
 import type { ModelChoiceOption } from './PromptLibraryManager';
@@ -136,6 +140,7 @@ export interface AdminMiniAppRecord {
   vedicPrompt: string;
   westernPrompt: string;
   systemOverride: string;
+  rules: MiniAppRuleItem[];
   inputLabel: string;
   inputPlaceholder: string;
   modelId: string | null;
@@ -170,6 +175,7 @@ interface AppEditorDraft {
   vedicPrompt: string;
   westernPrompt: string;
   systemOverride: string;
+  rules: MiniAppRuleItem[];
   inputLabel: string;
   inputPlaceholder: string;
   modelId: string;
@@ -256,6 +262,11 @@ function slugifyAppTitle(raw: string): string {
     .slice(0, 64);
 }
 
+function approxTokens(text: string): number {
+  const len = (text || '').trim().length;
+  return len === 0 ? 0 : Math.ceil(len / 4);
+}
+
 function toEditorDraft(app: AdminMiniAppRecord): AppEditorDraft {
   return {
     slug: app.slug,
@@ -275,6 +286,7 @@ function toEditorDraft(app: AdminMiniAppRecord): AppEditorDraft {
     vedicPrompt: app.vedicPrompt || '',
     westernPrompt: app.westernPrompt || '',
     systemOverride: app.systemOverride || '',
+    rules: Array.isArray(app.rules) ? app.rules.map((r) => ({ ...r })) : [],
     inputLabel: app.inputLabel || '',
     inputPlaceholder: app.inputPlaceholder || '',
     modelId: app.modelId || '',
@@ -303,6 +315,7 @@ function buildBlankDraft(defaultCategory: string): AppEditorDraft {
     westernPrompt:
       'Provide a grounded, insightful Western (Tropical Placidus) reading for {{profile_name}} as of {{formatted_date}}.\n\nReference exact Sun, Moon, Rising, key planetary aspects, and constructive next steps.',
     systemOverride: '',
+    rules: [],
     inputLabel: 'What would you like this app to focus on?',
     inputPlaceholder: 'Enter a specific question, situation, or context...',
     modelId: '',
@@ -342,6 +355,11 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
   >('vedicPrompt');
   const [savingApp, setSavingApp] = useState(false);
   const [reorderingApps, setReorderingApps] = useState(false);
+  const [draggedAppIdx, setDraggedAppIdx] = useState<number | null>(null);
+  const [dragOverAppIdx, setDragOverAppIdx] = useState<number | null>(null);
+  const [draggedRuleIdx, setDraggedRuleIdx] = useState<number | null>(null);
+  const [dragOverRuleIdx, setDragOverRuleIdx] = useState<number | null>(null);
+  const [expandedRuleIds, setExpandedRuleIds] = useState<Record<string, boolean>>({});
   const [confirmDeleteApp, setConfirmDeleteApp] = useState(false);
   const [deletingApp, setDeletingApp] = useState(false);
 
@@ -353,6 +371,8 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
   const [catLabelDrafts, setCatLabelDrafts] = useState<Record<string, string>>({});
   const [busyCatSlug, setBusyCatSlug] = useState<string | null>(null);
   const [reorderingCats, setReorderingCats] = useState(false);
+  const [draggedCatIdx, setDraggedCatIdx] = useState<number | null>(null);
+  const [dragOverCatIdx, setDragOverCatIdx] = useState<number | null>(null);
 
   const loadAllData = useCallback(
     async (daysParam = period) => {
@@ -563,6 +583,7 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
         vedicPrompt: editorDraft.vedicPrompt,
         westernPrompt: editorDraft.westernPrompt,
         systemOverride: editorDraft.systemOverride,
+        rules: editorDraft.rules,
         inputLabel: editorDraft.inputLabel.trim(),
         inputPlaceholder: editorDraft.inputPlaceholder.trim(),
         modelId: editorDraft.modelId.trim() || null,
@@ -632,14 +653,21 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
     }
   };
 
-  const handleMoveApp = async (index: number, direction: -1 | 1) => {
+  const handleMoveAppToIndex = async (fromIndex: number, toIndex: number) => {
     if (!managerData || !canReorderApps || reorderingApps) return;
-    const targetIdx = index + direction;
-    if (targetIdx < 0 || targetIdx >= managerData.apps.length) return;
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= managerData.apps.length ||
+      toIndex >= managerData.apps.length ||
+      fromIndex === toIndex
+    ) {
+      return;
+    }
 
     const nextApps = [...managerData.apps];
-    const [moved] = nextApps.splice(index, 1);
-    nextApps.splice(targetIdx, 0, moved);
+    const [moved] = nextApps.splice(fromIndex, 1);
+    nextApps.splice(toIndex, 0, moved);
 
     const orderedSlugs = nextApps.map((a) => a.slug);
     setManagerData({ ...managerData, apps: nextApps });
@@ -666,6 +694,44 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
     } finally {
       setReorderingApps(false);
     }
+  };
+
+  const handleMoveApp = (index: number, direction: -1 | 1) =>
+    handleMoveAppToIndex(index, index + direction);
+
+  const handleAddAppRule = () => {
+    if (!editorDraft) return;
+    const newId = `app_rule_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const nextRule: MiniAppRuleItem = {
+      id: newId,
+      title: `Rule #${editorDraft.rules.length + 1}`,
+      body: '',
+      enabled: true,
+    };
+    setEditorDraft((prev) =>
+      prev ? { ...prev, rules: [...prev.rules, nextRule] } : prev
+    );
+    setExpandedRuleIds((prev) => ({ ...prev, [newId]: true }));
+  };
+
+  const moveAppRule = (fromIdx: number, toIdx: number) => {
+    if (!editorDraft) return;
+    if (
+      fromIdx < 0 ||
+      toIdx < 0 ||
+      fromIdx >= editorDraft.rules.length ||
+      toIdx >= editorDraft.rules.length ||
+      fromIdx === toIdx
+    ) {
+      return;
+    }
+    setEditorDraft((prev) => {
+      if (!prev) return prev;
+      const next = [...prev.rules];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return { ...prev, rules: next };
+    });
   };
 
   const handleCreateCategory = async (e: React.FormEvent) => {
@@ -758,14 +824,21 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
     }
   };
 
-  const handleMoveCategory = async (index: number, direction: -1 | 1) => {
+  const handleMoveCategoryToIndex = async (fromIndex: number, toIndex: number) => {
     if (!managerData || reorderingCats) return;
-    const targetIdx = index + direction;
-    if (targetIdx < 0 || targetIdx >= managerData.categories.length) return;
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= managerData.categories.length ||
+      toIndex >= managerData.categories.length ||
+      fromIndex === toIndex
+    ) {
+      return;
+    }
 
     const nextCats = [...managerData.categories];
-    const [moved] = nextCats.splice(index, 1);
-    nextCats.splice(targetIdx, 0, moved);
+    const [moved] = nextCats.splice(fromIndex, 1);
+    nextCats.splice(toIndex, 0, moved);
 
     const orderedSlugs = nextCats.map((c) => c.slug);
     setManagerData({ ...managerData, categories: nextCats });
@@ -793,6 +866,9 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
       setReorderingCats(false);
     }
   };
+
+  const handleMoveCategory = (index: number, direction: -1 | 1) =>
+    handleMoveCategoryToIndex(index, index + direction);
 
   const handleInsertPlaceholder = (token: string) => {
     if (!editorDraft) return;
@@ -1117,8 +1193,8 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
                   </h2>
                   <p className="text-[11px] text-[#8B8275]">
                     {canReorderApps
-                      ? 'Use ↑ ↓ to reorder how apps appear in the user hub.'
-                      : 'Clear search & category filter to reorder display sequence.'}
+                      ? 'Drag rows or use ↑ ↓ to reorder how apps appear in the user hub.'
+                      : 'Clear search & category filter to drag & reorder display sequence.'}
                   </p>
                 </div>
                 {managerData.storageSource !== 'tables' && (
@@ -1162,14 +1238,53 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
                 managerFilteredApps.map((app) => {
                   const fullIndex = managerData.apps.findIndex((a) => a.slug === app.slug);
                   const isSelected = !isCreatingNew && selectedSlug === app.slug;
+                  const isDragOver = canReorderApps && dragOverAppIdx === fullIndex;
 
                   return (
                     <div
                       key={app.slug}
-                      className={`flex items-center gap-2.5 px-3.5 py-3 transition-colors ${
-                        isSelected ? 'bg-[#F1ECE3]' : 'hover:bg-[#FAF7F2]'
+                      draggable={canReorderApps && !reorderingApps}
+                      onDragStart={() => {
+                        if (canReorderApps) setDraggedAppIdx(fullIndex);
+                      }}
+                      onDragOver={(e) => {
+                        if (!canReorderApps) return;
+                        e.preventDefault();
+                        if (dragOverAppIdx !== fullIndex) setDragOverAppIdx(fullIndex);
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverAppIdx === fullIndex) setDragOverAppIdx(null);
+                      }}
+                      onDrop={(e) => {
+                        if (!canReorderApps) return;
+                        e.preventDefault();
+                        if (draggedAppIdx !== null && draggedAppIdx !== fullIndex) {
+                          void handleMoveAppToIndex(draggedAppIdx, fullIndex);
+                        }
+                        setDraggedAppIdx(null);
+                        setDragOverAppIdx(null);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedAppIdx(null);
+                        setDragOverAppIdx(null);
+                      }}
+                      className={`flex items-center gap-2 px-3 py-3 transition-colors border-l-2 ${
+                        isDragOver
+                          ? 'border-l-[#B8965A] bg-[#B8965A]/12'
+                          : isSelected
+                          ? 'border-l-[#3D3830] bg-[#F1ECE3]'
+                          : 'border-l-transparent hover:bg-[#FAF7F2]'
                       }`}
                     >
+                      {canReorderApps && (
+                        <span
+                          title="Drag to reorder app"
+                          className="cursor-grab text-[#8B8275] hover:text-[#3D3830] shrink-0"
+                        >
+                          <GripVertical className="h-4 w-4" />
+                        </span>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => selectExistingApp(app.slug)}
@@ -1202,6 +1317,7 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
                           <p className="text-[11px] text-[#8B8275] truncate">
                             {app.categoryLabel}
                             {app.popular ? ' · Popular' : ''}
+                            {app.rules?.length ? ` · ${app.rules.filter((r) => r.enabled).length} rules` : ''}
                             {!app.isActive ? ' · Paused' : ''}
                           </p>
                         </div>
@@ -1336,7 +1452,7 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
                     }`}
                   >
                     <Sparkles className="h-3.5 w-3.5" />
-                    <span>Prompts Behind App</span>
+                    <span>Prompts &amp; Rules Behind App</span>
                   </button>
                 </div>
 
@@ -1765,6 +1881,229 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
                         />
                       </div>
 
+                      {/* Modular Drag-and-Drop App Rules Stack */}
+                      <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold text-[#3D3830]">
+                              Modular App Rules Stack ({editorDraft.rules.filter((r) => r.enabled).length} active)
+                            </p>
+                            <p className="text-[11px] text-[#8B8275] mt-0.5">
+                              Drag cards to reorder priority. Enabled rules are injected live into this app&apos;s system directives before execution.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleAddAppRule}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-3.5 py-1.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors shrink-0 cursor-pointer"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            <span>Add Rule</span>
+                          </button>
+                        </div>
+
+                        {editorDraft.rules.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-[#3D3830]/20 bg-[#FDFBF7] px-4 py-5 text-center text-xs text-[#8B8275]">
+                            No modular rules added to this app yet. Click &ldquo;Add Rule&rdquo; to layer strict output contracts, tone boundaries, or scoring checks.
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {editorDraft.rules.map((rule, idx) => {
+                              const isExpanded = Boolean(expandedRuleIds[rule.id]);
+                              const enabledOrder = editorDraft.rules
+                                .slice(0, idx + 1)
+                                .filter((r) => r.enabled && r.body.trim()).length;
+
+                              return (
+                                <div
+                                  key={rule.id}
+                                  draggable
+                                  onDragStart={() => setDraggedRuleIdx(idx)}
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    if (dragOverRuleIdx !== idx) setDragOverRuleIdx(idx);
+                                  }}
+                                  onDragLeave={() => {
+                                    if (dragOverRuleIdx === idx) setDragOverRuleIdx(null);
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    if (draggedRuleIdx !== null && draggedRuleIdx !== idx) {
+                                      moveAppRule(draggedRuleIdx, idx);
+                                    }
+                                    setDraggedRuleIdx(null);
+                                    setDragOverRuleIdx(null);
+                                  }}
+                                  onDragEnd={() => {
+                                    setDraggedRuleIdx(null);
+                                    setDragOverRuleIdx(null);
+                                  }}
+                                  className={`rounded-2xl border transition-all ${
+                                    dragOverRuleIdx === idx
+                                      ? 'border-[#B8965A] bg-[#B8965A]/8'
+                                      : rule.enabled
+                                      ? 'border-[#3D3830]/15 bg-[#FDFBF7]'
+                                      : 'border-[#3D3830]/10 bg-[#F1ECE3]/60 opacity-75'
+                                  }`}
+                                >
+                                  <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+                                    <span
+                                      title="Drag to reorder rule"
+                                      className="cursor-grab text-[#8B8275] hover:text-[#3D3830] shrink-0"
+                                    >
+                                      <GripVertical className="h-4 w-4" />
+                                    </span>
+
+                                    <span
+                                      className={`rounded-md px-2 py-0.5 font-mono text-[11px] tabular-nums shrink-0 ${
+                                        rule.enabled
+                                          ? 'bg-[#3D3830] text-[#FAF7F2]'
+                                          : 'bg-[#EAE3D7] text-[#8B8275]'
+                                      }`}
+                                    >
+                                      {rule.enabled ? `#${enabledOrder || idx + 1}` : 'Off'}
+                                    </span>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExpandedRuleIds((prev) => ({
+                                          ...prev,
+                                          [rule.id]: !prev[rule.id],
+                                        }))
+                                      }
+                                      className="p-1 text-[#5C5449] hover:text-[#3D3830] cursor-pointer shrink-0"
+                                      aria-label={isExpanded ? 'Collapse rule' : 'Expand rule'}
+                                    >
+                                      {isExpanded ? (
+                                        <ChevronDown className="h-4 w-4" />
+                                      ) : (
+                                        <ChevronRight className="h-4 w-4" />
+                                      )}
+                                    </button>
+
+                                    <input
+                                      type="text"
+                                      value={rule.title}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setEditorDraft((prev) =>
+                                          prev
+                                            ? {
+                                                ...prev,
+                                                rules: prev.rules.map((r) =>
+                                                  r.id === rule.id ? { ...r, title: val } : r
+                                                ),
+                                              }
+                                            : prev
+                                        );
+                                      }}
+                                      placeholder="Rule title..."
+                                      className="flex-1 min-w-[140px] bg-transparent text-xs font-medium text-[#3D3830] focus:outline-none border-b border-transparent focus:border-[#3D3830]/30 py-0.5"
+                                    />
+
+                                    <span className="font-mono text-[11px] tabular-nums text-[#8B8275] shrink-0">
+                                      {rule.body.length} chars · ~{approxTokens(rule.body)} tok
+                                    </span>
+
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        disabled={idx === 0}
+                                        onClick={() => moveAppRule(idx, idx - 1)}
+                                        aria-label="Move rule up"
+                                        className="p-1.5 rounded-lg border border-[#3D3830]/12 text-[#5C5449] hover:bg-[#F1ECE3] disabled:opacity-30 cursor-pointer"
+                                      >
+                                        <ArrowUp className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={idx === editorDraft.rules.length - 1}
+                                        onClick={() => moveAppRule(idx, idx + 1)}
+                                        aria-label="Move rule down"
+                                        className="p-1.5 rounded-lg border border-[#3D3830]/12 text-[#5C5449] hover:bg-[#F1ECE3] disabled:opacity-30 cursor-pointer"
+                                      >
+                                        <ArrowDown className="h-3 w-3" />
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={rule.enabled}
+                                        aria-label={`Toggle ${rule.title}`}
+                                        onClick={() =>
+                                          setEditorDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  rules: prev.rules.map((r) =>
+                                                    r.id === rule.id ? { ...r, enabled: !r.enabled } : r
+                                                  ),
+                                                }
+                                              : prev
+                                          )
+                                        }
+                                        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors cursor-pointer mx-1 ${
+                                          rule.enabled ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                                        }`}
+                                      >
+                                        <span
+                                          className={`h-4 w-4 rounded-full bg-[#FDFBF7] shadow-xs transition-transform ${
+                                            rule.enabled ? 'translate-x-4' : 'translate-x-0'
+                                          }`}
+                                        />
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setEditorDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  rules: prev.rules.filter((r) => r.id !== rule.id),
+                                                }
+                                              : prev
+                                          )
+                                        }
+                                        aria-label={`Delete ${rule.title}`}
+                                        className="p-1.5 rounded-lg border border-[#7A3E36]/20 text-[#7A3E36] hover:bg-[#7A3E36]/10 cursor-pointer"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {isExpanded && (
+                                    <div className="px-3 pb-3 pt-1 border-t border-[#3D3830]/8">
+                                      <textarea
+                                        rows={3}
+                                        value={rule.body}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setEditorDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  rules: prev.rules.map((r) =>
+                                                    r.id === rule.id ? { ...r, body: val } : r
+                                                  ),
+                                                }
+                                              : prev
+                                          );
+                                        }}
+                                        placeholder="Enter concrete rule instructions (e.g. Never output fear-mongering predictions; highlight one practical date window)..."
+                                        className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-2 text-xs font-mono leading-relaxed text-[#3D3830] focus:outline-none focus:border-[#3D3830]/35 resize-y"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
                       {/* Optional System Prompt Override */}
                       <div className="space-y-1.5">
                         <label className="block text-xs font-medium text-[#5C5449]">
@@ -1921,7 +2260,7 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
                 Category Order &amp; Visibility
               </h2>
               <p className="text-xs text-[#8B8275] mt-0.5">
-                Reorder categories with ↑ ↓, rename inline, toggle visibility, or remove unused categories.
+                Drag rows or use ↑ ↓ to reorder categories, rename inline, toggle visibility, or remove unused categories.
               </p>
             </div>
 
@@ -1931,13 +2270,46 @@ const AdminAppsAnalytics: React.FC<AdminAppsAnalyticsProps> = ({
                 const draftLabel = catLabelDrafts[cat.slug] ?? cat.label;
                 const labelDirty = draftLabel.trim() && draftLabel.trim() !== cat.label;
                 const busy = busyCatSlug === cat.slug;
+                const isCatDragOver = dragOverCatIdx === idx;
 
                 return (
                   <div
                     key={cat.slug}
-                    className="px-5 py-4 flex flex-wrap items-center justify-between gap-4 hover:bg-[#FAF7F2]/70 transition-colors"
+                    draggable={!reorderingCats}
+                    onDragStart={() => setDraggedCatIdx(idx)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (dragOverCatIdx !== idx) setDragOverCatIdx(idx);
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverCatIdx === idx) setDragOverCatIdx(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedCatIdx !== null && draggedCatIdx !== idx) {
+                        void handleMoveCategoryToIndex(draggedCatIdx, idx);
+                      }
+                      setDraggedCatIdx(null);
+                      setDragOverCatIdx(null);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedCatIdx(null);
+                      setDragOverCatIdx(null);
+                    }}
+                    className={`px-5 py-4 flex flex-wrap items-center justify-between gap-4 transition-colors border-l-2 ${
+                      isCatDragOver
+                        ? 'border-l-[#B8965A] bg-[#B8965A]/12'
+                        : 'border-l-transparent hover:bg-[#FAF7F2]/70'
+                    }`}
                   >
                     <div className="flex items-center gap-3 min-w-[240px] flex-1">
+                      <span
+                        title="Drag to reorder category"
+                        className="cursor-grab text-[#8B8275] hover:text-[#3D3830] shrink-0"
+                      >
+                        <GripVertical className="h-4 w-4" />
+                      </span>
+
                       <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"

@@ -11,6 +11,13 @@ export interface MiniAppCategoryRecord {
   isActive: boolean;
 }
 
+export interface MiniAppRuleItem {
+  id: string;
+  title: string;
+  body: string;
+  enabled: boolean;
+}
+
 export interface MiniAppDefinition {
   slug: string;
   title: string;

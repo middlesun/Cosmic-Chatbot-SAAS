@@ -1213,6 +1213,7 @@ router.post('/:slug/run', requireAuth, async (req: AuthenticatedRequest, res) =>
       vedicPrompt: appDef.vedicPrompt,
       westernPrompt: appDef.westernPrompt,
       systemOverride: appDef.systemOverride,
+      rules: appDef.rules,
       title: appDef.title,
       description: appDef.description,
     },

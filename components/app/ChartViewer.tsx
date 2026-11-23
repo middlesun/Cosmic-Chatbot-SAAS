@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Compass,
   Layers,
@@ -16,6 +16,7 @@ import {
   Download,
   FileText,
   Loader2,
+  ArrowRight,
 } from 'lucide-react';
 import AstrologyModeToggle from './AstrologyModeToggle';
 import { useAuth, type AstrologyMode } from './AuthContext';
@@ -423,6 +424,7 @@ interface ChartViewerProps {
   chart: CompiledChartJson;
   dailyTransits?: DailyTransitsPayload | null;
   initialMode?: AstrologyMode;
+  initialVedicTab?: VedicTabId;
   profileId?: string;
   gender?: string | null;
   dossier?: NatalTruthDossierClient | null;
@@ -431,7 +433,7 @@ interface ChartViewerProps {
   onDossierRefreshed?: (nextDossier: NatalTruthDossierClient) => void;
 }
 
-type VedicTabId = 'overview' | 'vargas' | 'planets' | 'kp' | 'dasha' | 'jaimini' | 'shadbala' | 'lalkitab';
+export type VedicTabId = 'overview' | 'vargas' | 'planets' | 'kp' | 'dasha' | 'jaimini' | 'shadbala' | 'lalkitab';
 type WesternTabId = 'overview' | 'planets' | 'aspects';
 
 function polarToXY(cx: number, cy: number, r: number, angleDeg: number): { x: number; y: number } {
@@ -728,6 +730,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
   chart,
   dailyTransits: propTransits,
   initialMode,
+  initialVedicTab,
   profileId,
   gender,
   dossier,
@@ -747,9 +750,16 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
   }, [sessionMode, initialMode]);
 
   const [chartStyle, setChartStyle] = useState<'north' | 'south'>('north');
-  const [vedicTab, setVedicTab] = useState<VedicTabId>('overview');
+  const [vedicTab, setVedicTab] = useState<VedicTabId>(initialVedicTab || 'overview');
   const [westernTab, setWesternTab] = useState<WesternTabId>('overview');
   const [aspectFilter, setAspectFilter] = useState<'all' | 'Major' | 'Minor'>('all');
+  const vedicTabsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (initialVedicTab) {
+      setVedicTab(initialVedicTab);
+    }
+  }, [initialVedicTab]);
 
   const [expandedMD, setExpandedMD] = useState<string | null>(
     chart.vimshottari.currentStack?.mahadasha || null
@@ -983,15 +993,37 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
             </button>
           </div>
 
-          <p className="text-xs font-['JetBrains_Mono',monospace] tabular-nums text-[#8B8275]">
-            {viewMode === 'vedic'
-              ? `D1 Lagna: ${d1Asc?.sign || '—'} · D9 Lagna: ${
-                  allVargas.D9 ? VEDIC_SIGNS_SHORT[allVargas.D9.ascendantSignIndex] : '—'
-                }`
-              : `AC: ${chart.western?.angles.ascendant.sign || '—'} · MC: ${
-                  chart.western?.angles.midheaven.sign || '—'
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-xs font-['JetBrains_Mono',monospace] tabular-nums text-[#8B8275]">
+              {viewMode === 'vedic'
+                ? `D1 Lagna: ${d1Asc?.sign || '—'} · D9 Lagna: ${
+                    allVargas.D9 ? VEDIC_SIGNS_SHORT[allVargas.D9.ascendantSignIndex] : '—'
+                  }`
+                : `AC: ${chart.western?.angles.ascendant.sign || '—'} · MC: ${
+                    chart.western?.angles.midheaven.sign || '—'
+                  }`}
+            </p>
+            {viewMode === 'vedic' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setVedicTab('vargas');
+                  window.setTimeout(() => {
+                    vedicTabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }, 40);
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                  vedicTab === 'vargas'
+                    ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2]'
+                    : 'border-[#3D3830]/15 bg-[#FAF7F2] text-[#3D3830] hover:bg-[#EAE3D7]'
                 }`}
-          </p>
+              >
+                <Grid3X3 className="h-3 w-3 text-[#8B7355]" />
+                <span>All 16 Divisional Charts (D1–D60)</span>
+                <ArrowRight className="h-3 w-3" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* HERO VISUAL + TELEMETRY */}
@@ -1298,7 +1330,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
       {/* INTERACTIVE FILTER TABS */}
       {viewMode === 'vedic' ? (
         <>
-          <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-[#F1ECE3] p-1.5 w-fit">
+          <div ref={vedicTabsRef} className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-[#F1ECE3] p-1.5 w-fit scroll-mt-4">
             {[
               { id: 'overview', label: 'Overview', icon: Sun },
               { id: 'vargas', label: 'Divisional Charts', icon: Grid3X3 },

@@ -232,6 +232,8 @@ export interface CompanionPersona {
   conversation_style: string;
   opening_message: string;
   system_prompt: string;
+  backstory?: string;
+  soul_consciousness?: string;
   avatar_url?: string | null;
   monogram_palette?: CompanionMonogramPalette;
   chat_style?: ChatStyle;
