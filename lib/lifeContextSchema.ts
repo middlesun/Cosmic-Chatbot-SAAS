@@ -60,9 +60,58 @@ export interface CitedProfileInsight {
   id: string;
   category: CitedInsightCategory;
   summary: string;
+  fact?: string;
   cited_by: string;
   cited_slug?: string;
+  conversation_id?: string | null;
+  captured_at?: string;
   updated_at?: string;
+}
+
+export type DeepProfileBucketKey =
+  | 'practical_reality'
+  | 'emotional_triggers'
+  | 'core_insecurities'
+  | 'coping_patterns'
+  | 'stress_areas'
+  | 'desires_and_goals'
+  | 'active_dilemmas'
+  | 'relationship_dynamics'
+  | 'communication_preferences';
+
+export interface DeepProfileEntry {
+  id: string;
+  category: CitedInsightCategory;
+  bucket?: DeepProfileBucketKey;
+  fact: string;
+  source_label: string;
+  source_slug: string;
+  conversation_id: string | null;
+  captured_at: string;
+  updated_at: string;
+}
+
+export interface DeepProfileData {
+  practical_reality?: string[];
+  emotional_triggers?: string[];
+  core_insecurities?: string[];
+  coping_patterns?: string[];
+  stress_areas?: string[];
+  desires_and_goals?: string[];
+  active_dilemmas?: string[];
+  relationship_dynamics?: string[];
+  communication_preferences?: string[];
+  entries?: DeepProfileEntry[];
+  updated_at?: string;
+}
+
+export interface CouncilAnalystNote {
+  id: string;
+  summary: string;
+  system_label: string;
+  system_slug: string;
+  conversation_id: string | null;
+  captured_at: string;
 }
 
 export interface LifeContextData {
@@ -81,6 +130,18 @@ export interface LifeContextData {
   cited_insights?: CitedProfileInsight[];
   updated_at?: string;
 }
+
+export const DEEP_PROFILE_BUCKET_LABELS: Record<DeepProfileBucketKey, string> = {
+  practical_reality: 'Practical Reality',
+  emotional_triggers: 'Emotional Triggers',
+  core_insecurities: 'Core Sensitivities',
+  coping_patterns: 'Coping Habits',
+  stress_areas: 'Recurring Stressors',
+  desires_and_goals: 'Desires & Dreams',
+  active_dilemmas: 'Active Dilemmas',
+  relationship_dynamics: 'Relationship Dynamics',
+  communication_preferences: 'Conversation Style',
+};
 
 export const CITED_INSIGHT_CATEGORY_LABELS: Record<CitedInsightCategory, string> = {
   workplace: 'Work & Craft',

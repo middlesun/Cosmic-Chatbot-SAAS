@@ -1,0 +1,265 @@
+Objective Brief (Include This at the Start of Every Coding Session)
+Project: Cosmic Council (cosmiccouncil.chat) — React 19 + Vite + Express/Cloudflare Workers + Supabase + OpenRouter.
+Mandatory First Read: Read /AGENTS.md completely before touching any code. Preserve the #FAF7F2 / #3D3830 / #B8965A ("Oura Warmth × Observatory Precision") aesthetic, 100dvh mobile-first layout, near-zero Supabase egress rules (no select('*') on heavy JSON/text columns in list/polling routes), and strict user vs. hidden Admin boundaries.
+Core Architectural Goal:
+Council (pillar === 'council'): Sharpen into a strictly hardcore multi-layered Astrological workstation (Vedic, KP Astrology, Jaimini Jyotish, Western, Hellenistic, Learn Astrology, extensible for future Chinese/BaZi), powered by vedic-astro-mega-prompt.json forensic laws and a Turn-Level Modifier Injection.
+Companions (pillar === 'companion'): Evolve into 45 life-situation & emotional support archetypes grouped cleanly into Spiritual Guides (1–5), Everyday Companions (6–27), and Life Companions (28–45), most offering a Female / Male persona choice and discoverable situation tags. Each Companion’s astrological/esoteric access, full 600+ chart injection, advisory posture (listen_only / friend / balanced_support / esoteric_guide), and formula cartridges are 100% toggled from the Admin Panel (zero artificial 2,600-char chart cuts or 90/10 straitjackets when enabled).
+Cross-Pillar Lossless Memory & Deep Cited Profile: Replace silent 24-turn truncation with rolling thread compaction, extract minute psychological/practical/emotional/desires facts on meaningful turns across both Council and Companions with source citations (e.g., "Bella · Tarot", "KP Astrology"), and let Companions read concise Council Analyst Notes.
+100% Admin-Panel Governance: Zero hardcoded rules, prompts, formulas, token caps, or memory extractor instructions trapped in code—everything editable with Reset-to-Default controls in /app/admin.
+Verification Gate After Each Phase: Run npm run lint (tsc --noEmit) and npm run build (vite build) cleanly with 0 errors.
+Files Involved Across the 5 Phases (Verified Codebase Paths)
+Docs & Reference Inputs: /AGENTS.md, /vedic-astro-mega-prompt.json
+Database Migrations: /supabase/migrations/018_*.sql (new phase migrations), /lib/lifeContextSchema.ts, /lib/vedicTypes.ts
+Backend — Astrology, Council & Prompts: /server/services/promptDefaults.ts, /server/services/enginePromptDefaults.ts, /server/services/vedicAstrologerEngine.ts, /server/services/deepCouncilAudit.ts, /server/services/contextSlicer.ts, /server/services/westernContextSlicer.ts, /server/services/chartCompiler.ts, /server/services/jyotishMath.ts, /server/services/formulaCartridgesSeed.ts, /server/services/westernFormulaSeed.ts, /server/services/canonicalPlaybooks.ts
+Backend — Companions, Orchestration & Memory: /server/services/companionEngine.ts, /server/services/companionPresets.ts, /server/services/divinationEngines.ts, /server/services/geminiOrchestrator.ts, /server/services/memoryArchivist.ts, /server/services/lifeContextGuard.ts, /server/services/platformSettings.ts
+Backend Routes: /server/routes/chat.ts, /server/routes/profiles.ts, /server/routes/admin.ts, /server/app.ts
+Frontend — Chat, Companions & Profile: /components/app/chatTypes.ts, /components/app/companionStarters.ts, /components/app/ChatWorkspace.tsx, /components/app/ComposerTabStrip.tsx, /components/app/ChatComposer.tsx, /components/app/CompanionSetupView.tsx, /components/app/CompanionsPage.tsx, /components/app/AppDashboardHome.tsx, /components/app/ProfileManager.tsx, /components/app/LifeContextModal.tsx, /components/NewLandingPage.tsx
+Frontend — Admin Panel: /components/admin/AdminCompanionsManager.tsx, /components/admin/AdminChatbotControl.tsx, /components/admin/PromptLibraryManager.tsx, /components/admin/AdminPanel.tsx
+Phase 1 Prompt — Council Specialization + vedic-astro-mega-prompt.json Forensic Engine & Turn-Level Modifier
+Text
+Read /AGENTS.md and /vedic-astro-mega-prompt.json completely before writing code.
+
+OBJECTIVE (PHASE 1):
+Upgrade the Council (`pillar === 'council'`) into a pure, hardcore multi-layered astrology desk and integrate the analytical engine from /vedic-astro-mega-prompt.json (Command Hierarchy, Operational Yoga States, Domain Escalation, Forensic Falsification, and Turn-Level Enforcement Modifier) without breaking existing conversations or hardcoding non-editable prompts.
+
+EXACT FILES TO INSPECT & MODIFY:
+- /server/services/promptDefaults.ts
+- /server/services/enginePromptDefaults.ts
+- /server/services/vedicAstrologerEngine.ts
+- /server/services/deepCouncilAudit.ts
+- /server/services/geminiOrchestrator.ts
+- /server/services/platformSettings.ts
+- /server/services/chartCompiler.ts & /server/services/contextSlicer.ts (audit available deterministic chart fields only)
+- /server/routes/chat.ts & /server/routes/admin.ts
+- /components/app/ChatWorkspace.tsx & /components/app/ComposerTabStrip.tsx
+
+REQUIREMENTS:
+1. Sharpen Council Roster (`EXPERT_OPTIONS` & `LEGACY_VEDIC_SUBSYSTEM_SLUGS` in `promptDefaults.ts`):
+   - Active Council experts: `vedic_astrologer` (default), `kp_precision` (display_name: "KP Astrology"), `jaimini` (display_name: "Jaimini Jyotish"), `western_astrologer`, `hellenistic_astrologer`, and `learn_astrology`.
+   - Remove `modern_astrologer`, `tarot_reader`, and `numerologist` from the active default Council expert list (`EXPERT_OPTIONS`), while keeping backward compatibility in `normalizeCouncilSlug()` and `chat.ts` so any existing historical conversations with those slugs still render and function cleanly without crashing.
+   - Ensure `kp_precision` and `jaimini` route cleanly through the Stage 1 -> Stage 2 -> Stage 3 Vedic synthesis + Deep Audit pipeline (`isVedicCouncilTurn` in `chat.ts` and `geminiOrchestrator.ts`) with their specialized `expertDirective` and relevant `formula_cartridge` weighting.
+
+2. Upgrade Vedic Council Reasoning Laws (`enginePromptDefaults.ts` + `vedicAstrologerEngine.ts`):
+   - Enrich `DEFAULT_VEDIC_TIER1_REASONING_LAWS` and `DEFAULT_CORE_COUNCIL_CONSTITUTION` using the real breakthroughs from /vedic-astro-mega-prompt.json:
+     (a) Command Hierarchy Tracing: evaluate planets via Sign Dispositor -> Nakshatra Star-Lord -> Final Controller, never as isolated dots.
+     (b) Operational Yoga/Dosha Audit: classify combinations by real state (Foundational / Active / Conditional / Latent / Temporarily Obstructed / Suppressed) rather than textbook name-dropping.
+     (c) Domain-Specific Escalation checks (Marriage, Career/Wealth, Health, Progeny, Education, Spirituality, Property, Relocation) strictly anchored to deterministic fields actually present in `chart_json` / `Stage2ContextPackage` (verify `chartCompiler.ts` & `contextSlicer.ts` first; never instruct the model to cite uncomputed metrics unless deterministically added).
+     (d) Forensic Falsification Pass: actively attempt to disprove the primary hypothesis before concluding.
+   - STRICTLY DO NOT copy the mega-prompt's "Respond only: Please provide your birth chart data in text format" or rigid "two sections only" restriction. Preserve Cosmic Council's 8-Tier Manifestation scale, D1-vs-D9 degree boundary, paired Dasha/Transit "(started ...)" date bracket rule, anti-cliché voice guardrails, and output contracts.
+
+3. Turn-Level Anti-Skimming Modifier Injection (`enginePromptDefaults.ts`, `platformSettings.ts`, `geminiOrchestrator.ts`, `admin.ts`):
+   - Add two new Admin-overridable fields inside `EnginePromptOverrides` (`platformSettings.ts`, `getEnginePromptDefaultsBundle()`, and `PUT /api/admin/settings/chatbot/engine-prompts`):
+     - `vedic_turn_modifier_prompt` (default distilled from the Modifier Prompt section of /vedic-astro-mega-prompt.json, adapted cleanly for Council & Vedic verification)
+     - `western_turn_modifier_prompt` (clean classical/modern verification cue matching Western telemetry)
+   - In `geminiOrchestrator.ts` (Path A & Path B Deep Audit Adjudicator), append the active turn-level modifier cue cleanly inside the final turn-level prompt boundary right beside `finalUserText` (as a hidden system/context enforcement reminder, never leaked in user-visible message history or output) so models cannot skim past system rules in long threads.
+   - Also allow `short_reply_breakdown_wrapper` and `timing_widget_placement_wrapper` in `vedicAstrologerEngine.ts` to read from `engineOverrides` with safe defaults.
+
+VERIFICATION:
+- Run `npm run lint` and `npm run build`. Fix any TypeScript or build errors completely before concluding.
+Phase 2 Prompt — Companion Intelligence Unlock (Kill 90/10 & 2,600-Char Truncation + Admin-Controlled Skill/Chart Access)
+Text
+Read /AGENTS.md completely first. Build cleanly on Phase 1.
+
+OBJECTIVE (PHASE 2):
+Eliminate the artificial 2,600-char chart truncation and hardcoded "90/10" cap in Companions. Replace rigid `skill_level` switching with granular, Admin-controlled per-Companion capability flags (inherited from Group defaults or overridden per Companion) so every Companion with esoteric/chart access enabled receives 100% of the deterministic birth chart (`600+` data points), daily Transits, Formula Cartridges, and Turn-Level Forensic Verification—while pure Listeners and Everyday Friends stay strictly protected from unsolicited advice or chart jargon.
+
+EXACT FILES TO INSPECT & MODIFY:
+- /components/app/chatTypes.ts
+- /server/services/companionPresets.ts
+- /server/services/companionEngine.ts
+- /server/services/geminiOrchestrator.ts
+- /server/services/enginePromptDefaults.ts
+- /server/services/platformSettings.ts
+- /server/services/divinationEngines.ts
+- /server/routes/chat.ts
+- /supabase/migrations/ (add idempotent migration `018_companion_capabilities_and_memory.sql` if DB columns are needed alongside JSON/platform_settings fallbacks)
+
+REQUIREMENTS:
+1. Granular Companion Capability & Advisory Model (`chatTypes.ts`, `companionPresets.ts`, `companionEngine.ts`):
+   - Extend `CompanionPresetRecord` (with safe backward-compatible defaults when DB columns are missing) with explicit backend-editable fields:
+     - `companion_group`: `'spiritual_guides' | 'everyday_companions' | 'life_companions'`
+     - `advisory_mode`: `'listen_only' | 'friend' | 'balanced_support' | 'esoteric_guide'`
+     - `chart_access`: `{ vedic: boolean; western: boolean; tarot: boolean; numerology: boolean; past_life: boolean; council_notes: boolean }`
+     - `formula_cartridge_slugs`: `string[]` (resolved live via `getFormulaCartridgesCached()` from `promptDefaults.ts`)
+     - `max_output_tokens`: `number | null` (inherits Group/Global default when null)
+     - `discoverable_tags`: `string[]` (situation discovery tags, e.g., `['missing an ex', 'breakup', 'no contact']`)
+   - Keep `skill_level` synchronized cleanly for backward compatibility with older DB rows / custom companions.
+
+2. Remove `.slice(0, 2600)`, `.slice(0, 2000)`, and Hardcoded `90/10` Rule (`companionEngine.ts`, `routes/chat.ts`, `geminiOrchestrator.ts`):
+   - In `server/routes/chat.ts` (around `needsCompanionChartJson`), load `chart_json` whenever the resolved Companion has `chart_access.vedic || chart_access.western || chart_access.past_life` enabled (do NOT hardcode `skill_level === 'astrology_soft'` only). Keep lightweight selects when all chart flags are false.
+   - In `companionEngine.ts` (`buildCompanionSkillAndProfileBlock()`):
+     - Delete the hardcoded `"90/10 HUMAN-FIRST RULE"` and delete all `.slice(0, 2600)` / `.slice(0, 2000)` cuts.
+     - If `chart_access.vedic` or `chart_access.past_life` is true and `profile.chart_json` exists, inject the FULL `formatChartForLLM(profile.chart_json, 'vedic')` (falling back to full `profile.chart_text_context` only if `chart_json` is null) + `getOrFetchDailyTransits().transitsText`.
+     - If `chart_access.western` is true and `profile.chart_json` exists, inject the FULL `formatChartForLLM(profile.chart_json, 'western')` + `getOrFetchDailyTransits().westernTransitsText` (do NOT drop Hellenistic/configurations/mutual receptions via `formatTropicalWesternContext`).
+     - Support multi-discipline Companions seamlessly (e.g., if a Companion has BOTH `vedic` and `tarot`, or `western` and `numerology`, inject each enabled capability cleanly!).
+     - Inject any active `formula_cartridge_slugs` resolved from `getFormulaCartridgesCached()` so Admins can tune Companion analysis formulas live.
+     - For `esoteric_guide` and chart-enabled `balanced_support` turns where the user's message invites chart/timing/crossroads insight, append the Admin-configurable Turn-Level Verification Modifier silently at the turn boundary in `geminiOrchestrator.ts` while instructing the model to keep all technical verification silent and deliver the answer in the Companion's natural human voice.
+
+3. Strict Advisory & Empathy-First Guardrails (Editable via Admin `engine_prompt_overrides`):
+   - Move `COMPANION_REALISM_BASELINE`, `companion_listen_only_guardrail`, `companion_empathy_first_guardrail`, and `companion_skill_rules` into `enginePromptDefaults.ts` + `platformSettings.ts` (`getEnginePromptOverrides()`) so ZERO rules remain hardcoded inside `companionEngine.ts`.
+   - Enforce behavior cleanly by `advisory_mode`:
+     - `listen_only` (e.g., Listener, Vent Buddy, Bedtime, Comforter): strictly hold space, validate, ask gentle questions—NEVER lecture, fix, advise, or mention astrology unless explicitly configured and asked.
+     - `friend`: natural unfiltered friend dialogue, zero preaching/lecturing.
+     - `balanced_support`: empathy & human support strictly lead first—especially on Grief, Loss, Trauma, Fertility, Health, Mental Wellness, Legal, and Financial Distress (never claim planets caused pain, never give medical/legal/financial advice). Use attached chart/transits only when invited or naturally supportive.
+     - `esoteric_guide`: full multi-system guidance delivered conversationally without textbook fluff.
+
+4. Lift Hardcoded Companion Output Cap (`geminiOrchestrator.ts`):
+   - Replace `Math.max(Math.min(runtime.tokenLimits.chat_detailed, 1400), 1100)` with: Companion override `max_output_tokens` -> Group default -> Global Companion token limit (`runtime.tokenLimits.companion_detailed` / fallback `>= 2800`) so rich chart or emotional conversations are never clipped mid-thought.
+
+VERIFICATION:
+- Run `npm run lint` and `npm run build` cleanly with 0 errors.
+Phase 3 Prompt — Lossless Long-Chat Compaction + Cross-Pillar Cited Deep Psychological Profile & Analyst Notes
+Text
+Read /AGENTS.md completely first. Build cleanly on Phase 2.
+
+OBJECTIVE (PHASE 3):
+Ensure long conversations never lose early context, capture minute psychological/practical/emotional/desires details across BOTH Council and Companions with explicit source citations (e.g., "Bella · Tarot", "KP Astrology"), and allow Pro Council Analyst Notes to inform chart-enabled Companions cleanly.
+
+EXACT FILES TO INSPECT & MODIFY:
+- /supabase/migrations/018_*.sql (add columns idempotently + RLS-safe server updates)
+- /lib/lifeContextSchema.ts
+- /server/services/lifeContextGuard.ts
+- /server/services/memoryArchivist.ts
+- /server/services/enginePromptDefaults.ts
+- /server/services/platformSettings.ts
+- /server/services/geminiOrchestrator.ts
+- /server/services/companionEngine.ts
+- /server/routes/chat.ts
+- /server/routes/profiles.ts
+- /components/app/ProfileManager.tsx & /components/app/LifeContextModal.tsx
+
+REQUIREMENTS:
+1. Schema Expansion (`supabase/migrations/018_*.sql`, `lib/lifeContextSchema.ts`, `lifeContextGuard.ts`):
+   - Add idempotent DB columns (with graceful query fallback in `chat.ts`/`profiles.ts` if migration isn't applied yet):
+     - `conversations.thread_memory_summary` (TEXT) & `conversations.thread_memory_msg_count` (INTEGER)
+     - `profiles.deep_profile_json` (JSONB) — or cleanly extend `life_context_json` with structured deep-profile buckets + provenance citations
+     - `profiles.analyst_notes_json` (JSONB) — concise technical chart takeaways written by Council readings
+   - Define structured, cited Deep Profile entries in `lib/lifeContextSchema.ts` supporting:
+     - Practical reality (`children_details`, exact count/context of children, workplace/role/business context, living/relocation plans, daily constraints, financial reality)
+     - Psychological & emotional wiring (`emotional_triggers`, `core_insecurities`, `coping_patterns`, `stress_areas`)
+     - Desires, dreams & inner conflicts (`desires_and_goals`, `active_dilemmas`, `relationship_dynamics`)
+     - Conversational & relational preferences (`communication_preferences`)
+   - EVERY auto-extracted or edited fact item carries provenance metadata:
+     - `id`: string
+     - `category`: category key
+     - `fact`: concise factual statement
+     - `source_label`: human-readable citation (e.g. `"Bella · Tarot"`, `"Vent Buddy · Kabir"`, `"KP Astrology (Council)"`, `"You (Profile)"`)
+     - `source_slug`: string
+     - `conversation_id`: string | null
+     - `captured_at`: ISO timestamp
+     - `updated_at`: ISO timestamp
+   - Never inject fake dates or unstated years; if a user shares an update that supersedes an earlier fact (e.g., job switch, breakup -> new relationship, moved cities), replace/update the superseded entry rather than accumulating contradictions.
+
+2. Lossless Long-Thread Compaction (`geminiOrchestrator.ts`, `memoryArchivist.ts`, `routes/chat.ts`):
+   - Fix the silent `activeHistory.slice(-maxHistoryTurns)` cutoff in `geminiOrchestrator.ts`:
+     - Keep the most recent ~16–20 non-excluded messages verbatim in `historyOpenRouterMessages`.
+     - Whenever `activeHistory.length` exceeds the verbatim window (or `activeHistory.length - (conversation.thread_memory_msg_count || 0) >= 8`), inject `conversation.thread_memory_summary` cleanly right before the verbatim window AND schedule a background `compactConversationThreadMemory()` update covering everything older than the verbatim tail.
+     - Explicitly summarize: key decisions, emotional shifts, personal details revealed, open questions, and WHICH chart houses/dashas/themes were already explained so replies never repeat basics.
+   - Replace hardcoded compaction/extraction prompts with Admin-configurable overrides (`memory_rolling_thread_compactor_prompt`, `memory_deep_profile_extractor_prompt`, `memory_profile_synthesizer_prompt`, `memory_companion_bond_prompt`) in `enginePromptDefaults.ts` & `platformSettings.ts`.
+
+3. Cross-Pillar Profile Enrichment & Analyst Notes (`memoryArchivist.ts`, `routes/chat.ts`, `companionEngine.ts`):
+   - In `routes/chat.ts`, run background Deep Profile Extraction (`extractAndPersistDeepProfileFacts`) on meaningful turns for **BOTH `council` AND `companion`** (using the companion's display attribution like `"${companionName} · ${roleTitle}"`, e.g., `"Bella · Tarot"`, `"Dev · Astrological Life Guide"`, or the Council analyst label like `"Vedic Astrologer (Council)"`, `"KP Astrology (Council)"`). Skip extraction cleanly when `conversation.use_full_profile_memory === false` or turn is trivial ("ok", "thanks").
+   - For Council astrology consultations (`activePillar === 'council'`), also distill 1–2 concise factual `analyst_notes_json` entries (with citation + date) when major structural or timing conclusions are delivered.
+   - In `companionEngine.ts`, when a Companion has `chart_access.council_notes === true` (or any esoteric chart access), pass concise `analyst_notes_json` alongside the Deep Profile Context (`deep_profile_json`) so the Companion knows both the user's emotional reality AND recent technical Council findings—translating them warmly without exposing raw internal schemas. Keep `companion_bonds` (inside jokes, rapport, slang) private per companion slug.
+
+4. Clean User Visibility for Citations (`ProfileManager.tsx`, `LifeContextModal.tsx`):
+   - Surface the saved Deep Profile notes neatly grouped inside the user's Profile / Life Context editor, showing each item's subtle source tag (e.g., `"Noted via Bella · Tarot"`) with a clean Delete / Edit action, matching the `#FAF7F2 / #3D3830` editorial styling with zero visual clutter.
+
+VERIFICATION:
+- Ensure `server/routes/profiles.ts` and `chat.ts` maintain slim `select(...)` lists in sidebar/list endpoints (no `select('*')` regression).
+- Run `npm run lint` and `npm run build` cleanly with 0 errors.
+Phase 4 Prompt — 45-Role Companion Ecosystem, Male/Female Voice Pairings & Situation Discovery UI
+Text
+Read /AGENTS.md completely first. Build cleanly on Phase 3.
+
+OBJECTIVE (PHASE 4):
+Implement the full 45-Role Companion Catalog organized cleanly into 3 Pillars (`Spiritual Guides`, `Everyday Companions`, `Life Companions`) with 1-tap Female/Male persona selection per role, authentic first-person human bios (zero fake resumes/credentials, zero robotic spec sheets), and clean Situation Tag + Pillar discovery across Dashboard, Companions Hub, and Landing Page.
+
+EXACT FILES TO INSPECT & MODIFY:
+- /server/services/companionPresets.ts
+- /components/app/companionStarters.ts
+- /components/app/chatTypes.ts
+- /components/app/CompanionSetupView.tsx
+- /components/app/CompanionsPage.tsx
+- /components/app/AppDashboardHome.tsx
+- /components/NewLandingPage.tsx
+- /server/app.ts & /server/routes/chat.ts
+
+REQUIREMENTS:
+1. 45-Role Companion Catalog (`companionPresets.ts`, `chatTypes.ts`):
+   - Preserve ALL 19 existing slugs (`aira`, `kira`, `camila`, `mira`, `elia`, `max`, `tara`, `sofia`, `luna`, `marc`, `bella`, `kai`, `anya`, `kabir`, `mateo`, `dev`, `leo`, `valeria`, `rohan`) so no existing conversations or portrait URLs break.
+   - Structure the catalog across the exact 45 roles in 3 clear groups:
+     - **Group A — Spiritual Guides (1–5):**
+       1. Astrological Life Guide (`vedic` + `western` configurable)
+       2. Tarot & Intuitive Guidance (`tarot`)
+       3. Numerology & Life Cycles (`numerology`)
+       4. Karma & Past-Life Exploration (`past_life` + `vedic`)
+       5. Spirituality & Inner Peace (`balanced_support` / optional subtle spiritual lens)
+     - **Group B — Everyday Companions (6–27):**
+       6. Listener (`listen_only`), 7. Comforter (`listen_only`), 8. Mood Lifter (`friend`), 9. Healing Companion (`balanced_support`), 10. Cheerleader (`friend`), 11. Candid Friend (`friend`), 12. Fun Friend (`friend`), 13. Calming Companion (`listen_only`/`balanced_support`), 14. Casual Companion (`friend`), 15. Confidant (`listen_only`), 16. Deep Conversation Partner (`balanced_support`), 17. Wise Mentor (`balanced_support`), 18. Brotherly Friend (Male only, `friend`), 19. Sisterly Friend (Female only, `friend`), 20. Vent Buddy (`listen_only` — strict NO unsolicited advice), 21. Thought Partner (`balanced_support`), 22. Decision Partner (`balanced_support`), 23. Daily Check-In Companion (`balanced_support`), 24. Affectionate Companion (`friend`), 25. Celebration Buddy (`friend`), 26. Bedtime Companion (`listen_only`), 27. Mindfulness Companion (`balanced_support`).
+     - **Group C — Life Companions (28–45):**
+       28. Love & Relationships, 29. Heartbreak & Moving On (explicitly covers missing an ex, breakups, betrayal, closure), 30. Marriage & Second Chances, 31. Grief & Loss, 32. Family & Parenthood, 33. Fertility & Pregnancy Journeys, 34. Health & Recovery, 35. Mental & Emotional Wellness, 36. Career & Professional Life, 37. Business & Entrepreneurship, 38. Money & Financial Stress, 39. Legal Disputes & Conflict, 40. Life Transitions & New Beginnings, 41. Self-Discovery & Life Direction, 42. Trauma & Emotional Recovery, 43. Intimacy & Connection, 44. Identity & Self-Acceptance, 45. Education & Student Life.
+
+2. Dual-Gender (`Female / Male`) Persona Pairings & Authentic First-Person Human Bios:
+   - Each role (except #18 Brotherly Friend `[M]` and #19 Sisterly Friend `[F]`) stores `gender_variants: { F?: CompanionPersonaVariant; M?: CompanionPersonaVariant }` (name, age, avatar_url/monogram, cultural texture, first-person bio, natural voice notes, tts_voice_profile) linked cleanly to our portrait bank (`/assets/companions/*`) and new portraits/monograms where needed—avoiding 90 redundant card tiles in the UI.
+   - Rewrite EVERY `short_bio`, `full_bio`, `tagline`, and `system_prompt` into genuine first-person human voices:
+     - Zero feature-sheet phrasing ("90% warm", "High-energy hype friend").
+     - Zero fabricated real-world resumes or fake clinical/entrepreneurial credentials ("I exited 3 companies", "I practiced therapy for 10 years").
+     - Zero overly granular chart-house badges like "Vedic · D7 & 5th House" — keep esoteric badges broad and human (`Vedic · Tarot`, `Western · Psychology`, `Vedic & Philosophy`) and ONLY show esoteric tags on companions whose `chart_access` / esoteric settings are active!
+     - Fix `companionStarters.ts`: fix `luna_grey` -> `luna`, and tailor starters for all 45 roles (strictly non-astrological emotional starters for `listen_only` / `friend` roles).
+
+3. Clean Discovery & Male/Female Selection UI (`CompanionSetupView.tsx`, `CompanionsPage.tsx`, `AppDashboardHome.tsx`, `NewLandingPage.tsx`):
+   - Filter tabs cleanly organized around **`All`, `Spiritual Guides`, `Everyday Companions`, `Life Companions`** (plus optional discipline quick-filters when browsing Spiritual/Astrology) + a calm **Situation Search & Quick-Chips bar** (e.g., *Missing an ex, Vent, Bedtime, Career switch, Grief, IVF, Debt, Lonely, Tarot*) filtering via `discoverable_tags`.
+   - On each Role card / detail sheet, provide a crisp, quiet **`She / He` voice selector** (e.g., `"Sofia · F"` / `"Leo · M"`) passed cleanly when starting a conversation (`companion_slug` + `selected_gender: 'F' | 'M'` persisted on `conversations` or resolved cleanly inside `chat.ts`).
+   - Preserve exact Oura Warmth × Observatory Precision styling, `100dvh` mobile comfort, and zero pill-spam.
+
+VERIFICATION:
+- Run `npm run lint` and `npm run build` cleanly with 0 errors.
+Phase 5 Prompt — 3-Layer Companion & Prompt Admin Backend Redesign (100% Admin-Panel Control)
+Text
+Read /AGENTS.md completely first. Build cleanly on Phase 4.
+
+OBJECTIVE (PHASE 5):
+Redesign the Admin Panel's Companion and Prompt management into a clean 3-Layer Cascade (Global Controls -> Group Controls -> Role + M/F Persona Overrides) and expose EVERY remaining engine, modifier, formula, token limit, and memory/citation prompt inside /app/admin with Reset-to-Default actions—so 100% of Council and Companion behavior can be tuned or expanded live without touching code.
+
+EXACT FILES TO INSPECT & MODIFY:
+- /server/services/platformSettings.ts
+- /server/services/companionPresets.ts
+- /server/routes/admin.ts
+- /components/admin/AdminCompanionsManager.tsx
+- /components/admin/AdminChatbotControl.tsx
+- /components/admin/PromptLibraryManager.tsx
+- /components/admin/AdminPanel.tsx
+
+REQUIREMENTS:
+1. Complete Backend Admin Settings & Cache Invalidation (`platformSettings.ts`, `companionPresets.ts`, `routes/admin.ts`):
+   - Expose all remaining engine & memory prompts via `GET/PUT/POST-reset` on `/api/admin/settings/chatbot/engine-prompts`:
+     - `vedic_turn_modifier_prompt` & `western_turn_modifier_prompt`
+     - `companion_realism_baseline`
+     - `companion_listen_only_guardrail` & `companion_empathy_first_guardrail`
+     - `companion_group_configs`: editable settings per group (`spiritual_guides`, `everyday_companions`, `life_companions`) including `group_system_prompt`, default `advisory_mode`, default `chart_access`, default `chat_style`, and default `max_output_tokens`.
+     - `memory_deep_profile_extractor_prompt`, `memory_rolling_thread_compactor_prompt`, `memory_profile_synthesizer_prompt`, `memory_companion_bond_prompt`.
+     - `short_reply_breakdown_wrapper` & `timing_widget_placement_wrapper`.
+   - Extend Companion Admin CRUD (`/api/admin/companions` GET/POST/PUT/PATCH/DELETE/reset) to persist and validate:
+     - `companion_group`, `advisory_mode`, `chart_access` (individual toggles for `vedic`, `western`, `tarot`, `numerology`, `past_life`, `council_notes`), `formula_cartridge_slugs`, `discoverable_tags`, `gender_variants` (`F` & `M` names, ages, bios, avatar URLs, voices), `override_global_rules`, `override_group_rules`, `max_output_tokens`, `model_id`, `chat_style`, `hard_rules`, `soft_rules`, and `is_active`.
+   - Ensure every save invalidates `invalidateAllPlatformCaches()`, `invalidatePromptCache()`, and companion preset caches cleanly so updates take effect immediately on the next chat turn.
+
+2. 3-Layer Companion Manager UI (`components/admin/AdminCompanionsManager.tsx`):
+   - Restructure into 3 clear sub-views/tabs inside Admin Companions:
+     - **Tab 1 — Global Companion Controls:** Edit Realism Baseline, Safety & Listen-Only/Empathy-First Guardrails, Global Token/History Limits, and Deep Memory + Citation Extractor prompts (each with "Reset to Default").
+     - **Tab 2 — Group Defaults (`Spiritual Guides` · `Everyday Companions` · `Life Companions`):** Edit shared group behavior prompts, default advisory mode, default chart access, default chat style, and default output token budget in one place (instantly inherited by all roles in that group unless overridden).
+     - **Tab 3 — Companion Roles (45+ List & Quick Creator):** Clean searchable/filterable table by Group & Active status. Clicking a role opens a structured editor with:
+       - Basic Role & Situation Tags (`discoverable_tags` tag editor)
+       - **Chart & Skill Access toggles** (flip Vedic / Western / Tarot / Numerology / Past-Life / Council Notes ON or OFF anytime—immediately unlocking full `600+` chart + Transits + Turn Modifier for that Companion!)
+       - **Advisory Mode selector** (`Listen-Only` / `Friend` / `Balanced Support` / `Esoteric Guide`)
+       - **Formula Cartridges multi-select** (sourced live from `formula_cartridge` prompts)
+       - **Female & Male Persona tabs** (Name, Age, Portrait picker/upload, First-person Bio, Cultural/Voice texture, Opening lines)
+       - **Prompt Inheritance toggle** (show inherited Global + Group prompt preview + optional override / Role-specific rules, Model ID override, Output Token Cap, Chat Style).
+       - **"Add New Companion Role"** modal/drawer allowing Admin to launch a 46th+ Companion in under a minute.
+
+3. Council & Formula Controls Polish (`AdminChatbotControl.tsx`, `PromptLibraryManager.tsx`):
+   - Ensure `KP Astrology` (`kp_precision`), `Jaimini Jyotish` (`jaimini`), `Vedic Turn Modifier`, `Western Turn Modifier`, and all Memory/Compaction prompts are visible, editable, testable (`POST /api/admin/prompts/test`), and resettable inside Admin Chatbot Control & Prompt Library.
+
+VERIFICATION:
+- Test all Admin GET/PUT/Reset payloads cleanly for both populated overrides and empty defaults.
+- Run `npm run lint` and `npm run build` cleanly with 0 errors.

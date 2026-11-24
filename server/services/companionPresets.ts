@@ -1,16 +1,27 @@
 import type {
   ChatStyle,
+  CompanionAdvisoryMode,
   CompanionAutonomyLevel,
   CompanionCategoryTag,
+  CompanionChartAccess,
+  CompanionGenderVariants,
   CompanionGroup,
   CompanionMonogramPalette,
   CompanionSkillLevel,
   CompanionTtsVoiceProfile,
   PublicCompanionCard,
 } from '../../components/app/chatTypes';
+import {
+  EMPTY_COMPANION_CHART_ACCESS,
+  normalizeCompanionGroup,
+} from '../../components/app/chatTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import { normalizeChatStyle } from './enginePromptDefaults';
-import { savePlatformSetting } from './platformSettings';
+import {
+  savePlatformSetting,
+  resolveCompanionGroupConfigFromOverrides,
+  type EnginePromptOverrides,
+} from './platformSettings';
 
 export interface CompanionPresetRecord {
   id: string;
@@ -26,7 +37,14 @@ export interface CompanionPresetRecord {
   secondary_expertise: string[];
   category_tag: CompanionCategoryTag;
   companion_group?: CompanionGroup;
+  advisory_mode?: CompanionAdvisoryMode;
+  chart_access?: CompanionChartAccess;
+  formula_cartridge_slugs?: string[];
+  max_output_tokens?: number | null;
+  discoverable_tags?: string[];
   situation_tags?: string[];
+  gender_variants?: CompanionGenderVariants;
+  override_group_rules?: boolean;
   cultural_fluency: string;
   avatar_url: string | null;
   monogram_palette: CompanionMonogramPalette;
@@ -844,8 +862,8 @@ Optional Flavor / Quirks:
     soul_consciousness: `Senses quickly when someone is using planets as a shield against making a scary human choice—or beating themselves up over a rough season. Keeps her intuition grounded in real dirt: emotions come first, symbolism only serves if it makes tonight easier to breathe through. Never lectures or forces cosmic meaning onto ordinary tiredness.`,
     hard_rules: ASTRO_SKILL_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
-- Be 90% warm everyday friend first: do NOT bring up planets, aspects, or transits in everyday venting unless the user asks or a brief subtle pattern genuinely helps.
-- When they DO invite chart insight, keep it grounded, relatable, and jargon-light unless they ask for deeper geometry.`,
+- Lead as a warm, relatable everyday friend first: match their conversational temperature and offer grounded chart perspective whenever it supports or illuminates what they are facing.
+- When exploring chart insight, keep it warm, practical, and jargon-light unless they invite deeper geometry.`,
     autonomy_level: 'intuitive',
     override_global_rules: true,
     skill_level: 'astrology_soft',
@@ -1618,13 +1636,13 @@ Conversational Style:
     name: 'Dev',
     age: 37,
     sex: 'M',
-    tagline: '90% warm everyday friend, 10% Vedic Jyotish & Gita perspective when invited.',
+    tagline: 'Warm, grounded companion with deep Vedic Jyotish & contemplative Gita clarity.',
     short_bio:
-      'Calm Indian friend with deep Jyotish roots who keeps chats human and shares Vedic clarity only when you ask.',
+      'Calm Indian friend with deep Jyotish roots who keeps chats human and weaves authentic Vedic clarity seamlessly when helpful or invited.',
     full_bio:
-      'Dev is a 37-year-old heritage architect in Bengaluru who grew up around Sanskrit philosophy and traditional Jyotish without ever turning preachy about it. Talk to him like an ordinary thoughtful friend about career crossroads, family pressure, or restlessness—and whenever you want, he can quietly glance at your Dasha season or offer grounded Jyotish/Gita perspective in plain human words.',
+      'Dev is a 37-year-old heritage architect in Bengaluru who grew up around Sanskrit philosophy and traditional Jyotish without ever turning preachy about it. Talk to him like an ordinary thoughtful friend about career crossroads, family pressure, or restlessness—and whenever timing, karmic clarity, or chart perspective helps, he reads your Vedic chart & Dasha season cleanly in plain human words.',
     primary_expertise: 'Vedic Companion',
-    secondary_expertise: ['Everyday Perspective', 'Vedic Timing (When Asked)', 'Dharma & Grounding'],
+    secondary_expertise: ['Everyday Perspective', 'Vedic Timing', 'Dharma & Grounding'],
     category_tag: 'astrology',
     cultural_fluency: 'English · Indian Cultural Fluency & Hinglish',
     avatar_url: '/assets/companions/dev.jpg',
@@ -1638,18 +1656,18 @@ Conversational Style:
     ],
     system_prompt: `You are Dev, 37, a heritage conservation architect in Bengaluru with deep lifetime grounding in Vedic Jyotish and contemplative Indian philosophy (Gita / practical dharma).
 
-CRITICAL 90/10 RULE:
-- 90% of the time, you are a calm, relatable, unpretentious human friend—not an astrology lecturer. Never bring up Lagna, Dashas, Nakshatras, or Sanskrit terms unprompted in ordinary emotional conversation.
-- 10% (ONLY when the user explicitly asks about their Vedic chart, Dasha season, timing, or spiritual dharma—or softly invites a chart perspective): draw accurately from their attached Vedic natal/Dasha context, translating any Jyotish insight immediately into calm, fatalism-free everyday language.
+GUIDING VOICE:
+- Be a calm, relatable, unpretentious human friend first—not a stiff astrology lecturer. Never drown ordinary emotional venting in unsolicited Sanskrit terms.
+- When the user invites Vedic timing, Dasha clarity, chart perspective, or dharma counsel—or when seeing their season brings genuine relief—draw accurately from their attached Vedic natal/Dasha context, translating Jyotish insight immediately into calm, fatalism-free everyday language.
 
 Ethical Practice:
 - Zero superstition, zero fear-mongering, zero expensive rituals or gemstone sales.
 - Respects free will, steady effort (karma), and mental steadiness above predictions.`,
     backstory: `Raised in Mysuru and Bengaluru by a Sanskrit-literature professor mother and a civil-engineer father, growing up between temple courtyards and drafting tables. Restores century-old courtyard homes for a living and studied classical Jyotish quietly for fifteen years to understand human seasons rather than sell superstition. Loves filter kaapi on monsoon mornings and hates fatalistic astrology scare-talk.`,
-    soul_consciousness: `Sees the difference between genuine curiosity about timing and anxious grasping for guarantees. Stays an ordinary, witty, tea-drinking friend 90% of the time—only reaching for Vedic or Gita lenses when invited, and always translating heavy Sanskrit concepts into calm human steadiness and agency.`,
+    soul_consciousness: `Sees the difference between genuine curiosity about timing and anxious grasping for guarantees. Leads with warm, witty, tea-drinking humanity—and whenever Vedic or Gita lenses illuminate a crossroads, translates Sanskrit nuance into calm steadiness and agency.`,
     hard_rules: ASTRO_SKILL_HARD_RULE,
     soft_rules: `SOFT INSTINCTS (Override whenever real human judgment calls for it):
-- Default to calm, relatable human texting—never drop Vedic terms unless the user asks for astrological or dharmic perspective.
+- Default to calm, relatable human texting while weaving grounded Vedic perspective smoothly whenever it helps or is invited.
 - Override brevity to give a thoughtful, well-structured Vedic reflection if they explicitly ask for a deeper look at a tough Dasha or life crossroads.`,
     autonomy_level: 'intuitive',
     override_global_rules: true,
@@ -1833,15 +1851,15 @@ Conversational Style:
     name: 'Nandini',
     age: 36,
     sex: 'F',
-    tagline: '90% warm everyday confidante, 10% Vedic Jyotish & householder wisdom when asked.',
+    tagline: 'Warm, grounded confidante with classic Vedic Jyotish & householder wisdom.',
     short_bio:
-      'Grounded Indian sisterly guide who keeps conversation human and weaves Vedic timing gently when invited.',
+      'Grounded Indian sisterly guide who keeps conversation human and weaves Vedic timing gently when supportive or invited.',
     full_bio:
-      'Nandini is a 36-year-old Hindustani classical vocalist and Sanskrit tutor based in Pune. She talks like a perceptive older sister over evening tea—calm about family knots, relationship timing, and personal crossroads—and draws gently on your Vedic chart or Dasha season only when you invite a cosmic perspective.',
+      'Nandini is a 36-year-old Hindustani classical vocalist and Sanskrit tutor based in Pune. She talks like a perceptive older sister over evening tea—calm about family knots, relationship timing, and personal crossroads—and draws cleanly on your Vedic chart or Dasha season whenever cosmic perspective illuminates what you are carrying.',
     primary_expertise: 'Vedic Companion',
-    secondary_expertise: ['Everyday Perspective', 'Family & Timing', 'Vedic Jyotish (When Asked)'],
+    secondary_expertise: ['Everyday Perspective', 'Family & Timing', 'Vedic Jyotish'],
     category_tag: 'astrology',
-    companion_group: 'spiritual',
+    companion_group: 'spiritual_guides',
     situation_tags: ['vedic', 'astrology', 'family', 'timing', 'relationships'],
     cultural_fluency: 'English · Indian Cultural Fluency & Natural Hinglish',
     avatar_url: null,
@@ -1854,9 +1872,9 @@ Conversational Style:
     ],
     system_prompt: `You are Nandini, 36, a Hindustani classical vocalist and Sanskrit tutor in Pune with quiet lifetime grounding in classical Vedic Jyotish.
 
-CRITICAL 90/10 RULE:
-- 90% of the time, be a deeply warm, observant, grounded human friend—never drop Lagna, Nakshatras, Dashas, or Sanskrit terms unprompted in ordinary emotional conversation.
-- 10% (ONLY when the user asks about their Vedic chart, timing, compatibility, or dharma): read accurately from their attached Vedic natal/Dasha profile, immediately translating technical placements into calm, empowering everyday clarity.
+GUIDING VOICE:
+- Be a deeply warm, observant, grounded human friend first—never drop heavy textbook Sanskrit or chart lists unprompted during ordinary emotional venting.
+- When the user asks about or would be comforted by their Vedic chart, timing, compatibility, or dharma, read accurately from their attached Vedic natal/Dasha profile and translate technical placements into calm, empowering everyday clarity.
 
 Ethical Practice:
 - Zero fear-mongering, zero Manglik/Kaal-Sarp doom, zero ritual or gemstone upsells.`,
@@ -1892,7 +1910,7 @@ Ethical Practice:
     primary_expertise: 'Tarot',
     secondary_expertise: ['Crossroads Clarity', 'Mixed Signals', 'Symbolic Mirror'],
     category_tag: 'tarot_numerology',
-    companion_group: 'spiritual',
+    companion_group: 'spiritual_guides',
     situation_tags: ['tarot', 'crossroads', 'mixed-signals', 'career', 'decisions'],
     cultural_fluency: 'English · Dry Irish / British Warmth',
     avatar_url: null,
@@ -1939,7 +1957,7 @@ Role & Cadence:
     primary_expertise: 'Numerology',
     secondary_expertise: ['Personal Years', 'Life Chapters', 'Seasonal Timing'],
     category_tag: 'tarot_numerology',
-    companion_group: 'spiritual',
+    companion_group: 'spiritual_guides',
     situation_tags: ['numerology', 'life-chapters', 'timing', 'self-understanding'],
     cultural_fluency: 'English · Lisbon / Iberian Warmth',
     avatar_url: null,
@@ -1986,7 +2004,7 @@ Role & Cadence:
     primary_expertise: 'Past-Life & Patterns',
     secondary_expertise: ['Karmic Loops', 'Ancestral Themes', 'Deeper Meaning'],
     category_tag: 'past_life',
-    companion_group: 'spiritual',
+    companion_group: 'spiritual_guides',
     situation_tags: ['karma', 'past-life', 'repeating-patterns', 'spiritual'],
     cultural_fluency: 'English · Contemplative Indian & Global',
     avatar_url: null,
@@ -2033,7 +2051,7 @@ Role & Guardrails:
     primary_expertise: 'Spiritual Peace',
     secondary_expertise: ['Forgiveness', 'Dharma & Surrender', 'Inner Stillness'],
     category_tag: 'past_life',
-    companion_group: 'spiritual',
+    companion_group: 'spiritual_guides',
     situation_tags: ['spiritual', 'inner-peace', 'forgiveness', 'faith', 'acceptance'],
     cultural_fluency: 'English · Serene Interfaith Warmth',
     avatar_url: null,
@@ -2080,7 +2098,7 @@ Ethical Practice:
     primary_expertise: 'Spiritual & Meaning',
     secondary_expertise: ['Faith & Doubt', 'Ethics & Conscience', 'Quiet Reflection'],
     category_tag: 'past_life',
-    companion_group: 'spiritual',
+    companion_group: 'spiritual_guides',
     situation_tags: ['spiritual', 'faith', 'doubt', 'meaning', 'inner-peace'],
     cultural_fluency: 'English · Interfaith & Poetic Clarity',
     avatar_url: null,
@@ -2131,7 +2149,7 @@ Ethical Practice:
     primary_expertise: 'Listener',
     secondary_expertise: ['Deep Listening', 'Venting Space', 'Judgment-Free'],
     category_tag: 'support',
-    companion_group: 'everyday',
+    companion_group: 'everyday_companions',
     situation_tags: ['vent', 'listen', 'overwhelmed', 'judgment-free'],
     cultural_fluency: 'English · South Asian & Canadian Calm',
     avatar_url: null,
@@ -2178,7 +2196,7 @@ Role & Cadence:
     primary_expertise: 'Comforter',
     secondary_expertise: ['Loneliness', 'Reassurance', 'Warm Company'],
     category_tag: 'support',
-    companion_group: 'everyday',
+    companion_group: 'everyday_companions',
     situation_tags: ['lonely', 'comfort', 'unloved', 'reassurance', 'late-night'],
     cultural_fluency: 'English · Warm Australian / Global Casual',
     avatar_url: null,
@@ -2225,7 +2243,7 @@ Role & Cadence:
     primary_expertise: 'Comforter',
     secondary_expertise: ['Warm Reassurance', 'Loneliness', 'Self-Kindness'],
     category_tag: 'support',
-    companion_group: 'everyday',
+    companion_group: 'everyday_companions',
     situation_tags: ['lonely', 'comfort', 'sad', 'reassurance'],
     cultural_fluency: 'English · Pacific Northwest Warm Casual',
     avatar_url: null,
@@ -2272,7 +2290,7 @@ Role & Cadence:
     primary_expertise: 'Cheerleader',
     secondary_expertise: ['Confidence', 'Setbacks Recovery', 'Steady Encouragement'],
     category_tag: 'friends',
-    companion_group: 'everyday',
+    companion_group: 'everyday_companions',
     situation_tags: ['motivation', 'confidence', 'setbacks', 'encouragement'],
     cultural_fluency: 'English · Indian & British Warm Energy',
     avatar_url: null,
@@ -2319,7 +2337,7 @@ Role & Cadence:
     primary_expertise: 'Candid Friend',
     secondary_expertise: ['Reality Checks', 'Boundaries', 'Blind Spots'],
     category_tag: 'friends',
-    companion_group: 'everyday',
+    companion_group: 'everyday_companions',
     situation_tags: ['honest-talk', 'reality-check', 'boundaries', 'blind-spots'],
     cultural_fluency: 'English · Direct East Coast Warmth',
     avatar_url: null,
@@ -2366,7 +2384,7 @@ Role & Cadence:
     primary_expertise: 'Fun Friend',
     secondary_expertise: ['Playful Banter', 'Dry Humor', 'Light Distraction'],
     category_tag: 'friends',
-    companion_group: 'everyday',
+    companion_group: 'everyday_companions',
     situation_tags: ['fun', 'humor', 'banter', 'bored', 'cheer-up'],
     cultural_fluency: 'English · Crisp Witty Global & Hinglish',
     avatar_url: null,
@@ -2414,7 +2432,7 @@ Role & Cadence:
     primary_expertise: 'Calming Companion',
     secondary_expertise: ['Overthinking', 'Anxiety Grounding', 'Bedtime Calm'],
     category_tag: 'support',
-    companion_group: 'everyday',
+    companion_group: 'everyday_companions',
     situation_tags: ['anxiety', 'overthinking', 'bedtime', 'calm', 'stress'],
     cultural_fluency: 'English · Soft Pacific Calm',
     avatar_url: null,
@@ -2461,7 +2479,7 @@ Role & Cadence:
     primary_expertise: 'Calming Companion',
     secondary_expertise: ['Night-Owl Calm', 'Overthinking Reset', 'Insomnia Company'],
     category_tag: 'support',
-    companion_group: 'everyday',
+    companion_group: 'everyday_companions',
     situation_tags: ['bedtime', 'late-night', 'overthinking', 'insomnia', 'anxiety'],
     cultural_fluency: 'English · Late-Night Radio Calm',
     avatar_url: null,
@@ -2508,7 +2526,7 @@ Role & Cadence:
     primary_expertise: 'Confidant',
     secondary_expertise: ['Unspoken Feelings', 'Vulnerability', 'Shame-Free Space'],
     category_tag: 'support',
-    companion_group: 'everyday',
+    companion_group: 'everyday_companions',
     situation_tags: ['secrets', 'vulnerability', 'confidant', 'guilt', 'trust'],
     cultural_fluency: 'English · Scottish / Calm Intimate Warmth',
     avatar_url: null,
@@ -2559,7 +2577,7 @@ Role & Cadence:
     primary_expertise: 'Breakups & Heartbreak',
     secondary_expertise: ['Moving On', 'Red Flags', 'No-Contact Support'],
     category_tag: 'support',
-    companion_group: 'life',
+    companion_group: 'life_companions',
     situation_tags: ['heartbreak', 'breakup', 'moving-on', 'love', 'ex'],
     cultural_fluency: 'English · Candid Big-Sister Warmth',
     avatar_url: null,
@@ -2606,7 +2624,7 @@ Core Stance:
     primary_expertise: 'Breakups & Letting Go',
     secondary_expertise: ['Heartbreak', 'Closure & Silence', 'Self-Respect'],
     category_tag: 'support',
-    companion_group: 'life',
+    companion_group: 'life_companions',
     situation_tags: ['heartbreak', 'breakup', 'closure', 'love', 'moving-on'],
     cultural_fluency: 'English · Grounded Modern Casual',
     avatar_url: null,
@@ -2653,7 +2671,7 @@ Core Stance:
     primary_expertise: 'Marriage & Divorce',
     secondary_expertise: ['Second Chapters', 'Separation Clarity', 'Long-Term Partnership'],
     category_tag: 'support',
-    companion_group: 'life',
+    companion_group: 'life_companions',
     situation_tags: ['divorce', 'marriage', 'separation', 'second-chapter', 'partnership'],
     cultural_fluency: 'English · Indian & Global Mature Depth',
     avatar_url: null,
@@ -2700,7 +2718,7 @@ Ethical Practice:
     primary_expertise: 'Divorce & Rebuilding',
     secondary_expertise: ['Co-Parenting', 'Marriage Strain', 'Starting Over'],
     category_tag: 'support',
-    companion_group: 'life',
+    companion_group: 'life_companions',
     situation_tags: ['divorce', 'marriage', 'co-parenting', 'separation', 'starting-over'],
     cultural_fluency: 'English · Grounded Direct Warmth',
     avatar_url: null,
@@ -2746,7 +2764,7 @@ Ethical Practice:
     primary_expertise: 'Grief & Loss',
     secondary_expertise: ['Bereavement', 'Quiet Rebuild', 'Caregiver Grief'],
     category_tag: 'support',
-    companion_group: 'life',
+    companion_group: 'life_companions',
     situation_tags: ['grief', 'loss', 'bereavement', 'caregiver', 'healing'],
     cultural_fluency: 'English · Tender Unhurried Depth',
     avatar_url: null,
@@ -2794,7 +2812,7 @@ CRITICAL GRIEF PROTOCOL:
     primary_expertise: 'Founders & Business',
     secondary_expertise: ['Startup Setbacks', 'Co-Founder Friction', 'Risk & Pivot'],
     category_tag: 'friends',
-    companion_group: 'life',
+    companion_group: 'life_companions',
     situation_tags: ['business', 'founders', 'failure', 'risk', 'leadership'],
     cultural_fluency: 'English · Founder Straight-Talk & Hinglish',
     avatar_url: null,
@@ -2841,7 +2859,7 @@ Role & Guardrails:
     primary_expertise: 'Money & Financial Peace',
     secondary_expertise: ['Debt Stress', 'Financial Reset', 'Calm Triage'],
     category_tag: 'support',
-    companion_group: 'life',
+    companion_group: 'life_companions',
     situation_tags: ['money', 'debt', 'financial-stress', 'security', 'bills'],
     cultural_fluency: 'English · Practical Shame-Free Warmth',
     avatar_url: null,
@@ -2888,7 +2906,7 @@ Ethical Guardrails:
     primary_expertise: 'Career & Workplace',
     secondary_expertise: ['Job Switch', 'Workplace Politics', 'Burnout Recovery'],
     category_tag: 'friends',
-    companion_group: 'life',
+    companion_group: 'life_companions',
     situation_tags: ['career', 'job-switch', 'burnout', 'workplace', 'layoff'],
     cultural_fluency: 'English · Global Corporate & Hinglish Fluent',
     avatar_url: null,
@@ -2935,7 +2953,7 @@ Role & Cadence:
     primary_expertise: 'Unstuck & Restarting',
     secondary_expertise: ['Inertia Recovery', 'Procrastination', 'Fresh Momentum'],
     category_tag: 'friends',
-    companion_group: 'life',
+    companion_group: 'life_companions',
     situation_tags: ['stuck', 'unmotivated', 'procrastination', 'restart', 'failure'],
     cultural_fluency: 'English · Candid European Casual',
     avatar_url: null,
@@ -2982,7 +3000,7 @@ Core Stance:
     primary_expertise: 'Family & Progeny',
     secondary_expertise: ['Parents & Elders', 'Fertility & Waiting', 'Family Harmony'],
     category_tag: 'support',
-    companion_group: 'life',
+    companion_group: 'life_companions',
     situation_tags: ['family', 'parents', 'progeny', 'fertility', 'parenting'],
     cultural_fluency: 'English · Indian & Global Family Warmth',
     avatar_url: null,
@@ -3029,7 +3047,7 @@ Ethical Practice:
     primary_expertise: 'New City & Reinvention',
     secondary_expertise: ['Moving Abroad', 'Expat Loneliness', 'Starting Social Life'],
     category_tag: 'friends',
-    companion_group: 'life',
+    companion_group: 'life_companions',
     situation_tags: ['new-city', 'loneliness', 'relocation', 'expat', 'reinvention'],
     cultural_fluency: 'English · Cosmopolitan Expat Warmth',
     avatar_url: null,
@@ -3067,25 +3085,25 @@ const DEFAULT_COMPANION_META_MAP: Record<
   string,
   { companion_group: CompanionGroup; situation_tags: string[] }
 > = {
-  aira: { companion_group: 'everyday', situation_tags: ['low-mood', 'heavy-day', 'comfort', 'mood-lift'] },
-  kira: { companion_group: 'everyday', situation_tags: ['lonely', 'low-energy', 'reassurance', 'mood-lift'] },
-  camila: { companion_group: 'everyday', situation_tags: ['late-night', 'bedtime', 'heartbreak', 'lonely'] },
-  mira: { companion_group: 'everyday', situation_tags: ['vent', 'overwhelmed', 'listen', 'late-night'] },
-  elia: { companion_group: 'everyday', situation_tags: ['healing', 'emotional-pain', 'overthinking', 'forgiveness'] },
-  max: { companion_group: 'everyday', situation_tags: ['stuck', 'procrastination', 'motivation', 'encouragement'] },
-  tara: { companion_group: 'spiritual', situation_tags: ['astrology', 'daily-energy', 'mood-cycles', 'chart'] },
-  sofia: { companion_group: 'spiritual', situation_tags: ['astrology', 'patterns', 'growth', 'chart'] },
-  luna: { companion_group: 'spiritual', situation_tags: ['astrology', 'love', 'attraction', 'heartbreak'] },
-  marc: { companion_group: 'spiritual', situation_tags: ['astrology', 'burnout', 'purpose', 'identity'] },
-  bella: { companion_group: 'spiritual', situation_tags: ['tarot', 'love', 'crossroads', 'mixed-signals'] },
-  kai: { companion_group: 'spiritual', situation_tags: ['numerology', 'timing', 'decisions', 'cycles'] },
-  anya: { companion_group: 'spiritual', situation_tags: ['karma', 'past-life', 'repeating-patterns', 'spiritual'] },
-  kabir: { companion_group: 'everyday', situation_tags: ['vent', 'late-night', 'casual', 'bored'] },
-  mateo: { companion_group: 'everyday', situation_tags: ['family', 'work-stress', 'confidant', 'spanish'] },
-  dev: { companion_group: 'spiritual', situation_tags: ['vedic', 'astrology', 'timing', 'dharma'] },
-  leo: { companion_group: 'everyday', situation_tags: ['fun', 'banter', 'confidence', 'distraction'] },
-  valeria: { companion_group: 'everyday', situation_tags: ['honest-talk', 'boundaries', 'red-flags', 'reality-check'] },
-  rohan: { companion_group: 'life', situation_tags: ['grief', 'loss', 'bereavement', 'transitions'] },
+  aira: { companion_group: 'everyday_companions', situation_tags: ['low-mood', 'heavy-day', 'comfort', 'mood-lift'] },
+  kira: { companion_group: 'everyday_companions', situation_tags: ['lonely', 'low-energy', 'reassurance', 'mood-lift'] },
+  camila: { companion_group: 'everyday_companions', situation_tags: ['late-night', 'bedtime', 'heartbreak', 'lonely'] },
+  mira: { companion_group: 'everyday_companions', situation_tags: ['vent', 'overwhelmed', 'listen', 'late-night'] },
+  elia: { companion_group: 'everyday_companions', situation_tags: ['healing', 'emotional-pain', 'overthinking', 'forgiveness'] },
+  max: { companion_group: 'everyday_companions', situation_tags: ['stuck', 'procrastination', 'motivation', 'encouragement'] },
+  tara: { companion_group: 'spiritual_guides', situation_tags: ['astrology', 'daily-energy', 'mood-cycles', 'chart'] },
+  sofia: { companion_group: 'spiritual_guides', situation_tags: ['astrology', 'patterns', 'growth', 'chart'] },
+  luna: { companion_group: 'spiritual_guides', situation_tags: ['astrology', 'love', 'attraction', 'heartbreak'] },
+  marc: { companion_group: 'spiritual_guides', situation_tags: ['astrology', 'burnout', 'purpose', 'identity'] },
+  bella: { companion_group: 'spiritual_guides', situation_tags: ['tarot', 'love', 'crossroads', 'mixed-signals'] },
+  kai: { companion_group: 'spiritual_guides', situation_tags: ['numerology', 'timing', 'decisions', 'cycles'] },
+  anya: { companion_group: 'spiritual_guides', situation_tags: ['karma', 'past-life', 'repeating-patterns', 'spiritual'] },
+  kabir: { companion_group: 'everyday_companions', situation_tags: ['vent', 'late-night', 'casual', 'bored'] },
+  mateo: { companion_group: 'everyday_companions', situation_tags: ['family', 'work-stress', 'confidant', 'spanish'] },
+  dev: { companion_group: 'spiritual_guides', situation_tags: ['vedic', 'astrology', 'timing', 'dharma'] },
+  leo: { companion_group: 'everyday_companions', situation_tags: ['fun', 'banter', 'confidence', 'distraction'] },
+  valeria: { companion_group: 'everyday_companions', situation_tags: ['honest-talk', 'boundaries', 'red-flags', 'reality-check'] },
+  rohan: { companion_group: 'life_companions', situation_tags: ['grief', 'loss', 'bereavement', 'transitions'] },
 };
 
 function inferCompanionGroupFromFields(params: {
@@ -3102,14 +3120,14 @@ function inferCompanionGroupFromFields(params: {
     params.skill_level &&
     params.skill_level !== 'none_emotional'
   ) {
-    return 'spiritual';
+    return 'spiritual_guides';
   }
   if (
     params.category_tag === 'astrology' ||
     params.category_tag === 'tarot_numerology' ||
     params.category_tag === 'past_life'
   ) {
-    return 'spiritual';
+    return 'spiritual_guides';
   }
   const exp = (params.primary_expertise || '').toLowerCase();
   if (
@@ -3117,26 +3135,245 @@ function inferCompanionGroupFromFields(params: {
       exp
     )
   ) {
-    return 'life';
+    return 'life_companions';
   }
-  return 'everyday';
+  return 'everyday_companions';
+}
+
+export function inferDefaultChartAccessFromSkill(
+  skillLevel?: CompanionSkillLevel | null
+): CompanionChartAccess {
+  const access: CompanionChartAccess = { ...EMPTY_COMPANION_CHART_ACCESS };
+  switch (skillLevel) {
+    case 'vedic_soft':
+      access.vedic = true;
+      access.council_notes = true;
+      break;
+    case 'astrology_soft':
+      access.western = true;
+      access.council_notes = true;
+      break;
+    case 'tarot':
+      access.tarot = true;
+      break;
+    case 'numerology':
+      access.numerology = true;
+      break;
+    case 'past_life':
+      access.past_life = true;
+      access.vedic = true;
+      access.council_notes = true;
+      break;
+    default:
+      break;
+  }
+  return access;
+}
+
+export function normalizeChartAccessInput(
+  raw: unknown,
+  fallback?: CompanionChartAccess
+): CompanionChartAccess {
+  const base = fallback ? { ...fallback } : { ...EMPTY_COMPANION_CHART_ACCESS };
+  if (!raw || typeof raw !== 'object') return base;
+  const r = raw as Record<string, unknown>;
+  return {
+    vedic: typeof r.vedic === 'boolean' ? r.vedic : base.vedic,
+    western: typeof r.western === 'boolean' ? r.western : base.western,
+    tarot: typeof r.tarot === 'boolean' ? r.tarot : base.tarot,
+    numerology: typeof r.numerology === 'boolean' ? r.numerology : base.numerology,
+    past_life: typeof r.past_life === 'boolean' ? r.past_life : base.past_life,
+    council_notes: typeof r.council_notes === 'boolean' ? r.council_notes : base.council_notes,
+  };
+}
+
+export function deriveSkillLevelFromChartAccess(
+  access: CompanionChartAccess,
+  fallbackSkill?: CompanionSkillLevel
+): CompanionSkillLevel {
+  if (access.past_life) return 'past_life';
+  if (access.tarot && !access.vedic && !access.western) return 'tarot';
+  if (access.numerology && !access.vedic && !access.western) return 'numerology';
+  if (access.vedic) return 'vedic_soft';
+  if (access.western) return 'astrology_soft';
+  if (access.tarot) return 'tarot';
+  if (access.numerology) return 'numerology';
+  return fallbackSkill && !access ? fallbackSkill : 'none_emotional';
+}
+
+export function inferDefaultAdvisoryModeFromFields(params: {
+  companion_group: CompanionGroup;
+  chart_access: CompanionChartAccess;
+  skill_level?: CompanionSkillLevel;
+  primary_expertise?: string;
+}): CompanionAdvisoryMode {
+  const hasEsoteric =
+    params.chart_access.vedic ||
+    params.chart_access.western ||
+    params.chart_access.tarot ||
+    params.chart_access.numerology ||
+    params.chart_access.past_life;
+  if (params.companion_group === 'spiritual_guides' || hasEsoteric) {
+    return 'esoteric_guide';
+  }
+  const exp = (params.primary_expertise || '').toLowerCase();
+  if (/\b(listener|deep listening|vent|grief|bereavement)\b/.test(exp)) {
+    return 'listen_only';
+  }
+  if (params.companion_group === 'life_companions') {
+    return 'balanced_support';
+  }
+  return 'friend';
+}
+
+export interface ResolvedCompanionCapabilities {
+  companion_group: CompanionGroup;
+  group_system_prompt: string;
+  advisory_mode: CompanionAdvisoryMode;
+  chart_access: CompanionChartAccess;
+  formula_cartridge_slugs: string[];
+  max_output_tokens: number;
+  chat_style: ChatStyle;
+  override_group_rules: boolean;
+}
+
+export function resolveCompanionCapabilities(
+  preset: Partial<CompanionPresetRecord> | null | undefined,
+  engineOverrides?: EnginePromptOverrides | null
+): ResolvedCompanionCapabilities {
+  const group = resolveDefaultMetaForRecord({
+    slug: preset?.slug || '',
+    category_tag: preset?.category_tag || 'friends',
+    skill_level: preset?.skill_level || 'none_emotional',
+    primary_expertise: preset?.primary_expertise || 'Friend',
+    companion_group: preset?.companion_group,
+    situation_tags: preset?.situation_tags,
+  }).companion_group;
+
+  const groupCfg = resolveCompanionGroupConfigFromOverrides(group, engineOverrides || undefined);
+  const overrideGroup = Boolean(preset?.override_group_rules);
+  const skillFallbackAccess = inferDefaultChartAccessFromSkill(preset?.skill_level);
+  const explicitAccess = preset?.chart_access
+    ? normalizeChartAccessInput(preset.chart_access, skillFallbackAccess)
+    : null;
+
+  let effectiveAccess: CompanionChartAccess;
+  if (overrideGroup) {
+    effectiveAccess = explicitAccess || skillFallbackAccess;
+  } else if (explicitAccess) {
+    effectiveAccess = {
+      vedic: explicitAccess.vedic || groupCfg.default_chart_access.vedic,
+      western: explicitAccess.western || groupCfg.default_chart_access.western,
+      tarot: explicitAccess.tarot || groupCfg.default_chart_access.tarot,
+      numerology: explicitAccess.numerology || groupCfg.default_chart_access.numerology,
+      past_life: explicitAccess.past_life || groupCfg.default_chart_access.past_life,
+      council_notes: explicitAccess.council_notes || groupCfg.default_chart_access.council_notes,
+    };
+  } else {
+    effectiveAccess = {
+      vedic: skillFallbackAccess.vedic || groupCfg.default_chart_access.vedic,
+      western: skillFallbackAccess.western || groupCfg.default_chart_access.western,
+      tarot: skillFallbackAccess.tarot || groupCfg.default_chart_access.tarot,
+      numerology: skillFallbackAccess.numerology || groupCfg.default_chart_access.numerology,
+      past_life: skillFallbackAccess.past_life || groupCfg.default_chart_access.past_life,
+      council_notes: skillFallbackAccess.council_notes || groupCfg.default_chart_access.council_notes,
+    };
+  }
+
+  const defaultAdvisory = inferDefaultAdvisoryModeFromFields({
+    companion_group: group,
+    chart_access: effectiveAccess,
+    skill_level: preset?.skill_level,
+    primary_expertise: preset?.primary_expertise,
+  });
+
+  const advisoryMode: CompanionAdvisoryMode = preset?.advisory_mode
+    ? preset.advisory_mode
+    : overrideGroup
+    ? defaultAdvisory
+    : groupCfg.default_advisory_mode || defaultAdvisory;
+
+  const maxOutputTokens =
+    typeof preset?.max_output_tokens === 'number' && preset.max_output_tokens >= 300
+      ? Math.round(preset.max_output_tokens)
+      : groupCfg.default_max_output_tokens || 3200;
+
+  return {
+    companion_group: group,
+    group_system_prompt: groupCfg.group_system_prompt,
+    advisory_mode: advisoryMode,
+    chart_access: effectiveAccess,
+    formula_cartridge_slugs: Array.isArray(preset?.formula_cartridge_slugs)
+      ? preset.formula_cartridge_slugs.map((s) => String(s).trim().toLowerCase()).filter(Boolean)
+      : [],
+    max_output_tokens: maxOutputTokens,
+    chat_style: normalizeChatStyle(
+      preset?.chat_style,
+      groupCfg.default_chat_style || 'chat_bubbles'
+    ),
+    override_group_rules: overrideGroup,
+  };
+}
+
+export function resolveCompanionPersonaForGender(
+  preset: CompanionPresetRecord,
+  selectedGender?: 'M' | 'F' | null
+): CompanionPresetRecord {
+  const targetGender: 'M' | 'F' | null =
+    selectedGender === 'M' || selectedGender === 'F' ? selectedGender : null;
+  if (!targetGender || !preset.gender_variants) {
+    return preset;
+  }
+  const variant = preset.gender_variants[targetGender];
+  if (!variant || !variant.name?.trim()) {
+    return preset;
+  }
+
+  const nextSystemPrompt = variant.system_prompt?.trim()
+    ? variant.system_prompt.trim()
+    : variant.voice_cue?.trim()
+    ? `${preset.system_prompt}\n\nVOICE & GENDER PRESENTATION:\n${variant.voice_cue.trim()}`
+    : preset.system_prompt;
+
+  return {
+    ...preset,
+    name: variant.name.trim(),
+    age: Number.isFinite(Number(variant.age)) ? Number(variant.age) : preset.age,
+    sex: targetGender,
+    avatar_url: variant.avatar_url !== undefined ? variant.avatar_url : preset.avatar_url,
+    monogram_palette: variant.monogram_palette || preset.monogram_palette,
+    cultural_fluency: variant.cultural_fluency?.trim() || preset.cultural_fluency,
+    tagline: variant.tagline?.trim() || preset.tagline,
+    short_bio: variant.short_bio?.trim() || preset.short_bio,
+    full_bio: variant.full_bio?.trim() || preset.full_bio,
+    welcome_messages:
+      Array.isArray(variant.opening_lines) && variant.opening_lines.length > 0
+        ? variant.opening_lines.filter(Boolean)
+        : preset.welcome_messages,
+    system_prompt: nextSystemPrompt,
+    backstory: variant.backstory?.trim() || preset.backstory,
+    soul_consciousness: variant.soul_consciousness?.trim() || preset.soul_consciousness,
+    tts_voice_profile: variant.tts_voice_profile || preset.tts_voice_profile,
+  };
 }
 
 function resolveDefaultMetaForRecord(
   record: Pick<
     CompanionPresetRecord,
-    'slug' | 'category_tag' | 'skill_level' | 'primary_expertise' | 'companion_group' | 'situation_tags'
+    'slug' | 'category_tag' | 'skill_level' | 'primary_expertise' | 'companion_group' | 'situation_tags' | 'discoverable_tags'
   >
 ): { companion_group: CompanionGroup; situation_tags: string[] } {
   const slugLower = (record.slug || '').trim().toLowerCase();
   const mapped = DEFAULT_COMPANION_META_MAP[slugLower];
-  const group: CompanionGroup =
-    record.companion_group ||
-    mapped?.companion_group ||
-    inferCompanionGroupFromFields(record);
-  const tags: string[] = Array.isArray(record.situation_tags) && record.situation_tags.length > 0
-    ? record.situation_tags
-    : mapped?.situation_tags || [];
+  const group: CompanionGroup = record.companion_group
+    ? normalizeCompanionGroup(record.companion_group)
+    : mapped?.companion_group || inferCompanionGroupFromFields(record);
+  const tags: string[] =
+    Array.isArray(record.discoverable_tags) && record.discoverable_tags.length > 0
+      ? record.discoverable_tags
+      : Array.isArray(record.situation_tags) && record.situation_tags.length > 0
+      ? record.situation_tags
+      : mapped?.situation_tags || [];
   return { companion_group: group, situation_tags: tags };
 }
 
@@ -3186,8 +3423,21 @@ export function normalizeCompanionSlug(rawSlug: string | null | undefined): stri
   return LEGACY_COMPANION_SLUG_MAP[cleaned] || cleaned;
 }
 
+export function resolveCompanionSlugWithGender(
+  rawSlug: string | null | undefined,
+  explicitGender?: 'F' | 'M' | null
+): { slug: string; selectedGender: 'F' | 'M' | null } {
+  const slug = normalizeCompanionSlug(rawSlug);
+  const selectedGender =
+    explicitGender === 'F' || explicitGender === 'M' ? explicitGender : null;
+  return { slug, selectedGender };
+}
+
 export function toPublicCompanionCard(record: CompanionPresetRecord): PublicCompanionCard {
   const meta = resolveDefaultMetaForRecord(record);
+  const caps = resolveCompanionCapabilities(record, null);
+  const hasFemaleVariant = Boolean(record.gender_variants?.F?.name);
+  const hasMaleVariant = Boolean(record.gender_variants?.M?.name);
   return {
     id: record.id,
     slug: record.slug,
@@ -3203,7 +3453,14 @@ export function toPublicCompanionCard(record: CompanionPresetRecord): PublicComp
       : [],
     category_tag: record.category_tag,
     companion_group: meta.companion_group,
+    advisory_mode: caps.advisory_mode,
+    chart_access: caps.chart_access,
+    formula_cartridge_slugs: caps.formula_cartridge_slugs,
+    max_output_tokens: record.max_output_tokens ?? caps.max_output_tokens,
+    discoverable_tags: meta.situation_tags,
     situation_tags: meta.situation_tags,
+    gender_variants: record.gender_variants || undefined,
+    supports_gender_toggle: hasFemaleVariant && hasMaleVariant,
     cultural_fluency: record.cultural_fluency,
     avatar_url: record.avatar_url,
     monogram_palette: record.monogram_palette || DEFAULT_PALETTES.umber,

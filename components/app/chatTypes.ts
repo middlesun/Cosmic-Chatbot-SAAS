@@ -1,4 +1,7 @@
 import type {
+  CouncilAnalystNote,
+  DeepProfileData,
+  DeepProfileEntry,
   LifeContextAnchor,
   LifeContextChild,
   LifeContextData,
@@ -21,6 +24,9 @@ export {
 };
 
 export type {
+  CouncilAnalystNote,
+  DeepProfileData,
+  DeepProfileEntry,
   LifeContextAnchor,
   LifeContextChild,
   LifeContextData,
@@ -104,6 +110,8 @@ export interface ChatProfile {
   is_activated: boolean;
   profile_memory_summary?: string | null;
   life_context_json?: LifeContextData | null;
+  deep_profile_json?: DeepProfileData | null;
+  analyst_notes_json?: CouncilAnalystNote[] | null;
   life_context_completeness?: number;
   natal_dossier_version?: number;
 }
@@ -164,7 +172,113 @@ export type CompanionCategoryTag =
   | 'tarot_numerology'
   | 'past_life';
 
-export type CompanionGroup = 'spiritual' | 'everyday' | 'life';
+export type CompanionGroup = 'spiritual_guides' | 'everyday_companions' | 'life_companions';
+export type LegacyCompanionGroup = 'spiritual' | 'everyday' | 'life';
+export type AnyCompanionGroup = CompanionGroup | LegacyCompanionGroup;
+
+export function normalizeCompanionGroup(
+  raw?: string | null,
+  fallback: CompanionGroup = 'everyday_companions'
+): CompanionGroup {
+  if (raw === 'spiritual_guides' || raw === 'spiritual') return 'spiritual_guides';
+  if (raw === 'everyday_companions' || raw === 'everyday') return 'everyday_companions';
+  if (raw === 'life_companions' || raw === 'life') return 'life_companions';
+  return fallback;
+}
+
+export type CompanionAdvisoryMode =
+  | 'listen_only'
+  | 'friend'
+  | 'balanced_support'
+  | 'esoteric_guide';
+
+export interface CompanionChartAccess {
+  vedic: boolean;
+  western: boolean;
+  tarot: boolean;
+  numerology: boolean;
+  past_life: boolean;
+  council_notes: boolean;
+}
+
+export const EMPTY_COMPANION_CHART_ACCESS: CompanionChartAccess = {
+  vedic: false,
+  western: false,
+  tarot: false,
+  numerology: false,
+  past_life: false,
+  council_notes: false,
+};
+
+export interface CompanionPersonaVariant {
+  name: string;
+  age: number;
+  avatar_url?: string | null;
+  monogram_palette?: CompanionMonogramPalette;
+  cultural_fluency?: string;
+  tagline?: string;
+  short_bio?: string;
+  full_bio?: string;
+  voice_cue?: string;
+  system_prompt?: string;
+  soul_consciousness?: string;
+  backstory?: string;
+  opening_lines?: string[];
+  tts_voice_profile?: CompanionTtsVoiceProfile;
+}
+
+export interface CompanionGenderVariants {
+  F?: CompanionPersonaVariant;
+  M?: CompanionPersonaVariant;
+}
+
+export interface CompanionGroupConfig {
+  group_system_prompt: string;
+  default_advisory_mode: CompanionAdvisoryMode;
+  default_chart_access: CompanionChartAccess;
+  default_chat_style: ChatStyle;
+  default_max_output_tokens: number;
+}
+
+export type CompanionGroupConfigsMap = Record<CompanionGroup, CompanionGroupConfig>;
+
+export type CompanionSkillRuleKey =
+  | 'none_emotional'
+  | 'vedic'
+  | 'western'
+  | 'tarot'
+  | 'numerology'
+  | 'past_life'
+  | 'council_notes';
+
+export type CompanionSkillRulesMap = Record<CompanionSkillRuleKey, string>;
+
+export const COMPANION_ADVISORY_MODE_OPTIONS: Array<{
+  value: CompanionAdvisoryMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'listen_only',
+    label: 'Listen-Only',
+    description: 'Pure validation & gentle questions. Never lectures, advises, or introduces unsolicited astrology.',
+  },
+  {
+    value: 'friend',
+    label: 'Friend',
+    description: 'Warm, candid peer conversation without therapist clichés or preaching.',
+  },
+  {
+    value: 'balanced_support',
+    label: 'Balanced Support',
+    description: 'Empathy-first guidance; uses attached chart/notes gently only when supportive or invited.',
+  },
+  {
+    value: 'esoteric_guide',
+    label: 'Esoteric Guide',
+    description: 'Full multi-system chart/divination fluency translated warmly without textbook jargon.',
+  },
+];
 
 export const COMPANION_GROUP_OPTIONS: Array<{
   value: CompanionGroup;
@@ -172,19 +286,19 @@ export const COMPANION_GROUP_OPTIONS: Array<{
   description: string;
 }> = [
   {
-    value: 'spiritual',
+    value: 'spiritual_guides',
     label: 'Spiritual Guides',
     description: 'Astrology, Tarot, Numerology, Karma & contemplative spiritual guidance.',
   },
   {
-    value: 'everyday',
+    value: 'everyday_companions',
     label: 'Everyday Companions',
     description: 'Listeners, Comforters, Mood Lifters, Friends, Confidants & Overthinking Reset.',
   },
   {
-    value: 'life',
+    value: 'life_companions',
     label: 'Life Companions',
-    description: 'Breakup, Divorce, Grief, Career, Founders, Money, Family & Relocation support.',
+    description: 'Breakup, Marriage, Grief, Career, Founders, Money, Family & Life Transitions.',
   },
 ];
 
@@ -195,9 +309,9 @@ export const COMPANION_DISCOVERY_TABS: Array<{
   label: string;
 }> = [
   { id: 'all', label: 'All' },
-  { id: 'spiritual', label: 'Spiritual Guides' },
-  { id: 'everyday', label: 'Everyday Companions' },
-  { id: 'life', label: 'Life Companions' },
+  { id: 'spiritual_guides', label: 'Spiritual Guides' },
+  { id: 'everyday_companions', label: 'Everyday Companions' },
+  { id: 'life_companions', label: 'Life Companions' },
 ];
 
 export interface CompanionSituationChip {
@@ -210,9 +324,9 @@ export interface CompanionSituationChip {
 export const COMPANION_SITUATION_CHIPS: CompanionSituationChip[] = [
   {
     id: 'heartbreak',
-    label: 'Heartbreak',
-    matchTags: ['heartbreak', 'breakup', 'moving-on', 'ex', 'closure', 'red-flags'],
-    fallbackKeywords: ['heartbreak', 'breakup', 'letting go', 'red flags'],
+    label: 'Missing an ex',
+    matchTags: ['heartbreak', 'breakup', 'moving-on', 'ex', 'missing an ex', 'no contact', 'closure', 'red-flags'],
+    fallbackKeywords: ['heartbreak', 'breakup', 'missing an ex', 'no contact', 'letting go', 'red flags'],
   },
   {
     id: 'vent',
@@ -221,11 +335,18 @@ export const COMPANION_SITUATION_CHIPS: CompanionSituationChip[] = [
     fallbackKeywords: ['vent', 'listen', 'judgment-free', 'heavy day'],
   },
   {
+    id: 'bedtime',
+    label: 'Bedtime',
+    matchTags: ['bedtime', 'late-night', 'insomnia', 'sleep', 'lonely'],
+    fallbackKeywords: ['bedtime', 'late-night', 'late night', 'insomnia', 'sleep'],
+  },
+  {
     id: 'career',
-    label: 'Career',
+    label: 'Career switch',
     matchTags: [
       'career',
       'job-switch',
+      'career switch',
       'workplace',
       'work-stress',
       'founders',
@@ -242,10 +363,22 @@ export const COMPANION_SITUATION_CHIPS: CompanionSituationChip[] = [
     fallbackKeywords: ['grief', 'loss', 'bereavement', 'mourning'],
   },
   {
-    id: 'bedtime',
-    label: 'Bedtime',
-    matchTags: ['bedtime', 'late-night', 'insomnia', 'sleep', 'lonely'],
-    fallbackKeywords: ['bedtime', 'late-night', 'late night', 'insomnia', 'sleep'],
+    id: 'ivf',
+    label: 'IVF & Family',
+    matchTags: ['fertility', 'ivf', 'pregnancy', 'parenthood', 'family', 'progeny'],
+    fallbackKeywords: ['fertility', 'ivf', 'pregnancy', 'parenthood', 'family', 'children'],
+  },
+  {
+    id: 'money',
+    label: 'Debt & Money',
+    matchTags: ['money', 'finance', 'debt', 'financial-stress', 'budget'],
+    fallbackKeywords: ['money', 'finance', 'debt', 'financial'],
+  },
+  {
+    id: 'lonely',
+    label: 'Lonely',
+    matchTags: ['lonely', 'loneliness', 'company', 'new-city', 'relocation', 'late-night'],
+    fallbackKeywords: ['lonely', 'loneliness', 'company', 'isolated', 'new city'],
   },
   {
     id: 'tarot',
@@ -256,40 +389,14 @@ export const COMPANION_SITUATION_CHIPS: CompanionSituationChip[] = [
   {
     id: 'astrology',
     label: 'Astrology',
-    matchTags: ['astrology', 'vedic', 'chart', 'timing', 'dharma', 'mood-cycles'],
-    fallbackKeywords: ['astrology', 'vedic', 'jyotish', 'natal', 'transit'],
+    matchTags: ['astrology', 'vedic', 'western', 'chart', 'timing', 'dharma', 'karma'],
+    fallbackKeywords: ['astrology', 'vedic', 'western', 'jyotish', 'natal', 'transit'],
   },
   {
     id: 'stuck',
     label: 'Feeling Stuck',
     matchTags: ['stuck', 'unmotivated', 'procrastination', 'restarting', 'motivation', 'inertia'],
     fallbackKeywords: ['stuck', 'unmotivated', 'procrastination', 'motivation'],
-  },
-  {
-    id: 'money',
-    label: 'Money Stress',
-    matchTags: ['money', 'finance', 'debt', 'financial-stress', 'budget'],
-    fallbackKeywords: ['money', 'finance', 'debt', 'financial'],
-  },
-  {
-    id: 'divorce',
-    label: 'Divorce & Family',
-    matchTags: [
-      'divorce',
-      'marriage',
-      'co-parenting',
-      'second-chapter',
-      'family',
-      'parents',
-      'progeny',
-    ],
-    fallbackKeywords: ['divorce', 'marriage', 'co-parenting', 'family', 'parents', 'progeny'],
-  },
-  {
-    id: 'new_city',
-    label: 'New City',
-    matchTags: ['new-city', 'relocation', 'expat', 'lonely'],
-    fallbackKeywords: ['new city', 'relocation', 'expat', 'moved'],
   },
 ];
 
@@ -304,38 +411,63 @@ export type CompanionDiscoveryFilterableCard = Partial<
     | 'category_tag'
     | 'companion_group'
     | 'situation_tags'
+    | 'discoverable_tags'
     | 'skill_level'
+    | 'advisory_mode'
+    | 'chart_access'
+    | 'gender_variants'
     | 'cultural_fluency'
   >
 >;
 
 export function resolveCompanionGroup(card: CompanionDiscoveryFilterableCard): CompanionGroup {
+  if (card.companion_group) {
+    return normalizeCompanionGroup(card.companion_group);
+  }
   if (
-    card.companion_group === 'spiritual' ||
-    card.companion_group === 'everyday' ||
-    card.companion_group === 'life'
+    card.advisory_mode === 'esoteric_guide' ||
+    card.chart_access?.vedic ||
+    card.chart_access?.western ||
+    card.chart_access?.tarot ||
+    card.chart_access?.numerology ||
+    card.chart_access?.past_life
   ) {
-    return card.companion_group;
+    return 'spiritual_guides';
   }
   if (card.skill_level && card.skill_level !== 'none_emotional') {
-    return 'spiritual';
+    return 'spiritual_guides';
   }
   if (
     card.category_tag === 'astrology' ||
     card.category_tag === 'tarot_numerology' ||
     card.category_tag === 'past_life'
   ) {
-    return 'spiritual';
+    return 'spiritual_guides';
   }
-  const combined = `${card.primary_expertise || ''} ${(card.situation_tags || []).join(' ')}`.toLowerCase();
+  const combined = `${card.primary_expertise || ''} ${(card.discoverable_tags || card.situation_tags || []).join(' ')}`.toLowerCase();
   if (
-    /(breakup|heartbreak|divorce|marriage|grief|loss|founder|business|money|finance|debt|career|workplace|stuck|unstuck|family|progeny|relocation|new city|transition)/.test(
+    /(breakup|heartbreak|divorce|marriage|grief|loss|founder|business|money|finance|debt|career|workplace|legal|dispute|fertility|pregnancy|health|trauma|intimacy|identity|education|student|family|progeny|relocation|transition)/.test(
       combined
     )
   ) {
-    return 'life';
+    return 'life_companions';
   }
-  return 'everyday';
+  return 'everyday_companions';
+}
+
+export function hasActiveCompanionEsotericAccess(
+  card: Pick<Partial<PublicCompanionCard>, 'chart_access' | 'skill_level'>
+): boolean {
+  if (card.chart_access) {
+    return Boolean(
+      card.chart_access.vedic ||
+        card.chart_access.western ||
+        card.chart_access.tarot ||
+        card.chart_access.numerology ||
+        card.chart_access.past_life
+    );
+  }
+  return Boolean(card.skill_level && card.skill_level !== 'none_emotional');
 }
 
 export function matchesCompanionSituationChip(
@@ -346,7 +478,10 @@ export function matchesCompanionSituationChip(
   const chip = COMPANION_SITUATION_CHIPS.find((c) => c.id === chipId);
   if (!chip) return true;
 
-  const tags = (card.situation_tags || []).map((t) => t.trim().toLowerCase());
+  const tags = [
+    ...(card.discoverable_tags || []),
+    ...(card.situation_tags || []),
+  ].map((t) => t.trim().toLowerCase());
   if (tags.some((t) => chip.matchTags.includes(t))) {
     return true;
   }
@@ -360,10 +495,13 @@ export function matchesCompanionSituationChip(
     .join(' ')
     .toLowerCase();
 
-  if (chip.id === 'tarot' && card.skill_level === 'tarot') return true;
+  if (chip.id === 'tarot' && (card.chart_access?.tarot || card.skill_level === 'tarot')) return true;
   if (
     chip.id === 'astrology' &&
-    (card.skill_level === 'astrology_soft' || card.skill_level === 'vedic_soft')
+    (card.chart_access?.vedic ||
+      card.chart_access?.western ||
+      card.skill_level === 'astrology_soft' ||
+      card.skill_level === 'vedic_soft')
   ) {
     return true;
   }
@@ -374,12 +512,15 @@ export function matchesCompanionSituationChip(
 export function matchesCompanionDiscoveryFilter(
   card: CompanionDiscoveryFilterableCard,
   options: {
-    groupTab: CompanionDiscoveryTabId;
+    groupTab: CompanionDiscoveryTabId | LegacyCompanionGroup;
     situationChipId?: string | null;
     searchQuery?: string;
   }
 ): boolean {
-  if (options.groupTab !== 'all' && resolveCompanionGroup(card) !== options.groupTab) {
+  const normalizedTab: CompanionDiscoveryTabId =
+    options.groupTab === 'all' ? 'all' : normalizeCompanionGroup(options.groupTab);
+
+  if (normalizedTab !== 'all' && resolveCompanionGroup(card) !== normalizedTab) {
     return false;
   }
 
@@ -390,10 +531,16 @@ export function matchesCompanionDiscoveryFilter(
   const q = (options.searchQuery || '').trim().toLowerCase();
   if (q) {
     const terms = q.split(/\s+/).filter(Boolean);
+    const variantNames = [
+      card.gender_variants?.F?.name || '',
+      card.gender_variants?.M?.name || '',
+    ];
     const haystack = [
       card.name || '',
+      ...variantNames,
       card.primary_expertise || '',
       ...(card.secondary_expertise || []),
+      ...(card.discoverable_tags || []),
       ...(card.situation_tags || []),
       card.tagline || '',
       card.short_bio || '',
@@ -511,7 +658,14 @@ export interface PublicCompanionCard {
   secondary_expertise: string[];
   category_tag: CompanionCategoryTag;
   companion_group?: CompanionGroup;
+  advisory_mode?: CompanionAdvisoryMode;
+  chart_access?: CompanionChartAccess;
+  formula_cartridge_slugs?: string[];
+  max_output_tokens?: number | null;
+  discoverable_tags?: string[];
   situation_tags?: string[];
+  gender_variants?: CompanionGenderVariants;
+  supports_gender_toggle?: boolean;
   cultural_fluency: string;
   avatar_url: string | null;
   monogram_palette: CompanionMonogramPalette;
@@ -546,6 +700,9 @@ export interface CompanionPersona {
   monogram_palette?: CompanionMonogramPalette;
   chat_style?: ChatStyle;
   skill_level?: CompanionSkillLevel;
+  advisory_mode?: CompanionAdvisoryMode;
+  chart_access?: CompanionChartAccess;
+  companion_group?: CompanionGroup;
   tts_voice_profile?: CompanionTtsVoiceProfile;
   supports_listening_cue?: boolean;
   topic_context?: string;
@@ -566,6 +723,7 @@ export interface ActiveChatTab {
   expertSlug?: string;
   companionType?: CompanionArchetypeSlug | null;
   companionSlug?: string | null;
+  selectedGender?: 'F' | 'M' | null;
   companionPersona?: CompanionPersona | null;
   isCore?: boolean;
 }
@@ -582,8 +740,11 @@ export interface ConversationRecord {
   active_tab_order?: number;
   companion_type?: CompanionArchetypeSlug | null;
   companion_slug?: string | null;
+  selected_gender?: 'F' | 'M' | null;
   companion_chat_mode?: CompanionChatCue | null;
   companion_persona_json?: CompanionPersona | null;
+  thread_memory_summary?: string | null;
+  thread_memory_msg_count?: number;
   is_bookmarked: boolean;
   total_word_count: number;
   use_full_profile_memory: boolean;

@@ -11,15 +11,23 @@ import {
   DEFAULT_COMPANION_BOND_EXTRACTOR_PROMPT,
   DEFAULT_COMPANION_CHART_PRESENCE_PROMPT,
   DEFAULT_COMPANION_CONSTITUTION,
+  DEFAULT_COMPANION_EMPATHY_FIRST_GUARDRAIL,
+  DEFAULT_COMPANION_GROUP_CONFIGS,
+  DEFAULT_COMPANION_LISTEN_ONLY_GUARDRAIL,
   DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
   DEFAULT_COMPANION_REALISM_BASELINE,
   DEFAULT_COMPANION_RETURN_GREETING_PROMPT,
+  DEFAULT_COMPANION_SKILL_RULES,
   DEFAULT_CORE_COUNCIL_CONSTITUTION,
   DEFAULT_DEEP_AUDIT_ADJUDICATOR_MANDATE,
   DEFAULT_DEEP_AUDIT_LENSES,
   DEFAULT_FLUENCY_INSTRUCTIONS,
   DEFAULT_FORMAT_CONTRACTS,
   DEFAULT_INTENT_OUTPUT_CONTRACTS,
+  DEFAULT_MEMORY_COMPANION_BOND_PROMPT,
+  DEFAULT_MEMORY_DEEP_PROFILE_EXTRACTOR_PROMPT,
+  DEFAULT_MEMORY_PROFILE_SYNTHESIZER_PROMPT,
+  DEFAULT_MEMORY_ROLLING_THREAD_COMPACTOR_PROMPT,
   DEFAULT_PROFILE_MEMORY_EXTRACTOR_PROMPT,
   DEFAULT_SHORT_REPLY_BREAKDOWN_WRAPPER,
   DEFAULT_STAGE1_ROUTER_PROMPT,
@@ -48,6 +56,11 @@ import {
   type DefaultCompanionArchetype,
   type GuideSlug,
 } from './enginePromptDefaults';
+import type {
+  CompanionGroupConfig,
+  CompanionGroupConfigsMap,
+  CompanionSkillRulesMap,
+} from '../../components/app/chatTypes';
 
 export type { ChatStyle, DefaultCompanionArchetype, GuideSlug };
 export { ALLOWED_CHAT_STYLES, ALL_GUIDE_CATALOG_META, GUIDE_SLUGS, getGuideCatalogMeta, isValidGuideSlug, normalizeChatStyle } from './enginePromptDefaults';
@@ -64,6 +77,7 @@ export interface CustomModelEntry {
 export interface TokenLimitsConfig {
   chat_short: number;
   chat_detailed: number;
+  companion_detailed: number;
   report_pass: number;
   utility: number;
   max_history_turns: number;
@@ -176,10 +190,18 @@ export interface EnginePromptOverrides {
   core_council_constitution?: string;
   companion_constitution?: string;
   companion_realism_baseline?: string;
+  companion_listen_only_guardrail?: string;
+  companion_empathy_first_guardrail?: string;
+  companion_skill_rules?: Partial<CompanionSkillRulesMap>;
+  companion_group_configs?: Partial<Record<keyof CompanionGroupConfigsMap, Partial<CompanionGroupConfig>>>;
   companion_chart_presence_prompt?: string;
   companion_return_greeting_prompt?: string;
   companion_bond_extractor_prompt?: string;
+  memory_companion_bond_prompt?: string;
   profile_memory_extractor_prompt?: string;
+  memory_deep_profile_extractor_prompt?: string;
+  memory_rolling_thread_compactor_prompt?: string;
+  memory_profile_synthesizer_prompt?: string;
   companion_archetypes?: DefaultCompanionArchetype[];
   companion_matcher_instructions?: string;
   clarity_helper_system_prompt?: string;
@@ -337,6 +359,7 @@ export const DEFAULT_AI_SETTINGS: AiSettingsConfig = {
   token_limits: {
     chat_short: 800,
     chat_detailed: 4800,
+    companion_detailed: 3200,
     report_pass: 4800,
     utility: 800,
     max_history_turns: 24,
@@ -734,6 +757,11 @@ export async function getAiSettings(): Promise<AiSettingsConfig> {
         typeof stored?.token_limits?.chat_detailed === 'number' && stored.token_limits.chat_detailed >= 200
           ? Math.round(stored.token_limits.chat_detailed)
           : DEFAULT_AI_SETTINGS.token_limits.chat_detailed,
+      companion_detailed:
+        typeof stored?.token_limits?.companion_detailed === 'number' &&
+        stored.token_limits.companion_detailed >= 400
+          ? Math.round(stored.token_limits.companion_detailed)
+          : DEFAULT_AI_SETTINGS.token_limits.companion_detailed,
       report_pass:
         typeof stored?.token_limits?.report_pass === 'number' && stored.token_limits.report_pass >= 400
           ? Math.round(stored.token_limits.report_pass)
@@ -1151,9 +1179,50 @@ export async function getEnginePromptOverrides(): Promise<EnginePromptOverrides>
     if (!cleaned.vedic_anti_cliche_rules && typeof stored.sutra_anti_cliche_rules === 'string') {
       cleaned.vedic_anti_cliche_rules = stored.sutra_anti_cliche_rules;
     }
+    // Sync canonical memory aliases bidirectionally
+    if (!cleaned.memory_deep_profile_extractor_prompt && cleaned.profile_memory_extractor_prompt) {
+      cleaned.memory_deep_profile_extractor_prompt = cleaned.profile_memory_extractor_prompt;
+    } else if (!cleaned.profile_memory_extractor_prompt && cleaned.memory_deep_profile_extractor_prompt) {
+      cleaned.profile_memory_extractor_prompt = cleaned.memory_deep_profile_extractor_prompt;
+    }
+    if (!cleaned.memory_companion_bond_prompt && cleaned.companion_bond_extractor_prompt) {
+      cleaned.memory_companion_bond_prompt = cleaned.companion_bond_extractor_prompt;
+    } else if (!cleaned.companion_bond_extractor_prompt && cleaned.memory_companion_bond_prompt) {
+      cleaned.companion_bond_extractor_prompt = cleaned.memory_companion_bond_prompt;
+    }
   }
   enginePromptsCache = { value: cleaned, expiresAt: now + CACHE_TTL_MS };
   return cleaned;
+}
+
+export function resolveCompanionGroupConfigFromOverrides(
+  rawGroup: string | null | undefined,
+  overrides?: EnginePromptOverrides
+): CompanionGroupConfig {
+  const normalized =
+    rawGroup === 'spiritual_guides' || rawGroup === 'spiritual'
+      ? 'spiritual_guides'
+      : rawGroup === 'life_companions' || rawGroup === 'life'
+      ? 'life_companions'
+      : 'everyday_companions';
+  const base = DEFAULT_COMPANION_GROUP_CONFIGS[normalized];
+  const ov = overrides?.companion_group_configs?.[normalized];
+  return {
+    group_system_prompt:
+      typeof ov?.group_system_prompt === 'string' && ov.group_system_prompt.trim()
+        ? ov.group_system_prompt.trim()
+        : base.group_system_prompt,
+    default_advisory_mode: ov?.default_advisory_mode || base.default_advisory_mode,
+    default_chart_access: {
+      ...base.default_chart_access,
+      ...(ov?.default_chart_access || {}),
+    },
+    default_chat_style: ov?.default_chat_style || base.default_chat_style,
+    default_max_output_tokens:
+      typeof ov?.default_max_output_tokens === 'number' && ov.default_max_output_tokens >= 300
+        ? Math.round(ov.default_max_output_tokens)
+        : base.default_max_output_tokens,
+  };
 }
 
 export function getEnginePromptDefaultsBundle() {
@@ -1161,10 +1230,31 @@ export function getEnginePromptDefaultsBundle() {
     core_council_constitution: DEFAULT_CORE_COUNCIL_CONSTITUTION,
     companion_constitution: DEFAULT_COMPANION_CONSTITUTION,
     companion_realism_baseline: DEFAULT_COMPANION_REALISM_BASELINE,
+    companion_listen_only_guardrail: DEFAULT_COMPANION_LISTEN_ONLY_GUARDRAIL,
+    companion_empathy_first_guardrail: DEFAULT_COMPANION_EMPATHY_FIRST_GUARDRAIL,
+    companion_skill_rules: { ...DEFAULT_COMPANION_SKILL_RULES },
+    companion_group_configs: {
+      spiritual_guides: {
+        ...DEFAULT_COMPANION_GROUP_CONFIGS.spiritual_guides,
+        default_chart_access: { ...DEFAULT_COMPANION_GROUP_CONFIGS.spiritual_guides.default_chart_access },
+      },
+      everyday_companions: {
+        ...DEFAULT_COMPANION_GROUP_CONFIGS.everyday_companions,
+        default_chart_access: { ...DEFAULT_COMPANION_GROUP_CONFIGS.everyday_companions.default_chart_access },
+      },
+      life_companions: {
+        ...DEFAULT_COMPANION_GROUP_CONFIGS.life_companions,
+        default_chart_access: { ...DEFAULT_COMPANION_GROUP_CONFIGS.life_companions.default_chart_access },
+      },
+    },
     companion_chart_presence_prompt: DEFAULT_COMPANION_CHART_PRESENCE_PROMPT,
     companion_return_greeting_prompt: DEFAULT_COMPANION_RETURN_GREETING_PROMPT,
     companion_bond_extractor_prompt: DEFAULT_COMPANION_BOND_EXTRACTOR_PROMPT,
+    memory_companion_bond_prompt: DEFAULT_MEMORY_COMPANION_BOND_PROMPT,
     profile_memory_extractor_prompt: DEFAULT_PROFILE_MEMORY_EXTRACTOR_PROMPT,
+    memory_deep_profile_extractor_prompt: DEFAULT_MEMORY_DEEP_PROFILE_EXTRACTOR_PROMPT,
+    memory_rolling_thread_compactor_prompt: DEFAULT_MEMORY_ROLLING_THREAD_COMPACTOR_PROMPT,
+    memory_profile_synthesizer_prompt: DEFAULT_MEMORY_PROFILE_SYNTHESIZER_PROMPT,
     companion_archetypes: DEFAULT_COMPANION_ARCHETYPES,
     companion_matcher_instructions: DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
     clarity_helper_system_prompt: DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,

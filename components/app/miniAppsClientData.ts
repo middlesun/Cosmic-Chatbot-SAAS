@@ -811,7 +811,7 @@ export const PREVIEW_HOME_SUMMARY: HomeSummaryResponse = {
       name: 'Dev',
       age: 37,
       primary_expertise: 'Vedic Companion',
-      tagline: '90% warm everyday friend, 10% Vedic Jyotish & Gita perspective when invited.',
+      tagline: 'A grounded friend to talk through everyday life, with Vedic clarity whenever invited.',
       avatar_url: '/assets/companions/dev.jpg',
       monogram_palette: { bg: '#F3EBDD', ring: '#B8965A', ink: '#4A3B22' },
       last_conversation_id: null,

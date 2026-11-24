@@ -1,4 +1,10 @@
 import type { LifeContextData } from '../../lib/lifeContextSchema';
+import type {
+  AnyCompanionGroup,
+  CompanionAdvisoryMode,
+  CompanionChartAccess,
+  CompanionGenderVariants,
+} from './chatTypes';
 
 export type MiniAppTemplate = 'auto_brief' | 'domain_explorer' | 'form_reading' | 'guided_quiz';
 
@@ -131,11 +137,17 @@ export interface HomeSummaryResponse {
     slug: string;
     name: string;
     age: number;
+    sex?: 'M' | 'F';
     primary_expertise: string;
     secondary_expertise?: string[];
     category_tag?: 'support' | 'friends' | 'astrology' | 'tarot_numerology' | 'past_life';
-    companion_group?: 'spiritual' | 'everyday' | 'life';
+    companion_group?: AnyCompanionGroup;
+    advisory_mode?: CompanionAdvisoryMode;
+    chart_access?: CompanionChartAccess;
+    discoverable_tags?: string[];
     situation_tags?: string[];
+    gender_variants?: CompanionGenderVariants;
+    supports_gender_toggle?: boolean;
     skill_level?: 'none_emotional' | 'astrology_soft' | 'tarot' | 'numerology' | 'past_life' | 'vedic_soft';
     tagline: string;
     short_bio?: string;

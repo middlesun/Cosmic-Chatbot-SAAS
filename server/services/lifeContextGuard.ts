@@ -1,5 +1,6 @@
 import {
   computeLifeContextCompleteness,
+  DEEP_PROFILE_BUCKET_LABELS,
   VALID_ANCHOR_TAGS,
   VALID_BIRTH_TIME_ACCURACIES,
   VALID_CAREER_MODES,
@@ -10,6 +11,10 @@ import {
   type CareerContextMode,
   type CitedInsightCategory,
   type CitedProfileInsight,
+  type CouncilAnalystNote,
+  type DeepProfileBucketKey,
+  type DeepProfileData,
+  type DeepProfileEntry,
   type LifeContextAnchor,
   type LifeContextChild,
   type LifeContextData,
@@ -23,6 +28,10 @@ export type {
   CareerContextMode,
   CitedInsightCategory,
   CitedProfileInsight,
+  CouncilAnalystNote,
+  DeepProfileBucketKey,
+  DeepProfileData,
+  DeepProfileEntry,
   LifeContextAnchor,
   LifeContextChild,
   LifeContextData,
@@ -35,8 +44,12 @@ const MAX_CHILDREN = 10;
 const MAX_ANCHORS = 12;
 const MAX_STRESS_AREAS = 10;
 const MAX_CITED_INSIGHTS = 40;
+const MAX_BUCKET_ITEMS = 14;
+const MAX_DEEP_ENTRIES = 60;
+const MAX_ANALYST_NOTES = 24;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_24H_RE = /^\d{2}:\d{2}(:\d{2})?$/;
+const VALID_DEEP_BUCKET_KEYS = new Set<string>(Object.keys(DEEP_PROFILE_BUCKET_LABELS));
 
 function clampYear(val: unknown, min = 1920, max = new Date().getFullYear() + 1): number | undefined {
   const num = typeof val === 'number' ? val : Number(val);
@@ -227,15 +240,23 @@ export function sanitizeLifeContext(rawInput: unknown): {
       const category: CitedInsightCategory = VALID_CITED_INSIGHT_CATEGORIES.has(rawCat)
         ? (rawCat as CitedInsightCategory)
         : 'practical_life';
-      const summary = cleanShortText(row.summary, 180);
+      const summary = cleanShortText(row.summary ?? row.fact, 180);
       if (!summary || summary.length < 4) continue;
       const citedBy = cleanShortText(row.cited_by, 64) || 'Cosmic Council';
       const citedSlug = cleanShortText(row.cited_slug, 64);
       const id = cleanShortText(row.id, 64) || buildInsightId(category, summary);
+      const conversationId =
+        typeof row.conversation_id === 'string' && row.conversation_id.trim()
+          ? row.conversation_id.trim().slice(0, 80)
+          : null;
       const updatedAt =
         typeof row.updated_at === 'string' && row.updated_at.trim()
           ? row.updated_at.trim().slice(0, 40)
           : new Date().toISOString();
+      const capturedAt =
+        typeof row.captured_at === 'string' && row.captured_at.trim()
+          ? row.captured_at.trim().slice(0, 40)
+          : updatedAt;
 
       const dedupeKey = summary.toLowerCase();
       if (!insightMap.has(dedupeKey)) {
@@ -243,8 +264,11 @@ export function sanitizeLifeContext(rawInput: unknown): {
           id,
           category,
           summary,
+          fact: summary,
           cited_by: citedBy,
           ...(citedSlug ? { cited_slug: citedSlug } : {}),
+          ...(conversationId ? { conversation_id: conversationId } : {}),
+          captured_at: capturedAt,
           updated_at: updatedAt,
         });
       }
@@ -289,20 +313,28 @@ export interface ExtractedLifeFactsPatch {
   career_mode?: CareerContextMode;
   career_role?: string;
   workplace_context?: string;
+  location_status?: LocationContextStatus;
+  supersede_status_updates?: boolean;
+  deep_profile_buckets?: Partial<Record<DeepProfileBucketKey, string[]>>;
   cited_insights?: Array<{
     category: CitedInsightCategory;
+    bucket?: DeepProfileBucketKey;
     summary: string;
+    supersedes_topic?: string;
     cited_by?: string;
     cited_slug?: string;
+    conversation_id?: string | null;
   }>;
   actor_citation?: string;
   actor_slug?: string;
+  conversation_id?: string | null;
 }
 
 /**
  * Non-destructively merges silently extracted chat milestones, psychological/practical insights,
- * and recurring stress areas onto an existing `life_context_json` object with attribution citations
- * without overwriting user-entered fields.
+ * and recurring stress areas onto an existing `life_context_json` object with attribution citations.
+ * When the user shares an explicit status update (e.g., job change, relationship change, relocation),
+ * replaces the superseded entry cleanly rather than accumulating contradictions.
  */
 export function mergeExtractedLifeFacts(
   existingRaw: unknown,
@@ -311,9 +343,10 @@ export function mergeExtractedLifeFacts(
   const { sanitized: base } = sanitizeLifeContext(existingRaw);
   const existingAnchors = Array.isArray(base.past_anchors) ? [...base.past_anchors] : [];
   const existingStress = Array.isArray(base.core_stress_areas) ? [...base.core_stress_areas] : [];
-  const existingInsights = Array.isArray(base.cited_insights) ? [...base.cited_insights] : [];
+  let existingInsights = Array.isArray(base.cited_insights) ? [...base.cited_insights] : [];
   const defaultCitedBy = cleanShortText(extracted.actor_citation, 64) || 'Cosmic Council';
   const defaultCitedSlug = cleanShortText(extracted.actor_slug, 64);
+  const defaultConvId = cleanShortText(extracted.conversation_id, 80) || null;
   const nowIso = new Date().toISOString();
 
   const incomingAnchors: LifeContextAnchor[] = (extracted.milestones || []).map((m) => ({
@@ -324,14 +357,30 @@ export function mergeExtractedLifeFacts(
       : {}),
   }));
 
+  // Remove contradicted older insights if incoming insights explicitly mark supersedes_topic
+  const supersedeTopics = (extracted.cited_insights || [])
+    .map((item) => cleanShortText(item.supersedes_topic, 48)?.toLowerCase())
+    .filter((t): t is string => Boolean(t && t.length >= 3));
+  if (supersedeTopics.length > 0) {
+    existingInsights = existingInsights.filter((old) => {
+      const text = old.summary.toLowerCase();
+      return !supersedeTopics.some((topic) => text.includes(topic));
+    });
+  }
+
   const incomingInsights: CitedProfileInsight[] = (extracted.cited_insights || []).map((item) => ({
     id: buildInsightId(item.category, item.summary),
     category: item.category,
     summary: item.summary,
+    fact: item.summary,
     cited_by: cleanShortText(item.cited_by, 64) || defaultCitedBy,
     ...(item.cited_slug || defaultCitedSlug
       ? { cited_slug: item.cited_slug || defaultCitedSlug }
       : {}),
+    ...(item.conversation_id || defaultConvId
+      ? { conversation_id: item.conversation_id || defaultConvId }
+      : {}),
+    captured_at: nowIso,
     updated_at: nowIso,
   }));
 
@@ -345,26 +394,30 @@ export function mergeExtractedLifeFacts(
     cited_insights: mergedInsights,
   };
 
-  if (!base.relationship_status && extracted.relationship_status) {
+  const allowSupersede = Boolean(extracted.supersede_status_updates);
+  if (extracted.relationship_status && (!base.relationship_status || allowSupersede)) {
     nextCandidate.relationship_status = extracted.relationship_status;
   }
-  if (!base.marriage_year && extracted.marriage_year) {
+  if (extracted.marriage_year && (!base.marriage_year || allowSupersede)) {
     nextCandidate.marriage_year = extracted.marriage_year;
   }
-  if (base.has_children === undefined && typeof extracted.has_children === 'boolean') {
+  if (typeof extracted.has_children === 'boolean' && (base.has_children === undefined || allowSupersede)) {
     nextCandidate.has_children = extracted.has_children;
   }
-  if (!base.children_summary && extracted.children_summary) {
+  if (extracted.children_summary && (!base.children_summary || allowSupersede)) {
     nextCandidate.children_summary = extracted.children_summary;
   }
-  if (!base.career_mode && extracted.career_mode) {
+  if (extracted.career_mode && (!base.career_mode || allowSupersede)) {
     nextCandidate.career_mode = extracted.career_mode;
   }
-  if (!base.career_role && extracted.career_role) {
+  if (extracted.career_role && (!base.career_role || allowSupersede)) {
     nextCandidate.career_role = extracted.career_role;
   }
-  if (!base.workplace_context && extracted.workplace_context) {
+  if (extracted.workplace_context && (!base.workplace_context || allowSupersede)) {
     nextCandidate.workplace_context = extracted.workplace_context;
+  }
+  if (extracted.location_status && (!base.location_status || allowSupersede)) {
+    nextCandidate.location_status = extracted.location_status;
   }
 
   const { sanitized, completeness } = sanitizeLifeContext(nextCandidate);
@@ -373,6 +426,244 @@ export function mergeExtractedLifeFacts(
     JSON.stringify({ ...sanitized, updated_at: undefined });
 
   return { sanitized, completeness, changed };
+}
+
+export function sanitizeDeepProfile(rawInput: unknown): DeepProfileData {
+  const src =
+    rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+      ? (rawInput as Record<string, unknown>)
+      : {};
+
+  const out: DeepProfileData = {};
+  for (const key of Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]) {
+    const arr = src[key];
+    if (!Array.isArray(arr)) continue;
+    const seen = new Set<string>();
+    const cleaned: string[] = [];
+    for (const item of arr) {
+      const txt = cleanShortText(item, 180);
+      if (!txt || txt.length < 3) continue;
+      const norm = txt.toLowerCase();
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+      cleaned.push(txt);
+      if (cleaned.length >= MAX_BUCKET_ITEMS) break;
+    }
+    if (cleaned.length > 0) {
+      out[key] = cleaned;
+    }
+  }
+
+  if (Array.isArray(src.entries)) {
+    const entryMap = new Map<string, DeepProfileEntry>();
+    for (const rawItem of src.entries) {
+      if (!rawItem || typeof rawItem !== 'object') continue;
+      const row = rawItem as Record<string, unknown>;
+      const fact = cleanShortText(row.fact ?? row.summary, 200);
+      if (!fact || fact.length < 4) continue;
+      const rawCat = typeof row.category === 'string' ? row.category.trim() : '';
+      const category: CitedInsightCategory = VALID_CITED_INSIGHT_CATEGORIES.has(rawCat)
+        ? (rawCat as CitedInsightCategory)
+        : 'practical_life';
+      const rawBucket = typeof row.bucket === 'string' ? row.bucket.trim() : '';
+      const bucket: DeepProfileBucketKey | undefined = VALID_DEEP_BUCKET_KEYS.has(rawBucket)
+        ? (rawBucket as DeepProfileBucketKey)
+        : undefined;
+      const sourceLabel = cleanShortText(row.source_label ?? row.cited_by, 64) || 'Cosmic Council';
+      const sourceSlug = cleanShortText(row.source_slug ?? row.cited_slug, 64) || 'council';
+      const conversationId =
+        typeof row.conversation_id === 'string' && row.conversation_id.trim()
+          ? row.conversation_id.trim().slice(0, 80)
+          : null;
+      const updatedAt =
+        typeof row.updated_at === 'string' && row.updated_at.trim()
+          ? row.updated_at.trim().slice(0, 40)
+          : new Date().toISOString();
+      const capturedAt =
+        typeof row.captured_at === 'string' && row.captured_at.trim()
+          ? row.captured_at.trim().slice(0, 40)
+          : updatedAt;
+      const id = cleanShortText(row.id, 64) || buildInsightId(bucket || category, fact);
+
+      const dedupeKey = fact.toLowerCase();
+      if (!entryMap.has(dedupeKey)) {
+        entryMap.set(dedupeKey, {
+          id,
+          category,
+          ...(bucket ? { bucket } : {}),
+          fact,
+          source_label: sourceLabel,
+          source_slug: sourceSlug,
+          conversation_id: conversationId,
+          captured_at: capturedAt,
+          updated_at: updatedAt,
+        });
+      }
+      if (entryMap.size >= MAX_DEEP_ENTRIES) break;
+    }
+    if (entryMap.size > 0) {
+      out.entries = Array.from(entryMap.values());
+    }
+  }
+
+  out.updated_at =
+    typeof src.updated_at === 'string' && src.updated_at.trim()
+      ? src.updated_at.trim().slice(0, 40)
+      : new Date().toISOString();
+
+  return out;
+}
+
+export function mergeExtractedDeepProfile(
+  existingRaw: unknown,
+  extracted: ExtractedLifeFactsPatch
+): { sanitized: DeepProfileData; changed: boolean } {
+  const base = sanitizeDeepProfile(existingRaw);
+  const nowIso = new Date().toISOString();
+  const sourceLabel = cleanShortText(extracted.actor_citation, 64) || 'Cosmic Council';
+  const sourceSlug = cleanShortText(extracted.actor_slug, 64) || 'council';
+  const conversationId = cleanShortText(extracted.conversation_id, 80) || null;
+
+  const candidate: DeepProfileData = { ...base };
+
+  const incomingBuckets = extracted.deep_profile_buckets || {};
+  for (const key of Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]) {
+    const newItems = incomingBuckets[key];
+    if (!Array.isArray(newItems) || newItems.length === 0) continue;
+    const prevList = Array.isArray(base[key]) ? base[key]! : [];
+    candidate[key] = [...newItems, ...prevList];
+  }
+
+  const existingEntries = Array.isArray(base.entries) ? [...base.entries] : [];
+  const newEntries: DeepProfileEntry[] = [];
+
+  for (const insight of extracted.cited_insights || []) {
+    const fact = cleanShortText(insight.summary, 200);
+    if (!fact || fact.length < 4) continue;
+    newEntries.push({
+      id: buildInsightId(insight.bucket || insight.category, fact),
+      category: insight.category,
+      ...(insight.bucket ? { bucket: insight.bucket } : {}),
+      fact,
+      source_label: cleanShortText(insight.cited_by, 64) || sourceLabel,
+      source_slug: cleanShortText(insight.cited_slug, 64) || sourceSlug,
+      conversation_id: insight.conversation_id ?? conversationId,
+      captured_at: nowIso,
+      updated_at: nowIso,
+    });
+  }
+
+  for (const key of Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]) {
+    const items = incomingBuckets[key];
+    if (!Array.isArray(items)) continue;
+    const catMap: Partial<Record<DeepProfileBucketKey, CitedInsightCategory>> = {
+      practical_reality: 'practical_life',
+      emotional_triggers: 'emotional_pattern',
+      core_insecurities: 'emotional_pattern',
+      coping_patterns: 'emotional_pattern',
+      stress_areas: 'worry_problem',
+      desires_and_goals: 'desire_dream',
+      active_dilemmas: 'worry_problem',
+      relationship_dynamics: 'relationship',
+      communication_preferences: 'practical_life',
+    };
+    const mappedCat = catMap[key] || 'practical_life';
+    for (const rawFact of items) {
+      const fact = cleanShortText(rawFact, 200);
+      if (!fact || fact.length < 4) continue;
+      if (!newEntries.some((e) => e.fact.toLowerCase() === fact.toLowerCase())) {
+        newEntries.push({
+          id: buildInsightId(key, fact),
+          category: mappedCat,
+          bucket: key,
+          fact,
+          source_label: sourceLabel,
+          source_slug: sourceSlug,
+          conversation_id: conversationId,
+          captured_at: nowIso,
+          updated_at: nowIso,
+        });
+      }
+    }
+  }
+
+  if (newEntries.length > 0 || existingEntries.length > 0) {
+    candidate.entries = [...newEntries, ...existingEntries];
+  }
+
+  const sanitized = sanitizeDeepProfile(candidate);
+  const changed =
+    JSON.stringify({ ...base, updated_at: undefined }) !==
+    JSON.stringify({ ...sanitized, updated_at: undefined });
+
+  return { sanitized, changed };
+}
+
+export function sanitizeAnalystNotes(rawInput: unknown): CouncilAnalystNote[] {
+  if (!Array.isArray(rawInput)) return [];
+  const seen = new Set<string>();
+  const out: CouncilAnalystNote[] = [];
+  for (const raw of rawInput) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as Record<string, unknown>;
+    const summary = cleanShortText(row.summary ?? row.fact, 260);
+    if (!summary || summary.length < 8) continue;
+    const key = summary.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const systemLabel = cleanShortText(row.system_label ?? row.cited_by, 64) || 'Cosmic Council';
+    const systemSlug = cleanShortText(row.system_slug ?? row.cited_slug, 64) || 'vedic_astrologer';
+    const conversationId =
+      typeof row.conversation_id === 'string' && row.conversation_id.trim()
+        ? row.conversation_id.trim().slice(0, 80)
+        : null;
+    const capturedAt =
+      typeof row.captured_at === 'string' && row.captured_at.trim()
+        ? row.captured_at.trim().slice(0, 40)
+        : new Date().toISOString();
+    const id = cleanShortText(row.id, 64) || buildInsightId(systemSlug, summary);
+    out.push({
+      id,
+      summary,
+      system_label: systemLabel,
+      system_slug: systemSlug,
+      conversation_id: conversationId,
+      captured_at: capturedAt,
+    });
+    if (out.length >= MAX_ANALYST_NOTES) break;
+  }
+  return out;
+}
+
+export function appendCouncilAnalystNotes(
+  existingRaw: unknown,
+  incoming: Array<{
+    summary: string;
+    system_label: string;
+    system_slug: string;
+    conversation_id?: string | null;
+  }>
+): { notes: CouncilAnalystNote[]; changed: boolean } {
+  const prev = sanitizeAnalystNotes(existingRaw);
+  const nowIso = new Date().toISOString();
+  const mapped: CouncilAnalystNote[] = incoming
+    .map((item) => {
+      const summary = cleanShortText(item.summary, 260);
+      if (!summary || summary.length < 8) return null;
+      return {
+        id: buildInsightId(item.system_slug, summary),
+        summary,
+        system_label: cleanShortText(item.system_label, 64) || 'Cosmic Council',
+        system_slug: cleanShortText(item.system_slug, 64) || 'vedic_astrologer',
+        conversation_id: cleanShortText(item.conversation_id, 80) || null,
+        captured_at: nowIso,
+      };
+    })
+    .filter((x): x is CouncilAnalystNote => Boolean(x));
+
+  const merged = sanitizeAnalystNotes([...mapped, ...prev]);
+  const changed = JSON.stringify(prev) !== JSON.stringify(merged);
+  return { notes: merged, changed };
 }
 
 export interface ContextTrapCheckResult {

@@ -223,7 +223,7 @@ function createBlankCompanion(nextSortOrder: number): AdminCompanionRecord {
     primary_expertise: 'Friend',
     secondary_expertise: [],
     category_tag: 'friends',
-    companion_group: 'everyday',
+    companion_group: 'everyday_companions',
     situation_tags: [],
     cultural_fluency: 'English · Warm Everyday',
     avatar_url: null,

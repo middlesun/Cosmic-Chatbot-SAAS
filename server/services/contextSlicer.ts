@@ -577,7 +577,7 @@ export async function compileStage2ContextPackage(
 
   const specialSlice: Record<string, unknown> = {};
   if (enriched.specialPoints) {
-    if (['wealth', 'marriage', 'open'].includes(input.playbook.domain)) {
+    if (['wealth', 'career', 'marriage', 'open'].includes(input.playbook.domain)) {
       specialSlice.induLagna = `${enriched.specialPoints.induLagna.sign}(H${enriched.specialPoints.induLagna.houseFromLagna},L:${enriched.specialPoints.induLagna.lord})`;
       specialSlice.shriLagna = `${enriched.specialPoints.shriLagna.sign}(H${enriched.specialPoints.shriLagna.houseFromLagna})`;
     }
@@ -968,18 +968,61 @@ export async function compileStage2ContextPackage(
     return false;
   };
 
+  const kpPreferredSlugs = new Set([
+    'f_chalit_cusp_shift',
+    'f_nakshatra_override',
+    'f_dasha_ladder',
+    'f_obstruction_gate',
+    'f_marriage_10_timing_locks',
+    'f_career_d10_and_amk',
+    'f_foreign_relocation',
+    'f_progeny_d7_and_pk',
+    'f_property_d4_and_assets',
+    'f_litigation_and_rivals',
+  ]);
+  const jaiminiPreferredSlugs = new Set([
+    'f_marriage_reality_d9',
+    'f_career_d10_and_amk',
+    'f_progeny_d7_and_pk',
+    'f_wealth_after_marriage_index',
+    'f_spirituality_d20_and_moksha',
+    'f_d1_d9_inversion',
+  ]);
+
   for (const [slug, meta] of Object.entries(FORMULA_CARTRIDGE_META_BY_SLUG)) {
     if (!isCartridgeDomainCompatible(meta.domains)) {
       continue;
     }
     const matchedFlags = (meta.triggerFlags || []).filter((f) => triggerSignals.has(f));
+    const expertSystemMatch =
+      (isKpExpert && kpPreferredSlugs.has(slug)) ||
+      (isJaiminiExpert && jaiminiPreferredSlugs.has(slug));
     if (matchedFlags.length > 0) {
       const existing = candidateScores.get(slug);
-      const triggerBonus = 150 + matchedFlags.length * 15 + meta.basePriority * 0.2;
+      const triggerBonus =
+        150 + matchedFlags.length * 15 + meta.basePriority * 0.2 + (expertSystemMatch ? 35 : 0);
       if (!existing || triggerBonus > existing.score) {
         candidateScores.set(slug, {
-          score: existing ? existing.score + 40 : triggerBonus,
-          reason: `Triggered by natal/transit check (${matchedFlags.join(', ')})`,
+          score: existing ? existing.score + (expertSystemMatch ? 55 : 40) : triggerBonus,
+          reason: expertSystemMatch
+            ? `${isKpExpert ? 'KP Astrology' : 'Jaimini Jyotish'} + natal/transit check (${matchedFlags.join(', ')})`
+            : `Triggered by natal/transit check (${matchedFlags.join(', ')})`,
+        });
+      }
+    } else if (expertSystemMatch) {
+      const existing = candidateScores.get(slug);
+      const expertScore = 185 + meta.basePriority * 0.15;
+      if (!existing) {
+        candidateScores.set(slug, {
+          score: expertScore,
+          reason: isKpExpert
+            ? 'KP Astrology cuspal & sub-lord priority'
+            : 'Jaimini Karaka & Arudha priority',
+        });
+      } else {
+        candidateScores.set(slug, {
+          score: existing.score + 35,
+          reason: `${existing.reason} + ${isKpExpert ? 'KP' : 'Jaimini'} focus`,
         });
       }
     } else if (
@@ -996,12 +1039,16 @@ export async function compileStage2ContextPackage(
   }
 
   // Ensure at least 4 active cartridges when available by checking universal fallbacks cleanly
-  const fallbackUniversalOrder = [
-    'f_d1_d9_inversion',
-    'f_bhavat_bhavam',
-    'f_planet_distance_lens',
-    'f_obstruction_gate',
-  ];
+  const fallbackUniversalOrder = isKpExpert
+    ? ['f_chalit_cusp_shift', 'f_nakshatra_override', 'f_d1_d9_inversion', 'f_obstruction_gate']
+    : isJaiminiExpert
+    ? ['f_d1_d9_inversion', 'f_bhavat_bhavam', 'f_planet_distance_lens', 'f_obstruction_gate']
+    : [
+        'f_d1_d9_inversion',
+        'f_bhavat_bhavam',
+        'f_planet_distance_lens',
+        'f_obstruction_gate',
+      ];
   for (const slug of fallbackUniversalOrder) {
     if (candidateScores.size >= 4) break;
     if (!candidateScores.has(slug) && cartridgesMap[slug]?.is_active) {

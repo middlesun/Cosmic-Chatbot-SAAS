@@ -42,9 +42,9 @@ const CompanionDiscoveryControls: React.FC<CompanionDiscoveryControlsProps> = ({
   const groupCounts = useMemo(() => {
     const counts: Record<CompanionDiscoveryTabId, number> = {
       all: cards.length,
-      spiritual: 0,
-      everyday: 0,
-      life: 0,
+      spiritual_guides: 0,
+      everyday_companions: 0,
+      life_companions: 0,
     };
     for (const c of cards) {
       counts[resolveCompanionGroup(c)] += 1;
