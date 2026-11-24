@@ -31,7 +31,10 @@ export interface TarotCardMetadata {
   col: 0 | 1 | 2;
 }
 
-export const TAROT_BACK_IMAGE_URL = '/assets/tarot/deck/back.webp';
+const TAROT_DECK_BASE_URL =
+  'https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck';
+
+export const TAROT_BACK_IMAGE_URL = `${TAROT_DECK_BASE_URL}/back.webp`;
 
 const MAJOR_DEFS: Array<{ roman: string; title: string; slug: string }> = [
   { roman: '0', title: 'The Fool', slug: 'major-00-fool' },
@@ -99,7 +102,7 @@ export const TAROT_DECK_CATALOG: TarotCardMetadata[] = (() => {
       arcana: 'Major',
       suit: 'Major',
       element: 'Spirit',
-      imageUrl: `/assets/tarot/deck/${m.slug}.webp`,
+      imageUrl: `${TAROT_DECK_BASE_URL}/${m.slug}.webp`,
       sheetIndex: Math.floor(globalIdx / 6) + 1,
       row: (slotInSheet < 3 ? 0 : 1) as 0 | 1,
       col: (slotInSheet % 3) as 0 | 1 | 2,
@@ -120,7 +123,7 @@ export const TAROT_DECK_CATALOG: TarotCardMetadata[] = (() => {
         arcana: 'Minor',
         suit: s.suit,
         element: s.element,
-        imageUrl: `/assets/tarot/deck/${slug}.webp`,
+        imageUrl: `${TAROT_DECK_BASE_URL}/${slug}.webp`,
         sheetIndex: Math.floor(globalIdx / 6) + 1,
         row: (slotInSheet < 3 ? 0 : 1) as 0 | 1,
         col: (slotInSheet % 3) as 0 | 1 | 2,

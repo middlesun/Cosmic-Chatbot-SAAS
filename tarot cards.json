@@ -1,0 +1,318 @@
+[
+  {
+    "file_name": "tarot/deck/back.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/back.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-01-ace.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-01-ace.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-02-two.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-02-two.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-03-three.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-03-three.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-04-four.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-04-four.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-05-five.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-05-five.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-06-six.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-06-six.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-07-seven.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-07-seven.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-08-eight.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-08-eight.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-09-nine.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-09-nine.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-10-ten.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-10-ten.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-11-page.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-11-page.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-12-knight.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-12-knight.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-13-queen.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-13-queen.webp"
+  },
+  {
+    "file_name": "tarot/deck/cups-14-king.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/cups-14-king.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-00-fool.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-00-fool.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-01-magician.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-01-magician.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-02-high-priestess.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-02-high-priestess.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-03-empress.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-03-empress.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-04-emperor.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-04-emperor.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-05-hierophant.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-05-hierophant.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-06-lovers.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-06-lovers.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-07-chariot.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-07-chariot.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-08-strength.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-08-strength.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-09-hermit.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-09-hermit.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-10-wheel-of-fortune.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-10-wheel-of-fortune.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-11-justice.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-11-justice.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-12-hanged-man.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-12-hanged-man.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-13-death.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-13-death.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-14-temperance.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-14-temperance.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-15-devil.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-15-devil.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-16-tower.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-16-tower.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-17-star.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-17-star.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-18-moon.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-18-moon.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-19-sun.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-19-sun.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-20-judgement.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-20-judgement.webp"
+  },
+  {
+    "file_name": "tarot/deck/major-21-world.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/major-21-world.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-01-ace.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-01-ace.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-02-two.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-02-two.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-03-three.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-03-three.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-04-four.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-04-four.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-05-five.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-05-five.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-06-six.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-06-six.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-07-seven.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-07-seven.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-08-eight.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-08-eight.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-09-nine.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-09-nine.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-10-ten.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-10-ten.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-11-page.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-11-page.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-12-knight.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-12-knight.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-13-queen.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-13-queen.webp"
+  },
+  {
+    "file_name": "tarot/deck/pentacles-14-king.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/pentacles-14-king.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-01-ace.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-01-ace.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-02-two.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-02-two.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-03-three.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-03-three.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-04-four.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-04-four.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-05-five.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-05-five.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-06-six.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-06-six.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-07-seven.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-07-seven.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-08-eight.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-08-eight.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-09-nine.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-09-nine.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-10-ten.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-10-ten.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-11-page.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-11-page.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-12-knight.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-12-knight.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-13-queen.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-13-queen.webp"
+  },
+  {
+    "file_name": "tarot/deck/swords-14-king.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/swords-14-king.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-01-ace.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-01-ace.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-02-two.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-02-two.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-03-three.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-03-three.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-04-four.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-04-four.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-05-five.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-05-five.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-06-six.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-06-six.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-07-seven.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-07-seven.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-08-eight.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-08-eight.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-09-nine.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-09-nine.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-10-ten.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-10-ten.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-11-page.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-11-page.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-12-knight.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-12-knight.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-13-queen.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-13-queen.webp"
+  },
+  {
+    "file_name": "tarot/deck/wands-14-king.webp",
+    "public_url": "https://grvgdkzdtcoqwqwkjcxf.supabase.co/storage/v1/object/public/cosmic%20council/tarot/deck/wands-14-king.webp"
+  }
+]

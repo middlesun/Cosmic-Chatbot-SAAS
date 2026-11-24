@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Navigate,
   Route,
@@ -14,8 +14,6 @@ import AppRoutes from './components/app/AppRoutes';
 import NewLandingPage from './components/NewLandingPage';
 import BlogPage from './components/BlogPage';
 import ComingSoonPage from './components/ComingSoonPage';
-
-const ClassicApp = React.lazy(() => import('./components/classic/ClassicApp'));
 
 const NavigateToBlogSlug: React.FC = () => {
   const { slug } = useParams<{ slug?: string }>();
@@ -43,11 +41,6 @@ const App: React.FC = () => {
     }
     setSiteUnlocked(true);
   };
-
-  const isClassicSubdomain =
-    typeof window !== 'undefined' &&
-    (window.location.hostname.startsWith('classic.') ||
-      window.location.hostname.startsWith('legacy.'));
 
   const [currency, setCurrency] = useState<Currency>(() => {
     const saved = localStorage.getItem('cc_currency');
@@ -127,20 +120,6 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/app/*" element={<AppRoutes />} />
       </Routes>
-    );
-  }
-
-  if (isClassicSubdomain) {
-    return (
-      <Suspense
-        fallback={
-          <div className="min-h-screen bg-[#FAF7F2] flex items-center justify-center text-sm text-[#5C5449]">
-            Loading...
-          </div>
-        }
-      >
-        <ClassicApp sanityPosts={sanityPosts} sanityLoaded={sanityLoaded} />
-      </Suspense>
     );
   }
 
