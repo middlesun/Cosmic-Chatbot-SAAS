@@ -20,6 +20,8 @@ import {
   type LifeContextData,
   type LocationContextStatus,
   type RelationshipContextStatus,
+  type UserContextPreferences,
+  DEFAULT_USER_CONTEXT_PREFERENCES,
 } from '../../lib/lifeContextSchema';
 import type { ClarificationPayload } from '../../lib/vedicTypes';
 
@@ -37,8 +39,9 @@ export type {
   LifeContextData,
   LocationContextStatus,
   RelationshipContextStatus,
+  UserContextPreferences,
 };
-export { computeLifeContextCompleteness };
+export { computeLifeContextCompleteness, DEFAULT_USER_CONTEXT_PREFERENCES };
 
 const MAX_CHILDREN = 10;
 const MAX_ANCHORS = 12;
@@ -585,6 +588,8 @@ export function mergeExtractedDeepProfile(
       active_dilemmas: 'worry_problem',
       relationship_dynamics: 'relationship',
       communication_preferences: 'practical_life',
+      habits_and_routines: 'practical_life',
+      values_and_principles: 'spiritual',
     };
     const mappedCat = catMap[key] || 'practical_life';
     for (const rawFact of items) {
@@ -618,6 +623,111 @@ export function mergeExtractedDeepProfile(
     JSON.stringify({ ...sanitized, updated_at: undefined });
 
   return { sanitized, changed };
+}
+
+export function sanitizeUserContextPreferences(rawInput: unknown): UserContextPreferences {
+  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
+    return { ...DEFAULT_USER_CONTEXT_PREFERENCES };
+  }
+  const src = rawInput as Record<string, unknown>;
+  return {
+    memory_paused:
+      typeof src.memory_paused === 'boolean'
+        ? src.memory_paused
+        : DEFAULT_USER_CONTEXT_PREFERENCES.memory_paused,
+    allow_cross_companion_memory:
+      typeof src.allow_cross_companion_memory === 'boolean'
+        ? src.allow_cross_companion_memory
+        : DEFAULT_USER_CONTEXT_PREFERENCES.allow_cross_companion_memory,
+  };
+}
+
+/**
+ * Combines user-level Living Context (public.users) and optional default birth profile context
+ * cleanly without mutating DB objects, honoring cross-companion memory filtering when disabled.
+ */
+export function mergeUserAndProfileContextForPrompt(options: {
+  userLivingContext?: unknown;
+  userDeepProfile?: unknown;
+  profileLifeContext?: unknown;
+  profileDeepProfile?: unknown;
+  allowCrossCompanionMemory?: boolean;
+  activeCompanionSlug?: string | null;
+}): {
+  life_context_json: LifeContextData;
+  deep_profile_json: DeepProfileData;
+} {
+  const { sanitized: uLife } = sanitizeLifeContext(options.userLivingContext);
+  const uDeep = sanitizeDeepProfile(options.userDeepProfile);
+  const { sanitized: pLife } = sanitizeLifeContext(options.profileLifeContext);
+  const pDeep = sanitizeDeepProfile(options.profileDeepProfile);
+
+  const mergedLifeRaw: Record<string, unknown> = {
+    ...pLife,
+    ...uLife,
+    past_anchors: [...(uLife.past_anchors || []), ...(pLife.past_anchors || [])],
+    core_stress_areas: [
+      ...(uLife.core_stress_areas || []),
+      ...(pLife.core_stress_areas || []),
+    ],
+    cited_insights: [...(uLife.cited_insights || []), ...(pLife.cited_insights || [])],
+  };
+  if (!uLife.children && pLife.children) mergedLifeRaw.children = pLife.children;
+
+  const { sanitized: mergedLife } = sanitizeLifeContext(mergedLifeRaw);
+
+  const mergedDeepCandidate: Record<string, unknown> = {};
+  for (const key of Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]) {
+    const combined = [...(uDeep[key] || []), ...(pDeep[key] || [])];
+    if (combined.length > 0) mergedDeepCandidate[key] = combined;
+  }
+  const combinedEntries = [...(uDeep.entries || []), ...(pDeep.entries || [])];
+  if (combinedEntries.length > 0) mergedDeepCandidate.entries = combinedEntries;
+
+  let mergedDeep = sanitizeDeepProfile(mergedDeepCandidate);
+
+  if (options.allowCrossCompanionMemory === false) {
+    const activeSlug = (options.activeCompanionSlug || '').trim().toLowerCase();
+    const isAllowedSlug = (slug?: string | null): boolean => {
+      const normalized = (slug || '').trim().toLowerCase();
+      if (!normalized) return true; // manual / user-authored context
+      if (normalized === 'user' || normalized === 'manual') return true;
+      return Boolean(activeSlug && normalized === activeSlug);
+    };
+
+    if (Array.isArray(mergedLife.cited_insights)) {
+      const filteredInsights = mergedLife.cited_insights.filter((i) =>
+        isAllowedSlug(i.cited_slug)
+      );
+      if (filteredInsights.length > 0) {
+        mergedLife.cited_insights = filteredInsights;
+      } else {
+        delete mergedLife.cited_insights;
+      }
+    }
+
+    const filteredEntries = (mergedDeep.entries || []).filter((e) =>
+      isAllowedSlug(e.source_slug)
+    );
+    const rebuiltBuckets: DeepProfileData = {};
+    for (const entry of filteredEntries) {
+      if (entry.bucket) {
+        const list = rebuiltBuckets[entry.bucket] || [];
+        if (!list.some((x) => x.toLowerCase() === entry.fact.toLowerCase())) {
+          rebuiltBuckets[entry.bucket] = [...list, entry.fact];
+        }
+      }
+    }
+    if (filteredEntries.length > 0) {
+      rebuiltBuckets.entries = filteredEntries;
+    }
+    mergedDeep = sanitizeDeepProfile(rebuiltBuckets);
+  }
+
+  return {
+    life_context_json: mergedLife,
+    deep_profile_json: mergedDeep,
+  };
 }
 
 export function formatDeepProfileForLLM(

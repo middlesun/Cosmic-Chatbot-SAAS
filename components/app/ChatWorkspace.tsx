@@ -36,6 +36,7 @@ import ChatSettingsModal, {
   type UserNumericFontChoice,
 } from './ChatSettingsModal';
 import BirthChartModal from './BirthChartModal';
+import LifeContextModal from './LifeContextModal';
 import AskLaterDrawer from './AskLaterDrawer';
 import CouncilToCompanionModal, {
   type CouncilHandoffConfirmPayload,
@@ -435,6 +436,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
   const [showMyPrompts, setShowMyPrompts] = useState(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
+  const [showMemoryInspector, setShowMemoryInspector] = useState(false);
   const [showHeaderThreadMenu, setShowHeaderThreadMenu] = useState(false);
   const [showCompanionChartMenu, setShowCompanionChartMenu] = useState(false);
 
@@ -2261,7 +2263,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         is_active_tab: true,
         companion_type: persona.companion_type,
         companion_slug: persona.slug || null,
-        companion_chat_mode: 'just_listen',
+        companion_chat_mode: 'natural',
         companion_persona_json: persona,
         is_bookmarked: false,
         use_full_profile_memory: true,
@@ -2329,7 +2331,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       pillar: 'companion',
       companion_type: persona.companion_type,
       companion_slug: resolvedSlug,
-      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_chat_mode: rawConv.companion_chat_mode || 'natural',
       companion_persona_json: rawConv.companion_persona_json || persona,
     });
     const startedConv: ConversationRecord = {
@@ -2338,7 +2340,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       is_active_tab: true,
       companion_type: rawConv.companion_type || persona.companion_type,
       companion_slug: resolvedSlug,
-      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_chat_mode: rawConv.companion_chat_mode || 'natural',
       companion_persona_json: rawConv.companion_persona_json || persona,
     };
     const openingMsg = (data.openingMessage || null) as ChatMessageRecord | null;
@@ -2423,7 +2425,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         is_active_tab: true,
         companion_type: 'friend',
         companion_slug: card.slug,
-        companion_chat_mode: 'just_listen',
+        companion_chat_mode: 'natural',
         companion_persona_json: previewPersona,
         is_bookmarked: false,
         use_full_profile_memory: true,
@@ -2552,7 +2554,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       pillar: 'companion',
       companion_type: rawConv.companion_type || 'friend',
       companion_slug: card.slug,
-      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_chat_mode: rawConv.companion_chat_mode || 'natural',
       companion_persona_json: personaForMeta,
     });
 
@@ -2561,7 +2563,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       pillar: 'companion',
       is_active_tab: true,
       companion_slug: rawConv.companion_slug || card.slug,
-      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_chat_mode: rawConv.companion_chat_mode || 'natural',
       companion_persona_json: personaForMeta,
     };
 
@@ -2656,7 +2658,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       pillar: 'companion',
       companion_type: mergedPersona.companion_type,
       companion_slug: slug,
-      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_chat_mode: rawConv.companion_chat_mode || 'natural',
       companion_persona_json: mergedPersona,
     });
     const startedConv: ConversationRecord = {
@@ -2664,7 +2666,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       pillar: 'companion',
       is_active_tab: true,
       companion_slug: rawConv.companion_slug || slug,
-      companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+      companion_chat_mode: rawConv.companion_chat_mode || 'natural',
       companion_persona_json: mergedPersona,
     };
     const openingMsg = (data.openingMessage || null) as ChatMessageRecord | null;
@@ -2680,7 +2682,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
   const handleToggleCompanionChatMode = async (nextCue: CompanionChatCue) => {
     if (!activeConversation) return;
-    if ((activeConversation.companion_chat_mode || 'just_listen') === nextCue) return;
+    if ((activeConversation.companion_chat_mode || 'natural') === nextCue) return;
 
     const targetId = activeConversation.id;
     setActiveConversation((prev) =>
@@ -2884,7 +2886,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         pillar: 'companion',
         companion_type: rawConv.companion_type || 'friend',
         companion_slug: cleanSlug,
-        companion_chat_mode: rawConv.companion_chat_mode || 'just_listen',
+        companion_chat_mode: rawConv.companion_chat_mode || 'natural',
         companion_persona_json: persona || null,
       });
       await activateStartedCompanionThread(
@@ -3528,7 +3530,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
               : undefined,
           companionChatMode:
             sendPillar === 'companion'
-              ? targetConversation.companion_chat_mode || 'just_listen'
+              ? targetConversation.companion_chat_mode || 'natural'
               : undefined,
           companionPersona:
             sendPillar === 'companion'
@@ -5136,11 +5138,23 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                   <button
                     type="button"
                     aria-pressed={
-                      (activeConversation.companion_chat_mode || 'just_listen') === 'just_listen'
+                      (activeConversation.companion_chat_mode || 'natural') === 'natural'
                     }
+                    onClick={() => void handleToggleCompanionChatMode('natural')}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                      (activeConversation.companion_chat_mode || 'natural') === 'natural'
+                        ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                        : 'text-[#5C5449] hover:text-[#3D3830]'
+                    }`}
+                  >
+                    Natural
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={activeConversation.companion_chat_mode === 'just_listen'}
                     onClick={() => void handleToggleCompanionChatMode('just_listen')}
                     className={`rounded-lg px-2.5 py-1 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                      (activeConversation.companion_chat_mode || 'just_listen') === 'just_listen'
+                      activeConversation.companion_chat_mode === 'just_listen'
                         ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
                         : 'text-[#5C5449] hover:text-[#3D3830]'
                     }`}
@@ -5463,11 +5477,23 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                 <button
                   type="button"
                   aria-pressed={
-                    (activeConversation.companion_chat_mode || 'just_listen') === 'just_listen'
+                    (activeConversation.companion_chat_mode || 'natural') === 'natural'
                   }
+                  onClick={() => void handleToggleCompanionChatMode('natural')}
+                  className={`rounded-lg px-2 py-1 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                    (activeConversation.companion_chat_mode || 'natural') === 'natural'
+                      ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                      : 'text-[#5C5449] hover:text-[#3D3830]'
+                  }`}
+                >
+                  Natural
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={activeConversation.companion_chat_mode === 'just_listen'}
                   onClick={() => void handleToggleCompanionChatMode('just_listen')}
-                  className={`rounded-lg px-2.5 py-1 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                    (activeConversation.companion_chat_mode || 'just_listen') === 'just_listen'
+                  className={`rounded-lg px-2 py-1 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                    activeConversation.companion_chat_mode === 'just_listen'
                       ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
                       : 'text-[#5C5449] hover:text-[#3D3830]'
                   }`}
@@ -5478,7 +5504,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                   type="button"
                   aria-pressed={activeConversation.companion_chat_mode === 'help_think'}
                   onClick={() => void handleToggleCompanionChatMode('help_think')}
-                  className={`rounded-lg px-2.5 py-1 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                  className={`rounded-lg px-2 py-1 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                     activeConversation.companion_chat_mode === 'help_think'
                       ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
                       : 'text-[#5C5449] hover:text-[#3D3830]'
@@ -5810,6 +5836,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           onClearReply={() => setReplyTarget(null)}
           onOpenMyPrompts={() => setShowMyPrompts(true)}
           onOpenSettings={() => setShowChatSettings(true)}
+          onOpenMemoryInspector={() => setShowMemoryInspector(true)}
           onOpenAddChartModal={() => handleOpenAddChartModal()}
           onNewChat={handleNewChat}
           onSendMessage={(overrideText, composerOpts) =>
@@ -5907,6 +5934,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         }}
         onChangeLanguage={setLanguageSlug}
         onToggleMemory={handleToggleMemory}
+        onOpenMemoryInspector={() => setShowMemoryInspector(true)}
         onSaved={(updated) => {
           setChatFontSize(updated.chatFontSize);
           setUserNumericFont(updated.chatNumericFont);
@@ -5935,6 +5963,24 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           }
         }}
         onClose={() => setShowChatSettings(false)}
+      />
+
+      {/* User-Facing Living Context & Companion Memory Inspector */}
+      <LifeContextModal
+        isOpen={showMemoryInspector}
+        profileId={null}
+        profileName={getUserProfileDisplayLabel(appUser)}
+        mode="user_memory"
+        initialTab="memory"
+        getAccessToken={getAccessToken}
+        isPreviewMode={isPreviewMode}
+        onClose={() => setShowMemoryInspector(false)}
+        onPreferencesUpdated={() => {
+          if (!isPreviewMode) {
+            void refreshUser();
+          }
+        }}
+        onSaved={() => {}}
       />
 
       {/* Companion Profile Sheet */}

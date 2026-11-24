@@ -1386,7 +1386,7 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
   const isPatchRequest =
     Boolean(bodyObj.patch) && typeof bodyObj.patch === 'object' && !Array.isArray(bodyObj.patch);
 
-  const deepSelectCols = 'id, life_context_json, deep_profile_json, analyst_notes_json';
+  const deepSelectCols = 'id, is_default, life_context_json, deep_profile_json, analyst_notes_json';
   const primaryFetch = await supabaseAdmin
     .from('profiles')
     .select(deepSelectCols)
@@ -1396,6 +1396,7 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
 
   let existing = primaryFetch.data as unknown as {
     id: string;
+    is_default?: boolean | null;
     life_context_json?: unknown;
     deep_profile_json?: unknown;
     analyst_notes_json?: unknown;
@@ -1406,20 +1407,34 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
     hasMigration018Cols = false;
     const pre018Fetch = await supabaseAdmin
       .from('profiles')
-      .select('id, life_context_json')
+      .select('id, is_default, life_context_json')
       .eq('id', req.params.id)
       .eq('user_id', req.appUser.id)
       .maybeSingle();
     if (!pre018Fetch.error && pre018Fetch.data) {
-      existing = pre018Fetch.data as unknown as { id: string; life_context_json?: unknown };
+      existing = pre018Fetch.data as unknown as {
+        id: string;
+        is_default?: boolean | null;
+        life_context_json?: unknown;
+      };
     } else {
       const fallbackFetch = await supabaseAdmin
         .from('profiles')
-        .select('id')
+        .select('id, life_context_json')
         .eq('id', req.params.id)
         .eq('user_id', req.appUser.id)
         .maybeSingle();
-      existing = fallbackFetch.data as unknown as { id: string } | null;
+      if (!fallbackFetch.error && fallbackFetch.data) {
+        existing = fallbackFetch.data as unknown as { id: string; life_context_json?: unknown };
+      } else {
+        const minFetch = await supabaseAdmin
+          .from('profiles')
+          .select('id')
+          .eq('id', req.params.id)
+          .eq('user_id', req.appUser.id)
+          .maybeSingle();
+        existing = minFetch.data as unknown as { id: string } | null;
+      }
     }
   }
 
@@ -1521,6 +1536,18 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
     }
     res.status(500).json({ error: 'Failed to save life context.' });
     return;
+  }
+
+  if (existing.is_default === true) {
+    await supabaseAdmin
+      .from('users')
+      .update({
+        user_living_context_json: sanitized,
+        user_deep_profile_json: sanitizedDeepProfile,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', req.appUser.id)
+      .then(() => undefined, () => undefined);
   }
 
   res.json({

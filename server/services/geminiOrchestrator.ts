@@ -151,7 +151,11 @@ export interface MessageSuggestions {
 export interface ConsultationProfileRecord {
   id: string;
   name: string;
+  short_name?: string | null;
+  is_default?: boolean;
+  gender?: string | null;
   is_activated: boolean;
+  has_birth_chart?: boolean;
   chart_text_context: string | null;
   chart_json?: CompiledChartData | null;
   profile_memory_summary: string | null;

@@ -35,6 +35,7 @@ interface ChatSettingsModalProps {
   onChangeExpert: (slug: string) => void;
   onChangeLanguage: (slug: string) => void;
   onToggleMemory: () => void;
+  onOpenMemoryInspector?: () => void;
   onSaved: (updated: {
     chatFontSize: ChatFontSize;
     chatNumericFont: UserNumericFontChoice;
@@ -73,6 +74,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
   onChangeExpert,
   onChangeLanguage,
   onToggleMemory,
+  onOpenMemoryInspector,
   onSaved,
   onClose,
 }) => {
@@ -521,37 +523,56 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
             </div>
 
             {/* Longitudinal Context Memory (Active for Profiles, General & Learning) */}
-            <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-2.5">
-              <div>
-                <p className="text-xs font-medium text-[#3D3830]">
-                  {activeProfileId
-                    ? 'Longitudinal Profile Memory'
-                    : expertSlug === 'learn_astrology'
-                    ? 'Longitudinal Learning Memory'
-                    : 'Longitudinal General Memory'}
-                </p>
-                <p className="text-[11px] text-[#8B8275]">
-                  {activeProfileId
-                    ? 'Carry key life context across sessions for this chart'
-                    : expertSlug === 'learn_astrology'
-                    ? 'Carry your astrology study progress across learning sessions'
-                    : 'Carry context across your General discussions'}
-                </p>
+            <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] px-3.5 py-2.5 space-y-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium text-[#3D3830]">
+                    {activeProfileId
+                      ? 'Longitudinal Profile Memory'
+                      : expertSlug === 'learn_astrology'
+                      ? 'Longitudinal Learning Memory'
+                      : 'Longitudinal General Memory'}
+                  </p>
+                  <p className="text-[11px] text-[#8B8275]">
+                    {activeProfileId
+                      ? 'Carry key life context across sessions for this chart'
+                      : expertSlug === 'learn_astrology'
+                      ? 'Carry your astrology study progress across learning sessions'
+                      : 'Carry context across your General discussions'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={useFullProfileMemory}
+                  onClick={onToggleMemory}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors shrink-0 cursor-pointer ${
+                    useFullProfileMemory
+                      ? 'border-[#3D3830]/25 bg-[#4A453D] text-[#FAF7F2]'
+                      : 'border-[#3D3830]/15 bg-[#F1ECE3] text-[#5C5449]'
+                  }`}
+                >
+                  <Brain className="h-3.5 w-3.5" />
+                  <span>{useFullProfileMemory ? 'On' : 'Off'}</span>
+                </button>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={useFullProfileMemory}
-                onClick={onToggleMemory}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors shrink-0 cursor-pointer ${
-                  useFullProfileMemory
-                    ? 'border-[#3D3830]/25 bg-[#4A453D] text-[#FAF7F2]'
-                    : 'border-[#3D3830]/15 bg-[#F1ECE3] text-[#5C5449]'
-                }`}
-              >
-                <Brain className="h-3.5 w-3.5" />
-                <span>{useFullProfileMemory ? 'On' : 'Off'}</span>
-              </button>
+              {onOpenMemoryInspector && (
+                <div className="pt-2 border-t border-[#3D3830]/8 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-[#8B8275]">
+                    View, edit, or reset what companions remember
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenMemoryInspector();
+                    }}
+                    className="text-[11px] font-medium text-[#3D3830] underline underline-offset-4 hover:text-[#8B7355] transition-colors shrink-0 cursor-pointer"
+                  >
+                    Inspect &amp; manage memory
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

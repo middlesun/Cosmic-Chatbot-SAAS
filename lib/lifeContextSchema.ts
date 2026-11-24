@@ -77,7 +77,9 @@ export type DeepProfileBucketKey =
   | 'desires_and_goals'
   | 'active_dilemmas'
   | 'relationship_dynamics'
-  | 'communication_preferences';
+  | 'communication_preferences'
+  | 'habits_and_routines'
+  | 'values_and_principles';
 
 export interface DeepProfileEntry {
   id: string;
@@ -101,9 +103,23 @@ export interface DeepProfileData {
   active_dilemmas?: string[];
   relationship_dynamics?: string[];
   communication_preferences?: string[];
+  habits_and_routines?: string[];
+  values_and_principles?: string[];
   entries?: DeepProfileEntry[];
   updated_at?: string;
 }
+
+export interface UserContextPreferences {
+  memory_paused: boolean;
+  allow_cross_companion_memory: boolean;
+}
+
+export const DEFAULT_USER_CONTEXT_PREFERENCES: UserContextPreferences = {
+  memory_paused: false,
+  allow_cross_companion_memory: true,
+};
+
+export type ConversationThreadKind = 'chat' | 'journal' | 'checkin' | 'goal_review';
 
 export interface CouncilAnalystNote {
   id: string;
@@ -141,6 +157,8 @@ export const DEEP_PROFILE_BUCKET_LABELS: Record<DeepProfileBucketKey, string> = 
   active_dilemmas: 'Active Dilemmas',
   relationship_dynamics: 'Relationship Dynamics',
   communication_preferences: 'Conversation Style',
+  habits_and_routines: 'Habits & Daily Rhythm',
+  values_and_principles: 'Values & Inner Compass',
 };
 
 export const CITED_INSIGHT_CATEGORY_LABELS: Record<CitedInsightCategory, string> = {
@@ -363,4 +381,32 @@ export function formatLifeContextSummary(raw?: LifeContextData | null): string {
   }
 
   return parts.join(' | ');
+}
+
+export function countLivingContextSignals(
+  lifeCtx?: LifeContextData | null,
+  deepProfile?: DeepProfileData | null
+): number {
+  let count = 0;
+  if (lifeCtx && typeof lifeCtx === 'object') {
+    if (lifeCtx.relationship_status) count += 1;
+    if (lifeCtx.career_mode || lifeCtx.career_role || lifeCtx.workplace_context) count += 1;
+    if (lifeCtx.location_status) count += 1;
+    if (Array.isArray(lifeCtx.children) && lifeCtx.children.length > 0) count += 1;
+    if (Array.isArray(lifeCtx.past_anchors)) count += lifeCtx.past_anchors.length;
+    if (Array.isArray(lifeCtx.core_stress_areas)) count += lifeCtx.core_stress_areas.length;
+    if (Array.isArray(lifeCtx.cited_insights)) count += lifeCtx.cited_insights.length;
+  }
+  if (deepProfile && typeof deepProfile === 'object') {
+    if (Array.isArray(deepProfile.entries) && deepProfile.entries.length > 0) {
+      count += deepProfile.entries.length;
+    } else {
+      for (const key of Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]) {
+        if (Array.isArray(deepProfile[key])) {
+          count += deepProfile[key]!.length;
+        }
+      }
+    }
+  }
+  return count;
 }

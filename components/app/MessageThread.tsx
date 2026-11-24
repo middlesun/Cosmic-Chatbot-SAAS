@@ -1366,7 +1366,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               <div className="max-h-56 overflow-y-auto p-1.5 space-y-0.5">
                 {profiles.length === 0 ? (
                   <p className="px-3 py-3 text-xs text-[#8B8275] text-center">
-                    No saved charts yet.
+                    No saved birth charts yet — optional for companionship, used for natal astrology readings.
                   </p>
                 ) : (
                   profiles.map((p) => {

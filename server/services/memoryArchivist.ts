@@ -2,10 +2,14 @@ import type {
   CareerContextMode,
   CitedInsightCategory,
   DeepProfileBucketKey,
+  DeepProfileData,
+  LifeContextData,
   LocationContextStatus,
   RelationshipContextStatus,
+  UserContextPreferences,
 } from '../../lib/lifeContextSchema';
 import {
+  DEFAULT_USER_CONTEXT_PREFERENCES,
   DEEP_PROFILE_BUCKET_LABELS,
   VALID_ANCHOR_TAGS,
   VALID_CAREER_MODES,
@@ -25,6 +29,10 @@ import {
   appendCouncilAnalystNotes,
   mergeExtractedDeepProfile,
   mergeExtractedLifeFacts,
+  mergeUserAndProfileContextForPrompt,
+  sanitizeDeepProfile,
+  sanitizeLifeContext,
+  sanitizeUserContextPreferences,
   type ExtractedLifeFactsPatch,
 } from './lifeContextGuard';
 import {
@@ -183,8 +191,87 @@ export function computeUpdatedVedicUserProfile(
   };
 }
 
+export async function getUserContextPreferences(
+  userId: string
+): Promise<UserContextPreferences> {
+  if (!userId) return { ...DEFAULT_USER_CONTEXT_PREFERENCES };
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) return { ...DEFAULT_USER_CONTEXT_PREFERENCES };
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .select('user_context_preferences')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return { ...DEFAULT_USER_CONTEXT_PREFERENCES };
+    }
+    return sanitizeUserContextPreferences(
+      (data as { user_context_preferences?: unknown }).user_context_preferences
+    );
+  } catch {
+    return { ...DEFAULT_USER_CONTEXT_PREFERENCES };
+  }
+}
+
+export async function getUserLivingContextState(userId: string): Promise<{
+  migrationReady: boolean;
+  livingContext: LifeContextData;
+  deepProfile: DeepProfileData;
+  preferences: UserContextPreferences;
+  timezone: string | null;
+  proactiveOptIn: boolean;
+}> {
+  const empty = {
+    migrationReady: false,
+    livingContext: {} as LifeContextData,
+    deepProfile: {} as DeepProfileData,
+    preferences: { ...DEFAULT_USER_CONTEXT_PREFERENCES },
+    timezone: null as string | null,
+    proactiveOptIn: false,
+  };
+  if (!userId) return empty;
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) return empty;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .select(
+        'user_living_context_json, user_deep_profile_json, user_context_preferences, timezone, proactive_opt_in'
+      )
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return empty;
+    }
+
+    const row = data as {
+      user_living_context_json?: unknown;
+      user_deep_profile_json?: unknown;
+      user_context_preferences?: unknown;
+      timezone?: string | null;
+      proactive_opt_in?: boolean | null;
+    };
+
+    return {
+      migrationReady: true,
+      livingContext: sanitizeLifeContext(row.user_living_context_json).sanitized,
+      deepProfile: sanitizeDeepProfile(row.user_deep_profile_json),
+      preferences: sanitizeUserContextPreferences(row.user_context_preferences),
+      timezone: typeof row.timezone === 'string' && row.timezone.trim() ? row.timezone.trim() : null,
+      proactiveOptIn: Boolean(row.proactive_opt_in),
+    };
+  } catch {
+    return empty;
+  }
+}
+
 export async function extractAndPersistDeepProfileFacts(
-  profileId: string,
+  profileId: string | null,
   userId: string,
   turnContext?: ArchivistTurnContext
 ): Promise<string[]> {
@@ -195,54 +282,67 @@ export async function extractAndPersistDeepProfileFacts(
   if (!supabaseAdmin || !(await isOpenRouterConfiguredAsync())) return [];
 
   try {
-    const [primaryProfileRes, engineOverrides] = await Promise.all([
-      supabaseAdmin
-        .from('profiles')
-        .select('id, user_id, life_context_json, deep_profile_json')
-        .eq('id', profileId)
-        .eq('user_id', userId)
-        .maybeSingle(),
+    const [userState, engineOverrides] = await Promise.all([
+      getUserLivingContextState(userId),
       getEnginePromptOverrides().catch(() => ({} as Record<string, never>)),
     ]);
 
-    let hasDeepProfileCol = !primaryProfileRes.error;
+    if (userState.preferences.memory_paused) {
+      return [];
+    }
+
+    let hasDeepProfileCol = true;
     let profile: {
       id: string;
       user_id: string;
+      is_default?: boolean;
       life_context_json?: unknown;
       deep_profile_json?: unknown;
-    } | null = primaryProfileRes.data as unknown as {
-      id: string;
-      user_id: string;
-      life_context_json?: unknown;
-      deep_profile_json?: unknown;
-    } | null;
+    } | null = null;
 
-    if (primaryProfileRes.error) {
-      hasDeepProfileCol = false;
-      const fallbackRes = await supabaseAdmin
+    if (profileId) {
+      const primaryProfileRes = await supabaseAdmin
         .from('profiles')
-        .select('id, user_id, life_context_json')
+        .select('id, user_id, is_default, life_context_json, deep_profile_json')
         .eq('id', profileId)
         .eq('user_id', userId)
         .maybeSingle();
-      profile = fallbackRes.data as unknown as {
-        id: string;
-        user_id: string;
-        life_context_json?: unknown;
-      } | null;
+
+      if (!primaryProfileRes.error && primaryProfileRes.data) {
+        profile = primaryProfileRes.data as unknown as typeof profile;
+      } else if (primaryProfileRes.error) {
+        hasDeepProfileCol = false;
+        const fallbackRes = await supabaseAdmin
+          .from('profiles')
+          .select('id, user_id, life_context_json')
+          .eq('id', profileId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (fallbackRes.data) {
+          profile = fallbackRes.data as unknown as typeof profile;
+        }
+      }
     }
 
-    if (!profile) return [];
+    // If neither a matching profile nor Migration 021 user context columns exist, skip cleanly
+    if (!profile && !userState.migrationReady) return [];
 
-    const existingCtx =
-      profile.life_context_json && typeof profile.life_context_json === 'object'
-        ? (profile.life_context_json as Record<string, unknown>)
-        : {};
-    const existingDeep =
-      profile.deep_profile_json && typeof profile.deep_profile_json === 'object'
-        ? (profile.deep_profile_json as Record<string, unknown>)
-        : {};
+    const isSelfUserTarget = !profile || profile.is_default === true;
+    const promptCombined = isSelfUserTarget
+      ? mergeUserAndProfileContextForPrompt({
+          userLivingContext: userState.livingContext,
+          userDeepProfile: userState.deepProfile,
+          profileLifeContext: profile?.life_context_json,
+          profileDeepProfile: profile?.deep_profile_json,
+          allowCrossCompanionMemory: true,
+        })
+      : {
+          life_context_json: sanitizeLifeContext(profile?.life_context_json).sanitized,
+          deep_profile_json: sanitizeDeepProfile(profile?.deep_profile_json),
+        };
+
+    const existingCtx = promptCombined.life_context_json as Record<string, unknown>;
+    const existingDeep = promptCombined.deep_profile_json as Record<string, unknown>;
 
     const existingNotesList = Array.isArray(existingCtx.cited_insights)
       ? (existingCtx.cited_insights as Array<Record<string, unknown>>)
@@ -484,39 +584,58 @@ export async function extractAndPersistDeepProfileFacts(
       conversation_id: turnContext?.conversationId || null,
     };
 
-    const mergedLife = mergeExtractedLifeFacts(profile.life_context_json, patchPayload);
-    const mergedDeep = hasDeepProfileCol
-      ? mergeExtractedDeepProfile(profile.deep_profile_json, patchPayload)
-      : { sanitized: {}, changed: false };
+    if (profile && profileId) {
+      const mergedLife = mergeExtractedLifeFacts(profile.life_context_json, patchPayload);
+      const mergedDeep = hasDeepProfileCol
+        ? mergeExtractedDeepProfile(profile.deep_profile_json, patchPayload)
+        : { sanitized: {}, changed: false };
 
-    if (mergedLife.changed || mergedDeep.changed) {
-      const updatePayload: Record<string, unknown> = {
-        updated_at: new Date().toISOString(),
-      };
-      if (mergedLife.changed) {
-        updatePayload.life_context_json = mergedLife.sanitized;
-        updatePayload.life_context_completeness = mergedLife.completeness;
-      }
-      if (hasDeepProfileCol && mergedDeep.changed) {
-        updatePayload.deep_profile_json = mergedDeep.sanitized;
-      }
+      if (mergedLife.changed || mergedDeep.changed) {
+        const updatePayload: Record<string, unknown> = {
+          updated_at: new Date().toISOString(),
+        };
+        if (mergedLife.changed) {
+          updatePayload.life_context_json = mergedLife.sanitized;
+          updatePayload.life_context_completeness = mergedLife.completeness;
+        }
+        if (hasDeepProfileCol && mergedDeep.changed) {
+          updatePayload.deep_profile_json = mergedDeep.sanitized;
+        }
 
-      const updateRes = await supabaseAdmin
-        .from('profiles')
-        .update(updatePayload)
-        .eq('id', profileId)
-        .eq('user_id', userId);
-
-      if (updateRes.error && hasDeepProfileCol && mergedLife.changed) {
-        await supabaseAdmin
+        const updateRes = await supabaseAdmin
           .from('profiles')
-          .update({
-            life_context_json: mergedLife.sanitized,
-            life_context_completeness: mergedLife.completeness,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq('id', profileId)
           .eq('user_id', userId);
+
+        if (updateRes.error && hasDeepProfileCol && mergedLife.changed) {
+          await supabaseAdmin
+            .from('profiles')
+            .update({
+              life_context_json: mergedLife.sanitized,
+              life_context_completeness: mergedLife.completeness,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', profileId)
+            .eq('user_id', userId);
+        }
+      }
+    }
+
+    if (isSelfUserTarget && userState.migrationReady) {
+      const mergedUserLife = mergeExtractedLifeFacts(userState.livingContext, patchPayload);
+      const mergedUserDeep = mergeExtractedDeepProfile(userState.deepProfile, patchPayload);
+      if (mergedUserLife.changed || mergedUserDeep.changed) {
+        const userUpdatePayload: Record<string, unknown> = {
+          updated_at: new Date().toISOString(),
+        };
+        if (mergedUserLife.changed) {
+          userUpdatePayload.user_living_context_json = mergedUserLife.sanitized;
+        }
+        if (mergedUserDeep.changed) {
+          userUpdatePayload.user_deep_profile_json = mergedUserDeep.sanitized;
+        }
+        await supabaseAdmin.from('users').update(userUpdatePayload).eq('id', userId);
       }
     }
 
@@ -528,7 +647,7 @@ export async function extractAndPersistDeepProfileFacts(
 }
 
 export async function updateCompanionProfileMemoryAfterTurn(params: {
-  profileId: string;
+  profileId?: string | null;
   userId: string;
   companionName: string;
   companionRole?: string | null;
@@ -537,11 +656,11 @@ export async function updateCompanionProfileMemoryAfterTurn(params: {
   latestUserPrompt: string;
   latestAssistantAnswer?: string;
 }): Promise<void> {
-  if (!params.profileId || !params.userId || !params.latestUserPrompt?.trim()) return;
+  if (!params.userId || !params.latestUserPrompt?.trim()) return;
   const cleanName = params.companionName.trim() || 'Companion';
   const cleanRole = (params.companionRole || '').trim();
   const actorCitation = cleanRole ? `${cleanName} · ${cleanRole}` : cleanName;
-  await extractAndPersistDeepProfileFacts(params.profileId, params.userId, {
+  await extractAndPersistDeepProfileFacts(params.profileId || null, params.userId, {
     latestUserPrompt: params.latestUserPrompt,
     latestAssistantAnswer: params.latestAssistantAnswer,
     actorCitation,
@@ -1103,6 +1222,11 @@ export async function updateCompanionBondAfterTurn(params: {
   if (!supabaseAdmin) return;
 
   try {
+    const prefs = await getUserContextPreferences(params.userId);
+    if (prefs.memory_paused) {
+      return;
+    }
+
     const current = await getCompanionBond(params.userId, normalizedSlug);
     const nextTurns = current.relationship_state.total_turns + 1;
     const nextStage = computeFamiliarityStage(nextTurns);
@@ -1220,5 +1344,456 @@ export async function updateCompanionBondAfterTurn(params: {
     }
   } catch (err) {
     console.warn('[memoryArchivist] Non-fatal companion bond error:', err);
+  }
+}
+
+// =============================================================================
+// USER-FACING MEMORY INSPECTOR (Inspect, Edit, Forget, Pause)
+// =============================================================================
+
+export interface UserMemoryBondSummary {
+  companion_slug: string;
+  companion_name: string;
+  memory_summary: string | null;
+  total_turns: number;
+  familiarity_stage: CompanionRelationshipStage;
+  tone_preferences: string[];
+  inside_references: string[];
+  last_interaction_at: string | null;
+}
+
+export interface UserMemorySnapshot {
+  migrationReady: boolean;
+  preferences: UserContextPreferences;
+  timezone: string | null;
+  proactiveOptIn: boolean;
+  livingContext: LifeContextData;
+  deepProfile: DeepProfileData;
+  bonds: UserMemoryBondSummary[];
+  defaultProfile: {
+    id: string;
+    name: string;
+    short_name: string | null;
+  } | null;
+}
+
+async function resolveUserDefaultProfile(userId: string): Promise<{
+  id: string;
+  name: string;
+  short_name: string | null;
+  life_context_json: unknown;
+  deep_profile_json: unknown;
+  hasDeepCol: boolean;
+} | null> {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !userId) return null;
+
+  const primary = await supabaseAdmin
+    .from('profiles')
+    .select('id, name, short_name, is_default, life_context_json, deep_profile_json')
+    .eq('user_id', userId)
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!primary.error && primary.data) {
+    const r = primary.data as Record<string, unknown>;
+    return {
+      id: String(r.id),
+      name: String(r.name || 'You'),
+      short_name: typeof r.short_name === 'string' ? r.short_name : null,
+      life_context_json: r.life_context_json,
+      deep_profile_json: r.deep_profile_json,
+      hasDeepCol: true,
+    };
+  }
+
+  if (primary.error) {
+    const fb = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, short_name, is_default, life_context_json')
+      .eq('user_id', userId)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (!fb.error && fb.data) {
+      const r = fb.data as Record<string, unknown>;
+      return {
+        id: String(r.id),
+        name: String(r.name || 'You'),
+        short_name: typeof r.short_name === 'string' ? r.short_name : null,
+        life_context_json: r.life_context_json,
+        deep_profile_json: {},
+        hasDeepCol: false,
+      };
+    }
+  }
+  return null;
+}
+
+export async function getUserMemorySnapshot(
+  userId: string,
+  companionNameMap?: Record<string, string>
+): Promise<UserMemorySnapshot> {
+  const [userState, defaultProf] = await Promise.all([
+    getUserLivingContextState(userId),
+    resolveUserDefaultProfile(userId),
+  ]);
+
+  const combined = mergeUserAndProfileContextForPrompt({
+    userLivingContext: userState.livingContext,
+    userDeepProfile: userState.deepProfile,
+    profileLifeContext: defaultProf?.life_context_json,
+    profileDeepProfile: defaultProf?.deep_profile_json,
+    allowCrossCompanionMemory: true,
+  });
+
+  const bonds: UserMemoryBondSummary[] = [];
+  const supabaseAdmin = getSupabaseAdmin();
+  if (supabaseAdmin) {
+    try {
+      const { data: bondRows, error: bondErr } = await supabaseAdmin
+        .from('companion_bonds')
+        .select('companion_slug, memory_summary, relationship_state_json, last_interaction_at')
+        .eq('user_id', userId)
+        .order('last_interaction_at', { ascending: false });
+
+      if (!bondErr && Array.isArray(bondRows)) {
+        for (const rawRow of bondRows) {
+          const row = rawRow as Record<string, unknown>;
+          const slug = String(row.companion_slug || '').trim().toLowerCase();
+          if (!slug) continue;
+          const relState = normalizeCompanionRelationshipState(row.relationship_state_json);
+          const summary =
+            typeof row.memory_summary === 'string' && row.memory_summary.trim()
+              ? row.memory_summary.trim()
+              : null;
+          if (
+            !summary &&
+            relState.total_turns === 0 &&
+            relState.inside_references.length === 0 &&
+            relState.tone_preferences.length === 0
+          ) {
+            continue;
+          }
+          const displayName =
+            companionNameMap?.[slug] ||
+            slug
+              .replace(/^custom_/, '')
+              .split('_')
+              .filter(Boolean)
+              .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+              .join(' ') ||
+            'Companion';
+          bonds.push({
+            companion_slug: slug,
+            companion_name: displayName,
+            memory_summary: summary,
+            total_turns: relState.total_turns,
+            familiarity_stage: relState.familiarity_stage,
+            tone_preferences: relState.tone_preferences,
+            inside_references: relState.inside_references,
+            last_interaction_at:
+              typeof row.last_interaction_at === 'string' ? row.last_interaction_at : null,
+          });
+        }
+      }
+    } catch {
+      // Non-fatal if companion_bonds hasn't been created yet
+    }
+  }
+
+  return {
+    migrationReady: userState.migrationReady,
+    preferences: userState.preferences,
+    timezone: userState.timezone,
+    proactiveOptIn: userState.proactiveOptIn,
+    livingContext: combined.life_context_json,
+    deepProfile: combined.deep_profile_json,
+    bonds,
+    defaultProfile: defaultProf
+      ? { id: defaultProf.id, name: defaultProf.name, short_name: defaultProf.short_name }
+      : null,
+  };
+}
+
+export async function updateUserMemorySnapshot(
+  userId: string,
+  patch: {
+    livingContext?: unknown;
+    deepProfile?: unknown;
+    preferences?: Partial<UserContextPreferences>;
+    timezone?: string | null;
+    proactiveOptIn?: boolean;
+  }
+): Promise<UserMemorySnapshot> {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !userId) {
+    return getUserMemorySnapshot(userId);
+  }
+
+  const [userState, defaultProf] = await Promise.all([
+    getUserLivingContextState(userId),
+    resolveUserDefaultProfile(userId),
+  ]);
+
+  const nextLiving =
+    patch.livingContext !== undefined
+      ? sanitizeLifeContext(patch.livingContext)
+      : sanitizeLifeContext(
+          mergeUserAndProfileContextForPrompt({
+            userLivingContext: userState.livingContext,
+            profileLifeContext: defaultProf?.life_context_json,
+          }).life_context_json
+        );
+
+  const nextDeep =
+    patch.deepProfile !== undefined
+      ? sanitizeDeepProfile(patch.deepProfile)
+      : sanitizeDeepProfile(
+          mergeUserAndProfileContextForPrompt({
+            userDeepProfile: userState.deepProfile,
+            profileDeepProfile: defaultProf?.deep_profile_json,
+          }).deep_profile_json
+        );
+
+  const nextPrefs = patch.preferences
+    ? sanitizeUserContextPreferences({
+        ...userState.preferences,
+        ...patch.preferences,
+      })
+    : userState.preferences;
+
+  if (userState.migrationReady) {
+    const userUpdates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (patch.livingContext !== undefined) {
+      userUpdates.user_living_context_json = nextLiving.sanitized;
+    }
+    if (patch.deepProfile !== undefined) {
+      userUpdates.user_deep_profile_json = nextDeep;
+    }
+    if (patch.preferences !== undefined) {
+      userUpdates.user_context_preferences = nextPrefs;
+    }
+    if (patch.timezone !== undefined) {
+      userUpdates.timezone =
+        typeof patch.timezone === 'string' && patch.timezone.trim()
+          ? patch.timezone.trim().slice(0, 80)
+          : null;
+    }
+    if (typeof patch.proactiveOptIn === 'boolean') {
+      userUpdates.proactive_opt_in = patch.proactiveOptIn;
+    }
+
+    await supabaseAdmin.from('users').update(userUpdates).eq('id', userId);
+  }
+
+  // Keep user's own default profile cleanly synced when present
+  if (defaultProf && (patch.livingContext !== undefined || patch.deepProfile !== undefined)) {
+    const profPayload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (patch.livingContext !== undefined) {
+      // Preserve birth_time_accuracy from default profile if user edited via chartless tab
+      const existingProfCtx = sanitizeLifeContext(defaultProf.life_context_json).sanitized;
+      const mergedForProfile = sanitizeLifeContext({
+        ...nextLiving.sanitized,
+        ...(nextLiving.sanitized.birth_time_accuracy
+          ? {}
+          : existingProfCtx.birth_time_accuracy
+          ? { birth_time_accuracy: existingProfCtx.birth_time_accuracy }
+          : {}),
+      });
+      profPayload.life_context_json = mergedForProfile.sanitized;
+      profPayload.life_context_completeness = mergedForProfile.completeness;
+    }
+    if (patch.deepProfile !== undefined && defaultProf.hasDeepCol) {
+      profPayload.deep_profile_json = nextDeep;
+    }
+    await supabaseAdmin
+      .from('profiles')
+      .update(profPayload)
+      .eq('id', defaultProf.id)
+      .eq('user_id', userId);
+  }
+
+  return getUserMemorySnapshot(userId);
+}
+
+export async function deleteUserMemoryItem(
+  userId: string,
+  spec: {
+    kind: 'cited_insight' | 'deep_entry' | 'bucket_fact' | 'stress_area' | 'anchor';
+    id?: string;
+    bucket?: DeepProfileBucketKey;
+    text?: string;
+    year?: number;
+    tag?: string;
+  }
+): Promise<UserMemorySnapshot> {
+  const snapshot = await getUserMemorySnapshot(userId);
+  const nextLiving: LifeContextData = { ...snapshot.livingContext };
+  const nextDeep: DeepProfileData = { ...snapshot.deepProfile };
+  let livingChanged = false;
+  let deepChanged = false;
+
+  if (spec.kind === 'cited_insight') {
+    const prev = nextLiving.cited_insights || [];
+    const targetText = (spec.text || '').trim().toLowerCase();
+    const filtered = prev.filter((item) => {
+      if (spec.id && item.id === spec.id) return false;
+      if (targetText && item.summary.trim().toLowerCase() === targetText) return false;
+      return true;
+    });
+    if (filtered.length !== prev.length) {
+      nextLiving.cited_insights = filtered;
+      livingChanged = true;
+    }
+  } else if (spec.kind === 'stress_area') {
+    const prev = nextLiving.core_stress_areas || [];
+    const targetText = (spec.text || '').trim().toLowerCase();
+    const filtered = prev.filter((item) => item.trim().toLowerCase() !== targetText);
+    if (filtered.length !== prev.length) {
+      nextLiving.core_stress_areas = filtered;
+      livingChanged = true;
+    }
+  } else if (spec.kind === 'anchor') {
+    const prev = nextLiving.past_anchors || [];
+    const filtered = prev.filter(
+      (a) => !(a.year === spec.year && a.tag === spec.tag)
+    );
+    if (filtered.length !== prev.length) {
+      nextLiving.past_anchors = filtered;
+      livingChanged = true;
+    }
+  } else if (spec.kind === 'deep_entry') {
+    const prevEntries = nextDeep.entries || [];
+    const removed = prevEntries.filter(
+      (e) =>
+        (spec.id && e.id === spec.id) ||
+        (spec.text && e.fact.trim().toLowerCase() === spec.text.trim().toLowerCase())
+    );
+    const remaining = prevEntries.filter((e) => !removed.includes(e));
+    if (remaining.length !== prevEntries.length) {
+      nextDeep.entries = remaining;
+      for (const r of removed) {
+        if (r.bucket && Array.isArray(nextDeep[r.bucket])) {
+          const rLower = r.fact.trim().toLowerCase();
+          nextDeep[r.bucket] = nextDeep[r.bucket]!.filter(
+            (x) => x.trim().toLowerCase() !== rLower
+          );
+        }
+      }
+      deepChanged = true;
+    }
+  } else if (spec.kind === 'bucket_fact' && spec.bucket && spec.text) {
+    const targetLower = spec.text.trim().toLowerCase();
+    const prevBucket = nextDeep[spec.bucket] || [];
+    const filteredBucket = prevBucket.filter((x) => x.trim().toLowerCase() !== targetLower);
+    if (filteredBucket.length !== prevBucket.length) {
+      nextDeep[spec.bucket] = filteredBucket;
+      deepChanged = true;
+    }
+    if (Array.isArray(nextDeep.entries)) {
+      const filteredEntries = nextDeep.entries.filter(
+        (e) => e.fact.trim().toLowerCase() !== targetLower
+      );
+      if (filteredEntries.length !== nextDeep.entries.length) {
+        nextDeep.entries = filteredEntries;
+        deepChanged = true;
+      }
+    }
+  }
+
+  return updateUserMemorySnapshot(userId, {
+    ...(livingChanged ? { livingContext: nextLiving } : {}),
+    ...(deepChanged ? { deepProfile: nextDeep } : {}),
+  });
+}
+
+export async function updateCompanionBondManual(
+  userId: string,
+  companionSlug: string,
+  patch: {
+    memory_summary?: string | null;
+    tone_preferences?: string[];
+    inside_references?: string[];
+  }
+): Promise<CompanionBondState | null> {
+  const normalizedSlug = String(companionSlug || '').trim().toLowerCase();
+  if (!userId || !normalizedSlug) return null;
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) return null;
+
+  try {
+    const current = await getCompanionBond(userId, normalizedSlug);
+    const nextSummary =
+      patch.memory_summary !== undefined
+        ? patch.memory_summary
+          ? String(patch.memory_summary).trim().slice(0, 1200) || null
+          : null
+        : current.memory_summary;
+    const nextRelState: CompanionRelationshipState = {
+      ...current.relationship_state,
+      ...(patch.tone_preferences !== undefined
+        ? { tone_preferences: cleanStringList(patch.tone_preferences, 6, 80) }
+        : {}),
+      ...(patch.inside_references !== undefined
+        ? { inside_references: cleanStringList(patch.inside_references, 8, 90) }
+        : {}),
+    };
+
+    const nowIso = new Date().toISOString();
+    const { error } = await supabaseAdmin
+      .from('companion_bonds')
+      .upsert(
+        {
+          user_id: userId,
+          companion_slug: normalizedSlug,
+          memory_summary: nextSummary,
+          relationship_state_json: nextRelState,
+          last_interaction_at: current.last_interaction_at || nowIso,
+          updated_at: nowIso,
+        },
+        { onConflict: 'user_id,companion_slug' }
+      );
+
+    if (error && !isMissingRelationError(error)) {
+      return null;
+    }
+
+    return {
+      companion_slug: normalizedSlug,
+      memory_summary: nextSummary,
+      relationship_state: nextRelState,
+      last_interaction_at: current.last_interaction_at || nowIso,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function resetCompanionBond(
+  userId: string,
+  companionSlug: string
+): Promise<boolean> {
+  const normalizedSlug = String(companionSlug || '').trim().toLowerCase();
+  if (!userId || !normalizedSlug) return false;
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) return false;
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('companion_bonds')
+      .delete()
+      .eq('user_id', userId)
+      .eq('companion_slug', normalizedSlug);
+    return !error || isMissingRelationError(error);
+  } catch {
+    return false;
   }
 }

@@ -374,12 +374,22 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load global companion settings');
-      setEngineOverrides(
-        data.engineOverrides && typeof data.engineOverrides === 'object' ? data.engineOverrides : {}
-      );
-      setEngineDefaults(
-        data.engineDefaults && typeof data.engineDefaults === 'object' ? data.engineDefaults : {}
-      );
+      const promptBundle =
+        data.enginePrompts && typeof data.enginePrompts === 'object' ? data.enginePrompts : null;
+      const resolvedOverrides =
+        promptBundle?.overrides && typeof promptBundle.overrides === 'object'
+          ? promptBundle.overrides
+          : data.engineOverrides && typeof data.engineOverrides === 'object'
+          ? data.engineOverrides
+          : {};
+      const resolvedDefaults =
+        promptBundle?.defaults && typeof promptBundle.defaults === 'object'
+          ? promptBundle.defaults
+          : data.engineDefaults && typeof data.engineDefaults === 'object'
+          ? data.engineDefaults
+          : {};
+      setEngineOverrides(resolvedOverrides);
+      setEngineDefaults(resolvedDefaults);
       setGlobalPromptsLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load global companion controls');

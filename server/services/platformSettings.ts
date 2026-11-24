@@ -61,6 +61,10 @@ import type {
   CompanionGroupConfigsMap,
   CompanionSkillRulesMap,
 } from '../../components/app/chatTypes';
+import {
+  DEFAULT_COMPANION_SPECIALIZATIONS,
+  type CompanionSpecializationTag,
+} from '../../lib/companionV2Schema';
 
 export type { ChatStyle, DefaultCompanionArchetype, GuideSlug };
 export { ALLOWED_CHAT_STYLES, ALL_GUIDE_CATALOG_META, GUIDE_SLUGS, getGuideCatalogMeta, isValidGuideSlug, normalizeChatStyle } from './enginePromptDefaults';
@@ -204,6 +208,7 @@ export interface EnginePromptOverrides {
   memory_profile_synthesizer_prompt?: string;
   companion_archetypes?: DefaultCompanionArchetype[];
   companion_matcher_instructions?: string;
+  companion_specializations?: CompanionSpecializationTag[];
   clarity_helper_system_prompt?: string;
   vedic_tier1_reasoning_laws?: string;
   vedic_anti_cliche_rules?: string;
@@ -638,6 +643,8 @@ export type PlatformSettingKey =
   | 'mini_apps_rules_overlay'
   | 'companion_soul_backstory_overlay'
   | 'companion_meta_overlay'
+  | 'companion_v2_overlay'
+  | 'companion_versions_overlay'
   | 'per_guide_chatbot_config'
   | 'engine_prompt_overrides'
   | 'playbook_overrides';
@@ -1257,6 +1264,7 @@ export function getEnginePromptDefaultsBundle() {
     memory_profile_synthesizer_prompt: DEFAULT_MEMORY_PROFILE_SYNTHESIZER_PROMPT,
     companion_archetypes: DEFAULT_COMPANION_ARCHETYPES,
     companion_matcher_instructions: DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
+    companion_specializations: DEFAULT_COMPANION_SPECIALIZATIONS,
     clarity_helper_system_prompt: DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
     vedic_tier1_reasoning_laws: DEFAULT_VEDIC_TIER1_REASONING_LAWS,
     vedic_anti_cliche_rules: DEFAULT_VEDIC_ANTI_CLICHE_RULES,

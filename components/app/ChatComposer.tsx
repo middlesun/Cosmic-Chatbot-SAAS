@@ -104,6 +104,7 @@ interface ChatComposerProps {
   onClearReply: () => void;
   onOpenMyPrompts: () => void;
   onOpenSettings: () => void;
+  onOpenMemoryInspector?: () => void;
   onOpenAddChartModal?: () => void;
   onNewChat: () => void;
   onSendMessage: (overrideText?: string, options?: { curatedStarter?: boolean }) => void;
@@ -288,6 +289,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   onClearReply,
   onOpenMyPrompts,
   onOpenSettings,
+  onOpenMemoryInspector,
   onOpenAddChartModal,
   onNewChat,
   onSendMessage,
@@ -1276,6 +1278,17 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                           <span className="font-medium select-none">Memory</span>
                         </button>
                       </Tooltip>
+                      {onOpenMemoryInspector && (
+                        <Tooltip content="Inspect, edit, or clear saved companion memory" placement="top">
+                          <button
+                            type="button"
+                            onClick={onOpenMemoryInspector}
+                            className="inline-flex items-center gap-1 rounded-full border border-[#3D3830]/12 bg-[#FAF7F2] px-2.5 py-1 text-[11px] font-medium text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                          >
+                            <span>Inspect</span>
+                          </button>
+                        </Tooltip>
+                      )}
                       <Tooltip content="Chat Settings" placement="top">
                         <button
                           type="button"
@@ -1481,7 +1494,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                             {profiles.length === 0 ? (
                               <div className="px-2.5 py-2.5 space-y-2">
                                 <p className="text-xs text-[#8B8275]">
-                                  No birth details saved yet.
+                                  No birth details saved yet — optional for companionship, used for natal chart readings.
                                 </p>
                                 {onOpenAddChartModal && (
                                   <button
@@ -1722,7 +1735,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                                 {profiles.length === 0 ? (
                                   <div className="px-2.5 py-2.5 space-y-2.5">
                                     <p className="text-xs text-[#8B8275]">
-                                      No birth details saved yet.
+                                      No birth details saved yet — optional for companionship, used for natal chart readings.
                                     </p>
                                     {onOpenAddChartModal && (
                                       <button

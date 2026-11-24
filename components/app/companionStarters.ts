@@ -142,6 +142,11 @@ const SLUG_STARTERS: Record<string, string[]> = {
     'Help me get a tiny bit of momentum',
     'Just hanging out before I tackle my evening',
   ],
+  max: [
+    'Fell out of my routine again — help me restart without guilt?',
+    'Everything on my list feels overwhelming today',
+    'Need a steady voice before I take one small step',
+  ],
   kabir: [
     'Long day — hang out for a late-night chai chat?',
     'Need a straight-talking friend for 5 minutes',

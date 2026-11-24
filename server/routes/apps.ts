@@ -30,6 +30,9 @@ import {
 } from '../services/miniAppsRegistry';
 import { getMiniAppsConfig } from '../services/platformSettings';
 import { getPublicCompanionsCatalogCached } from '../services/companionPresets';
+import { getUserLivingContextState } from '../services/memoryArchivist';
+import { mergeUserAndProfileContextForPrompt } from '../services/lifeContextGuard';
+import { countLivingContextSignals } from '../../lib/lifeContextSchema';
 import type { PublicCompanionCard } from '../../components/app/chatTypes';
 import type {
   MiniAppDefinition,
@@ -752,6 +755,19 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     // Graceful pre-migration fallback
   }
 
+  const livingState = await getUserLivingContextState(req.appUser.id).catch(() => null);
+  const mergedForHome = livingState
+    ? mergeUserAndProfileContextForPrompt({
+        userLivingContext: livingState.livingContext,
+        userDeepProfile: livingState.deepProfile,
+        profileLifeContext: primaryProfile?.life_context_json || null,
+        allowCrossCompanionMemory: true,
+      })
+    : null;
+  const signalCount = mergedForHome
+    ? countLivingContextSignals(mergedForHome.life_context_json, mergedForHome.deep_profile_json)
+    : countLivingContextSignals(primaryProfile?.life_context_json || null);
+
   res.json({
     recentConversations,
     recentGuides: recentGuides.slice(0, 6),
@@ -759,6 +775,13 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     favoriteAppSlugs,
     recentAppRuns,
     primaryProfile,
+    livingContextSummary: {
+      signalCount,
+      memoryPaused: Boolean(livingState?.preferences.memory_paused),
+      allowCrossCompanionMemory: livingState
+        ? livingState.preferences.allow_cross_companion_memory !== false
+        : true,
+    },
   });
 });
 

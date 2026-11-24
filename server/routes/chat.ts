@@ -19,13 +19,19 @@ import { isAstrologyApiConfigured } from '../services/astrologyApi';
 import { compileBirthChart, enrichCompiledChart, type CompiledChartData } from '../services/chartCompiler';
 import {
   compactConversationThreadMemory,
+  deleteUserMemoryItem,
   extractAndPersistCouncilAnalystNotes,
   getCompanionBond,
+  getUserLivingContextState,
+  getUserMemorySnapshot,
   rebuildProfileMemory,
   recordCompanionBubbleReactionBond,
+  resetCompanionBond,
   updateCompanionBondAfterTurn,
+  updateCompanionBondManual,
   updateCompanionProfileMemoryAfterTurn,
   updateProfileMemoryAfterTurn,
+  updateUserMemorySnapshot,
   type CompanionBondState,
 } from '../services/memoryArchivist';
 import { getPublicChatCatalogCached } from '../services/promptDefaults';
@@ -72,11 +78,15 @@ import {
 } from '../services/intentRouter';
 import {
   mergeLifeContextPatch,
+  mergeUserAndProfileContextForPrompt,
   type LifeContextData,
 } from '../services/lifeContextGuard';
 import type {
+  ConversationThreadKind,
   CouncilAnalystNote,
+  DeepProfileBucketKey,
   DeepProfileData,
+  UserContextPreferences,
 } from '../../lib/lifeContextSchema';
 import {
   buildNatalTruthDossierLayerA,
@@ -108,6 +118,7 @@ const CONVERSATION_LIST_COLUMNS_BASE =
 const CONVERSATION_LIST_COLUMNS_V5 = `${CONVERSATION_LIST_COLUMNS_BASE}, ask_later_json`;
 const CONVERSATION_LIST_COLUMNS_V6 = `${CONVERSATION_LIST_COLUMNS_V5}, pillar, is_active_tab, active_tab_order, companion_type, companion_persona_json`;
 const CONVERSATION_LIST_COLUMNS_V7 = `${CONVERSATION_LIST_COLUMNS_V6}, companion_slug, companion_chat_mode`;
+const CONVERSATION_LIST_COLUMNS_V8 = `${CONVERSATION_LIST_COLUMNS_V7}, thread_kind`;
 const CONVERSATION_TURN_COLUMNS_V8 = `${CONVERSATION_LIST_COLUMNS_V7}, thread_memory_summary, thread_memory_msg_count`;
 
 const MESSAGE_SELECT_COLUMNS_BASE =
@@ -125,6 +136,7 @@ function normalizeConversationDefaults(row: Record<string, unknown>): Record<str
     companion_slug: null,
     companion_chat_mode: null,
     companion_persona_json: null,
+    thread_kind: 'chat',
     ...row,
   };
 }
@@ -148,7 +160,22 @@ function isValidCompanionType(v: unknown): v is CompanionArchetypeSlug {
 }
 
 function isValidCompanionChatCue(v: unknown): v is CompanionChatCue {
-  return v === 'just_listen' || v === 'help_think';
+  return v === 'natural' || v === 'just_listen' || v === 'help_think';
+}
+
+function isValidThreadKind(v: unknown): v is ConversationThreadKind {
+  return v === 'chat' || v === 'journal' || v === 'checkin' || v === 'goal_review';
+}
+
+function isChatModeConstraintError(
+  err: { code?: string; message?: string } | null | undefined
+): boolean {
+  if (!err) return false;
+  const msg = String(err.message || '').toLowerCase();
+  return (
+    (err.code === '23514' || msg.includes('check constraint')) &&
+    msg.includes('companion_chat_mode')
+  );
 }
 
 function buildPublicCompanionPersonaSnapshot(preset: CompanionPresetRecord): Record<string, unknown> {
@@ -292,7 +319,7 @@ router.get('/conversations', requireAuth, async (req: AuthenticatedRequest, res)
   };
 
   const [convResPrimary, primaryProfRes] = await Promise.all([
-    buildConvQuery(CONVERSATION_LIST_COLUMNS_V7),
+    buildConvQuery(CONVERSATION_LIST_COLUMNS_V8),
     supabaseAdmin
       .from('profiles')
       .select(
@@ -304,26 +331,33 @@ router.get('/conversations', requireAuth, async (req: AuthenticatedRequest, res)
 
   let convRows: Array<Record<string, unknown>> = [];
   if (convResPrimary.error) {
-    const convResV6 = await buildConvQuery(CONVERSATION_LIST_COLUMNS_V6);
-    if (!convResV6.error && convResV6.data) {
-      convRows = ((convResV6.data || []) as unknown as Array<Record<string, unknown>>).map(
+    const convResV7 = await buildConvQuery(CONVERSATION_LIST_COLUMNS_V7);
+    if (!convResV7.error && convResV7.data) {
+      convRows = ((convResV7.data || []) as unknown as Array<Record<string, unknown>>).map(
         normalizeConversationDefaults
       );
     } else {
-      const convResV5 = await buildConvQuery(CONVERSATION_LIST_COLUMNS_V5);
-      if (!convResV5.error && convResV5.data) {
-        convRows = ((convResV5.data || []) as unknown as Array<Record<string, unknown>>).map(
+      const convResV6 = await buildConvQuery(CONVERSATION_LIST_COLUMNS_V6);
+      if (!convResV6.error && convResV6.data) {
+        convRows = ((convResV6.data || []) as unknown as Array<Record<string, unknown>>).map(
           normalizeConversationDefaults
         );
       } else {
-        const convResFallback = await buildConvQuery(CONVERSATION_LIST_COLUMNS_BASE);
-        if (convResFallback.error) {
-          res.status(500).json({ error: 'Failed to load consultations' });
-          return;
+        const convResV5 = await buildConvQuery(CONVERSATION_LIST_COLUMNS_V5);
+        if (!convResV5.error && convResV5.data) {
+          convRows = ((convResV5.data || []) as unknown as Array<Record<string, unknown>>).map(
+            normalizeConversationDefaults
+          );
+        } else {
+          const convResFallback = await buildConvQuery(CONVERSATION_LIST_COLUMNS_BASE);
+          if (convResFallback.error) {
+            res.status(500).json({ error: 'Failed to load consultations' });
+            return;
+          }
+          convRows = ((convResFallback.data || []) as unknown as Array<Record<string, unknown>>).map(
+            normalizeConversationDefaults
+          );
         }
-        convRows = ((convResFallback.data || []) as unknown as Array<Record<string, unknown>>).map(
-          normalizeConversationDefaults
-        );
       }
     }
   } else {
@@ -428,9 +462,13 @@ router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res
     active_tab_order,
     companion_type,
     companion_persona_json,
+    thread_kind,
   } = req.body || {};
 
   const normalizedPillar: ChatPillar = isValidPillar(pillar) ? pillar : 'council';
+  const resolvedThreadKind: ConversationThreadKind = isValidThreadKind(thread_kind)
+    ? thread_kind
+    : 'chat';
   const effectiveProfileId =
     normalizedPillar === 'council' || normalizedPillar === 'companion'
       ? profile_id || null
@@ -529,6 +567,22 @@ router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res
         : null,
   };
 
+  const v8Insert = await supabaseAdmin
+    .from('conversations')
+    .insert({ ...extendedPayload, thread_kind: resolvedThreadKind })
+    .select(CONVERSATION_LIST_COLUMNS_V8)
+    .single();
+
+  if (!v8Insert.error && v8Insert.data) {
+    res.status(201).json({
+      conversation: normalizeConversationDefaults(
+        v8Insert.data as unknown as Record<string, unknown>
+      ),
+      persistedPillar: true,
+    });
+    return;
+  }
+
   const primaryInsert = await supabaseAdmin
     .from('conversations')
     .insert(extendedPayload)
@@ -537,9 +591,10 @@ router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res
 
   if (!primaryInsert.error && primaryInsert.data) {
     res.status(201).json({
-      conversation: normalizeConversationDefaults(
-        primaryInsert.data as unknown as Record<string, unknown>
-      ),
+      conversation: normalizeConversationDefaults({
+        ...(primaryInsert.data as unknown as Record<string, unknown>),
+        thread_kind: resolvedThreadKind,
+      }),
       persistedPillar: true,
     });
     return;
@@ -565,6 +620,7 @@ router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res
       active_tab_order: extendedPayload.active_tab_order,
       companion_type: extendedPayload.companion_type,
       companion_persona_json: extendedPayload.companion_persona_json,
+      thread_kind: resolvedThreadKind,
     }),
     persistedPillar: false,
   });
@@ -684,6 +740,32 @@ router.patch('/conversations/:id', requireAuth, async (req: AuthenticatedRequest
       persisted: true,
     });
     return;
+  }
+
+  // Safe fallback if Migration 020 has not yet added 'natural' to DB check constraint
+  if (isChatModeConstraintError(primaryPatch.error) && v7Updates.companion_chat_mode === 'natural') {
+    const compatPatch = await supabaseAdmin
+      .from('conversations')
+      .update({
+        ...baseUpdates,
+        ...v6Updates,
+        companion_chat_mode: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', req.params.id)
+      .eq('user_id', req.appUser.id)
+      .select(CONVERSATION_LIST_COLUMNS_V7)
+      .maybeSingle();
+    if (!compatPatch.error && compatPatch.data) {
+      res.json({
+        conversation: normalizeConversationDefaults({
+          ...(compatPatch.data as unknown as Record<string, unknown>),
+          companion_chat_mode: 'natural',
+        }),
+        persisted: true,
+      });
+      return;
+    }
   }
 
   // Graceful fallback before migration 015 / 006 runs
@@ -1148,9 +1230,12 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
   const rawCompanionSlug =
     typeof req.body?.companionSlug === 'string' ? req.body.companionSlug.trim() : '';
   const forceNew = Boolean(req.body?.forceNew);
-  const requestedChatMode: CompanionChatCue | null = isValidCompanionChatCue(req.body?.chatMode)
+  const explicitRequestedChatMode: CompanionChatCue | null = isValidCompanionChatCue(
+    req.body?.chatMode
+  )
     ? req.body.chatMode
     : null;
+  const requestedChatMode: CompanionChatCue = explicitRequestedChatMode ?? 'natural';
   const pinAsTab = Boolean(req.body?.pinAsTab);
   const handoffNote =
     typeof req.body?.handoffNote === 'string' ? req.body.handoffNote.trim().slice(0, 240) : '';
@@ -1189,6 +1274,9 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
     typeof req.body?.profileId === 'string' && req.body.profileId.trim()
       ? req.body.profileId.trim()
       : null;
+  const requestedThreadKind: ConversationThreadKind = isValidThreadKind(req.body?.threadKind)
+    ? req.body.threadKind
+    : 'chat';
   const rawClientLocalHour =
     typeof req.body?.clientLocalHour === 'number' && Number.isFinite(req.body.clientLocalHour)
       ? Math.trunc(req.body.clientLocalHour)
@@ -1285,16 +1373,27 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
           existingConv.profile_id = verifiedCompanionProfileId;
         }
         if (
-          requestedChatMode &&
-          existingConv.companion_chat_mode !== requestedChatMode
+          explicitRequestedChatMode &&
+          existingConv.companion_chat_mode !== explicitRequestedChatMode
         ) {
-          await supabaseAdmin
+          const modeUpdateRes = await supabaseAdmin
             .from('conversations')
-            .update({ companion_chat_mode: requestedChatMode })
+            .update({ companion_chat_mode: explicitRequestedChatMode })
             .eq('id', String(existingConv.id))
-            .eq('user_id', req.appUser.id)
-            .then(() => undefined, () => undefined);
-          existingConv.companion_chat_mode = requestedChatMode;
+            .eq('user_id', req.appUser.id);
+          if (
+            modeUpdateRes.error &&
+            isChatModeConstraintError(modeUpdateRes.error) &&
+            explicitRequestedChatMode === 'natural'
+          ) {
+            await supabaseAdmin
+              .from('conversations')
+              .update({ companion_chat_mode: null })
+              .eq('id', String(existingConv.id))
+              .eq('user_id', req.appUser.id)
+              .then(() => undefined, () => undefined);
+          }
+          existingConv.companion_chat_mode = explicitRequestedChatMode;
         }
 
         let handoffMsgRecord: Record<string, unknown> | null = null;
@@ -1428,7 +1527,7 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
     let createdConv: Record<string, unknown> | null = null;
     let persistedPillar = true;
 
-    const v7Insert = await supabaseAdmin
+    let v7Insert = await supabaseAdmin
       .from('conversations')
       .insert({
         ...basePayload,
@@ -1438,14 +1537,60 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
         companion_slug: preset.slug,
         companion_chat_mode: requestedChatMode,
         companion_persona_json: publicSnapshot,
+        thread_kind: requestedThreadKind,
       })
-      .select(CONVERSATION_LIST_COLUMNS_V7)
+      .select(CONVERSATION_LIST_COLUMNS_V8)
       .single();
 
+    if (
+      v7Insert.error &&
+      String(v7Insert.error.message || '').toLowerCase().includes('thread_kind')
+    ) {
+      v7Insert = await supabaseAdmin
+        .from('conversations')
+        .insert({
+          ...basePayload,
+          pillar: 'companion',
+          is_active_tab: pinAsTab,
+          companion_type: 'friend',
+          companion_slug: preset.slug,
+          companion_chat_mode: requestedChatMode,
+          companion_persona_json: publicSnapshot,
+        })
+        .select(CONVERSATION_LIST_COLUMNS_V7)
+        .single();
+    }
+
+    if (
+      v7Insert.error &&
+      isChatModeConstraintError(v7Insert.error) &&
+      requestedChatMode === 'natural'
+    ) {
+      v7Insert = await supabaseAdmin
+        .from('conversations')
+        .insert({
+          ...basePayload,
+          pillar: 'companion',
+          is_active_tab: pinAsTab,
+          companion_type: 'friend',
+          companion_slug: preset.slug,
+          companion_chat_mode: null,
+          companion_persona_json: publicSnapshot,
+        })
+        .select(CONVERSATION_LIST_COLUMNS_V7)
+        .single();
+    }
+
     if (!v7Insert.error && v7Insert.data) {
-      createdConv = normalizeConversationDefaults(
-        v7Insert.data as unknown as Record<string, unknown>
-      );
+      createdConv = normalizeConversationDefaults({
+        ...(v7Insert.data as unknown as Record<string, unknown>),
+        companion_chat_mode:
+          (v7Insert.data as unknown as Record<string, unknown>).companion_chat_mode ||
+          requestedChatMode,
+        thread_kind:
+          (v7Insert.data as unknown as Record<string, unknown>).thread_kind ||
+          requestedThreadKind,
+      });
     } else {
       const v6Insert = await supabaseAdmin
         .from('conversations')
@@ -1652,7 +1797,7 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
   let createdConv: Record<string, unknown> | null = null;
   let persistedPillar = true;
 
-  const primaryInsert = await supabaseAdmin
+  let primaryInsert = await supabaseAdmin
     .from('conversations')
     .insert({
       ...basePayload,
@@ -1662,14 +1807,60 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
       companion_slug: customSlug,
       companion_chat_mode: requestedChatMode,
       companion_persona_json: cleanPersona,
+      thread_kind: requestedThreadKind,
     })
-    .select(CONVERSATION_LIST_COLUMNS_V7)
+    .select(CONVERSATION_LIST_COLUMNS_V8)
     .single();
 
+  if (
+    primaryInsert.error &&
+    String(primaryInsert.error.message || '').toLowerCase().includes('thread_kind')
+  ) {
+    primaryInsert = await supabaseAdmin
+      .from('conversations')
+      .insert({
+        ...basePayload,
+        pillar: 'companion',
+        is_active_tab: pinAsTab,
+        companion_type: safeType,
+        companion_slug: customSlug,
+        companion_chat_mode: requestedChatMode,
+        companion_persona_json: cleanPersona,
+      })
+      .select(CONVERSATION_LIST_COLUMNS_V7)
+      .single();
+  }
+
+  if (
+    primaryInsert.error &&
+    isChatModeConstraintError(primaryInsert.error) &&
+    requestedChatMode === 'natural'
+  ) {
+    primaryInsert = await supabaseAdmin
+      .from('conversations')
+      .insert({
+        ...basePayload,
+        pillar: 'companion',
+        is_active_tab: pinAsTab,
+        companion_type: safeType,
+        companion_slug: customSlug,
+        companion_chat_mode: null,
+        companion_persona_json: cleanPersona,
+      })
+      .select(CONVERSATION_LIST_COLUMNS_V7)
+      .single();
+  }
+
   if (!primaryInsert.error && primaryInsert.data) {
-    createdConv = normalizeConversationDefaults(
-      primaryInsert.data as unknown as Record<string, unknown>
-    );
+    createdConv = normalizeConversationDefaults({
+      ...(primaryInsert.data as unknown as Record<string, unknown>),
+      companion_chat_mode:
+        (primaryInsert.data as unknown as Record<string, unknown>).companion_chat_mode ||
+        requestedChatMode,
+      thread_kind:
+        (primaryInsert.data as unknown as Record<string, unknown>).thread_kind ||
+        requestedThreadKind,
+    });
   } else {
     const v6Insert = await supabaseAdmin
       .from('conversations')
@@ -2407,23 +2598,35 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       ? requestedCompanionChatMode !== undefined
         ? isValidCompanionChatCue(requestedCompanionChatMode)
           ? requestedCompanionChatMode
-          : null
+          : 'natural'
         : isValidCompanionChatCue(convRecord.companion_chat_mode)
         ? convRecord.companion_chat_mode
-        : null
+        : 'natural'
       : null;
 
   if (
     activePillar === 'companion' &&
     requestedCompanionChatMode !== undefined &&
+    isValidCompanionChatCue(requestedCompanionChatMode) &&
     effectiveCompanionChatMode !== (convRecord.companion_chat_mode ?? null)
   ) {
-    await supabaseAdmin
+    const msgModeUpdate = await supabaseAdmin
       .from('conversations')
       .update({ companion_chat_mode: effectiveCompanionChatMode })
       .eq('id', conversation.id)
-      .eq('user_id', req.appUser.id)
-      .then(() => undefined, () => undefined);
+      .eq('user_id', req.appUser.id);
+    if (
+      msgModeUpdate.error &&
+      isChatModeConstraintError(msgModeUpdate.error) &&
+      effectiveCompanionChatMode === 'natural'
+    ) {
+      await supabaseAdmin
+        .from('conversations')
+        .update({ companion_chat_mode: null })
+        .eq('id', conversation.id)
+        .eq('user_id', req.appUser.id)
+        .then(() => undefined, () => undefined);
+    }
   }
 
   const clientLocalHour =
@@ -2551,7 +2754,10 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     id: string;
     name: string;
     short_name?: string | null;
+    is_default?: boolean;
+    gender?: string | null;
     is_activated: boolean;
+    has_birth_chart?: boolean;
     chart_text_context: string | null;
     chart_json?: CompiledChartData | null;
     natal_truth_dossier_json?: NatalTruthDossierV1 | null;
@@ -2743,7 +2949,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     const compBaseCols = `id, name, is_activated, chart_text_context, birth_date, birth_time, birth_city, birth_state, birth_country, gender, latitude, longitude, timezone_offset${
       needsCompanionChartJson ? ', chart_json' : ''
     }`;
-    const compProfileColsPre018 = `${compBaseCols}, short_name, current_city, current_state, current_country, life_context_json`;
+    const compProfileColsPre018 = `${compBaseCols}, short_name, is_default, current_city, current_state, current_country, life_context_json`;
     const compProfileCols = `${compProfileColsPre018}, deep_profile_json${
       needsCompanionNotes ? ', analyst_notes_json' : ''
     }`;
@@ -2860,10 +3066,62 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       }
     }
 
+    const userLivingState = await getUserLivingContextState(req.appUser.id).catch(() => null);
+    const allowCrossCompanion = userLivingState
+      ? userLivingState.preferences.allow_cross_companion_memory !== false
+      : true;
+
     if (focusedCompanionProf) {
+      const hasBirthChart = Boolean(
+        focusedCompanionProf.birth_date &&
+          (focusedCompanionProf.is_activated ||
+            focusedCompanionProf.chart_text_context ||
+            focusedCompanionProf.chart_json ||
+            needsCompanionChartJson)
+      );
+      const isSelfContextProfile =
+        !conversation.profile_id || focusedCompanionProf.is_default === true;
+      const mergedContext = mergeUserAndProfileContextForPrompt({
+        userLivingContext: isSelfContextProfile ? userLivingState?.livingContext : null,
+        userDeepProfile: isSelfContextProfile ? userLivingState?.deepProfile : null,
+        profileLifeContext: focusedCompanionProf.life_context_json,
+        profileDeepProfile: focusedCompanionProf.deep_profile_json,
+        allowCrossCompanionMemory: allowCrossCompanion,
+        activeCompanionSlug: effectiveCompanionSlug,
+      });
+
       profileData = {
         ...focusedCompanionProf,
+        has_birth_chart: hasBirthChart,
+        life_context_json: mergedContext.life_context_json,
+        deep_profile_json: mergedContext.deep_profile_json,
         profile_memory_summary: null, // Strictly isolate Council memory from Companions
+      };
+    } else {
+      const mergedContext = mergeUserAndProfileContextForPrompt({
+        userLivingContext: userLivingState?.livingContext,
+        userDeepProfile: userLivingState?.deepProfile,
+        allowCrossCompanionMemory: allowCrossCompanion,
+        activeCompanionSlug: effectiveCompanionSlug,
+      });
+      profileData = {
+        id: '',
+        name: req.appUser.preferred_call_name || req.appUser.full_name || 'Friend',
+        short_name: req.appUser.preferred_call_name || null,
+        is_default: true,
+        is_activated: false,
+        has_birth_chart: false,
+        chart_text_context: null,
+        chart_json: null,
+        profile_memory_summary: null,
+        life_context_json: mergedContext.life_context_json,
+        deep_profile_json: mergedContext.deep_profile_json,
+        birth_date: '',
+        birth_time: '',
+        birth_city: '',
+        birth_country: '',
+        current_city: req.appUser.location_city || null,
+        current_country: req.appUser.location_country || null,
       };
     }
 
@@ -3897,9 +4155,11 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
           presetCompanion?.name || activeCompanionPersona?.name || 'Companion';
         const companionRole =
           presetCompanion?.primary_expertise || activeCompanionPersona?.role_label || null;
-        const companionProfileId = profileData?.id || conversation.profile_id || null;
-        const canUpdateProfileDeepMemory =
-          Boolean(companionProfileId) && conversation.use_full_profile_memory !== false;
+        const companionProfileId =
+          profileData?.id && profileData.id.trim()
+            ? profileData.id
+            : conversation.profile_id || null;
+        const canUpdateProfileDeepMemory = conversation.use_full_profile_memory !== false;
         const activeUserId = req.appUser.id;
         const convIdForUpdate = conversation.id;
         scheduleBackgroundTask(async () => {
@@ -3911,7 +4171,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
               userPrompt: promptText,
               assistantAnswer: finalAssistantText,
             }),
-            ...(canUpdateProfileDeepMemory && companionProfileId
+            ...(canUpdateProfileDeepMemory
               ? [
                   updateCompanionProfileMemoryAfterTurn({
                     profileId: companionProfileId,
@@ -4748,6 +5008,203 @@ router.delete('/custom-prompts/:id', requireAuth, async (req: AuthenticatedReque
   }
 
   res.json({ deleted: true });
+});
+
+// 13. User-Facing Memory Inspector & Living Context (Chartless + Synced "You" Profile)
+router.get('/memory', requireAuth, async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  try {
+    const companionsCatalog = await getPublicCompanionsCatalogCached().catch(
+      (): PublicCompanionCard[] => []
+    );
+    const companionNames: Record<string, string> = {};
+    for (const c of companionsCatalog) {
+      companionNames[c.slug] = c.name;
+    }
+
+    const snapshot = await getUserMemorySnapshot(req.appUser.id, companionNames);
+    res.json(snapshot);
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Failed to load companion memory',
+    });
+  }
+});
+
+router.patch('/memory', requireAuth, async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const body =
+    req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+      ? (req.body as Record<string, unknown>)
+      : {};
+
+  let nextPreferences: Partial<UserContextPreferences> | undefined;
+  if (
+    body.preferences &&
+    typeof body.preferences === 'object' &&
+    !Array.isArray(body.preferences)
+  ) {
+    const rawPrefs = body.preferences as Record<string, unknown>;
+    nextPreferences = {};
+    if (typeof rawPrefs.memory_paused === 'boolean') {
+      nextPreferences.memory_paused = rawPrefs.memory_paused;
+    }
+    if (typeof rawPrefs.allow_cross_companion_memory === 'boolean') {
+      nextPreferences.allow_cross_companion_memory = rawPrefs.allow_cross_companion_memory;
+    }
+    if (Object.keys(nextPreferences).length === 0) {
+      nextPreferences = undefined;
+    }
+  }
+
+  let validatedTimezone: string | null | undefined;
+  if (body.timezone === null || body.timezone === '') {
+    validatedTimezone = null;
+  } else if (typeof body.timezone === 'string') {
+    const trimmed = body.timezone.trim().slice(0, 80);
+    if (trimmed) {
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: trimmed });
+        validatedTimezone = trimmed;
+      } catch {
+        res.status(400).json({ error: 'Invalid timezone identifier' });
+        return;
+      }
+    }
+  }
+
+  try {
+    const result = await updateUserMemorySnapshot(req.appUser.id, {
+      livingContext: body.livingContext,
+      deepProfile: body.deepProfile,
+      preferences: nextPreferences,
+      timezone: validatedTimezone,
+      proactiveOptIn:
+        typeof body.proactiveOptIn === 'boolean' ? body.proactiveOptIn : undefined,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Failed to update companion memory',
+    });
+  }
+});
+
+router.delete('/memory/item', requireAuth, async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const body =
+    req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+      ? (req.body as Record<string, unknown>)
+      : {};
+  const kind = body.kind;
+
+  if (
+    kind !== 'cited_insight' &&
+    kind !== 'deep_entry' &&
+    kind !== 'bucket_fact' &&
+    kind !== 'stress_area' &&
+    kind !== 'anchor'
+  ) {
+    res.status(400).json({ error: 'Unsupported memory item kind' });
+    return;
+  }
+
+  try {
+    const result = await deleteUserMemoryItem(req.appUser.id, {
+      kind,
+      id: typeof body.id === 'string' ? body.id : undefined,
+      bucket:
+        typeof body.bucket === 'string'
+          ? (body.bucket as DeepProfileBucketKey)
+          : undefined,
+      text: typeof body.text === 'string' ? body.text : undefined,
+      year: typeof body.year === 'number' ? body.year : undefined,
+      tag: typeof body.tag === 'string' ? body.tag : undefined,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Failed to delete memory item',
+    });
+  }
+});
+
+router.patch('/memory/bond/:slug', requireAuth, async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const rawSlug = Array.isArray(req.params.slug) ? req.params.slug[0] : req.params.slug;
+  const companionSlug = normalizeCompanionSlug(typeof rawSlug === 'string' ? rawSlug : '');
+  if (!companionSlug) {
+    res.status(400).json({ error: 'Companion slug is required' });
+    return;
+  }
+
+  const body =
+    req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+      ? (req.body as Record<string, unknown>)
+      : {};
+
+  try {
+    const bond = await updateCompanionBondManual(req.appUser.id, companionSlug, {
+      memory_summary:
+        body.memorySummary === null
+          ? null
+          : typeof body.memorySummary === 'string'
+          ? body.memorySummary
+          : undefined,
+      tone_preferences:
+        Array.isArray(body.tonePreferences)
+          ? body.tonePreferences.map((t) => String(t))
+          : undefined,
+      inside_references:
+        Array.isArray(body.insideReferences)
+          ? body.insideReferences.map((r) => String(r))
+          : undefined,
+    });
+    res.json({ bond });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Failed to update companion bond memory',
+    });
+  }
+});
+
+router.delete('/memory/bond/:slug', requireAuth, async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+
+  const rawSlug = Array.isArray(req.params.slug) ? req.params.slug[0] : req.params.slug;
+  const companionSlug = normalizeCompanionSlug(typeof rawSlug === 'string' ? rawSlug : '');
+  if (!companionSlug) {
+    res.status(400).json({ error: 'Companion slug is required' });
+    return;
+  }
+
+  try {
+    const result = await resetCompanionBond(req.appUser.id, companionSlug);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Failed to reset companion bond memory',
+    });
+  }
 });
 
 export default router;

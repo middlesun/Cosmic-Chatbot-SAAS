@@ -171,6 +171,11 @@ export interface HomeSummaryResponse {
     life_context_json?: LifeContextData | null;
     life_context_completeness?: number;
   } | null;
+  livingContextSummary?: {
+    signalCount: number;
+    memoryPaused: boolean;
+    allowCrossCompanionMemory: boolean;
+  };
 }
 
 export const DEFAULT_MINI_APP_CATEGORY_RECORDS: MiniAppCategoryRecord[] = [

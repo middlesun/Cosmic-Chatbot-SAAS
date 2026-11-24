@@ -20,6 +20,30 @@ import { checkRateLimit, getClientIpHash } from './services/abuseGuard';
 import { fetchSanityBlogPosts, isSanityConfigured } from '../lib/sanity';
 import { normalizeCouncilSlug } from '../lib/vedicTypes';
 import { ALLOWED_CHAT_NUMERIC_FONTS } from './services/platformSettings';
+import { sanitizeUserContextPreferences } from './services/lifeContextGuard';
+
+function isValidIanaTimezone(tz: string): boolean {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function toClientSafeAppUser(raw: Record<string, unknown>) {
+  const {
+    user_living_context_json: _ulc,
+    user_deep_profile_json: _udp,
+    ...rest
+  } = raw;
+  return {
+    ...rest,
+    user_context_preferences: sanitizeUserContextPreferences(raw.user_context_preferences),
+    timezone: typeof raw.timezone === 'string' && raw.timezone.trim() ? raw.timezone.trim() : null,
+    proactive_opt_in: Boolean(raw.proactive_opt_in),
+  };
+}
 
 export function createExpressApp(): Express {
   const app = express();
@@ -134,7 +158,7 @@ export function createExpressApp(): Express {
     ]);
 
     res.json({
-      user: req.appUser,
+      user: toClientSafeAppUser(req.appUser as unknown as Record<string, unknown>),
       stats: {
         savedProfiles: profileCount || 0,
         successfulReferrals: referralCount || 0,
@@ -161,6 +185,8 @@ export function createExpressApp(): Express {
       chat_font_size,
       chat_numeric_font,
       suggestions_auto_expand,
+      timezone,
+      proactive_opt_in,
     } = req.body || {};
     const updates: Record<string, string | boolean | null> = {};
 
@@ -199,6 +225,17 @@ export function createExpressApp(): Express {
     if (typeof suggestions_auto_expand === 'boolean') {
       updates.suggestions_auto_expand = suggestions_auto_expand;
     }
+    if (timezone === null || timezone === '') {
+      updates.timezone = null;
+    } else if (typeof timezone === 'string') {
+      const trimmedTz = timezone.trim().slice(0, 80);
+      if (trimmedTz && isValidIanaTimezone(trimmedTz)) {
+        updates.timezone = trimmedTz;
+      }
+    }
+    if (typeof proactive_opt_in === 'boolean') {
+      updates.proactive_opt_in = proactive_opt_in;
+    }
 
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ error: 'No valid preference fields supplied' });
@@ -213,8 +250,37 @@ export function createExpressApp(): Express {
       .single();
 
     if (error) {
-      // Safe fallback if newer columns aren't migrated yet
-      const withoutNumericFont = { ...updates };
+      // Safe fallback if newer columns (including Migration 021 timezone/proactive_opt_in) aren't migrated yet
+      const without021 = { ...updates };
+      delete without021.timezone;
+      delete without021.proactive_opt_in;
+
+      if (
+        Object.keys(without021).length > 0 &&
+        ('timezone' in updates || 'proactive_opt_in' in updates)
+      ) {
+        const m021Fallback = await supabaseAdmin
+          .from('users')
+          .update({ ...without021, updated_at: new Date().toISOString() })
+          .eq('id', req.appUser.id)
+          .select('*')
+          .single();
+
+        if (!m021Fallback.error && m021Fallback.data) {
+          res.json({
+            user: toClientSafeAppUser({
+              ...m021Fallback.data,
+              ...(updates.timezone !== undefined ? { timezone: updates.timezone } : {}),
+              ...(updates.proactive_opt_in !== undefined
+                ? { proactive_opt_in: updates.proactive_opt_in }
+                : {}),
+            }),
+          });
+          return;
+        }
+      }
+
+      const withoutNumericFont = { ...without021 };
       delete withoutNumericFont.chat_numeric_font;
 
       if (Object.keys(withoutNumericFont).length > 0 && 'chat_numeric_font' in updates) {
@@ -227,12 +293,12 @@ export function createExpressApp(): Express {
 
         if (!nfFallback.error && nfFallback.data) {
           res.json({
-            user: {
+            user: toClientSafeAppUser({
               ...nfFallback.data,
               ...(updates.chat_numeric_font !== undefined
                 ? { chat_numeric_font: updates.chat_numeric_font }
                 : {}),
-            },
+            }),
           });
           return;
         }
@@ -251,13 +317,13 @@ export function createExpressApp(): Express {
 
         if (!v7Fallback.error && v7Fallback.data) {
           res.json({
-            user: {
+            user: toClientSafeAppUser({
               ...v7Fallback.data,
               ...(default_astrology_mode ? { default_astrology_mode } : {}),
               ...(updates.chat_numeric_font !== undefined
                 ? { chat_numeric_font: updates.chat_numeric_font }
                 : {}),
-            },
+            }),
           });
           return;
         }
@@ -276,7 +342,7 @@ export function createExpressApp(): Express {
 
         if (!v2Fallback.error && v2Fallback.data) {
           res.json({
-            user: {
+            user: toClientSafeAppUser({
               ...v2Fallback.data,
               ...(typeof suggestions_auto_expand === 'boolean'
                 ? { suggestions_auto_expand }
@@ -285,7 +351,7 @@ export function createExpressApp(): Express {
               ...(updates.chat_numeric_font !== undefined
                 ? { chat_numeric_font: updates.chat_numeric_font }
                 : {}),
-            },
+            }),
           });
           return;
         }
@@ -304,26 +370,35 @@ export function createExpressApp(): Express {
           .single();
 
         if (!fallback.error && fallback.data) {
-          res.json({ user: fallback.data });
+          res.json({ user: toClientSafeAppUser(fallback.data as Record<string, unknown>) });
           return;
         }
       }
 
       // If only newer-migration fields were sent before migration ran, return non-blocking success
       if (
-        (Object.keys(updates).length === 1 && typeof suggestions_auto_expand === 'boolean') ||
-        (Object.keys(updates).length === 1 && Boolean(default_astrology_mode)) ||
-        (Object.keys(updates).length === 1 && 'chat_numeric_font' in updates)
+        Object.keys(updates).every(
+          (k) =>
+            k === 'suggestions_auto_expand' ||
+            k === 'default_astrology_mode' ||
+            k === 'chat_numeric_font' ||
+            k === 'timezone' ||
+            k === 'proactive_opt_in'
+        )
       ) {
         res.json({
-          user: {
-            ...req.appUser,
+          user: toClientSafeAppUser({
+            ...(req.appUser as unknown as Record<string, unknown>),
             ...(typeof suggestions_auto_expand === 'boolean' ? { suggestions_auto_expand } : {}),
             ...(default_astrology_mode ? { default_astrology_mode } : {}),
             ...(updates.chat_numeric_font !== undefined
               ? { chat_numeric_font: updates.chat_numeric_font }
               : {}),
-          },
+            ...(updates.timezone !== undefined ? { timezone: updates.timezone } : {}),
+            ...(updates.proactive_opt_in !== undefined
+              ? { proactive_opt_in: updates.proactive_opt_in }
+              : {}),
+          }),
           persisted: false,
         });
         return;
@@ -333,7 +408,7 @@ export function createExpressApp(): Express {
       return;
     }
 
-    res.json({ user: data });
+    res.json({ user: toClientSafeAppUser(data as Record<string, unknown>) });
   });
 
   // Clear forced password reset flag after invited old client sets new password

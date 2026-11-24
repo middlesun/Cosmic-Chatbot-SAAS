@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  Brain,
   Compass,
   FileText,
   Hash,
@@ -14,6 +15,7 @@ import {
   Sparkles,
   UserPlus,
 } from 'lucide-react';
+import { countLivingContextSignals } from '../../lib/lifeContextSchema';
 import { useAuth } from './AuthContext';
 import AstrologyModeToggle from './AstrologyModeToggle';
 import CompanionAvatar from './CompanionAvatar';
@@ -66,6 +68,7 @@ const AppDashboardHome: React.FC = () => {
   );
   const [summaryLoading, setSummaryLoading] = useState<boolean>(!isPreviewMode);
   const [calibrationOpen, setCalibrationOpen] = useState(false);
+  const [calibrationTab, setCalibrationTab] = useState<'context' | 'memory'>('context');
   const [activeCompanionGroup, setActiveCompanionGroup] =
     useState<CompanionDiscoveryTabId>('all');
   const [activeCompanionChip, setActiveCompanionChip] = useState<string | null>(null);
@@ -691,9 +694,9 @@ const AppDashboardHome: React.FC = () => {
         );
       })()}
 
-      {/* Gentle Desh-Kaal-Patra Context Calibration Prompt (when primary profile < 80%) */}
-      {summary?.primaryProfile &&
-        (summary.primaryProfile.life_context_completeness ?? 0) < 80 && (
+      {/* Gentle Living Context & Memory Inspector Card (Charted & Chartless Users) */}
+      {summary?.primaryProfile ? (
+        (summary.primaryProfile.life_context_completeness ?? 0) < 80 ? (
           <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/15 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-2 min-w-0 flex-1">
               <div className="flex items-center justify-between gap-3">
@@ -714,16 +717,116 @@ const AppDashboardHome: React.FC = () => {
                 />
               </div>
             </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setCalibrationTab('memory');
+                  setCalibrationOpen(true);
+                }}
+                className="min-h-[42px] inline-flex items-center justify-center gap-1.5 rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] px-4 py-2.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap cursor-pointer"
+              >
+                <Brain className="h-3.5 w-3.5 text-[#8B7355]" />
+                <span>Memory Inspector</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCalibrationTab('context');
+                  setCalibrationOpen(true);
+                }}
+                className="min-h-[42px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors whitespace-nowrap cursor-pointer"
+              >
+                <span>Complete Context</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </section>
+        ) : (
+          <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-9 w-9 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/10 flex items-center justify-center shrink-0">
+                <Brain className="h-4 w-4 text-[#8B7355]" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-[#3D3830]">
+                  Living Context &amp; Companion Memory
+                  {summary.livingContextSummary?.memoryPaused ? ' · Paused' : ''}
+                </p>
+                <p className="text-[11px] text-[#5C5449] truncate">
+                  Inspect, edit, or clear what companions remember across conversations.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setCalibrationTab('context');
+                  setCalibrationOpen(true);
+                }}
+                className="min-h-[38px] inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+              >
+                <span>Edit Context</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCalibrationTab('memory');
+                  setCalibrationOpen(true);
+                }}
+                className="min-h-[38px] inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/18 bg-[#FDFBF7] px-4 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+              >
+                <Brain className="h-3.5 w-3.5 text-[#8B7355]" />
+                <span>Inspect Memory</span>
+              </button>
+            </div>
+          </section>
+        )
+      ) : (
+        <section className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/14 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1.5 min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#8B7355]">
+                Living Context &amp; Memory
+              </p>
+              <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[11px] text-[#8B8275]">
+                {(summary?.livingContextSummary?.signalCount ?? 0) > 0
+                  ? `${summary?.livingContextSummary?.signalCount} saved`
+                  : 'Optional'}
+                {summary?.livingContextSummary?.memoryPaused ? ' · Paused' : ''}
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-[#5C5449] leading-relaxed">
+              Share your current chapter, work rhythm, or values so companions meet you where you are — no birth chart needed.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => setCalibrationOpen(true)}
-              className="min-h-[42px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              onClick={() => {
+                setCalibrationTab('memory');
+                setCalibrationOpen(true);
+              }}
+              className="min-h-[42px] inline-flex items-center justify-center gap-1.5 rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] px-4 py-2.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap cursor-pointer"
             >
-              <span>Complete Context</span>
+              <Brain className="h-3.5 w-3.5 text-[#8B7355]" />
+              <span>Memory Inspector</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCalibrationTab('context');
+                setCalibrationOpen(true);
+              }}
+              className="min-h-[42px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-5 py-2.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors whitespace-nowrap cursor-pointer"
+            >
+              <span>Edit Living Context</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
-          </section>
-        )}
+          </div>
+        </section>
+      )}
 
       {/* SECTION 3: PERSONAL TIMING OVERVIEW CARD */}
       <TimingRadarDashboard />
@@ -870,31 +973,69 @@ const AppDashboardHome: React.FC = () => {
         </div>
       </section>
 
-      {summary?.primaryProfile && (
-        <LifeContextModal
-          isOpen={calibrationOpen}
-          profileId={summary.primaryProfile.id}
-          profileName={summary.primaryProfile.short_name || summary.primaryProfile.name}
-          initialContext={summary.primaryProfile.life_context_json}
-          getAccessToken={getAccessToken}
-          isPreviewMode={isPreviewMode}
-          onClose={() => setCalibrationOpen(false)}
-          onSaved={(updatedCtx, nextScore) => {
-            setSummary((prev) =>
-              prev && prev.primaryProfile
+      <LifeContextModal
+        isOpen={calibrationOpen}
+        profileId={
+          calibrationTab === 'memory' || !summary?.primaryProfile
+            ? null
+            : summary.primaryProfile.id
+        }
+        profileName={
+          summary?.primaryProfile?.short_name ||
+          summary?.primaryProfile?.name ||
+          getUserProfileDisplayLabel(appUser)
+        }
+        mode={
+          calibrationTab === 'memory' || !summary?.primaryProfile
+            ? 'user_memory'
+            : undefined
+        }
+        initialTab={calibrationTab}
+        initialContext={
+          calibrationTab === 'memory' || !summary?.primaryProfile
+            ? undefined
+            : summary.primaryProfile.life_context_json
+        }
+        getAccessToken={getAccessToken}
+        isPreviewMode={isPreviewMode}
+        onClose={() => setCalibrationOpen(false)}
+        onPreferencesUpdated={(prefs) => {
+          setSummary((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  livingContextSummary: {
+                    signalCount: prev.livingContextSummary?.signalCount ?? 0,
+                    memoryPaused: prefs.memory_paused,
+                    allowCrossCompanionMemory: prefs.allow_cross_companion_memory,
+                  },
+                }
+              : prev
+          );
+        }}
+        onSaved={(updatedCtx, nextScore) => {
+          const nextSignals = countLivingContextSignals(updatedCtx);
+          setSummary((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              livingContextSummary: {
+                signalCount: nextSignals,
+                memoryPaused: prev.livingContextSummary?.memoryPaused ?? false,
+                allowCrossCompanionMemory:
+                  prev.livingContextSummary?.allowCrossCompanionMemory ?? true,
+              },
+              primaryProfile: prev.primaryProfile
                 ? {
-                    ...prev,
-                    primaryProfile: {
-                      ...prev.primaryProfile,
-                      life_context_json: updatedCtx,
-                      life_context_completeness: nextScore,
-                    },
+                    ...prev.primaryProfile,
+                    life_context_json: updatedCtx,
+                    life_context_completeness: nextScore,
                   }
-                : prev
-            );
-          }}
-        />
-      )}
+                : null,
+            };
+          });
+        }}
+      />
     </div>
   );
 };

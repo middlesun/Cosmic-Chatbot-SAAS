@@ -5,6 +5,7 @@ import {
   normalizeCouncilSlug,
   type VedicUserProfile,
 } from '../../lib/vedicTypes';
+import type { DeepProfileData, LifeContextData, UserContextPreferences } from '../../lib/lifeContextSchema';
 
 export const PRIMARY_ADMIN_EMAIL = 'fintasticapps@gmail.com';
 
@@ -31,6 +32,11 @@ export interface AppUserRecord {
   chat_numeric_font?: 'dm_sans' | 'inter' | 'plus_jakarta' | 'roboto' | 'cormorant' | 'jetbrains_mono' | null;
   suggestions_auto_expand?: boolean | null;
   sutra_user_profile_json?: VedicUserProfile | null;
+  user_living_context_json?: LifeContextData | null;
+  user_deep_profile_json?: DeepProfileData | null;
+  user_context_preferences?: UserContextPreferences | null;
+  timezone?: string | null;
+  proactive_opt_in?: boolean | null;
   signup_ip_hash?: string | null;
   last_ip_hash?: string | null;
   referral_code: string;

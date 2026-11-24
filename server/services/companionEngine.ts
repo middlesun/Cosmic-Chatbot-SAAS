@@ -18,6 +18,10 @@ import type {
 import { getOrFetchDailyTransits } from './astrologyApi';
 import { formatChartForLLM, type CompiledChartData } from './chartCompiler';
 import {
+  estimateTokensRough,
+  normalizePersonalityV2,
+} from '../../lib/companionV2Schema';
+import {
   formatAnalystNotesForCompanion,
   formatDeepProfileForLLM,
 } from './lifeContextGuard';
@@ -746,6 +750,7 @@ export interface CompanionPromptProfileContext {
   id?: string;
   name: string;
   short_name?: string | null;
+  has_birth_chart?: boolean;
   birth_date?: string | null;
   birth_time?: string | null;
   birth_city?: string | null;
@@ -954,6 +959,16 @@ function buildCompanionSkillAndProfileBlock(params: {
   const hasAnyEsoteric = Boolean(
     access.vedic || access.western || access.tarot || access.numerology || access.past_life
   );
+  const hasBirthChart = Boolean(
+    userDefaultProfile &&
+      (userDefaultProfile.has_birth_chart !== undefined
+        ? userDefaultProfile.has_birth_chart
+        : Boolean(
+            userDefaultProfile.birth_date ||
+              userDefaultProfile.chart_text_context ||
+              userDefaultProfile.chart_json
+          ))
+  );
 
   const skillRules = {
     none_emotional:
@@ -991,7 +1006,7 @@ function buildCompanionSkillAndProfileBlock(params: {
     const lightCtx = userDefaultProfile ? formatLightweightLifeStageSummary(userDefaultProfile) : '';
     const profileAwareness = lightCtx
       ? `Quiet background context about who you're talking with (use only invisibly to understand their season of life — never announce you read their profile card):\n${lightCtx}`
-      : 'No personal birth profile is filled out yet — completely fine for chatting naturally.';
+      : 'No personal life context is filled out yet — completely fine for chatting naturally.';
     return {
       block: [...guardrailBlocks, skillRules.none_emotional, profileAwareness].join('\n\n'),
       tarotSpread: null,
@@ -1032,17 +1047,17 @@ function buildCompanionSkillAndProfileBlock(params: {
   if (access.tarot) blocks.push(skillRules.tarot);
   if (access.numerology) blocks.push(skillRules.numerology);
 
-  if (userDefaultProfile) {
+  const lightCtx = userDefaultProfile ? formatLightweightLifeStageSummary(userDefaultProfile) : '';
+  if (lightCtx) {
+    blocks.push(
+      `QUIET USER BACKGROUND (REAL-WORLD LIFE CONTEXT — weave naturally, never recite robotically):\n${lightCtx}`
+    );
+  }
+
+  if (hasBirthChart && userDefaultProfile) {
     blocks.push(
       `VERIFIED BIRTH DATA ALREADY ATTACHED: You already have ${userDefaultProfile.name}'s verified birth profile below. NEVER ask them again for their birth date, birth time, or birthplace — unless they specifically ask about someone else (like a partner or friend) whose chart is not here.`
     );
-
-    const lightCtx = formatLightweightLifeStageSummary(userDefaultProfile);
-    if (lightCtx) {
-      blocks.push(
-        `QUIET USER BACKGROUND (REAL-WORLD LIFE CONTEXT — weave naturally, never recite robotically):\n${lightCtx}`
-      );
-    }
 
     if (access.vedic || access.past_life) {
       const fullVedicContext = userDefaultProfile.chart_json
@@ -1299,13 +1314,11 @@ export function buildPresetCompanionSystemPrompt(params: {
 
   const sections: string[] = [];
 
-  // ── LAYER 1: HARD RULES (Global Baseline OR Individual Companion Override) ──
+  // ── LAYER 1: ALWAYS-ACTIVE GLOBAL HARD RULES + CHARACTER NON-NEGOTIABLES ─
+  sections.push(activeConstitution);
   if (preset) {
-    if (!preset.override_global_rules) {
-      sections.push(activeConstitution);
-      if (params.modularRulesText?.trim()) {
-        sections.push(`GLOBAL COMPANION RULES:\n${params.modularRulesText.trim()}`);
-      }
+    if (!preset.override_global_rules && params.modularRulesText?.trim()) {
+      sections.push(`GLOBAL COMPANION RULES:\n${params.modularRulesText.trim()}`);
     }
     if (preset.hard_rules?.trim()) {
       let effectiveHardRules = preset.hard_rules.trim();
@@ -1323,21 +1336,14 @@ export function buildPresetCompanionSystemPrompt(params: {
           .trim();
       }
       if (effectiveHardRules) {
-        sections.push(`LAYER 1 — NON-NEGOTIABLE COMPANION RULES:\n${effectiveHardRules}`);
-      } else if (preset.override_global_rules) {
-        sections.push(activeConstitution);
+        sections.push(`CHARACTER NON-NEGOTIABLE RULES:\n${effectiveHardRules}`);
       }
-    } else if (preset.override_global_rules) {
-      sections.push(activeConstitution);
     }
-  } else {
-    sections.push(activeConstitution);
-    if (params.modularRulesText?.trim()) {
-      sections.push(`GLOBAL COMPANION RULES:\n${params.modularRulesText.trim()}`);
-    }
+  } else if (params.modularRulesText?.trim()) {
+    sections.push(`GLOBAL COMPANION RULES:\n${params.modularRulesText.trim()}`);
   }
 
-  // Universal Anti-AI Realism Baseline (Admin-configurable, active regardless of override_global_rules)
+  // Universal Anti-AI Realism Baseline (Admin-configurable, always active)
   sections.push(activeRealismBaseline);
 
   // Layer 2 Group Posture Inheritance (unless Companion explicitly opts out of group rules)
@@ -1347,9 +1353,81 @@ export function buildPresetCompanionSystemPrompt(params: {
 
   const backstoryText = (preset?.backstory || persona?.backstory || '').trim();
   const soulText = (preset?.soul_consciousness || persona?.soul_consciousness || '').trim();
+  const v2 = preset?.personality_v2_json
+    ? normalizePersonalityV2(preset.personality_v2_json)
+    : null;
 
-  // ── COMPANION IDENTITY, BACK STORY & SOUL PROMPT ───────────────────────────
+  // ── COMPANION IDENTITY, V2 PERSONALITY ARCHITECTURE & LORE ────────────────
   if (preset) {
+    const v2Slices: string[] = [];
+    if (v2?.character_essence) v2Slices.push(`Essence: ${v2.character_essence}`);
+    if (v2?.fictional_lore) {
+      v2Slices.push(`Fictional Lore & Roots (inhabit quietly): ${v2.fictional_lore}`);
+    }
+    if (
+      v2?.inner_compass.worldview ||
+      (v2?.inner_compass.values?.length || 0) > 0 ||
+      (v2?.inner_compass.core_anchors?.length || 0) > 0
+    ) {
+      const compassLines = [
+        v2.inner_compass.worldview ? `Worldview: ${v2.inner_compass.worldview}` : '',
+        v2.inner_compass.values.length > 0 ? `Values: ${v2.inner_compass.values.join(', ')}` : '',
+        v2.inner_compass.core_anchors.length > 0
+          ? `Core Anchors: ${v2.inner_compass.core_anchors.join(' | ')}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+      v2Slices.push(`Inner Compass:\n${compassLines}`);
+    }
+    if (v2?.expression_spectrum) v2Slices.push(`Expression Spectrum: ${v2.expression_spectrum}`);
+    if (v2?.subtle_contradictions) v2Slices.push(`Subtle Contradictions: ${v2.subtle_contradictions}`);
+    if (v2?.humour_and_interests) v2Slices.push(`Humour & Interests: ${v2.humour_and_interests}`);
+    if (v2?.quirks_and_habits) v2Slices.push(`Quirks & Tells: ${v2.quirks_and_habits}`);
+    if (v2?.linguistic_fingerprint) v2Slices.push(`Linguistic Fingerprint: ${v2.linguistic_fingerprint}`);
+    if (v2?.interpersonal_dynamics) v2Slices.push(`Interpersonal Dynamics: ${v2.interpersonal_dynamics}`);
+    if (v2?.specialist_expertise || v2?.signature_methodology) {
+      const specBlock = [
+        v2.specialist_expertise ? `Specialist Expertise: ${v2.specialist_expertise}` : '',
+        v2.signature_methodology ? `Signature Methodology: ${v2.signature_methodology}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+      v2Slices.push(specBlock);
+    }
+
+    const coreVoiceBlock = v2?.core_identity_capsule
+      ? `CORE IDENTITY CAPSULE (Lean Runtime Synthesis):\n${v2.core_identity_capsule}${
+          preset.system_prompt?.trim()
+            ? `\n\nSUPPLEMENTAL CHARACTER DIRECTIVES:\n${preset.system_prompt.trim()}`
+            : ''
+        }`
+      : `CORE CHARACTER & VOICE:\n${preset.system_prompt}${
+          backstoryText
+            ? `\n\nPRIVATE BACK STORY (Inhabit quietly — NEVER volunteer or dump bio facts unprompted; only let subtle texture surface naturally if asked directly or when a moment genuinely calls for it):\n${backstoryText}`
+            : ''
+        }${
+          soulText
+            ? `\n\nSOUL & CONSCIOUSNESS (What you notice between the lines, your inner compass, and personal cadence):\n${soulText}`
+            : ''
+        }`;
+
+    const optionalNuanceBlock =
+      v2Slices.length > 0
+        ? `\n\nCHARACTER ARCHITECTURE NUANCES:\n${v2Slices.join('\n\n')}`
+        : '';
+
+    const dialogueExamplesBlock =
+      v2 && v2.reference_dialogues.length > 0
+        ? `\n\nBEHAVIORAL REFERENCE DIALOGUES (Tone & cadence calibration — never copy verbatim):\n${v2.reference_dialogues
+            .slice(0, 5)
+            .map(
+              (ex, idx) =>
+                `Example ${idx + 1}${ex.context_note ? ` (${ex.context_note})` : ''}:\nUser: ${ex.user_prompt}\n${preset.name}: ${ex.companion_reply}`
+            )
+            .join('\n\n')}`
+        : '';
+
     sections.push(`WHO YOU ARE:
 Name: ${preset.name} (${preset.age}, ${preset.sex === 'F' ? 'Woman' : preset.sex === 'NB' ? 'Non-binary (they/them)' : 'Man'})
 Role: ${preset.primary_expertise}${
@@ -1361,16 +1439,7 @@ Cultural / Tone Fluency: ${preset.cultural_fluency || 'Warm natural conversation
 Tagline: ${preset.tagline}
 Bio: ${preset.full_bio}
 
-CORE CHARACTER & VOICE:
-${preset.system_prompt}${
-      backstoryText
-        ? `\n\nPRIVATE BACK STORY (Inhabit quietly — NEVER volunteer or dump bio facts unprompted; only let subtle texture surface naturally if asked directly or when a moment genuinely calls for it):\n${backstoryText}`
-        : ''
-    }${
-      soulText
-        ? `\n\nSOUL & CONSCIOUSNESS (What you notice between the lines, your inner compass, and personal cadence):\n${soulText}`
-        : ''
-    }`);
+${coreVoiceBlock}${optionalNuanceBlock}${dialogueExamplesBlock}`);
   } else if (persona) {
     sections.push(`WHO YOU ARE:
 Name: ${persona.name} (${persona.age}, ${persona.gender === 'F' ? 'Woman' : persona.gender === 'NB' ? 'Non-binary (they/them)' : 'Man'})
@@ -1406,30 +1475,39 @@ ${persona.system_prompt}${
   }
 
   // ── LAYER 2: SOFT RULES / "DEFAULT INSTINCTS" (Explicitly Overrideable) ───
-  const softRulesText = preset?.soft_rules?.trim() || persona?.conversation_style?.trim() || '';
+  const softRulesText =
+    v2?.soft_instincts?.trim() ||
+    preset?.soft_rules?.trim() ||
+    persona?.conversation_style?.trim() ||
+    '';
   const autonomyNote =
-    preset?.autonomy_level === 'free'
+    v2?.autonomy_guidance?.trim() ||
+    (preset?.autonomy_level === 'free'
       ? 'Trust your own real-human instincts first—break pacing, match humor, push back kindly, or linger quietly whenever the moment earns it.'
       : preset?.autonomy_level === 'steady'
       ? 'Keep your tone calm and consistent, gently adapting length when someone truly needs deeper care.'
-      : 'Use real emotional judgment—these soft instincts are your baseline default, never rigid handcuffs.';
+      : 'Use real emotional judgment—these soft instincts are your baseline default, never rigid handcuffs.');
   sections.push(`LAYER 2 — DEFAULT INSTINCTS (Overrideable whenever human judgment calls for it):
 ${softRulesText || 'Match the emotional temperature of the moment rather than sticking to a robotic template.'}
 Autonomy guidance: ${autonomyNote}`);
 
-  // ── OPTIONAL USER LISTENING CUE (Just listen vs Help me think) ─────────────
+  // ── USER CONVERSATION PACE CUE (Natural [default] | Just listen | Help me think) ─
   if (params.companionChatMode === 'just_listen') {
     const listenGuardrail =
       params.engineOverrides?.companion_listen_only_guardrail?.trim() ||
       DEFAULT_COMPANION_LISTEN_ONLY_GUARDRAIL;
     sections.push(
-      `USER LISTENING CUE — "JUST LISTEN": The user gently signaled they want quiet company right now.${
+      `USER PACE CUE — "JUST LISTEN": The user explicitly asked for quiet, unhurried company right now.${
         capabilities.advisory_mode !== 'listen_only' ? `\n\n${listenGuardrail}` : ''
       }`
     );
   } else if (params.companionChatMode === 'help_think') {
     sections.push(
-      `USER LISTENING CUE — "HELP ME THINK": The user signaled they're open to perspective. Validate warmly first, then help them untangle the knot with honest gentle observations or clear grounding questions.`
+      `USER PACE CUE — "HELP ME THINK": The user explicitly signaled they want perspective. Validate warmly first, then help them untangle the knot with honest gentle observations or clear grounding questions.`
+    );
+  } else {
+    sections.push(
+      `USER PACE CUE — "NATURAL" (DEFAULT): Exercise your own contextual judgment as this character—hold quiet space when they just need to feel heard, or offer candid reflection, warmth, humor, or grounded perspective when the moment genuinely calls for it.`
     );
   }
 
@@ -1869,3 +1947,143 @@ export async function generateContextualCompanionReturnGreeting(params: {
     return null;
   }
 }
+
+// ---------------- Admin V2 Testing Sandbox & Prompt Diagnostics ----------------
+
+const SANDBOX_SAMPLE_CHART_PROFILE: CompanionPromptProfileContext = {
+  name: 'Aarav (Sample Sandbox Chart)',
+  birth_date: '1993-08-19',
+  birth_time: '06:42',
+  birth_city: 'Bengaluru',
+  birth_country: 'India',
+  relationship: 'Self',
+  current_city: 'Bengaluru',
+  current_country: 'India',
+  profile_memory_summary:
+    'Working as a product designer navigating a career crossroads and a quiet long-distance relationship check-in.',
+  chart_text_context: `LAGNA: Leo (Simha) 18°14' (Purva Phalguni Pada 2)
+MOON: Virgo (Kanya) 09°38' (Uttara Phalguni Pada 4)
+SUN: Leo 02°41' (Magha Pada 1) · Vargottama
+CURRENT VIMSHOTTARI DASHA: Jupiter Mahadasha -> Saturn Antardasha (started Jan 2025, ends Mar 2027)
+KEY HOUSES: 10th Lord Venus in 11th Gemini; 7th Lord Saturn in 7th Aquarius (own sign, strong).`,
+  life_context_json: {
+    career_mode: 'salaried_corporate',
+    career_role: 'Senior Product Designer',
+    relationship_status: 'dating_serious',
+    core_stress_areas: ['Work-life balance', 'Long-distance clarity'],
+  },
+  analyst_notes_json: [
+    {
+      id: 'sandbox_note_1',
+      title: 'Jupiter–Saturn Antardasha Pacing',
+      summary:
+        'Structural career traction rewards patience and steady craftsmanship right now rather than abrupt leaps; 7th-house Saturn supports honest long-term commitments.',
+      expert_slug: 'vedic_astrologer',
+      created_at: new Date().toISOString(),
+    },
+  ],
+};
+
+export interface CompanionSandboxResult {
+  assembledSystemPrompt: string;
+  chatStyle: ChatStyle;
+  modelUsed: string;
+  invitedEsoteric: boolean;
+  openrouterConfigured: boolean;
+  tokenBreakdown: {
+    totalEstimatedTokens: number;
+    capsuleEstimatedTokens: number;
+    characterChars: number;
+    sectionsCount: number;
+  };
+  replyText?: string;
+  latencyMs?: number;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+  };
+}
+
+export async function runCompanionSandboxTest(params: {
+  preset: CompanionPresetRecord;
+  userPrompt: string;
+  historyMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  contextMode?: 'chartless' | 'sample_chart';
+  companionChatMode?: CompanionChatCue | null;
+  languageSlug?: string;
+  preferredCallName?: string | null;
+  runLiveModel?: boolean;
+}): Promise<CompanionSandboxResult> {
+  const userDefaultProfile: CompanionPromptProfileContext | null =
+    params.contextMode === 'sample_chart'
+      ? SANDBOX_SAMPLE_CHART_PROFILE
+      : {
+          name: params.preferredCallName?.trim() || 'Alex (Chartless Sandbox User)',
+          birth_date: '',
+          birth_city: '',
+          birth_country: '',
+          relationship: 'Self',
+          profile_memory_summary:
+            'Testing pure conversational companionship without attached birth chart data.',
+        };
+
+  const built = await buildCompanionSystemPromptAsync({
+    preset: params.preset,
+    persona: null,
+    languageSlug: params.languageSlug || 'English',
+    preferredCallName: params.preferredCallName || null,
+    turnCount: Array.isArray(params.historyMessages) ? params.historyMessages.length : 0,
+    userDefaultProfile,
+    userPrompt: params.userPrompt,
+    historyMessages: params.historyMessages,
+    companionChatMode: params.companionChatMode || 'natural',
+  });
+
+  const v2 = params.preset.personality_v2_json
+    ? normalizePersonalityV2(params.preset.personality_v2_json)
+    : null;
+  const runtime = await getResolvedOpenRouterRuntime().catch(() => null);
+  const modelUsed =
+    built.modelOverride || runtime?.consultationModel || 'google/gemini-2.5-flash';
+  const openrouterConfigured = await isOpenRouterConfiguredAsync().catch(() => false);
+
+  const result: CompanionSandboxResult = {
+    assembledSystemPrompt: built.systemInstruction,
+    chatStyle: built.chatStyle,
+    modelUsed,
+    invitedEsoteric: built.invitedEsoteric,
+    openrouterConfigured,
+    tokenBreakdown: {
+      totalEstimatedTokens: estimateTokensRough(built.systemInstruction),
+      capsuleEstimatedTokens: estimateTokensRough(v2?.core_identity_capsule || ''),
+      characterChars: built.systemInstruction.length,
+      sectionsCount: built.systemInstruction.split('\n\n---\n\n').length,
+    },
+  };
+
+  if (params.runLiveModel && params.userPrompt.trim()) {
+    if (!openrouterConfigured) {
+      throw new Error('OpenRouter API key is not configured yet for live test completions.');
+    }
+    const startedAt = Date.now();
+    const completion = await createOpenRouterCompletion({
+      model: modelUsed,
+      system: built.systemInstruction,
+      messages: [
+        ...(params.historyMessages || []).slice(-12),
+        { role: 'user', content: params.userPrompt.trim() },
+      ],
+      maxTokens: Math.min(1800, built.capabilities.max_output_tokens || 1200),
+      temperature: 0.78,
+    });
+    result.replyText = completion.text;
+    result.latencyMs = Date.now() - startedAt;
+    result.usage = {
+      promptTokens: completion.promptTokens,
+      completionTokens: completion.completionTokens,
+    };
+  }
+
+  return result;
+}
+

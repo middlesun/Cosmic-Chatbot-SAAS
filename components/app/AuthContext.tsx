@@ -6,6 +6,7 @@ import {
   loadSupabasePublicConfig,
 } from '../../lib/supabaseClient';
 import { normalizeCouncilSlug } from '../../lib/vedicTypes';
+import type { UserContextPreferences } from '../../lib/lifeContextSchema';
 import { PREVIEW_APP_USER } from './previewFixtures';
 
 export type AstrologyMode = 'vedic' | 'western';
@@ -25,6 +26,9 @@ export interface AppUser {
   chat_font_size?: 'sm' | 'base' | 'lg' | null;
   chat_numeric_font?: 'dm_sans' | 'inter' | 'plus_jakarta' | 'roboto' | 'cormorant' | 'jetbrains_mono' | null;
   suggestions_auto_expand?: boolean | null;
+  user_context_preferences?: UserContextPreferences | null;
+  timezone?: string | null;
+  proactive_opt_in?: boolean | null;
   referral_code: string;
   referred_by: string | null;
   must_change_password: boolean;

@@ -1,23 +1,30 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Brain,
   Check,
   ChevronDown,
   ChevronUp,
   Loader2,
+  PauseCircle,
   Pencil,
   Plus,
+  RotateCcw,
+  Share2,
   Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
 import CustomDatePicker from './CustomDatePicker';
 import CustomSelect from './CustomSelect';
+import { PREVIEW_MEMORY_SNAPSHOT } from './previewFixtures';
+import type { UserMemoryBondSummary, UserMemorySnapshot } from './chatTypes';
 import {
   BIRTH_TIME_ACCURACY_OPTIONS,
   CAREER_MODE_OPTIONS,
   CITED_INSIGHT_CATEGORY_LABELS,
   computeLifeContextCompleteness,
   DEEP_PROFILE_BUCKET_LABELS,
+  DEFAULT_USER_CONTEXT_PREFERENCES,
   isMarriedRelationshipStatus,
   LIFE_CONTEXT_FRAMING_COPY,
   LOCATION_STATUS_OPTIONS,
@@ -35,18 +42,22 @@ import {
   type LifeContextData,
   type LocationContextStatus,
   type RelationshipContextStatus,
+  type UserContextPreferences,
 } from '../../lib/lifeContextSchema';
 
 interface LifeContextModalProps {
   isOpen: boolean;
-  profileId: string;
-  profileName: string;
+  profileId: string | null;
+  profileName?: string;
+  mode?: 'profile' | 'user_memory';
+  initialTab?: 'context' | 'memory';
   initialContext?: LifeContextData | null;
   initialDeepProfile?: DeepProfileData | null;
   initialAnalystNotes?: CouncilAnalystNote[] | null;
   getAccessToken: () => Promise<string | null>;
   isPreviewMode?: boolean;
   onClose: () => void;
+  onPreferencesUpdated?: (prefs: UserContextPreferences) => void;
   onSaved: (
     updatedContext: LifeContextData,
     completeness: number,
@@ -137,15 +148,22 @@ function cloneDeepProfile(raw?: DeepProfileData | null): DeepProfileData {
 const LifeContextModal: React.FC<LifeContextModalProps> = ({
   isOpen,
   profileId,
-  profileName,
+  profileName = 'You',
+  mode,
+  initialTab = 'context',
   initialContext,
   initialDeepProfile,
   initialAnalystNotes,
   getAccessToken,
   isPreviewMode = false,
   onClose,
+  onPreferencesUpdated,
   onSaved,
 }) => {
+  const isUserMemoryMode = !profileId || mode === 'user_memory';
+  const [activeTab, setActiveTab] = useState<'context' | 'memory'>(() =>
+    isUserMemoryMode ? initialTab : 'context'
+  );
   const [draft, setDraft] = useState<LifeContextData>(() => cloneInitial(initialContext));
   const [deepDraft, setDeepDraft] = useState<DeepProfileData>(() =>
     cloneDeepProfile(initialDeepProfile)
@@ -155,6 +173,19 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
   );
   const [deepTouched, setDeepTouched] = useState(false);
   const [analystTouched, setAnalystTouched] = useState(false);
+
+  const [memoryPreferences, setMemoryPreferences] = useState<UserContextPreferences>({
+    ...DEFAULT_USER_CONTEXT_PREFERENCES,
+  });
+  const [memoryBonds, setMemoryBonds] = useState<UserMemoryBondSummary[]>([]);
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [editingBondSlug, setEditingBondSlug] = useState<string | null>(null);
+  const [bondSummaryInput, setBondSummaryInput] = useState('');
+  const [bondTonesInput, setBondTonesInput] = useState('');
+  const [bondRefsInput, setBondRefsInput] = useState('');
+  const [savingBondSlug, setSavingBondSlug] = useState<string | null>(null);
+  const [confirmResetBondSlug, setConfirmResetBondSlug] = useState<string | null>(null);
 
   const [editingInsightIdx, setEditingInsightIdx] = useState<number | null>(null);
   const [editingInsightSummary, setEditingInsightSummary] = useState('');
@@ -170,6 +201,7 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    setActiveTab(isUserMemoryMode ? initialTab : 'context');
     setDraft(cloneInitial(initialContext));
     setDeepDraft(cloneDeepProfile(initialDeepProfile));
     setAnalystNotesDraft(
@@ -179,12 +211,67 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
     setAnalystTouched(false);
     setEditingInsightIdx(null);
     setEditingDeepEntryId(null);
+    setEditingBondSlug(null);
+    setConfirmResetBondSlug(null);
     setExpandedChildExactIdx({});
     setError(null);
-  }, [isOpen, initialContext, initialDeepProfile, initialAnalystNotes, profileId]);
+  }, [
+    isOpen,
+    isUserMemoryMode,
+    initialTab,
+    initialContext,
+    initialDeepProfile,
+    initialAnalystNotes,
+    profileId,
+  ]);
 
   useEffect(() => {
-    if (!isOpen || isPreviewMode) return;
+    if (!isOpen) return;
+
+    if (isUserMemoryMode) {
+      if (isPreviewMode) {
+        setDraft((prev) =>
+          Object.keys(prev).length > 0 ? prev : cloneInitial(PREVIEW_MEMORY_SNAPSHOT.livingContext)
+        );
+        setDeepDraft((prev) =>
+          Object.keys(prev).length > 0 ? prev : cloneDeepProfile(PREVIEW_MEMORY_SNAPSHOT.deepProfile)
+        );
+        setMemoryPreferences({ ...PREVIEW_MEMORY_SNAPSHOT.preferences });
+        setMemoryBonds(PREVIEW_MEMORY_SNAPSHOT.bonds.map((b) => ({ ...b })));
+        return;
+      }
+
+      let active = true;
+      const controller = new AbortController();
+      setMemoryLoading(true);
+      void (async () => {
+        try {
+          const token = await getAccessToken();
+          if (!token || !active) return;
+          const res = await fetch('/api/chat/memory', {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          });
+          if (!res.ok || !active) return;
+          const data = (await res.json().catch(() => null)) as UserMemorySnapshot | null;
+          if (!active || !data) return;
+          if (data.livingContext) setDraft(cloneInitial(data.livingContext));
+          if (data.deepProfile) setDeepDraft(cloneDeepProfile(data.deepProfile));
+          if (data.preferences) setMemoryPreferences(data.preferences);
+          if (Array.isArray(data.bonds)) setMemoryBonds(data.bonds);
+        } catch {
+          // Non-fatal silent hydration
+        } finally {
+          if (active) setMemoryLoading(false);
+        }
+      })();
+      return () => {
+        active = false;
+        controller.abort();
+      };
+    }
+
+    if (isPreviewMode || !profileId) return;
     if (initialDeepProfile !== undefined || initialAnalystNotes !== undefined) return;
     let active = true;
     const controller = new AbortController();
@@ -225,7 +312,15 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
       active = false;
       controller.abort();
     };
-  }, [isOpen, isPreviewMode, profileId, initialDeepProfile, initialAnalystNotes, getAccessToken]);
+  }, [
+    isOpen,
+    isUserMemoryMode,
+    isPreviewMode,
+    profileId,
+    initialDeepProfile,
+    initialAnalystNotes,
+    getAccessToken,
+  ]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -426,6 +521,168 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
     setAnalystNotesDraft((prev) => prev.filter((n) => n.id !== noteId));
   };
 
+  const handleToggleMemoryPref = async (
+    key: 'memory_paused' | 'allow_cross_companion_memory'
+  ) => {
+    const previous = { ...memoryPreferences };
+    const nextPrefs: UserContextPreferences = {
+      ...memoryPreferences,
+      [key]: !memoryPreferences[key],
+    };
+    setMemoryPreferences(nextPrefs);
+    onPreferencesUpdated?.(nextPrefs);
+    setError(null);
+
+    if (isPreviewMode) return;
+
+    setSavingPrefs(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setMemoryPreferences(previous);
+        onPreferencesUpdated?.(previous);
+        setError('Please sign in to update memory preferences.');
+        return;
+      }
+      const res = await fetch('/api/chat/memory', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ preferences: { [key]: nextPrefs[key] } }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setMemoryPreferences(previous);
+        onPreferencesUpdated?.(previous);
+        setError(data.error || 'Could not update memory preferences.');
+      }
+    } catch {
+      setMemoryPreferences(previous);
+      onPreferencesUpdated?.(previous);
+      setError('Network error updating memory preferences.');
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
+
+  const handleStartEditBond = (bond: UserMemoryBondSummary) => {
+    setEditingBondSlug(bond.companion_slug);
+    setConfirmResetBondSlug(null);
+    setBondSummaryInput(bond.memory_summary || '');
+    setBondTonesInput((bond.tone_preferences || []).join(', '));
+    setBondRefsInput((bond.inside_references || []).join(', '));
+  };
+
+  const handleSaveBond = async (companionSlug: string) => {
+    const cleanSummary = bondSummaryInput.trim().slice(0, 600) || null;
+    const cleanTones = bondTonesInput
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 6);
+    const cleanRefs = bondRefsInput
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 8);
+
+    if (isPreviewMode) {
+      setMemoryBonds((prev) =>
+        prev.map((b) =>
+          b.companion_slug === companionSlug
+            ? {
+                ...b,
+                memory_summary: cleanSummary,
+                tone_preferences: cleanTones,
+                inside_references: cleanRefs,
+              }
+            : b
+        )
+      );
+      setEditingBondSlug(null);
+      return;
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      setError('Please sign in to update companion memory.');
+      return;
+    }
+    setSavingBondSlug(companionSlug);
+    setError(null);
+    try {
+      const res = await fetch(`/api/chat/memory/bond/${encodeURIComponent(companionSlug)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          memorySummary: cleanSummary,
+          tonePreferences: cleanTones,
+          insideReferences: cleanRefs,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Could not save companion memory.');
+        return;
+      }
+      setMemoryBonds((prev) =>
+        prev.map((b) =>
+          b.companion_slug === companionSlug
+            ? {
+                ...b,
+                memory_summary: cleanSummary,
+                tone_preferences: cleanTones,
+                inside_references: cleanRefs,
+              }
+            : b
+        )
+      );
+      setEditingBondSlug(null);
+    } catch {
+      setError('Network error saving companion memory.');
+    } finally {
+      setSavingBondSlug(null);
+    }
+  };
+
+  const handleResetBond = async (companionSlug: string) => {
+    if (isPreviewMode) {
+      setMemoryBonds((prev) => prev.filter((b) => b.companion_slug !== companionSlug));
+      setConfirmResetBondSlug(null);
+      return;
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      setError('Please sign in to reset companion memory.');
+      return;
+    }
+    setSavingBondSlug(companionSlug);
+    setError(null);
+    try {
+      const res = await fetch(`/api/chat/memory/bond/${encodeURIComponent(companionSlug)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Could not reset companion bond memory.');
+        return;
+      }
+      setMemoryBonds((prev) => prev.filter((b) => b.companion_slug !== companionSlug));
+      setConfirmResetBondSlug(null);
+    } catch {
+      setError('Network error resetting companion memory.');
+    } finally {
+      setSavingBondSlug(null);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -447,6 +704,34 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
 
     setSaving(true);
     try {
+      if (isUserMemoryMode) {
+        const payload: Record<string, unknown> = {
+          livingContext: draft,
+          deepProfile: deepDraft,
+          preferences: memoryPreferences,
+        };
+        const res = await fetch('/api/chat/memory', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data.error || 'Could not save context & memory changes.');
+        } else {
+          const finalCtx = (data.livingContext || draft) as LifeContextData;
+          const finalDeep = (data.deepProfile || deepDraft) as DeepProfileData;
+          const finalScore = computeLifeContextCompleteness(finalCtx);
+          onPreferencesUpdated?.(memoryPreferences);
+          onSaved(finalCtx, finalScore, { deep_profile_json: finalDeep });
+          onClose();
+        }
+        return;
+      }
+
       const payload: Record<string, unknown> = { ...draft };
       if (deepTouched) payload.deep_profile_json = deepDraft;
       if (analystTouched) payload.analyst_notes_json = analystNotesDraft;
@@ -513,15 +798,19 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
         onClick={(e) => e.stopPropagation()}
         className="animate-cc-drawer-in w-full max-w-2xl rounded-3xl border border-[#3D3830]/15 bg-[#FAF7F2] shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]"
       >
-        {/* Header with Calibration Progress Meter */}
+        {/* Header */}
         <div className="px-5 sm:px-6 py-4 bg-[#F1ECE3] border-b border-[#3D3830]/10 space-y-3 shrink-0">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#8B7355]">
-                Life Context &amp; Anchors
+                {isUserMemoryMode ? 'Living Context & Memory' : 'Life Context & Anchors'}
               </p>
               <h2 className="font-serif text-2xl font-medium text-[#3D3830] truncate">
-                Calibrate {profileName}
+                {isUserMemoryMode
+                  ? activeTab === 'memory'
+                    ? 'What Companions Remember'
+                    : 'Your Living Story'
+                  : `Calibrate ${profileName}`}
               </h2>
             </div>
             <button
@@ -534,76 +823,383 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
             </button>
           </div>
 
-          <p className="text-xs text-[#5C5449] leading-relaxed">{LIFE_CONTEXT_FRAMING_COPY}</p>
+          <p className="text-xs text-[#5C5449] leading-relaxed">
+            {isUserMemoryMode
+              ? 'Everything you share or let Companions notice stays here — completely independent of any birth chart. Edit, pause, or forget anything anytime.'
+              : LIFE_CONTEXT_FRAMING_COPY}
+          </p>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="font-medium text-[#5C5449]">Reading calibration</span>
-              <span
-                className={`font-['JetBrains_Mono',monospace] tabular-nums font-semibold ${
-                  liveCompleteness >= 80 ? 'text-[#2D6A4F]' : 'text-[#3D3830]'
+          {isUserMemoryMode ? (
+            <div
+              role="tablist"
+              aria-label="Living context and memory sections"
+              className="grid grid-cols-2 gap-1 rounded-2xl bg-[#EAE3D7]/90 border border-[#3D3830]/10 p-1"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'context'}
+                onClick={() => setActiveTab('context')}
+                className={`rounded-xl px-3 py-2 text-xs font-medium transition-colors cursor-pointer ${
+                  activeTab === 'context'
+                    ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                    : 'text-[#5C5449] hover:text-[#3D3830]'
                 }`}
               >
-                {liveCompleteness}%
-              </span>
-            </div>
-            <div className="h-1.5 w-full rounded-full bg-[#3D3830]/10 overflow-hidden">
-              <div
-                style={{ width: `${liveCompleteness}%` }}
-                className={`h-full rounded-full transition-all duration-300 ${
-                  liveCompleteness >= 80 ? 'bg-[#2D6A4F]' : 'bg-[#8B7355]'
+                Context &amp; Story
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'memory'}
+                onClick={() => setActiveTab('memory')}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors cursor-pointer ${
+                  activeTab === 'memory'
+                    ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                    : 'text-[#5C5449] hover:text-[#3D3830]'
                 }`}
-              />
+              >
+                <Brain className="h-3.5 w-3.5 text-[#8B7355]" />
+                <span>Memory Inspector</span>
+              </button>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-medium text-[#5C5449]">Reading calibration</span>
+                <span
+                  className={`font-['JetBrains_Mono',monospace] tabular-nums font-semibold ${
+                    liveCompleteness >= 80 ? 'text-[#2D6A4F]' : 'text-[#3D3830]'
+                  }`}
+                >
+                  {liveCompleteness}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-[#3D3830]/10 overflow-hidden">
+                <div
+                  style={{ width: `${liveCompleteness}%` }}
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    liveCompleteness >= 80 ? 'bg-[#2D6A4F]' : 'bg-[#8B7355]'
+                  }`}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Scrollable Form Body */}
         <form onSubmit={handleSave} className="flex flex-col flex-1 min-h-0">
           <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-5">
-            {/* 1. Birth Time Accuracy (20%) */}
-            <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-semibold text-[#3D3830]">
-                  1. How reliable is the birth time?
-                </label>
-                <span className="font-['JetBrains_Mono',monospace] text-[10px] text-[#8B8275]">
-                  20%
-                </span>
-              </div>
-              <CustomSelect
-                ariaLabel="Birth time reliability"
-                value={draft.birth_time_accuracy || ''}
-                onChange={(val) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    birth_time_accuracy: val as BirthTimeAccuracy,
-                  }))
-                }
-                placeholder="Select birth time precision"
-                options={BIRTH_TIME_ACCURACY_OPTIONS}
-                surface="canvas"
-              />
-            </div>
+            {isUserMemoryMode && activeTab === 'memory' ? (
+              <div className="space-y-5">
+                {memoryLoading && (
+                  <div className="flex items-center gap-2 text-xs text-[#8B8275] py-1">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Loading saved memories...</span>
+                  </div>
+                )}
 
-            {/* 2. Marital & Family Status (25%) */}
-            <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-3.5">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-semibold text-[#3D3830]">
-                  2. Marital &amp; Family Status
-                </label>
-                <span className="font-['JetBrains_Mono',monospace] text-[10px] text-[#8B8275]">
-                  25%
-                </span>
+                {/* Memory Learning & Sharing Controls */}
+                <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-[#3D3830]">
+                      Memory Controls
+                    </p>
+                    {savingPrefs && (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-[#8B8275]">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Saving...
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3.5 py-2.5">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <PauseCircle className="h-4 w-4 text-[#8B7355] mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-[#3D3830]">
+                          Pause automatic memory learning
+                        </p>
+                        <p className="text-[11px] text-[#8B8275] leading-relaxed">
+                          When paused, Companions still use what is already saved here, without learning new facts after turns.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={memoryPreferences.memory_paused}
+                      aria-label="Pause automatic memory learning"
+                      onClick={() => void handleToggleMemoryPref('memory_paused')}
+                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 cursor-pointer ${
+                        memoryPreferences.memory_paused ? 'bg-[#4A453D]' : 'bg-[#D6CEC0]'
+                      }`}
+                    >
+                      <span
+                        className={`h-4 w-4 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
+                          memoryPreferences.memory_paused ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3.5 py-2.5">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <Share2 className="h-4 w-4 text-[#8B7355] mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-[#3D3830]">
+                          Share context across companions
+                        </p>
+                        <p className="text-[11px] text-[#8B8275] leading-relaxed">
+                          Allow notes learned by one Companion to support continuity with others (you can keep each Companion separate when off).
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={memoryPreferences.allow_cross_companion_memory}
+                      aria-label="Share context across companions"
+                      onClick={() => void handleToggleMemoryPref('allow_cross_companion_memory')}
+                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 cursor-pointer ${
+                        memoryPreferences.allow_cross_companion_memory
+                          ? 'bg-[#4A453D]'
+                          : 'bg-[#D6CEC0]'
+                      }`}
+                    >
+                      <span
+                        className={`h-4 w-4 rounded-full bg-[#FDFBF7] shadow-xs transition-transform duration-200 ${
+                          memoryPreferences.allow_cross_companion_memory
+                            ? 'translate-x-4'
+                            : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Per-Companion Bond Memory */}
+                <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-3">
+                  <div>
+                    <p className="text-xs font-semibold text-[#3D3830]">
+                      Companion Bonds &amp; Continuity
+                    </p>
+                    <p className="text-[11px] text-[#8B8275] mt-0.5">
+                      Each Companion remembers your tone preferences and shared threads separately.
+                    </p>
+                  </div>
+
+                  {memoryBonds.length === 0 ? (
+                    <p className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3.5 py-3 text-xs text-[#8B8275]">
+                      No companion bond memories stored yet. As you chat with a Companion, gentle continuity notes appear here for you to inspect or reset.
+                    </p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {memoryBonds.map((bond) => {
+                        const isEditing = editingBondSlug === bond.companion_slug;
+                        const isConfirmingReset = confirmResetBondSlug === bond.companion_slug;
+                        const isBusy = savingBondSlug === bond.companion_slug;
+                        return (
+                          <div
+                            key={bond.companion_slug}
+                            className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/12 px-3.5 py-3 space-y-2"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-[#3D3830]">
+                                  {bond.companion_name}
+                                </p>
+                                <p className="text-[10px] text-[#8B8275]">
+                                  <span className="font-['JetBrains_Mono',monospace] tabular-nums">
+                                    {bond.total_turns}
+                                  </span>{' '}
+                                  {bond.total_turns === 1 ? 'turn' : 'turns'}
+                                  {bond.last_interaction_at
+                                    ? ` · Last ${bond.last_interaction_at.slice(0, 10)}`
+                                    : ''}
+                                </p>
+                              </div>
+                              {!isEditing && (
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => handleStartEditBond(bond)}
+                                    aria-label={`Edit ${bond.companion_name} memory`}
+                                    className="p-1.5 rounded-lg text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/5 transition-colors cursor-pointer"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  {isConfirmingReset ? (
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        disabled={isBusy}
+                                        onClick={() => void handleResetBond(bond.companion_slug)}
+                                        className="rounded-full bg-[#7A3E36] px-2.5 py-1 text-[10px] font-medium text-[#FAF7F2] hover:bg-[#64322B] cursor-pointer"
+                                      >
+                                        {isBusy ? 'Resetting...' : 'Confirm reset'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmResetBondSlug(null)}
+                                        className="rounded-full px-2 py-1 text-[10px] text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled={isBusy}
+                                      onClick={() => setConfirmResetBondSlug(bond.companion_slug)}
+                                      aria-label={`Reset ${bond.companion_name} bond`}
+                                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-[#8B8275] hover:text-[#A94438] hover:bg-[#A94438]/10 transition-colors cursor-pointer"
+                                    >
+                                      <RotateCcw className="h-3 w-3" />
+                                      <span>Reset</span>
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {isEditing ? (
+                              <div className="space-y-2 pt-1">
+                                <div>
+                                  <label className="block text-[10px] font-medium text-[#5C5449] mb-1">
+                                    Relationship summary
+                                  </label>
+                                  <textarea
+                                    rows={2}
+                                    maxLength={600}
+                                    value={bondSummaryInput}
+                                    onChange={(e) => setBondSummaryInput(e.target.value)}
+                                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-2 text-xs text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-medium text-[#5C5449] mb-1">
+                                    Preferred tone cues (comma-separated)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={bondTonesInput}
+                                    onChange={(e) => setBondTonesInput(e.target.value)}
+                                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-xs text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-medium text-[#5C5449] mb-1">
+                                    Shared touchpoints (comma-separated)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={bondRefsInput}
+                                    onChange={(e) => setBondRefsInput(e.target.value)}
+                                    className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-xs text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+                                  />
+                                </div>
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingBondSlug(null)}
+                                    className="rounded-full px-3 py-1 text-[11px] text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => void handleSaveBond(bond.companion_slug)}
+                                    className="rounded-full bg-[#4A453D] px-3.5 py-1 text-[11px] font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-40 cursor-pointer"
+                                  >
+                                    {isBusy ? 'Saving...' : 'Save Bond'}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-1 text-xs text-[#5C5449]">
+                                {bond.memory_summary && (
+                                  <p className="text-[#3D3830] leading-relaxed">
+                                    {bond.memory_summary}
+                                  </p>
+                                )}
+                                {bond.tone_preferences.length > 0 && (
+                                  <p className="text-[11px] text-[#8B8275]">
+                                    Tone: {bond.tone_preferences.join(' · ')}
+                                  </p>
+                                )}
+                                {bond.inside_references.length > 0 && (
+                                  <p className="text-[11px] text-[#8B8275]">
+                                    Shared touchpoints: {bond.inside_references.join(' · ')}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Empty-state hint when no extracted insights or deep patterns yet */}
+                {!hasAnyLivingProfileSection && !memoryLoading && (
+                  <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 text-xs text-[#5C5449] leading-relaxed">
+                    No extracted insights or recurring patterns yet. You can add your background anytime in the <span className="font-medium text-[#3D3830]">Context &amp; Story</span> tab, or let Companions learn gently as you talk.
+                  </div>
+                )}
               </div>
-              <CustomSelect
-                ariaLabel="Marital and family status"
-                value={draft.relationship_status || ''}
-                onChange={handleRelationshipChange}
-                placeholder="Select current relationship status"
-                options={RELATIONSHIP_STATUS_OPTIONS}
-                surface="canvas"
-              />
+            ) : (
+              <>
+                {/* 1. Birth Time Accuracy (hidden in chartless / user_memory mode) */}
+                {!isUserMemoryMode && (
+                  <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-semibold text-[#3D3830]">
+                        1. How reliable is the birth time?
+                      </label>
+                      <span className="font-['JetBrains_Mono',monospace] text-[10px] text-[#8B8275]">
+                        20%
+                      </span>
+                    </div>
+                    <CustomSelect
+                      ariaLabel="Birth time reliability"
+                      value={draft.birth_time_accuracy || ''}
+                      onChange={(val) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          birth_time_accuracy: val as BirthTimeAccuracy,
+                        }))
+                      }
+                      placeholder="Select birth time precision"
+                      options={BIRTH_TIME_ACCURACY_OPTIONS}
+                      surface="canvas"
+                    />
+                  </div>
+                )}
+
+                {/* 2. Marital & Family Status */}
+                <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-3.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs font-semibold text-[#3D3830]">
+                      {isUserMemoryMode ? '1. Relationship & Family' : '2. Marital & Family Status'}
+                    </label>
+                    {!isUserMemoryMode && (
+                      <span className="font-['JetBrains_Mono',monospace] text-[10px] text-[#8B8275]">
+                        25%
+                      </span>
+                    )}
+                  </div>
+                  <CustomSelect
+                    ariaLabel="Marital and family status"
+                    value={draft.relationship_status || ''}
+                    onChange={handleRelationshipChange}
+                    placeholder="Select current relationship status"
+                    options={RELATIONSHIP_STATUS_OPTIONS}
+                    surface="canvas"
+                  />
 
               {showMarriageYear && (
                 <div className="pt-1 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
@@ -852,15 +1448,17 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
               )}
             </div>
 
-            {/* 4. Work & Income Structure (20%) */}
+            {/* 4. Work & Income Structure */}
             <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <label className="text-xs font-semibold text-[#3D3830]">
-                  3. Work &amp; Income Structure
+                  {isUserMemoryMode ? '2. Work & Craft' : '3. Work & Income Structure'}
                 </label>
-                <span className="font-['JetBrains_Mono',monospace] text-[10px] text-[#8B8275]">
-                  20%
-                </span>
+                {!isUserMemoryMode && (
+                  <span className="font-['JetBrains_Mono',monospace] text-[10px] text-[#8B8275]">
+                    20%
+                  </span>
+                )}
               </div>
               <CustomSelect
                 ariaLabel="Work and income structure"
@@ -913,15 +1511,17 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
               </div>
             </div>
 
-            {/* 5. Current Living Location vs Birthplace (10%) */}
+            {/* 5. Current Living Location */}
             <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <label className="text-xs font-semibold text-[#3D3830]">
-                  4. Living Location vs. Birthplace
+                  {isUserMemoryMode ? '3. Where You Live' : '4. Living Location vs. Birthplace'}
                 </label>
-                <span className="font-['JetBrains_Mono',monospace] text-[10px] text-[#8B8275]">
-                  10%
-                </span>
+                {!isUserMemoryMode && (
+                  <span className="font-['JetBrains_Mono',monospace] text-[10px] text-[#8B8275]">
+                    10%
+                  </span>
+                )}
               </div>
               <CustomSelect
                 ariaLabel="Living location status"
@@ -938,16 +1538,20 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
               />
             </div>
 
-            {/* 6. Major Life Turning Points (10%) */}
+            {/* 6. Major Life Turning Points */}
             <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <label className="text-xs font-semibold text-[#3D3830]">
-                    5. Major Past Turning Points{' '}
-                    <span className="font-normal text-[#8B8275]">(Optional · 10%)</span>
+                    {isUserMemoryMode ? '4. Major Life Turning Points' : '5. Major Past Turning Points'}{' '}
+                    <span className="font-normal text-[#8B8275]">
+                      {isUserMemoryMode ? '(Optional)' : '(Optional · 10%)'}
+                    </span>
                   </label>
                   <p className="text-[11px] text-[#8B8275] mt-0.5">
-                    Helps cross-check how active planetary periods manifested in real life.
+                    {isUserMemoryMode
+                      ? 'Major milestones & life chapters that help Companions understand where you have been.'
+                      : 'Helps cross-check how active planetary periods manifested in real life.'}
                   </p>
                 </div>
                 <button
@@ -1007,13 +1611,17 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                 </div>
               )}
             </div>
+              </>
+            )}
 
-            {/* 6. Living Profile Notes, Deep Context & Council Takeaways */}
-            {hasAnyLivingProfileSection && (
+            {/* Shared Living Profile Notes, Deep Context & Council Takeaways (rendered in Memory Inspector tab OR inline at bottom of Profile Context mode) */}
+            {(activeTab === 'memory' || !isUserMemoryMode) && hasAnyLivingProfileSection && (
               <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-4">
                 <div>
                   <label className="text-xs font-semibold text-[#3D3830]">
-                    6. Living Profile Notes &amp; Citations
+                    {isUserMemoryMode
+                      ? 'Shared Insights & Life Patterns'
+                      : '6. Living Profile Notes & Citations'}
                   </label>
                   <p className="text-[11px] text-[#8B8275] mt-0.5">
                     Details remembered across conversations with your Council and Companions so you never have to repeat yourself. Edit or remove anything anytime.

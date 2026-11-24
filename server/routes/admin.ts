@@ -2710,10 +2710,16 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     | 'core_council_constitution'
     | 'companion_constitution'
     | 'companion_realism_baseline'
+    | 'companion_listen_only_guardrail'
+    | 'companion_empathy_first_guardrail'
     | 'companion_chart_presence_prompt'
     | 'companion_return_greeting_prompt'
     | 'companion_bond_extractor_prompt'
+    | 'memory_companion_bond_prompt'
     | 'profile_memory_extractor_prompt'
+    | 'memory_deep_profile_extractor_prompt'
+    | 'memory_rolling_thread_compactor_prompt'
+    | 'memory_profile_synthesizer_prompt'
     | 'companion_matcher_instructions'
     | 'clarity_helper_system_prompt'
     | 'vedic_tier1_reasoning_laws'
@@ -2736,10 +2742,16 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     'core_council_constitution',
     'companion_constitution',
     'companion_realism_baseline',
+    'companion_listen_only_guardrail',
+    'companion_empathy_first_guardrail',
     'companion_chart_presence_prompt',
     'companion_return_greeting_prompt',
     'companion_bond_extractor_prompt',
+    'memory_companion_bond_prompt',
     'profile_memory_extractor_prompt',
+    'memory_deep_profile_extractor_prompt',
+    'memory_rolling_thread_compactor_prompt',
+    'memory_profile_synthesizer_prompt',
     'companion_matcher_instructions',
     'clarity_helper_system_prompt',
     'vedic_tier1_reasoning_laws',
@@ -2771,7 +2783,37 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     }
   }
 
+  // Keep canonical memory prompt aliases synchronized on save/clear so cleared keys don't resurrect
+  if (body.memory_deep_profile_extractor_prompt !== undefined && body.profile_memory_extractor_prompt === undefined) {
+    if (next.memory_deep_profile_extractor_prompt) {
+      next.profile_memory_extractor_prompt = next.memory_deep_profile_extractor_prompt;
+    } else {
+      delete next.profile_memory_extractor_prompt;
+    }
+  } else if (body.profile_memory_extractor_prompt !== undefined && body.memory_deep_profile_extractor_prompt === undefined) {
+    if (next.profile_memory_extractor_prompt) {
+      next.memory_deep_profile_extractor_prompt = next.profile_memory_extractor_prompt;
+    } else {
+      delete next.memory_deep_profile_extractor_prompt;
+    }
+  }
+
+  if (body.memory_companion_bond_prompt !== undefined && body.companion_bond_extractor_prompt === undefined) {
+    if (next.memory_companion_bond_prompt) {
+      next.companion_bond_extractor_prompt = next.memory_companion_bond_prompt;
+    } else {
+      delete next.companion_bond_extractor_prompt;
+    }
+  } else if (body.companion_bond_extractor_prompt !== undefined && body.memory_companion_bond_prompt === undefined) {
+    if (next.companion_bond_extractor_prompt) {
+      next.memory_companion_bond_prompt = next.companion_bond_extractor_prompt;
+    } else {
+      delete next.memory_companion_bond_prompt;
+    }
+  }
+
   const recordKeys: Array<
+    | 'companion_skill_rules'
     | 'intent_output_contracts'
     | 'fluency_instructions'
     | 'format_contracts'
@@ -2781,6 +2823,7 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     | 'western_format_contracts'
     | 'western_deep_audit_lenses'
   > = [
+    'companion_skill_rules',
     'intent_output_contracts',
     'fluency_instructions',
     'format_contracts',
@@ -2808,6 +2851,59 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
       } else {
         delete next[rKey];
       }
+    }
+  }
+
+  if (body.companion_group_configs && typeof body.companion_group_configs === 'object' && !Array.isArray(body.companion_group_configs)) {
+    const allowedGroups = ['spiritual_guides', 'everyday_companions', 'life_companions'] as const;
+    const allowedAdvisory = ['listen_only', 'friend', 'balanced_support', 'esoteric_guide'] as const;
+    const allowedStyles = ['editorial', 'structured', 'chat_bubbles', 'dialogue', 'concise_brief'] as const;
+    const mergedGroups: Record<string, unknown> = {
+      ...(current.companion_group_configs || {}),
+    };
+    for (const grp of allowedGroups) {
+      const incomingGrp = (body.companion_group_configs as Record<string, unknown>)[grp];
+      if (!incomingGrp || typeof incomingGrp !== 'object' || Array.isArray(incomingGrp)) continue;
+      const gObj = incomingGrp as Record<string, unknown>;
+      const existingGrp = (mergedGroups[grp] && typeof mergedGroups[grp] === 'object'
+        ? { ...(mergedGroups[grp] as Record<string, unknown>) }
+        : {}) as Record<string, unknown>;
+
+      if (typeof gObj.group_system_prompt === 'string') {
+        const trimmed = gObj.group_system_prompt.trim();
+        if (trimmed) existingGrp.group_system_prompt = trimmed.slice(0, 8000);
+        else delete existingGrp.group_system_prompt;
+      }
+      if (typeof gObj.default_advisory_mode === 'string' && (allowedAdvisory as readonly string[]).includes(gObj.default_advisory_mode)) {
+        existingGrp.default_advisory_mode = gObj.default_advisory_mode;
+      }
+      if (typeof gObj.default_chat_style === 'string' && (allowedStyles as readonly string[]).includes(gObj.default_chat_style)) {
+        existingGrp.default_chat_style = gObj.default_chat_style;
+      }
+      if (typeof gObj.default_max_output_tokens === 'number' && Number.isFinite(gObj.default_max_output_tokens)) {
+        existingGrp.default_max_output_tokens = Math.max(300, Math.min(8000, Math.round(gObj.default_max_output_tokens)));
+      }
+      if (gObj.default_chart_access && typeof gObj.default_chart_access === 'object' && !Array.isArray(gObj.default_chart_access)) {
+        const ca = gObj.default_chart_access as Record<string, unknown>;
+        existingGrp.default_chart_access = {
+          vedic: Boolean(ca.vedic),
+          western: Boolean(ca.western),
+          tarot: Boolean(ca.tarot),
+          numerology: Boolean(ca.numerology),
+          past_life: Boolean(ca.past_life),
+          council_notes: Boolean(ca.council_notes),
+        };
+      }
+      if (Object.keys(existingGrp).length > 0) {
+        mergedGroups[grp] = existingGrp;
+      } else {
+        delete mergedGroups[grp];
+      }
+    }
+    if (Object.keys(mergedGroups).length > 0) {
+      next.companion_group_configs = mergedGroups as EnginePromptOverrides['companion_group_configs'];
+    } else {
+      delete next.companion_group_configs;
     }
   }
 
@@ -2868,6 +2964,14 @@ router.post('/settings/chatbot/engine-prompts/reset', async (req: AuthenticatedR
     }
   } else {
     delete next[key as keyof EnginePromptOverrides];
+    if (key === 'memory_deep_profile_extractor_prompt' || key === 'profile_memory_extractor_prompt') {
+      delete next.memory_deep_profile_extractor_prompt;
+      delete next.profile_memory_extractor_prompt;
+    }
+    if (key === 'memory_companion_bond_prompt' || key === 'companion_bond_extractor_prompt') {
+      delete next.memory_companion_bond_prompt;
+      delete next.companion_bond_extractor_prompt;
+    }
   }
 
   const saved = await savePlatformSetting('engine_prompt_overrides', next, req.appUser.id);

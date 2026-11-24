@@ -919,14 +919,14 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             {/* Council Folders (shown in All & Council filters) */}
             {(pillarFilter === 'all' || pillarFilter === 'council') && (
               <>
-                {/* Prominent First-Time Add Birth Details CTA */}
-                {profiles.length === 0 && (
+                {/* Prominent Add Birth Details CTA (Council filter only) */}
+                {pillarFilter === 'council' && profiles.length === 0 && (
                   <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/12 p-3.5 space-y-2.5">
                     <p className="text-xs font-medium text-[#3D3830]">
                       No birth chart saved yet
                     </p>
                     <p className="text-[11px] text-[#5C5449] leading-relaxed">
-                      Add birth details once to unlock personalized chart readings.
+                      Add birth details when you want natal astrology readings in Council.
                     </p>
                     {onOpenAddChartModal ? (
                       <button

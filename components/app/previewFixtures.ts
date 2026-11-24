@@ -8,6 +8,7 @@ import type {
   CustomPromptRecord,
   FavoriteMessageRecord,
   PublicCompanionCard,
+  UserMemorySnapshot,
 } from './chatTypes';
 import { computeAllVargasFromPlanets } from '../../lib/chartMetaAndVarga';
 
@@ -25,6 +26,12 @@ export const PREVIEW_APP_USER: AppUser = {
   preferred_call_name: null,
   chat_font_size: 'base',
   suggestions_auto_expand: true,
+  user_context_preferences: {
+    memory_paused: false,
+    allow_cross_companion_memory: true,
+  },
+  timezone: 'Asia/Kolkata',
+  proactive_opt_in: false,
   referral_code: 'CC-PREVIEW',
   referred_by: null,
   must_change_password: false,
@@ -260,7 +267,7 @@ export const PREVIEW_CONVERSATIONS: ConversationRecord[] = [
     active_tab_order: 1,
     companion_type: 'friend',
     companion_slug: 'aira',
-    companion_chat_mode: 'just_listen',
+    companion_chat_mode: 'natural',
     companion_persona_json: {
       id: 'preset_aira',
       slug: 'aira',
@@ -3016,6 +3023,67 @@ export const PREVIEW_CHART_JSON: CompiledChartJson = {
     dominantElement: 'Earth',
     dominantModality: 'Mutable',
   },
+};
+
+export const PREVIEW_MEMORY_SNAPSHOT: UserMemorySnapshot = {
+  livingContext: {
+    relationship_status: 'married_no_children',
+    career_mode: 'job_salaried',
+    career_role: 'Product Design Lead',
+    location_status: 'relocated_same_country',
+    core_stress_areas: ['Work boundaries', 'Career pivot timing'],
+    cited_insights: [
+      {
+        id: 'preview-ci-1',
+        summary: 'Working toward a quieter creative transition without burning financial stability.',
+        category: 'workplace',
+        cited_by: 'Luna',
+        cited_slug: 'luna',
+        captured_at: '2026-11-12T10:30:00.000Z',
+      },
+    ],
+  },
+  deepProfile: {
+    desires_and_goals: ['Launch a focused independent design practice in 2027'],
+    habits_and_routines: ['Evening walks to decompress after intense work sprints'],
+    entries: [
+      {
+        id: 'preview-dp-1',
+        fact: 'Prefers direct, warm reflection without preachy advice when stressed late at night.',
+        category: 'emotional_pattern',
+        bucket: 'emotional_triggers',
+        source_label: 'Mira',
+        source_slug: 'mira',
+        conversation_id: null,
+        captured_at: '2026-11-18T18:10:00.000Z',
+        updated_at: '2026-11-18T18:10:00.000Z',
+      },
+    ],
+  },
+  preferences: {
+    memory_paused: false,
+    allow_cross_companion_memory: true,
+  },
+  timezone: 'Asia/Kolkata',
+  proactiveOptIn: false,
+  defaultProfile: {
+    id: 'preview-prof-1',
+    name: 'Observatory Preview',
+    short_name: 'You',
+  },
+  bonds: [
+    {
+      companion_slug: 'mira',
+      companion_name: 'Mira',
+      total_turns: 8,
+      familiarity_stage: 'warming_up',
+      memory_summary: 'Appreciates calm, grounded reflections late at night about work-life balance.',
+      tone_preferences: ['Calm & unhurried', 'Gentle honesty'],
+      inside_references: ['Late-night chai walk'],
+      last_interaction_at: '2026-11-18T18:10:00.000Z',
+    },
+  ],
+  migrationReady: true,
 };
 
 

@@ -1,10 +1,12 @@
 import type {
+  ConversationThreadKind,
   CouncilAnalystNote,
   DeepProfileData,
   DeepProfileEntry,
   LifeContextAnchor,
   LifeContextChild,
   LifeContextData,
+  UserContextPreferences,
 } from '../../lib/lifeContextSchema';
 import {
   DEFAULT_COUNCIL_EXPERT_SLUG,
@@ -24,12 +26,14 @@ export {
 };
 
 export type {
+  ConversationThreadKind,
   CouncilAnalystNote,
   DeepProfileData,
   DeepProfileEntry,
   LifeContextAnchor,
   LifeContextChild,
   LifeContextData,
+  UserContextPreferences,
   ClarificationChip,
   ClarificationPayload,
   Stage1RouterResult,
@@ -655,7 +659,7 @@ export type CompanionSkillLevel =
 
 export type CompanionAutonomyLevel = 'steady' | 'intuitive' | 'free';
 
-export type CompanionChatCue = 'just_listen' | 'help_think';
+export type CompanionChatCue = 'natural' | 'just_listen' | 'help_think';
 
 export type MessageReaction = 'heart' | 'felt';
 
@@ -698,6 +702,7 @@ export interface PublicCompanionCard {
   max_output_tokens?: number | null;
   discoverable_tags?: string[];
   situation_tags?: string[];
+  specialization_slugs?: string[];
   gender_variants?: CompanionGenderVariants;
   supports_gender_toggle?: boolean;
   cultural_fluency: string;
@@ -781,6 +786,7 @@ export interface ConversationRecord {
   companion_persona_json?: CompanionPersona | null;
   thread_memory_summary?: string | null;
   thread_memory_msg_count?: number;
+  thread_kind?: ConversationThreadKind;
   is_bookmarked: boolean;
   total_word_count: number;
   use_full_profile_memory: boolean;
@@ -952,5 +958,31 @@ export interface SharedReadingNoteRecord {
   summary: string;
   created_at: string;
   origin?: 'shared_handoff' | 'saved_note';
+}
+
+export interface UserMemoryBondSummary {
+  companion_slug: string;
+  companion_name: string;
+  total_turns: number;
+  memory_summary: string | null;
+  tone_preferences: string[];
+  inside_references: string[];
+  last_interaction_at: string | null;
+  familiarity_stage?: string;
+}
+
+export interface UserMemorySnapshot {
+  livingContext: LifeContextData;
+  deepProfile: DeepProfileData;
+  preferences: UserContextPreferences;
+  timezone: string | null;
+  proactiveOptIn: boolean;
+  defaultProfile: {
+    id: string;
+    name: string;
+    short_name: string | null;
+  } | null;
+  bonds: UserMemoryBondSummary[];
+  migrationReady: boolean;
 }
 
