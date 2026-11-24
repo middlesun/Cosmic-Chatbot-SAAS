@@ -721,10 +721,17 @@ export const PREVIEW_HOME_SUMMARY: HomeSummaryResponse = {
     },
     {
       kind: 'council',
-      id: 'expert-modern_astrologer',
-      title: 'Modern Astrologer',
-      subtitle: 'Psychological & evolutionary astrology',
-      expertSlug: 'modern_astrologer',
+      id: 'expert-kp_precision',
+      title: 'KP Astrology',
+      subtitle: 'Cuspal Sub-Lords, House Significators & Ruling Planets',
+      expertSlug: 'kp_precision',
+    },
+    {
+      kind: 'council',
+      id: 'expert-jaimini',
+      title: 'Jaimini Jyotish',
+      subtitle: 'Chara Karakas, Karakamsha, Arudha Padas & Chara Dasha',
+      expertSlug: 'jaimini',
     },
     {
       kind: 'council',
@@ -735,24 +742,17 @@ export const PREVIEW_HOME_SUMMARY: HomeSummaryResponse = {
     },
     {
       kind: 'council',
-      id: 'expert-tarot_reader',
-      title: 'Tarot',
-      subtitle: '78-card Rider-Waite symbolic spreads',
-      expertSlug: 'tarot_reader',
-    },
-    {
-      kind: 'council',
-      id: 'expert-numerologist',
-      title: 'Numerology',
-      subtitle: 'Pythagorean Life Path & timing cycles',
-      expertSlug: 'numerologist',
-    },
-    {
-      kind: 'council',
       id: 'expert-hellenistic_astrologer',
       title: 'Hellenistic Astrologer',
       subtitle: 'Whole Sign houses, Sect, Hermetic Lots & Profections',
       expertSlug: 'hellenistic_astrologer',
+    },
+    {
+      kind: 'council',
+      id: 'expert-learn_astrology',
+      title: 'Learn Astrology',
+      subtitle: 'Pedagogical breakdowns showing the mechanics behind the reading',
+      expertSlug: 'learn_astrology',
     },
   ],
   featuredCompanions: [

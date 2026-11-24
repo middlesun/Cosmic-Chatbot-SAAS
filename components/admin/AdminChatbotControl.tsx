@@ -149,6 +149,11 @@ interface CompanionArchetypeState {
 interface EnginePromptBundle {
   core_council_constitution: string;
   companion_constitution: string;
+  companion_realism_baseline: string;
+  companion_chart_presence_prompt: string;
+  companion_return_greeting_prompt: string;
+  companion_bond_extractor_prompt: string;
+  profile_memory_extractor_prompt: string;
   companion_archetypes: CompanionArchetypeState[];
   companion_matcher_instructions: string;
   clarity_helper_system_prompt: string;
@@ -160,6 +165,9 @@ interface EnginePromptBundle {
   stage1_router_prompt: string;
   deep_audit_lenses: Record<string, string>;
   deep_audit_adjudicator_mandate: string;
+  vedic_turn_modifier_prompt: string;
+  short_reply_breakdown_wrapper: string;
+  timing_widget_placement_wrapper: string;
   stage4_aligned_suggestions_prompt: string;
   stage4_fast_more_suggestions_prompt: string;
   western_core_council_constitution: string;
@@ -170,6 +178,7 @@ interface EnginePromptBundle {
   western_format_contracts: Record<string, string>;
   western_deep_audit_lenses: Record<string, string>;
   western_deep_audit_adjudicator_mandate: string;
+  western_turn_modifier_prompt: string;
   western_stage4_aligned_suggestions_prompt: string;
   western_stage4_fast_more_suggestions_prompt: string;
 }
@@ -177,6 +186,11 @@ interface EnginePromptBundle {
 interface EnginePromptOverridesState {
   core_council_constitution?: string;
   companion_constitution?: string;
+  companion_realism_baseline?: string;
+  companion_chart_presence_prompt?: string;
+  companion_return_greeting_prompt?: string;
+  companion_bond_extractor_prompt?: string;
+  profile_memory_extractor_prompt?: string;
   companion_archetypes?: CompanionArchetypeState[];
   companion_matcher_instructions?: string;
   clarity_helper_system_prompt?: string;
@@ -188,6 +202,9 @@ interface EnginePromptOverridesState {
   stage1_router_prompt?: string;
   deep_audit_lenses?: Record<string, string>;
   deep_audit_adjudicator_mandate?: string;
+  vedic_turn_modifier_prompt?: string;
+  short_reply_breakdown_wrapper?: string;
+  timing_widget_placement_wrapper?: string;
   stage4_aligned_suggestions_prompt?: string;
   stage4_fast_more_suggestions_prompt?: string;
   western_core_council_constitution?: string;
@@ -198,6 +215,7 @@ interface EnginePromptOverridesState {
   western_format_contracts?: Record<string, string>;
   western_deep_audit_lenses?: Record<string, string>;
   western_deep_audit_adjudicator_mandate?: string;
+  western_turn_modifier_prompt?: string;
   western_stage4_aligned_suggestions_prompt?: string;
   western_stage4_fast_more_suggestions_prompt?: string;
 }
@@ -380,9 +398,17 @@ const ENGINE_SCALAR_FIELDS: Array<{
     | 'vedic_anti_cliche_rules'
     | 'stage1_router_prompt'
     | 'deep_audit_adjudicator_mandate'
+    | 'vedic_turn_modifier_prompt'
+    | 'short_reply_breakdown_wrapper'
+    | 'timing_widget_placement_wrapper'
     | 'stage4_aligned_suggestions_prompt'
     | 'stage4_fast_more_suggestions_prompt'
+    | 'profile_memory_extractor_prompt'
     | 'companion_constitution'
+    | 'companion_realism_baseline'
+    | 'companion_chart_presence_prompt'
+    | 'companion_return_greeting_prompt'
+    | 'companion_bond_extractor_prompt'
     | 'companion_matcher_instructions'
     | 'clarity_helper_system_prompt';
   title: string;
@@ -398,7 +424,7 @@ const ENGINE_SCALAR_FIELDS: Array<{
   {
     key: 'vedic_tier1_reasoning_laws',
     title: 'Tier-1 Adjudication Laws',
-    subtitle: '8-Tier Judgment Scale, Independent Evidence rule, D1-vs-D9 boundary, and 5-Tier Truth Gate hierarchy.',
+    subtitle: '8-Tier Judgment Scale, Independent Evidence rule, Command Hierarchy, Operational Yoga/Dosha state & Layer-7 Falsification.',
     rows: 9,
   },
   {
@@ -420,6 +446,24 @@ const ENGINE_SCALAR_FIELDS: Array<{
     rows: 6,
   },
   {
+    key: 'vedic_turn_modifier_prompt',
+    title: 'Turn-Level Vedic Verification Modifier',
+    subtitle: 'Transient 7-point forensic check injected per outbound turn without persisting in conversation history.',
+    rows: 8,
+  },
+  {
+    key: 'short_reply_breakdown_wrapper',
+    title: 'Short-Reply Technical Breakdown Wrapper',
+    subtitle: 'Controls the concise plain-English reply + hidden <<<TECH_BREAKDOWN>>> block when Short Reply is active.',
+    rows: 6,
+  },
+  {
+    key: 'timing_widget_placement_wrapper',
+    title: 'Timing Progress Widget Placement Wrapper',
+    subtitle: 'Controls inline placement rules for server-verified [[TIMING_BAR:...]] progress bars.',
+    rows: 6,
+  },
+  {
     key: 'stage4_aligned_suggestions_prompt',
     title: 'Stage 4 Aligned Suggestions Prompt',
     subtitle: 'Generates chart-aligned Follow-Ups and Deeper Analysis cards seeded from playbook next-hops & chart contradictions.',
@@ -432,10 +476,40 @@ const ENGINE_SCALAR_FIELDS: Array<{
     rows: 5,
   },
   {
+    key: 'profile_memory_extractor_prompt',
+    title: 'Living Profile & Psychological Memory Extractor',
+    subtitle: 'Extracts workplace, children, desires, dreams, problems & milestones from every conversation with source citations.',
+    rows: 10,
+  },
+  {
     key: 'companion_constitution',
     title: 'Companion Safety & Presence Constitution',
     subtitle: 'Controls human texting rhythm, non-yes-man honesty, and strict platonic/non-clinical boundaries.',
     rows: 7,
+  },
+  {
+    key: 'companion_realism_baseline',
+    title: 'Companion Anti-AI Realism Baseline',
+    subtitle: 'Universal anti-cliché and varied natural reply pacing always active across all companions.',
+    rows: 6,
+  },
+  {
+    key: 'companion_chart_presence_prompt',
+    title: 'Companion Chart Adaptability & Depth Directive',
+    subtitle: 'Controls human-first casual conversation while unlocking full holistic birth-chart / divination access when invited.',
+    rows: 6,
+  },
+  {
+    key: 'companion_return_greeting_prompt',
+    title: 'Companion Returning Greeting Template',
+    subtitle: 'Dynamic template ({{NAME}}, {{TIMING_CTX}}, {{BOND_STAGE}}, {{MEMORY_LINE}}) for returning users opening a new chat.',
+    rows: 8,
+  },
+  {
+    key: 'companion_bond_extractor_prompt',
+    title: 'Companion Bond & Inside-Reference Extractor',
+    subtitle: 'Background template updating per-companion shared summary, user slang cues, tone preferences & inside references.',
+    rows: 9,
   },
   {
     key: 'companion_matcher_instructions',
@@ -457,6 +531,7 @@ const WESTERN_ENGINE_SCALAR_FIELDS: Array<{
     | 'western_tier1_reasoning_laws'
     | 'western_anti_cliche_rules'
     | 'western_deep_audit_adjudicator_mandate'
+    | 'western_turn_modifier_prompt'
     | 'western_stage4_aligned_suggestions_prompt'
     | 'western_stage4_fast_more_suggestions_prompt';
   title: string;
@@ -486,6 +561,12 @@ const WESTERN_ENGINE_SCALAR_FIELDS: Array<{
     title: 'Western Deep Audit Adjudicator Mandate',
     subtitle: 'Synthesizes the 4 parallel Western lenses cleanly without mentioning internal machinery.',
     rows: 6,
+  },
+  {
+    key: 'western_turn_modifier_prompt',
+    title: 'Turn-Level Western Verification Modifier',
+    subtitle: 'Transient 5-point Tropical verification check injected per outbound turn without persisting in conversation history.',
+    rows: 7,
   },
   {
     key: 'western_stage4_aligned_suggestions_prompt',
@@ -652,6 +733,11 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
         g.slug === 'companion' &&
         Boolean(
           engineOverrides.companion_constitution?.trim() ||
+            engineOverrides.companion_realism_baseline?.trim() ||
+            engineOverrides.companion_chart_presence_prompt?.trim() ||
+            engineOverrides.companion_return_greeting_prompt?.trim() ||
+            engineOverrides.companion_bond_extractor_prompt?.trim() ||
+            engineOverrides.profile_memory_extractor_prompt?.trim() ||
             engineOverrides.companion_matcher_instructions?.trim() ||
             (engineOverrides.companion_archetypes && engineOverrides.companion_archetypes.length > 0)
         );
@@ -1171,6 +1257,11 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
       (selectedGuide === 'companion' &&
         Boolean(
           engineOverrides.companion_constitution?.trim() ||
+            engineOverrides.companion_realism_baseline?.trim() ||
+            engineOverrides.companion_chart_presence_prompt?.trim() ||
+            engineOverrides.companion_return_greeting_prompt?.trim() ||
+            engineOverrides.companion_bond_extractor_prompt?.trim() ||
+            engineOverrides.profile_memory_extractor_prompt?.trim() ||
             engineOverrides.companion_matcher_instructions?.trim() ||
             (engineOverrides.companion_archetypes && engineOverrides.companion_archetypes.length > 0)
         ))
@@ -1657,6 +1748,21 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                       const constVal =
                         engineOverrides.companion_constitution ??
                         engineDefaults.companion_constitution;
+                      const realismVal =
+                        engineOverrides.companion_realism_baseline ??
+                        engineDefaults.companion_realism_baseline;
+                      const chartPresenceVal =
+                        engineOverrides.companion_chart_presence_prompt ??
+                        engineDefaults.companion_chart_presence_prompt;
+                      const returnGreetingVal =
+                        engineOverrides.companion_return_greeting_prompt ??
+                        engineDefaults.companion_return_greeting_prompt;
+                      const bondExtractorVal =
+                        engineOverrides.companion_bond_extractor_prompt ??
+                        engineDefaults.companion_bond_extractor_prompt;
+                      const profileExtractorVal =
+                        engineOverrides.profile_memory_extractor_prompt ??
+                        engineDefaults.profile_memory_extractor_prompt;
                       const matcherVal =
                         engineOverrides.companion_matcher_instructions ??
                         engineDefaults.companion_matcher_instructions;
@@ -1684,6 +1790,116 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                                 setEngineOverrides((prev) => ({
                                   ...prev,
                                   companion_constitution: e.target.value,
+                                }))
+                              }
+                              className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-[#5C5449]">
+                                COMPANION_REALISM_BASELINE
+                              </span>
+                              <span className="font-mono text-[11px] tabular-nums text-[#8B8275]">
+                                {realismVal.length} chars · ~{approxTokens(realismVal)} tokens
+                              </span>
+                            </div>
+                            <textarea
+                              rows={5}
+                              value={realismVal}
+                              onChange={(e) =>
+                                setEngineOverrides((prev) => ({
+                                  ...prev,
+                                  companion_realism_baseline: e.target.value,
+                                }))
+                              }
+                              className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-[#5C5449]">
+                                COMPANION_CHART_PRESENCE_PROMPT
+                              </span>
+                              <span className="font-mono text-[11px] tabular-nums text-[#8B8275]">
+                                {chartPresenceVal.length} chars · ~{approxTokens(chartPresenceVal)} tokens
+                              </span>
+                            </div>
+                            <textarea
+                              rows={5}
+                              value={chartPresenceVal}
+                              onChange={(e) =>
+                                setEngineOverrides((prev) => ({
+                                  ...prev,
+                                  companion_chart_presence_prompt: e.target.value,
+                                }))
+                              }
+                              className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-[#5C5449]">
+                                COMPANION_RETURN_GREETING_PROMPT
+                              </span>
+                              <span className="font-mono text-[11px] tabular-nums text-[#8B8275]">
+                                {returnGreetingVal.length} chars · ~{approxTokens(returnGreetingVal)} tokens
+                              </span>
+                            </div>
+                            <textarea
+                              rows={7}
+                              value={returnGreetingVal}
+                              onChange={(e) =>
+                                setEngineOverrides((prev) => ({
+                                  ...prev,
+                                  companion_return_greeting_prompt: e.target.value,
+                                }))
+                              }
+                              className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-[#5C5449]">
+                                COMPANION_BOND_EXTRACTOR_PROMPT
+                              </span>
+                              <span className="font-mono text-[11px] tabular-nums text-[#8B8275]">
+                                {bondExtractorVal.length} chars · ~{approxTokens(bondExtractorVal)} tokens
+                              </span>
+                            </div>
+                            <textarea
+                              rows={8}
+                              value={bondExtractorVal}
+                              onChange={(e) =>
+                                setEngineOverrides((prev) => ({
+                                  ...prev,
+                                  companion_bond_extractor_prompt: e.target.value,
+                                }))
+                              }
+                              className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-[#5C5449]">
+                                PROFILE_MEMORY_EXTRACTOR_PROMPT (Shared Council + Companion Psychological Archivist)
+                              </span>
+                              <span className="font-mono text-[11px] tabular-nums text-[#8B8275]">
+                                {profileExtractorVal.length} chars · ~{approxTokens(profileExtractorVal)} tokens
+                              </span>
+                            </div>
+                            <textarea
+                              rows={9}
+                              value={profileExtractorVal}
+                              onChange={(e) =>
+                                setEngineOverrides((prev) => ({
+                                  ...prev,
+                                  profile_memory_extractor_prompt: e.target.value,
                                 }))
                               }
                               className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] p-4 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"

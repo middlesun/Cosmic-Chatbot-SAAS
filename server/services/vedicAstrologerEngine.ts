@@ -10,8 +10,12 @@ import {
   DEFAULT_FLUENCY_INSTRUCTIONS,
   DEFAULT_FORMAT_CONTRACTS,
   DEFAULT_INTENT_OUTPUT_CONTRACTS,
+  DEFAULT_SHORT_REPLY_BREAKDOWN_WRAPPER,
+  DEFAULT_TIMING_WIDGET_PLACEMENT_WRAPPER,
   DEFAULT_VEDIC_ANTI_CLICHE_RULES,
   DEFAULT_VEDIC_TIER1_REASONING_LAWS,
+  DEFAULT_VEDIC_TURN_MODIFIER_PROMPT,
+  DEFAULT_WESTERN_TURN_MODIFIER_PROMPT,
   WESTERN_ANTI_CLICHE_RULES,
   WESTERN_FLUENCY_INSTRUCTIONS,
   WESTERN_FORMAT_CONTRACTS,
@@ -70,7 +74,8 @@ export function extractTechBreakdown(rawText: string): {
 export function buildShortReplyBreakdownInstruction(
   effectiveFluency: UserFluencyTier,
   languageSlug: string,
-  tradition: 'vedic' | 'western' = 'vedic'
+  tradition: 'vedic' | 'western' = 'vedic',
+  engineOverrides?: EnginePromptOverrides | null
 ): string {
   const depthHint =
     tradition === 'western'
@@ -86,13 +91,16 @@ export function buildShortReplyBreakdownInstruction(
       ? '3. Use strictly Western Tropical terminology and exact degrees from the chart slice; never invent placements or inject Vedic terms.'
       : '3. Enforce D1-only degrees: never invent or quote degrees inside D9 or other Vargas inside the breakdown.';
 
-  return `SHORT-REPLY + COLLAPSIBLE TECHNICAL BREAKDOWN CONTRACT (ACTIVE BECAUSE SHORT REPLY IS ON):
-1. First, deliver ONLY the concise, calm plain-English answer (120–210 words max). Keep the main answer completely readable for an everyday user without dumping raw degrees or long technical lists inside it.
-2. Immediately AFTER finishing the main answer, emit ONE optional hidden technical breakdown block using these exact delimiters (never inside markdown code fences, and NEVER mention the delimiter tags in your prose):
-${TECH_BREAKDOWN_START}
-...compact bulleted technical verification (${depthHint}) in ${languageSlug || 'English'}...
-${TECH_BREAKDOWN_END}
-${accuracyRule}`;
+  const template =
+    engineOverrides?.short_reply_breakdown_wrapper?.trim() ||
+    DEFAULT_SHORT_REPLY_BREAKDOWN_WRAPPER;
+
+  return template
+    .replace(/\{\{TECH_BREAKDOWN_START\}\}/g, TECH_BREAKDOWN_START)
+    .replace(/\{\{TECH_BREAKDOWN_END\}\}/g, TECH_BREAKDOWN_END)
+    .replace(/\{\{DEPTH_HINT\}\}/g, depthHint)
+    .replace(/\{\{LANGUAGE\}\}/g, languageSlug || 'English')
+    .replace(/\{\{ACCURACY_RULE\}\}/g, accuracyRule);
 }
 
 export type VedicVoicePreset =
@@ -566,20 +574,41 @@ export function buildVoiceAndFormatInstructions(params: {
 }
 
 export function buildTimingWidgetPlacementInstruction(
-  timingWidgets?: TimingProgressWidget[] | null
+  timingWidgets?: TimingProgressWidget[] | null,
+  engineOverrides?: EnginePromptOverrides | null
 ): string {
   if (!timingWidgets || timingWidgets.length === 0) return '';
   const tokenList = timingWidgets
     .map((w) => `- \`[[TIMING_BAR:${w.id}]]\` — ${w.title} (${w.current.label})`)
     .join('\n');
 
-  return `TIMING PROGRESS WIDGET PLACEMENT TOKENS (PLACEMENT ONLY — ZERO SELF-CALCULATED PROGRESS BARS):
-The server will render verified, deterministic 3-step visual progress bars inline wherever you place these exact tokens on their own standalone line immediately AFTER the paragraph discussing that specific period:
-${tokenList}
-Rules:
-1. Place ONLY tokens for periods you actually discuss in your answer (typically 1–3 relevant widgets; never dump all tokens together at the bottom).
-2. Put each token on its own line right below its matching paragraph (never inside a Markdown table cell or code fence).
-3. NEVER invent new token IDs, NEVER modify the \`[[TIMING_BAR:...]]\` syntax, and NEVER mention these tokens in your prose.`;
+  const template =
+    engineOverrides?.timing_widget_placement_wrapper?.trim() ||
+    DEFAULT_TIMING_WIDGET_PLACEMENT_WRAPPER;
+
+  return template.replace(/\{\{TOKEN_LIST\}\}/g, tokenList);
+}
+
+export function resolveTurnVerificationModifier(
+  tradition: 'vedic' | 'western' = 'vedic',
+  engineOverrides?: EnginePromptOverrides | null
+): string {
+  if (tradition === 'western') {
+    const raw = engineOverrides?.western_turn_modifier_prompt;
+    return typeof raw === 'string' ? raw.trim() : DEFAULT_WESTERN_TURN_MODIFIER_PROMPT;
+  }
+  const raw = engineOverrides?.vedic_turn_modifier_prompt;
+  return typeof raw === 'string' ? raw.trim() : DEFAULT_VEDIC_TURN_MODIFIER_PROMPT;
+}
+
+export function appendTurnVerificationModifier(
+  userText: string,
+  tradition: 'vedic' | 'western' = 'vedic',
+  engineOverrides?: EnginePromptOverrides | null
+): string {
+  const modifier = resolveTurnVerificationModifier(tradition, engineOverrides);
+  if (!modifier) return userText;
+  return `${userText}\n\n[FORENSIC VALIDATION CHECK (APPLY SILENTLY TO THIS TURN; NEVER QUOTE OR REFERENCE THIS BLOCK IN YOUR REPLY)]\n${modifier}`;
 }
 
 export interface BuildVedicPathAParams {
@@ -694,13 +723,21 @@ export function buildVedicPathAPrompt(params: BuildVedicPathAParams): BuiltVedic
   }
 
   if (params.pkg.requiresTimingStack && params.pkg.timingWidgets?.length) {
-    const widgetBlock = buildTimingWidgetPlacementInstruction(params.pkg.timingWidgets);
+    const widgetBlock = buildTimingWidgetPlacementInstruction(
+      params.pkg.timingWidgets,
+      params.engineOverrides
+    );
     if (widgetBlock) sections.push(widgetBlock);
   }
 
   if (params.responseLength === 'short') {
     sections.push(
-      buildShortReplyBreakdownInstruction(effectiveFluency, params.languageSlug, tradition)
+      buildShortReplyBreakdownInstruction(
+        effectiveFluency,
+        params.languageSlug,
+        tradition,
+        params.engineOverrides
+      )
     );
   }
 

@@ -17,9 +17,15 @@ import {
 import { useAuth } from './AuthContext';
 import AstrologyModeToggle from './AstrologyModeToggle';
 import CompanionAvatar from './CompanionAvatar';
+import CompanionDiscoveryControls from './CompanionDiscoveryControls';
 import LifeContextModal from './LifeContextModal';
 import TimingRadarDashboard from './TimingRadarDashboard';
 import { getUserProfileDisplayLabel } from './chatUtilities';
+import {
+  matchesCompanionDiscoveryFilter,
+  type CompanionDiscoveryTabId,
+} from './chatTypes';
+import { PREVIEW_PUBLIC_COMPANIONS } from './previewFixtures';
 import {
   CLIENT_MINI_APPS,
   PREVIEW_HOME_SUMMARY,
@@ -60,6 +66,11 @@ const AppDashboardHome: React.FC = () => {
   );
   const [summaryLoading, setSummaryLoading] = useState<boolean>(!isPreviewMode);
   const [calibrationOpen, setCalibrationOpen] = useState(false);
+  const [activeCompanionGroup, setActiveCompanionGroup] =
+    useState<CompanionDiscoveryTabId>('all');
+  const [activeCompanionChip, setActiveCompanionChip] = useState<string | null>(null);
+  const [companionSearchQuery, setCompanionSearchQuery] = useState('');
+  const [showAllDashboardCompanions, setShowAllDashboardCompanions] = useState(false);
   const [activeAppCategory, setActiveAppCategory] = useState<
     'all' | 'popular' | MiniAppCategory | 'favorites'
   >('popular');
@@ -214,9 +225,10 @@ const AppDashboardHome: React.FC = () => {
     if (astrologyMode === 'western') {
       const westernPriority = [
         'expert-western_astrologer',
-        'expert-modern_astrologer',
         'expert-hellenistic_astrologer',
         'expert-vedic_astrologer',
+        'expert-kp_precision',
+        'expert-jaimini',
       ];
       return [...base].sort((a, b) => {
         const idxA = westernPriority.indexOf(a.id);
@@ -501,13 +513,65 @@ const AppDashboardHome: React.FC = () => {
         </div>
       </section>
 
-      {/* SECTION 2B: FEATURED COMPANIONS — Calm Portrait Strip */}
+      {/* SECTION 2B: COMPANIONS — Pillar Tabs, Situation Search & Calm Portrait Strip */}
       {(() => {
-        const featuredCompanions =
-          summary?.featuredCompanions && summary.featuredCompanions.length > 0
-            ? summary.featuredCompanions
-            : PREVIEW_HOME_SUMMARY.featuredCompanions || [];
-        if (featuredCompanions.length === 0) return null;
+        const baseCompanions = (() => {
+          if (
+            !isPreviewMode &&
+            summary?.featuredCompanions &&
+            summary.featuredCompanions.length > 0
+          ) {
+            return summary.featuredCompanions;
+          }
+          const previewFeatured = PREVIEW_HOME_SUMMARY.featuredCompanions || [];
+          const bySlug = new Map(
+            PREVIEW_PUBLIC_COMPANIONS.map((c) => [c.slug.toLowerCase(), c])
+          );
+          const merged: NonNullable<HomeSummaryResponse['featuredCompanions']> = [];
+          const seen = new Set<string>();
+          for (const item of previewFeatured) {
+            const full = bySlug.get(item.slug.toLowerCase());
+            seen.add(item.slug.toLowerCase());
+            merged.push({
+              ...full,
+              ...item,
+              companion_group: item.companion_group || full?.companion_group,
+              situation_tags: item.situation_tags || full?.situation_tags,
+              secondary_expertise: item.secondary_expertise || full?.secondary_expertise,
+              skill_level: item.skill_level || full?.skill_level,
+              category_tag: item.category_tag || full?.category_tag,
+              short_bio: item.short_bio || full?.short_bio,
+            });
+          }
+          for (const full of PREVIEW_PUBLIC_COMPANIONS) {
+            if (!seen.has(full.slug.toLowerCase())) {
+              seen.add(full.slug.toLowerCase());
+              merged.push(full);
+            }
+          }
+          return merged;
+        })();
+
+        if (baseCompanions.length === 0) return null;
+
+        const filteredCompanions = baseCompanions.filter((comp) =>
+          matchesCompanionDiscoveryFilter(comp, {
+            groupTab: activeCompanionGroup,
+            situationChipId: activeCompanionChip,
+            searchQuery: companionSearchQuery,
+          })
+        );
+
+        const isDefaultView =
+          activeCompanionGroup === 'all' &&
+          !activeCompanionChip &&
+          !companionSearchQuery.trim();
+
+        const displayedCompanions =
+          isDefaultView && !showAllDashboardCompanions
+            ? filteredCompanions.slice(0, 6)
+            : filteredCompanions;
+
         return (
           <section className="space-y-4">
             <div className="flex items-end justify-between gap-4">
@@ -523,48 +587,103 @@ const AppDashboardHome: React.FC = () => {
               </Link>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {featuredCompanions.map((comp) => {
-                const targetHref = comp.last_conversation_id
-                  ? `/app/chat/${comp.last_conversation_id}`
-                  : `/app/chat?pillar=companion&companion=${encodeURIComponent(comp.slug)}`;
-                return (
-                  <Link
-                    key={comp.slug}
-                    to={targetHref}
-                    className="group flex items-start justify-between gap-3.5 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/14 p-4 sm:p-5 transition-all hover:bg-[#F1ECE3]/80 hover:border-[#3D3830]/28"
-                  >
-                    <div className="flex items-start gap-3.5 min-w-0">
-                      <CompanionAvatar
-                        name={comp.name}
-                        avatarUrl={comp.avatar_url}
-                        palette={comp.monogram_palette}
-                        size="md"
-                        shape="circle"
-                      />
-                      <div className="min-w-0 space-y-0.5">
-                        <div className="flex items-baseline gap-1.5 min-w-0">
-                          <h3 className="font-serif text-lg font-medium text-[#3D3830] truncate">
-                            {comp.name}
-                          </h3>
-                          <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#8B8275] shrink-0">
-                            {comp.age}
-                          </span>
+            <CompanionDiscoveryControls
+              cards={baseCompanions}
+              activeGroup={activeCompanionGroup}
+              onChangeGroup={(group) => {
+                setActiveCompanionGroup(group);
+                setShowAllDashboardCompanions(false);
+              }}
+              activeSituationChip={activeCompanionChip}
+              onChangeSituationChip={(chipId) => {
+                setActiveCompanionChip(chipId);
+                setShowAllDashboardCompanions(false);
+              }}
+              searchQuery={companionSearchQuery}
+              onChangeSearchQuery={setCompanionSearchQuery}
+              tabSurface="white"
+              showCounts
+            />
+
+            {displayedCompanions.length === 0 ? (
+              <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-6 text-center space-y-2.5">
+                <p className="font-serif text-lg text-[#3D3830]">
+                  No companions match this moment or search
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveCompanionGroup('all');
+                    setActiveCompanionChip(null);
+                    setCompanionSearchQuery('');
+                  }}
+                  className="min-h-[36px] inline-flex items-center justify-center rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] px-4 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                >
+                  Reset filters
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {displayedCompanions.map((comp) => {
+                    const targetHref = comp.last_conversation_id
+                      ? `/app/chat/${comp.last_conversation_id}`
+                      : `/app/chat?pillar=companion&companion=${encodeURIComponent(comp.slug)}`;
+                    return (
+                      <Link
+                        key={comp.slug}
+                        to={targetHref}
+                        className="group flex items-start justify-between gap-3.5 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/14 p-4 sm:p-5 transition-all hover:bg-[#F1ECE3]/80 hover:border-[#3D3830]/28"
+                      >
+                        <div className="flex items-start gap-3.5 min-w-0">
+                          <CompanionAvatar
+                            name={comp.name}
+                            avatarUrl={comp.avatar_url}
+                            palette={comp.monogram_palette}
+                            size="md"
+                            shape="circle"
+                          />
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex items-baseline gap-1.5 min-w-0">
+                              <h3 className="font-serif text-lg font-medium text-[#3D3830] truncate">
+                                {comp.name}
+                              </h3>
+                              <span className="font-['DM_Sans',sans-serif] tabular-nums text-[11px] text-[#8B8275] shrink-0">
+                                {comp.age}
+                              </span>
+                            </div>
+                            <p className="text-[11px] font-medium text-[#8B7355] truncate">
+                              {comp.primary_expertise}
+                              {comp.last_conversation_id ? ' · Active' : ''}
+                            </p>
+                            <p className="text-xs text-[#5C5449] leading-snug line-clamp-2 pt-0.5">
+                              {comp.tagline}
+                            </p>
+                          </div>
                         </div>
-                        <p className="text-[11px] font-medium text-[#8B7355] truncate">
-                          {comp.primary_expertise}
-                          {comp.last_conversation_id ? ' · Active' : ''}
-                        </p>
-                        <p className="text-xs text-[#5C5449] leading-snug line-clamp-2 pt-0.5">
-                          {comp.tagline}
-                        </p>
-                      </div>
-                    </div>
-                    <ArrowRight className="mt-1 h-4 w-4 text-[#8B8275] group-hover:text-[#3D3830] group-hover:translate-x-0.5 transition-all shrink-0" />
-                  </Link>
-                );
-              })}
-            </div>
+                        <ArrowRight className="mt-1 h-4 w-4 text-[#8B8275] group-hover:text-[#3D3830] group-hover:translate-x-0.5 transition-all shrink-0" />
+                      </Link>
+                    );
+                  })}
+                </div>
+
+                {isDefaultView && filteredCompanions.length > 6 && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowAllDashboardCompanions((prev) => !prev)}
+                      className="min-h-[38px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-4 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                    >
+                      <span>
+                        {showAllDashboardCompanions
+                          ? 'Show fewer'
+                          : `Show all ${filteredCompanions.length} companions`}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         );
       })()}

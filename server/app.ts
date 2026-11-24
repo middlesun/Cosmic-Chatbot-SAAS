@@ -37,16 +37,10 @@ export function createExpressApp(): Express {
     res.json({ supabaseUrl, supabaseAnonKey });
   });
 
-  // Public specialist companions for landing showcase (never returns system prompts or private layers)
+  // Public companions for landing showcase (never returns system prompts or private layers)
   app.get('/api/public/companions', async (_req, res) => {
     try {
-      const catalog = await getPublicCompanionsCatalogCached();
-      const companions = catalog.filter((c) => {
-        if (c.category_tag === 'friends') return false;
-        const primaryLower = (c.primary_expertise || '').toLowerCase();
-        if (primaryLower === 'mood lifter' || primaryLower === 'friend') return false;
-        return true;
-      });
+      const companions = await getPublicCompanionsCatalogCached();
       res.setHeader('Cache-Control', 'public, max-age=120');
       res.json({ companions });
     } catch {

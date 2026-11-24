@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -19,6 +20,12 @@ import {
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
+import CouncilToCompanionModal, {
+  type CouncilHandoffConfirmPayload,
+  type CouncilHandoffSource,
+} from './CouncilToCompanionModal';
+import type { PublicCompanionCard } from './chatTypes';
+import { PREVIEW_PUBLIC_COMPANIONS } from './previewFixtures';
 
 export type NoteSourceType = 'personal' | 'council' | 'companion' | 'apps' | 'reports';
 
@@ -202,6 +209,7 @@ const SourceIcon: React.FC<{ source: NoteSourceType; className?: string }> = ({
 
 const NotesPage: React.FC = () => {
   const { getAccessToken, isPreviewMode } = useAuth();
+  const navigate = useNavigate();
 
   const [notes, setNotes] = useState<NoteRecord[]>([]);
   const [profiles, setProfiles] = useState<LightweightProfile[]>([]);
@@ -232,6 +240,13 @@ const NotesPage: React.FC = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Council note -> Companion handoff states
+  const [companionCatalog, setCompanionCatalog] = useState<PublicCompanionCard[]>(
+    isPreviewMode ? PREVIEW_PUBLIC_COMPANIONS : []
+  );
+  const [handoffSource, setHandoffSource] = useState<CouncilHandoffSource | null>(null);
+  const [handoffSubmittingSlug, setHandoffSubmittingSlug] = useState<string | null>(null);
+
   const loadNotesAndProfiles = useCallback(async () => {
     setIsLoading(true);
     setErrorMsg(null);
@@ -241,6 +256,7 @@ const NotesPage: React.FC = () => {
       setProfiles([
         { id: 'preview-prof-1', name: 'Aarav Mehta (Sample)', short_name: 'Aarav', is_default: true },
       ]);
+      setCompanionCatalog(PREVIEW_PUBLIC_COMPANIONS);
       setSelectedNoteId((prev) => prev || PREVIEW_NOTES[0]?.id || null);
       setIsLoading(false);
       return;
@@ -253,9 +269,10 @@ const NotesPage: React.FC = () => {
     }
 
     try {
-      const [notesRes, profRes] = await Promise.all([
+      const [notesRes, profRes, compRes] = await Promise.all([
         fetch('/api/notes', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/profiles', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/chat/companions', { headers: { Authorization: `Bearer ${token}` } }),
       ]);
 
       if (notesRes.ok) {
@@ -276,6 +293,13 @@ const NotesPage: React.FC = () => {
         const profData = await profRes.json();
         setProfiles((profData.profiles || []) as LightweightProfile[]);
       }
+
+      if (compRes.ok) {
+        const compData = await compRes.json().catch(() => ({}));
+        if (Array.isArray(compData.companions)) {
+          setCompanionCatalog(compData.companions as PublicCompanionCard[]);
+        }
+      }
     } catch {
       setErrorMsg('Network error loading notes.');
     } finally {
@@ -286,6 +310,81 @@ const NotesPage: React.FC = () => {
   useEffect(() => {
     void loadNotesAndProfiles();
   }, [loadNotesAndProfiles]);
+
+  const handleOpenHandoffFromNote = (note: NoteRecord) => {
+    const expertLabel =
+      note.astrology_mode === 'western'
+        ? 'Western Astrologer'
+        : note.astrology_mode === 'vedic'
+        ? 'Vedic Astrologer'
+        : 'Astrology Council';
+    setHandoffSource({
+      title: note.title,
+      rawContent: note.content,
+      expertSlug: note.astrology_mode === 'western' ? 'western_astrologer' : 'council_synthesis',
+      expertLabel,
+      astrologyMode: note.astrology_mode,
+      profileId: note.profile_id,
+      profileLabel: note.profile_label || null,
+      conversationId: null,
+      messageId: note.source_ref_id,
+    });
+  };
+
+  const handleConfirmNoteHandoff = async (payload: CouncilHandoffConfirmPayload) => {
+    if (isPreviewMode) {
+      setHandoffSource(null);
+      navigate(`/app/chat?pillar=companion&companion=${encodeURIComponent(payload.card.slug)}`, {
+        state: { councilHandoff: payload },
+      });
+      return;
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      setErrorMsg('Please sign in to chat with a companion.');
+      return;
+    }
+
+    setHandoffSubmittingSlug(payload.card.slug);
+    try {
+      const res = await fetch('/api/chat/companions/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          companionSlug: payload.card.slug,
+          forceNew: false,
+          profileId: payload.source.profileId ?? undefined,
+          handoffNote: payload.handoffNote,
+          handoffFromName: payload.source.expertLabel,
+          handoffFullContext: payload.fullContext,
+          handoffTitle: payload.title,
+          handoffExpertLabel: payload.source.expertLabel,
+          handoffExpertSlug: payload.source.expertSlug ?? null,
+          handoffMessageId: payload.source.messageId ?? null,
+          handoffConversationId: payload.source.conversationId ?? null,
+          handoffAstrologyMode: payload.source.astrologyMode ?? null,
+          rememberReadingNote: payload.rememberReadingNote,
+          clientLocalHour: new Date().getHours(),
+          pinAsTab: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.conversation?.id) {
+        setErrorMsg(data.error || `Could not open ${payload.card.name} right now.`);
+        return;
+      }
+      setHandoffSource(null);
+      navigate(`/app/chat/${encodeURIComponent(data.conversation.id)}`);
+    } catch {
+      setErrorMsg('Network error starting Companion chat.');
+    } finally {
+      setHandoffSubmittingSlug(null);
+    }
+  };
 
   const filteredNotes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -883,7 +982,18 @@ const NotesPage: React.FC = () => {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {selectedNote.source_type === 'council' &&
+                        companionCatalog.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenHandoffFromNote(selectedNote)}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-[#4A453D] hover:bg-[#38342E] text-[#FAF7F2] px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer"
+                          >
+                            <HeartHandshake className="h-3.5 w-3.5" />
+                            <span>Talk with Companion</span>
+                          </button>
+                        )}
                       <button
                         type="button"
                         onClick={() => void handleCopyContent(selectedNote)}
@@ -957,6 +1067,17 @@ const NotesPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      <CouncilToCompanionModal
+        isOpen={Boolean(handoffSource)}
+        source={handoffSource}
+        companions={companionCatalog}
+        submittingSlug={handoffSubmittingSlug}
+        onClose={() => {
+          if (!handoffSubmittingSlug) setHandoffSource(null);
+        }}
+        onConfirm={handleConfirmNoteHandoff}
+      />
     </div>
   );
 };

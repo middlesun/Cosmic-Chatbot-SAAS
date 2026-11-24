@@ -31,8 +31,10 @@ import {
   ALL_GUIDE_CATALOG_META,
   DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
   DEFAULT_COMPANION_ARCHETYPES,
+  DEFAULT_COMPANION_CHART_PRESENCE_PROMPT,
   DEFAULT_COMPANION_CONSTITUTION,
   DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
+  DEFAULT_COMPANION_REALISM_BASELINE,
   DEFAULT_CORE_COUNCIL_CONSTITUTION,
   DEFAULT_FORMAT_CONTRACTS,
   DEFAULT_VEDIC_ANTI_CLICHE_RULES,
@@ -2517,30 +2519,34 @@ router.put('/settings/chatbot/guide/:guideSlug', async (req: AuthenticatedReques
   } else if (
     body.clarity_helper_system_prompt !== undefined ||
     body.companion_constitution !== undefined ||
+    body.companion_realism_baseline !== undefined ||
+    body.companion_chart_presence_prompt !== undefined ||
+    body.companion_return_greeting_prompt !== undefined ||
+    body.companion_bond_extractor_prompt !== undefined ||
+    body.profile_memory_extractor_prompt !== undefined ||
     body.companion_matcher_instructions !== undefined ||
     body.companion_archetypes !== undefined
   ) {
     const engineOverrides = await getEnginePromptOverrides();
     const nextEngine: EnginePromptOverrides = { ...engineOverrides };
-    if (typeof body.clarity_helper_system_prompt === 'string') {
-      if (body.clarity_helper_system_prompt.trim()) {
-        nextEngine.clarity_helper_system_prompt = body.clarity_helper_system_prompt.trim();
-      } else {
-        delete nextEngine.clarity_helper_system_prompt;
-      }
-    }
-    if (typeof body.companion_constitution === 'string') {
-      if (body.companion_constitution.trim()) {
-        nextEngine.companion_constitution = body.companion_constitution.trim();
-      } else {
-        delete nextEngine.companion_constitution;
-      }
-    }
-    if (typeof body.companion_matcher_instructions === 'string') {
-      if (body.companion_matcher_instructions.trim()) {
-        nextEngine.companion_matcher_instructions = body.companion_matcher_instructions.trim();
-      } else {
-        delete nextEngine.companion_matcher_instructions;
+    const companionScalarKeys = [
+      'clarity_helper_system_prompt',
+      'companion_constitution',
+      'companion_realism_baseline',
+      'companion_chart_presence_prompt',
+      'companion_return_greeting_prompt',
+      'companion_bond_extractor_prompt',
+      'profile_memory_extractor_prompt',
+      'companion_matcher_instructions',
+    ] as const;
+    for (const cKey of companionScalarKeys) {
+      if (typeof body[cKey] === 'string') {
+        const trimmed = (body[cKey] as string).trim();
+        if (trimmed) {
+          nextEngine[cKey] = trimmed.slice(0, 12000);
+        } else {
+          delete nextEngine[cKey];
+        }
       }
     }
     if (Array.isArray(body.companion_archetypes)) {
@@ -2665,6 +2671,11 @@ router.post('/settings/chatbot/guide/:guideSlug/reset', async (req: Authenticate
         delete nextEngine.clarity_helper_system_prompt;
       } else if (guideSlug === 'companion') {
         delete nextEngine.companion_constitution;
+        delete nextEngine.companion_realism_baseline;
+        delete nextEngine.companion_chart_presence_prompt;
+        delete nextEngine.companion_return_greeting_prompt;
+        delete nextEngine.companion_bond_extractor_prompt;
+        delete nextEngine.profile_memory_extractor_prompt;
         delete nextEngine.companion_matcher_instructions;
         delete nextEngine.companion_archetypes;
       }
@@ -2698,10 +2709,18 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
   const scalarKeys: Array<
     | 'core_council_constitution'
     | 'companion_constitution'
+    | 'companion_realism_baseline'
+    | 'companion_chart_presence_prompt'
+    | 'companion_return_greeting_prompt'
+    | 'companion_bond_extractor_prompt'
+    | 'profile_memory_extractor_prompt'
     | 'companion_matcher_instructions'
     | 'clarity_helper_system_prompt'
     | 'vedic_tier1_reasoning_laws'
     | 'vedic_anti_cliche_rules'
+    | 'vedic_turn_modifier_prompt'
+    | 'short_reply_breakdown_wrapper'
+    | 'timing_widget_placement_wrapper'
     | 'stage1_router_prompt'
     | 'deep_audit_adjudicator_mandate'
     | 'stage4_aligned_suggestions_prompt'
@@ -2709,16 +2728,25 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     | 'western_core_council_constitution'
     | 'western_tier1_reasoning_laws'
     | 'western_anti_cliche_rules'
+    | 'western_turn_modifier_prompt'
     | 'western_deep_audit_adjudicator_mandate'
     | 'western_stage4_aligned_suggestions_prompt'
     | 'western_stage4_fast_more_suggestions_prompt'
   > = [
     'core_council_constitution',
     'companion_constitution',
+    'companion_realism_baseline',
+    'companion_chart_presence_prompt',
+    'companion_return_greeting_prompt',
+    'companion_bond_extractor_prompt',
+    'profile_memory_extractor_prompt',
     'companion_matcher_instructions',
     'clarity_helper_system_prompt',
     'vedic_tier1_reasoning_laws',
     'vedic_anti_cliche_rules',
+    'vedic_turn_modifier_prompt',
+    'short_reply_breakdown_wrapper',
+    'timing_widget_placement_wrapper',
     'stage1_router_prompt',
     'deep_audit_adjudicator_mandate',
     'stage4_aligned_suggestions_prompt',
@@ -2726,6 +2754,7 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     'western_core_council_constitution',
     'western_tier1_reasoning_laws',
     'western_anti_cliche_rules',
+    'western_turn_modifier_prompt',
     'western_deep_audit_adjudicator_mandate',
     'western_stage4_aligned_suggestions_prompt',
     'western_stage4_fast_more_suggestions_prompt',
@@ -2994,10 +3023,12 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
 
   const isWesternManifestGuide =
     guideSlug === 'western_astrologer' ||
-    guideSlug === 'modern_astrologer' ||
     guideSlug === 'hellenistic_astrologer';
-  const isAstroPipelineManifestGuide =
-    guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG || isWesternManifestGuide;
+  const isVedicManifestGuide =
+    guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG ||
+    guideSlug === 'kp_precision' ||
+    guideSlug === 'jaimini';
+  const isAstroPipelineManifestGuide = isVedicManifestGuide || isWesternManifestGuide;
 
   const runtimeFiles =
     guideMeta.pillar === 'council'
@@ -3223,7 +3254,7 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
             WESTERN_FORMAT_CONTRACTS.detailed
         )
       );
-    } else if (guideSlug === DEFAULT_COUNCIL_EXPERT_SLUG) {
+    } else if (isVedicManifestGuide) {
       const hasLawsOverride = Boolean(engineOverrides.vedic_tier1_reasoning_laws?.trim());
       promptStack.push(
         makeStackItem(
@@ -3298,10 +3329,34 @@ router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedReques
         engineOverrides.companion_constitution?.trim() || DEFAULT_COMPANION_CONSTITUTION
       )
     );
-    const hasMatcher = Boolean(engineOverrides.companion_matcher_instructions?.trim());
+    const hasRealism = Boolean(engineOverrides.companion_realism_baseline?.trim());
     promptStack.push(
       makeStackItem(
         2,
+        'Companion Anti-AI Realism Baseline',
+        hasRealism ? 'Database' : 'Code Default',
+        hasRealism ? 'platform_settings.engine_prompt_overrides.companion_realism_baseline' : 'enginePromptDefaults.ts',
+        'Active',
+        engineOverrides.companion_realism_baseline?.trim() || DEFAULT_COMPANION_REALISM_BASELINE
+      )
+    );
+    const hasChartPresence = Boolean(engineOverrides.companion_chart_presence_prompt?.trim());
+    promptStack.push(
+      makeStackItem(
+        3,
+        'Companion Chart Adaptability & Full Context Directive',
+        hasChartPresence ? 'Database' : 'Code Default',
+        hasChartPresence
+          ? 'platform_settings.engine_prompt_overrides.companion_chart_presence_prompt'
+          : 'enginePromptDefaults.ts',
+        'Active',
+        engineOverrides.companion_chart_presence_prompt?.trim() || DEFAULT_COMPANION_CHART_PRESENCE_PROMPT
+      )
+    );
+    const hasMatcher = Boolean(engineOverrides.companion_matcher_instructions?.trim());
+    promptStack.push(
+      makeStackItem(
+        4,
         'Companion 4-Persona Matcher Rules',
         hasMatcher ? 'Database' : 'Code Default',
         hasMatcher ? 'platform_settings.engine_prompt_overrides.companion_matcher_instructions' : 'enginePromptDefaults.ts',

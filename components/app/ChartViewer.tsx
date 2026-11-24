@@ -16,9 +16,9 @@ import {
   Download,
   FileText,
   Loader2,
-  ArrowRight,
 } from 'lucide-react';
 import AstrologyModeToggle from './AstrologyModeToggle';
+import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import { useOptionalAuth, type AstrologyMode } from './AuthContext';
 import {
   SHODASHVARGA_DEFS,
@@ -753,6 +753,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
   }, [auth?.astrologyMode, initialMode]);
 
   const [chartStyle, setChartStyle] = useState<'north' | 'south'>('north');
+  const [selectedVargaCode, setSelectedVargaCode] = useState<string>('D9');
   const [vedicTab, setVedicTab] = useState<VedicTabId>(initialVedicTab || 'overview');
   const [westernTab, setWesternTab] = useState<WesternTabId>('overview');
   const [aspectFilter, setAspectFilter] = useState<'all' | 'Major' | 'Minor'>('all');
@@ -822,6 +823,26 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
   }, [propTransits, isPreviewMode, getAccessToken]);
 
   const allVargas = useMemo(() => resolveCompleteVargas(chart), [chart]);
+  const activeVargaDef = useMemo(
+    () => SHODASHVARGA_DEFS.find((d) => d.code === selectedVargaCode) || SHODASHVARGA_DEFS.find((d) => d.code === 'D9') || SHODASHVARGA_DEFS[0],
+    [selectedVargaCode]
+  );
+  const activeVargaData = allVargas[activeVargaDef.code] || allVargas.D9;
+  const vargaDropdownOptions = useMemo<CustomSelectOption[]>(
+    () => [
+      ...SHODASHVARGA_DEFS.map((def) => ({
+        value: def.code,
+        label: `${def.code} · ${def.name}`,
+        hint: def.focus,
+      })),
+      {
+        value: 'ALL',
+        label: 'All 16 Divisional Charts (D1–D60)',
+        hint: 'Open full Shodashvarga grid & table below',
+      },
+    ],
+    []
+  );
   const birthMeta = useMemo(() => computeTraditionalBirthMeta(chart, gender), [chart, gender]);
   const jaiminiCharts = useMemo(() => buildJaiminiChartPair(chart), [chart]);
 
@@ -910,7 +931,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                 : `${chart.western?.system || 'Tropical (Placidus)'} · ${chart.meta.location.locationLabel}`}
             </p>
             <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
-              {chart.meta.name} — {viewMode === 'vedic' ? 'Vedic Kundli (D1 & D9)' : 'Tropical Natal Wheel'}
+              {chart.meta.name} — {viewMode === 'vedic' ? `Vedic Kundli (D1 & ${activeVargaDef.code})` : 'Tropical Natal Wheel'}
             </h2>
           </div>
 
@@ -999,32 +1020,37 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs font-['JetBrains_Mono',monospace] tabular-nums text-[#8B8275]">
               {viewMode === 'vedic'
-                ? `D1 Lagna: ${d1Asc?.sign || '—'} · D9 Lagna: ${
-                    allVargas.D9 ? VEDIC_SIGNS_SHORT[allVargas.D9.ascendantSignIndex] : '—'
+                ? `D1 Lagna: ${d1Asc?.sign || '—'} · ${activeVargaDef.code} Lagna: ${
+                    activeVargaData ? VEDIC_SIGNS_SHORT[activeVargaData.ascendantSignIndex] : '—'
                   }`
                 : `AC: ${chart.western?.angles.ascendant.sign || '—'} · MC: ${
                     chart.western?.angles.midheaven.sign || '—'
                   }`}
             </p>
             {viewMode === 'vedic' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setVedicTab('vargas');
-                  window.setTimeout(() => {
-                    vedicTabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }, 40);
-                }}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
-                  vedicTab === 'vargas'
-                    ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2]'
-                    : 'border-[#3D3830]/15 bg-[#FAF7F2] text-[#3D3830] hover:bg-[#EAE3D7]'
-                }`}
-              >
-                <Grid3X3 className="h-3 w-3 text-[#8B7355]" />
-                <span>All 16 Divisional Charts (D1–D60)</span>
-                <ArrowRight className="h-3 w-3" />
-              </button>
+              <div className="w-56 sm:w-64">
+                <CustomSelect
+                  value={selectedVargaCode}
+                  onChange={(val) => {
+                    if (val === 'ALL') {
+                      setVedicTab('vargas');
+                      window.setTimeout(() => {
+                        vedicTabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }, 40);
+                      return;
+                    }
+                    setSelectedVargaCode(val);
+                  }}
+                  options={vargaDropdownOptions}
+                  ariaLabel="Select divisional chart"
+                  size="xs"
+                  surface="canvas"
+                  align="right"
+                  minMenuWidth={280}
+                  icon={<Grid3X3 className="h-3.5 w-3.5 text-[#8B7355]" />}
+                  triggerClassName="rounded-full"
+                />
+              </div>
             )}
           </div>
         </div>
@@ -1032,7 +1058,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
         {/* HERO VISUAL + TELEMETRY */}
         {viewMode === 'vedic' ? (
           <div className="space-y-6">
-            {/* Side-by-Side Lagna (D1) and Navamsha (D9) */}
+            {/* Side-by-Side Lagna (D1) and Selected Divisional Chart (Default D9) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {allVargas.D1 && (
                 <KundliSvg
@@ -1046,15 +1072,15 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                   natalPlanets={chart.planets}
                 />
               )}
-              {allVargas.D9 && (
+              {activeVargaData && (
                 <KundliSvg
                   chartStyle={chartStyle}
-                  title="Navamsha Chart (D9)"
-                  subtitle={`${SIGN_NAMES_SHORT[allVargas.D9.ascendantSignIndex]} Lagna`}
-                  centerTitle="D9 Navamsha"
-                  centerSub={`${SIGN_NAMES_SHORT[allVargas.D9.ascendantSignIndex]} Asc`}
-                  ascendantSignIndex={allVargas.D9.ascendantSignIndex}
-                  placements={allVargas.D9.placements}
+                  title={`${activeVargaDef.name} Chart (${activeVargaDef.code})`}
+                  subtitle={`${SIGN_NAMES_SHORT[activeVargaData.ascendantSignIndex]} Lagna`}
+                  centerTitle={`${activeVargaDef.code} ${activeVargaDef.name}`}
+                  centerSub={`${SIGN_NAMES_SHORT[activeVargaData.ascendantSignIndex]} Asc`}
+                  ascendantSignIndex={activeVargaData.ascendantSignIndex}
+                  placements={activeVargaData.placements}
                   natalPlanets={chart.planets}
                 />
               )}

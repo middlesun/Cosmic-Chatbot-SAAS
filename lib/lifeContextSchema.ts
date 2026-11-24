@@ -42,6 +42,27 @@ export interface LifeContextAnchor {
   year: number;
   tag: string;
   note?: string;
+  cited_by?: string;
+  cited_slug?: string;
+}
+
+export type CitedInsightCategory =
+  | 'workplace'
+  | 'family_children'
+  | 'desire_dream'
+  | 'worry_problem'
+  | 'relationship'
+  | 'emotional_pattern'
+  | 'practical_life'
+  | 'spiritual';
+
+export interface CitedProfileInsight {
+  id: string;
+  category: CitedInsightCategory;
+  summary: string;
+  cited_by: string;
+  cited_slug?: string;
+  updated_at?: string;
 }
 
 export interface LifeContextData {
@@ -50,13 +71,31 @@ export interface LifeContextData {
   marriage_year?: number;
   has_children?: boolean;
   children?: LifeContextChild[];
+  children_summary?: string;
   career_mode?: CareerContextMode;
   career_role?: string;
+  workplace_context?: string;
   location_status?: LocationContextStatus;
   past_anchors?: LifeContextAnchor[];
   core_stress_areas?: string[];
+  cited_insights?: CitedProfileInsight[];
   updated_at?: string;
 }
+
+export const CITED_INSIGHT_CATEGORY_LABELS: Record<CitedInsightCategory, string> = {
+  workplace: 'Work & Craft',
+  family_children: 'Family & Children',
+  desire_dream: 'Desires & Dreams',
+  worry_problem: 'Concerns & Friction',
+  relationship: 'Relationships',
+  emotional_pattern: 'Inner Pattern',
+  practical_life: 'Daily Life',
+  spiritual: 'Values & Inner Path',
+};
+
+export const VALID_CITED_INSIGHT_CATEGORIES = new Set<string>(
+  Object.keys(CITED_INSIGHT_CATEGORY_LABELS)
+);
 
 export const LIFE_CONTEXT_FRAMING_COPY =
   "For a genuinely accurate reading, your real-world context and major turning points matter as much as your birth time. Add what you're comfortable sharing.";

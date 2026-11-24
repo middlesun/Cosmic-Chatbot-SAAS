@@ -19,10 +19,9 @@ interface AccountSettingsModalProps {
 
 const FALLBACK_EXPERTS = [
   { value: DEFAULT_COUNCIL_EXPERT_SLUG, label: 'Vedic Astrologer' },
+  { value: 'kp_precision', label: 'KP Astrology' },
+  { value: 'jaimini', label: 'Jaimini Jyotish' },
   { value: 'western_astrologer', label: 'Western Astrologer' },
-  { value: 'modern_astrologer', label: 'Modern Astrologer' },
-  { value: 'tarot_reader', label: 'Tarot' },
-  { value: 'numerologist', label: 'Numerology' },
   { value: 'hellenistic_astrologer', label: 'Hellenistic Astrologer' },
   { value: 'learn_astrology', label: 'Learn Astrology' },
 ];
@@ -167,7 +166,7 @@ const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
     if (!supabase || !appUser?.email) return;
 
     const { error: resetErr } = await supabase.auth.resetPasswordForEmail(appUser.email, {
-      redirectTo: `${window.location.origin}/app/chat`,
+      redirectTo: `${window.location.origin}/app/home`,
     });
     if (resetErr) {
       setResetMessage(resetErr.message);

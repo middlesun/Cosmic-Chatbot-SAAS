@@ -1348,7 +1348,7 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
     Boolean((req.body as Record<string, unknown>).patch) &&
     typeof (req.body as Record<string, unknown>).patch === 'object';
 
-  const selectCols = isPatchRequest ? 'id, life_context_json' : 'id';
+  const selectCols = 'id, life_context_json';
   const primaryFetch = await supabaseAdmin
     .from('profiles')
     .select(selectCols)
@@ -1360,7 +1360,7 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
     id: string;
     life_context_json?: unknown;
   } | null;
-  if (primaryFetch.error && isPatchRequest) {
+  if (primaryFetch.error) {
     const fallbackFetch = await supabaseAdmin
       .from('profiles')
       .select('id')
@@ -1375,12 +1375,38 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
     return;
   }
 
-  const { sanitized, completeness } = isPatchRequest
-    ? mergeLifeContextPatch(
-        existing.life_context_json || {},
-        (req.body as { patch: Partial<LifeContextData> }).patch
-      )
-    : sanitizeLifeContext(req.body);
+  const existingObj =
+    existing.life_context_json &&
+    typeof existing.life_context_json === 'object' &&
+    !Array.isArray(existing.life_context_json)
+      ? (existing.life_context_json as Record<string, unknown>)
+      : {};
+
+  let sanitizedPayload: ReturnType<typeof sanitizeLifeContext>;
+  if (isPatchRequest) {
+    sanitizedPayload = mergeLifeContextPatch(
+      existingObj,
+      (req.body as { patch: Partial<LifeContextData> }).patch
+    );
+  } else {
+    const incomingBody =
+      req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+        ? (req.body as Record<string, unknown>)
+        : {};
+    const preservedBody: Record<string, unknown> = { ...incomingBody };
+    for (const bgKey of [
+      'core_stress_areas',
+      'cited_insights',
+      'workplace_context',
+      'children_summary',
+    ]) {
+      if (preservedBody[bgKey] === undefined && existingObj[bgKey] !== undefined) {
+        preservedBody[bgKey] = existingObj[bgKey];
+      }
+    }
+    sanitizedPayload = sanitizeLifeContext(preservedBody);
+  }
+  const { sanitized, completeness } = sanitizedPayload;
   const { data: updated, error } = await supabaseAdmin
     .from('profiles')
     .update({

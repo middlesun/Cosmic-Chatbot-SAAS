@@ -1,14 +1,20 @@
 import type {
   CareerContextMode,
+  CitedInsightCategory,
   RelationshipContextStatus,
 } from '../../lib/lifeContextSchema';
 import {
   VALID_ANCHOR_TAGS,
   VALID_CAREER_MODES,
+  VALID_CITED_INSIGHT_CATEGORIES,
   VALID_RELATIONSHIP_STATUSES,
 } from '../../lib/lifeContextSchema';
 import type { Stage1RouterResult, UserFluencyTier, VedicUserProfile } from '../../lib/vedicTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
+import {
+  DEFAULT_COMPANION_BOND_EXTRACTOR_PROMPT,
+  DEFAULT_PROFILE_MEMORY_EXTRACTOR_PROMPT,
+} from './enginePromptDefaults';
 import { mergeExtractedLifeFacts } from './lifeContextGuard';
 import {
   createOpenRouterCompletion,
@@ -16,6 +22,7 @@ import {
   isOpenRouterConfiguredAsync,
   safeExtractJson,
 } from './openrouter';
+import { getEnginePromptOverrides } from './platformSettings';
 
 export interface ArchivistTurnContext {
   routerResult?: Stage1RouterResult | null;
@@ -27,6 +34,18 @@ export interface ArchivistTurnContext {
   latestUserPrompt?: string;
   latestAssistantAnswer?: string;
   extractedStressAreas?: string[];
+  actorCitation?: string;
+  actorSlug?: string;
+}
+
+const TRIVIAL_ACK_RE = /^(ok|okay|k|kk|yes|yeah|yep|yup|no|nope|nah|thanks|thank you|thx|ty|hmm+|hm+|oh|ah|hi|hey|hello|cool|nice|sure|got it)[.!?]*$/i;
+
+function applyPromptTemplate(template: string, vars: Record<string, string>): string {
+  let out = template;
+  for (const [k, v] of Object.entries(vars)) {
+    out = out.split(`{{${k}}}`).join(v);
+  }
+  return out;
 }
 
 const FLUENCY_ORDER: Record<UserFluencyTier, number> = {
@@ -157,50 +176,71 @@ async function extractAndPersistLifeEvents(
   turnContext?: ArchivistTurnContext
 ): Promise<string[]> {
   const userPrompt = (turnContext?.latestUserPrompt || '').trim();
-  if (userPrompt.length < 12) return [];
+  if (userPrompt.length < 6 || TRIVIAL_ACK_RE.test(userPrompt)) return [];
 
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin || !(await isOpenRouterConfiguredAsync())) return [];
 
   try {
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('id, user_id, life_context_json')
-      .eq('id', profileId)
-      .eq('user_id', userId)
-      .maybeSingle();
+    const [{ data: profile }, engineOverrides] = await Promise.all([
+      supabaseAdmin
+        .from('profiles')
+        .select('id, user_id, life_context_json')
+        .eq('id', profileId)
+        .eq('user_id', userId)
+        .maybeSingle(),
+      getEnginePromptOverrides().catch(() => ({} as Record<string, never>)),
+    ]);
 
     if (!profile) return [];
+
+    const existingCtx =
+      profile.life_context_json && typeof profile.life_context_json === 'object'
+        ? (profile.life_context_json as Record<string, unknown>)
+        : {};
+    const existingNotesList = Array.isArray(existingCtx.cited_insights)
+      ? (existingCtx.cited_insights as Array<Record<string, unknown>>)
+          .slice(0, 12)
+          .map((n) => `- [${String(n.category || 'note')}] ${String(n.summary || '')}`)
+          .join('\n')
+      : '';
+    const existingSummary = [
+      existingCtx.relationship_status ? `Relationship: ${String(existingCtx.relationship_status)}` : '',
+      existingCtx.children_summary ? `Children: ${String(existingCtx.children_summary)}` : '',
+      existingCtx.career_role ? `Role: ${String(existingCtx.career_role)}` : '',
+      existingCtx.workplace_context ? `Workplace: ${String(existingCtx.workplace_context)}` : '',
+      existingNotesList,
+    ]
+      .filter(Boolean)
+      .join('\n') || '(none recorded yet)';
+
+    const actorCitation = turnContext?.actorCitation?.trim() || 'Cosmic Council';
+    const actorSlug = turnContext?.actorSlug?.trim() || undefined;
+    const promptTemplate =
+      (engineOverrides as { profile_memory_extractor_prompt?: string })
+        .profile_memory_extractor_prompt?.trim() || DEFAULT_PROFILE_MEMORY_EXTRACTOR_PROMPT;
+
+    const renderedPrompt = applyPromptTemplate(promptTemplate, {
+      ACTOR_CITATION: actorCitation,
+      EXISTING_CONTEXT: existingSummary.slice(0, 1400),
+      ALLOWED_MILESTONE_TAGS: Array.from(VALID_ANCHOR_TAGS).join(', '),
+      ALLOWED_RELATIONSHIP_STATUSES: Array.from(VALID_RELATIONSHIP_STATUSES).join(', '),
+      ALLOWED_CAREER_MODES: Array.from(VALID_CAREER_MODES).join(', '),
+      USER_MESSAGE: userPrompt.slice(0, 1800),
+      ASSISTANT_REPLY: (turnContext?.latestAssistantAnswer || '').slice(0, 800),
+    });
 
     const utilityModel = await getUtilityModelAsync();
     const completion = await createOpenRouterCompletion({
       model: utilityModel,
       jsonMode: true,
+      disableReasoning: true,
       temperature: 0.1,
-      maxTokens: 320,
+      maxTokens: 480,
       messages: [
         {
           role: 'user',
-          content: `Extract ONLY explicit, real-world facts stated by the user in this message. NEVER guess or invent years.
-Return strictly JSON:
-{
-  "milestones": [{"year": 2019, "tag": "married", "note": "short 3-8 word fact"}],
-  "core_stress_areas": ["concise recurring life concern if clearly expressed"],
-  "relationship_status": null,
-  "marriage_year": null,
-  "has_children": null,
-  "career_mode": null
-}
-
-Allowed milestone tags: ${Array.from(VALID_ANCHOR_TAGS).join(', ')}.
-Allowed relationship_status: ${Array.from(VALID_RELATIONSHIP_STATUSES).join(', ')} or null.
-Allowed career_mode: ${Array.from(VALID_CAREER_MODES).join(', ')} or null.
-Rules:
-- Only include a milestone if the user explicitly stated the exact 4-digit year in their message (e.g. "married in 2019", "started job in 2018", "lost my father in 2021").
-- core_stress_areas: 0 to 2 concise themes (e.g. "relationship friction with ex", "delayed marriage despite career success", "debt recovery pressure"). Empty array if none.
-
-USER MESSAGE:
-${userPrompt.slice(0, 1400)}`,
+          content: renderedPrompt,
         },
       ],
     });
@@ -211,10 +251,20 @@ ${userPrompt.slice(0, 1400)}`,
       relationship_status?: unknown;
       marriage_year?: unknown;
       has_children?: unknown;
+      children_summary?: unknown;
       career_mode?: unknown;
+      career_role?: unknown;
+      workplace_context?: unknown;
+      cited_insights?: unknown;
     }>(completion.text, {});
 
-    const milestones: Array<{ year: number; tag: string; note?: string }> = [];
+    const milestones: Array<{
+      year: number;
+      tag: string;
+      note?: string;
+      cited_by?: string;
+      cited_slug?: string;
+    }> = [];
     if (Array.isArray(parsed.milestones)) {
       for (const item of parsed.milestones) {
         if (!item || typeof item !== 'object') continue;
@@ -229,6 +279,8 @@ ${userPrompt.slice(0, 1400)}`,
           year: yr,
           tag,
           note: typeof rec.note === 'string' ? rec.note.trim().slice(0, 80) : undefined,
+          cited_by: actorCitation,
+          ...(actorSlug ? { cited_slug: actorSlug } : {}),
         });
       }
     }
@@ -261,13 +313,57 @@ ${userPrompt.slice(0, 1400)}`,
     const hasChildren =
       typeof parsed.has_children === 'boolean' ? parsed.has_children : undefined;
 
+    const childrenSummary =
+      typeof parsed.children_summary === 'string' && parsed.children_summary.trim()
+        ? parsed.children_summary.trim().slice(0, 140)
+        : undefined;
+
+    const careerRole =
+      typeof parsed.career_role === 'string' && parsed.career_role.trim()
+        ? parsed.career_role.trim().slice(0, 100)
+        : undefined;
+
+    const workplaceContext =
+      typeof parsed.workplace_context === 'string' && parsed.workplace_context.trim()
+        ? parsed.workplace_context.trim().slice(0, 160)
+        : undefined;
+
+    const citedInsights: Array<{
+      category: CitedInsightCategory;
+      summary: string;
+      cited_by: string;
+      cited_slug?: string;
+    }> = [];
+    if (Array.isArray(parsed.cited_insights)) {
+      for (const rawItem of parsed.cited_insights.slice(0, 6)) {
+        if (!rawItem || typeof rawItem !== 'object') continue;
+        const row = rawItem as Record<string, unknown>;
+        const rawCat = typeof row.category === 'string' ? row.category.trim() : '';
+        const category: CitedInsightCategory = VALID_CITED_INSIGHT_CATEGORIES.has(rawCat)
+          ? (rawCat as CitedInsightCategory)
+          : 'practical_life';
+        const summary = typeof row.summary === 'string' ? row.summary.trim().slice(0, 180) : '';
+        if (!summary || summary.length < 4) continue;
+        citedInsights.push({
+          category,
+          summary,
+          cited_by: actorCitation,
+          ...(actorSlug ? { cited_slug: actorSlug } : {}),
+        });
+      }
+    }
+
     if (
       milestones.length === 0 &&
       stressAreas.length === 0 &&
       !relStatus &&
       !marriageYear &&
       hasChildren === undefined &&
-      !careerMode
+      !childrenSummary &&
+      !careerMode &&
+      !careerRole &&
+      !workplaceContext &&
+      citedInsights.length === 0
     ) {
       return [];
     }
@@ -278,7 +374,13 @@ ${userPrompt.slice(0, 1400)}`,
       relationship_status: relStatus,
       marriage_year: marriageYear,
       has_children: hasChildren,
+      children_summary: childrenSummary,
       career_mode: careerMode,
+      career_role: careerRole,
+      workplace_context: workplaceContext,
+      cited_insights: citedInsights,
+      actor_citation: actorCitation,
+      actor_slug: actorSlug,
     });
 
     if (merged.changed) {
@@ -298,6 +400,27 @@ ${userPrompt.slice(0, 1400)}`,
     console.warn('[memoryArchivist] Non-fatal life-event extraction error:', err);
     return [];
   }
+}
+
+export async function updateCompanionProfileMemoryAfterTurn(params: {
+  profileId: string;
+  userId: string;
+  companionName: string;
+  companionRole?: string | null;
+  companionSlug: string;
+  latestUserPrompt: string;
+  latestAssistantAnswer?: string;
+}): Promise<void> {
+  if (!params.profileId || !params.userId || !params.latestUserPrompt?.trim()) return;
+  const cleanName = params.companionName.trim() || 'Companion';
+  const cleanRole = (params.companionRole || '').trim();
+  const actorCitation = cleanRole ? `${cleanName} · ${cleanRole}` : cleanName;
+  await extractAndPersistLifeEvents(params.profileId, params.userId, {
+    latestUserPrompt: params.latestUserPrompt,
+    latestAssistantAnswer: params.latestAssistantAnswer,
+    actorCitation,
+    actorSlug: params.companionSlug,
+  });
 }
 
 async function updateSilentUserIntelligence(
@@ -680,7 +803,23 @@ export async function updateCompanionBondAfterTurn(params: {
     // Distill incremental relationship & shared memory safely in the background
     if (promptClean.length >= 4 && (await isOpenRouterConfiguredAsync())) {
       try {
-        const utilityModel = await getUtilityModelAsync();
+        const [utilityModel, engineOverrides] = await Promise.all([
+          getUtilityModelAsync(),
+          getEnginePromptOverrides().catch(() => ({} as Record<string, never>)),
+        ]);
+        const bondTemplate =
+          (engineOverrides as { companion_bond_extractor_prompt?: string })
+            .companion_bond_extractor_prompt?.trim() || DEFAULT_COMPANION_BOND_EXTRACTOR_PROMPT;
+        const bondPrompt = applyPromptTemplate(bondTemplate, {
+          COMPANION_NAME: params.companionName,
+          EXISTING_SUMMARY: current.memory_summary || '(none yet)',
+          EXISTING_SLANG: JSON.stringify(current.relationship_state.user_slang_cues),
+          EXISTING_TONE: JSON.stringify(current.relationship_state.tone_preferences),
+          EXISTING_REFS: JSON.stringify(current.relationship_state.inside_references),
+          USER_MESSAGE: promptClean.slice(0, 900),
+          ASSISTANT_REPLY: answerClean.slice(0, 900),
+        });
+
         const completion = await createOpenRouterCompletion({
           model: utilityModel,
           jsonMode: true,
@@ -690,27 +829,7 @@ export async function updateCompanionBondAfterTurn(params: {
           messages: [
             {
               role: 'user',
-              content: `Update the private ongoing friend-memory and conversational rhythm notes between this user and companion "${params.companionName}".
-Keep existing important memories unless corrected, merge new meaningful life facts (people, pets, job/city moves, recurring worries, wins, small everyday details), and notice subtle communication style cues.
-
-EXISTING SUMMARY:
-${current.memory_summary || '(none yet)'}
-
-EXISTING SLANG/RHYTHM CUES: ${JSON.stringify(current.relationship_state.user_slang_cues)}
-EXISTING TONE PREFERENCES: ${JSON.stringify(current.relationship_state.tone_preferences)}
-EXISTING INSIDE REFERENCES: ${JSON.stringify(current.relationship_state.inside_references)}
-
-LATEST EXCHANGE:
-User: ${promptClean.slice(0, 900)}
-${params.companionName}: ${answerClean.slice(0, 900)}
-
-Return STRICTLY compact JSON:
-{
-  "memory_summary": "Concise narrative under 160 words capturing what ${params.companionName} remembers about this person across conversations (strictly from these chats; zero invented dates).",
-  "user_slang_cues": ["up to 6 short observed style/slang cues e.g. 'casual lowercase', 'uses bro/yaar', 'dry humor'"],
-  "tone_preferences": ["up to 5 observed conversation preferences e.g. 'prefers quiet validation over advice', 'likes playful banter'"],
-  "inside_references": ["up to 6 real recurring topics, nicknames, pets, or shared moments from their chats"]
-}`,
+              content: bondPrompt,
             },
           ],
         });

@@ -345,11 +345,18 @@ export function detectPromptExtractionAttempt(userText: string): boolean {
 
 const INTERNAL_LEAK_SIGNATURES: RegExp[] = [
   /CORE\s+COSMIC\s+COUNCIL\s+DIRECTIVES/i,
+  /COSMIC\s+COUNCIL\s+COMPANION\s+STANDARDS/i,
+  /HUMAN\s+REALISM\s*&\s*ANTI-AI\s+CADENCE/i,
+  /HUMAN-FIRST\s+ADAPTABILITY\s*&\s*FULL\s+ESOTERIC/i,
+  /ATTACHED\s+FULL\s+(?:TROPICAL|VEDIC|NUMEROLOGY)/i,
+  /QUIET\s+USER\s+BACKGROUND\s*\(REAL-WORLD/i,
   /CONSULTATION\s+MODE:/,
   /OUTPUT\s+FORMAT:/,
   /ACT\s+AS\s+(?:A|THE)\b/,
   /ACTIVE\s+NATAL\s+CHART\s+CONTEXT/i,
   /LONGITUDINAL\s+PROFILE\s+MEMORY\s*\(Themes/i,
+  /\[?FORENSIC\s+VALIDATION\s+CHECK\s*\(APPLY\s+SILENTLY/i,
+  /\[?INTERNAL\s+TURN\s+VERIFICATION/i,
 ];
 
 export function containsInternalPromptLeak(text: string): boolean {

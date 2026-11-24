@@ -22,6 +22,7 @@ import {
   rebuildProfileMemory,
   recordCompanionBubbleReactionBond,
   updateCompanionBondAfterTurn,
+  updateCompanionProfileMemoryAfterTurn,
   updateProfileMemoryAfterTurn,
   type CompanionBondState,
 } from '../services/memoryArchivist';
@@ -49,6 +50,12 @@ import {
   toPublicCompanionCard,
   type CompanionPresetRecord,
 } from '../services/companionPresets';
+import {
+  deleteSharedReadingNote,
+  formatCouncilReadingNotesForCompanion,
+  listSharedReadingNotes,
+  saveSharedReadingNote,
+} from '../services/readingNotes';
 import type {
   ChatStyle,
   CompanionChatCue,
@@ -174,6 +181,8 @@ function stripSensitivePersonaFields(persona: unknown): Record<string, unknown> 
 
 const COUNCIL_EXPERT_FALLBACK_NAMES: Record<string, string> = {
   [DEFAULT_COUNCIL_EXPERT_SLUG]: 'Vedic Astrologer',
+  kp_precision: 'KP Astrology',
+  jaimini: 'Jaimini Jyotish',
   western_astrologer: 'Western Astrologer',
   modern_astrologer: 'Modern Astrologer',
   tarot_reader: 'Tarot',
@@ -1028,6 +1037,66 @@ router.post('/companions/match', requireAuth, async (req: AuthenticatedRequest, 
   res.json({ companions });
 });
 
+// 4b-ii. Shared Council Reading Notes (Council -> Companion Handoff & Context Bridge)
+router.get('/reading-notes', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+  const profileId =
+    typeof req.query.profileId === 'string' && req.query.profileId.trim()
+      ? req.query.profileId.trim()
+      : null;
+
+  const notes = await listSharedReadingNotes(supabaseAdmin, req.appUser.id, profileId);
+  res.json({ notes });
+});
+
+router.post('/reading-notes', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+  const body = (req.body || {}) as Record<string, unknown>;
+  const summary = typeof body.summary === 'string' ? body.summary.trim() : '';
+  if (!summary) {
+    res.status(400).json({ error: 'Reading note summary is required.' });
+    return;
+  }
+  const entry = await saveSharedReadingNote(supabaseAdmin, req.appUser.id, {
+    profile_id: typeof body.profile_id === 'string' ? body.profile_id : null,
+    profile_label: typeof body.profile_label === 'string' ? body.profile_label : null,
+    expert_slug: typeof body.expert_slug === 'string' ? body.expert_slug : null,
+    expert_label: typeof body.expert_label === 'string' ? body.expert_label : 'Council Reading',
+    astrology_mode:
+      body.astrology_mode === 'vedic' || body.astrology_mode === 'western'
+        ? body.astrology_mode
+        : null,
+    conversation_id: typeof body.conversation_id === 'string' ? body.conversation_id : null,
+    message_id: typeof body.message_id === 'string' ? body.message_id : null,
+    title: typeof body.title === 'string' ? body.title : null,
+    summary,
+  });
+  if (!entry) {
+    res.status(400).json({ error: 'Could not save reading note.' });
+    return;
+  }
+  res.status(201).json({ note: entry });
+});
+
+router.delete('/reading-notes/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !req.appUser) {
+    res.status(503).json({ error: 'Backend unavailable' });
+    return;
+  }
+  const noteId = String(req.params.id || '').trim();
+  const removed = await deleteSharedReadingNote(supabaseAdmin, req.appUser.id, noteId);
+  res.json({ deleted: removed, id: noteId });
+});
+
 const buildWarmHandoffGreeting = (
   targetName: string,
   chatStyle: ChatStyle,
@@ -1078,6 +1147,33 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
     typeof req.body?.handoffFromName === 'string'
       ? req.body.handoffFromName.trim().slice(0, 40)
       : '';
+  const handoffFullContext =
+    typeof req.body?.handoffFullContext === 'string'
+      ? req.body.handoffFullContext.trim().slice(0, 1400)
+      : '';
+  const handoffTitle =
+    typeof req.body?.handoffTitle === 'string' ? req.body.handoffTitle.trim().slice(0, 140) : '';
+  const handoffExpertLabel =
+    typeof req.body?.handoffExpertLabel === 'string'
+      ? req.body.handoffExpertLabel.trim().slice(0, 80)
+      : '';
+  const handoffExpertSlug =
+    typeof req.body?.handoffExpertSlug === 'string'
+      ? req.body.handoffExpertSlug.trim().slice(0, 80)
+      : null;
+  const handoffMessageId =
+    typeof req.body?.handoffMessageId === 'string'
+      ? req.body.handoffMessageId.trim().slice(0, 120)
+      : null;
+  const handoffConversationId =
+    typeof req.body?.handoffConversationId === 'string'
+      ? req.body.handoffConversationId.trim().slice(0, 120)
+      : null;
+  const handoffAstrologyMode =
+    req.body?.handoffAstrologyMode === 'vedic' || req.body?.handoffAstrologyMode === 'western'
+      ? (req.body.handoffAstrologyMode as 'vedic' | 'western')
+      : null;
+  const rememberReadingNote = req.body?.rememberReadingNote !== false;
   const requestedProfileId =
     typeof req.body?.profileId === 'string' && req.body.profileId.trim()
       ? req.body.profileId.trim()
@@ -1100,6 +1196,19 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
       return;
     }
     verifiedCompanionProfileId = requestedProfileId;
+  }
+
+  if (handoffFullContext && rememberReadingNote) {
+    await saveSharedReadingNote(supabaseAdmin, req.appUser.id, {
+      profile_id: verifiedCompanionProfileId,
+      expert_slug: handoffExpertSlug,
+      expert_label: handoffExpertLabel || handoffFromName || 'Council Reading',
+      astrology_mode: handoffAstrologyMode,
+      conversation_id: handoffConversationId,
+      message_id: handoffMessageId,
+      title: handoffTitle || 'Shared Council Reading Note',
+      summary: handoffFullContext,
+    });
   }
 
   // ── FLOW A: Preset Admin-Governed Companion ────────────────────────────────
@@ -1152,6 +1261,18 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
       }
 
       if (existingConv) {
+        if (
+          verifiedCompanionProfileId &&
+          existingConv.profile_id !== verifiedCompanionProfileId
+        ) {
+          await supabaseAdmin
+            .from('conversations')
+            .update({ profile_id: verifiedCompanionProfileId })
+            .eq('id', String(existingConv.id))
+            .eq('user_id', req.appUser.id)
+            .then(() => undefined, () => undefined);
+          existingConv.profile_id = verifiedCompanionProfileId;
+        }
         if (
           requestedChatMode &&
           existingConv.companion_chat_mode !== requestedChatMode
@@ -2549,7 +2670,12 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     // Companions share conversational bond across ALL conversations with this same companion slug,
     // honor the per-thread focused chart (conversation.profile_id) when set or fall back to the
     // user's default ("You") profile, and strictly isolate Council memory from Companions.
-    const needsCompanionChartJson = presetCompanion?.skill_level === 'astrology_soft';
+    const companionSkillLevel =
+      presetCompanion?.skill_level || activeCompanionPersona?.skill_level || 'none_emotional';
+    const needsCompanionChartJson =
+      companionSkillLevel === 'astrology_soft' ||
+      companionSkillLevel === 'vedic_soft' ||
+      companionSkillLevel === 'past_life';
     const compProfileCols = `id, name, short_name, is_activated, chart_text_context, birth_date, birth_time, birth_city, birth_country, gender, current_city, current_country, life_context_json${
       needsCompanionChartJson ? ', chart_json' : ''
     }`;
@@ -2691,12 +2817,18 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
   let companionBond: CompanionBondState | null = null;
   let referrableCompanions: Array<{ slug: string; name: string; primary_expertise: string }> = [];
+  let councilReadingNotesText: string | null = null;
   if (activePillar === 'companion') {
-    const [loadedBond, publicCompanionRoster] = await Promise.all([
+    const [loadedBond, publicCompanionRoster, sharedNotes] = await Promise.all([
       effectiveCompanionSlug
         ? getCompanionBond(req.appUser.id, effectiveCompanionSlug)
         : Promise.resolve(null),
       getPublicCompanionsCatalogCached(),
+      listSharedReadingNotes(
+        supabaseAdmin,
+        req.appUser.id,
+        profileData?.id || conversation.profile_id || null
+      ).catch(() => []),
     ]);
     companionBond = loadedBond;
     referrableCompanions = publicCompanionRoster.map((c) => ({
@@ -2704,6 +2836,8 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       name: c.name,
       primary_expertise: c.primary_expertise,
     }));
+    const formattedNotes = formatCouncilReadingNotesForCompanion(sharedNotes, 4);
+    councilReadingNotesText = formattedNotes || null;
   }
 
   const extraIdsFiltered =
@@ -3196,6 +3330,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       companionBond,
       companionChatMode: effectiveCompanionChatMode,
       companionCrossThreadSummary: activePillar === 'companion' ? scopeMemoryContext : null,
+      councilReadingNotesText: activePillar === 'companion' ? councilReadingNotesText : null,
       referrableCompanions: activePillar === 'companion' ? referrableCompanions : undefined,
       clientLocalHour,
       conversation: {
@@ -3528,6 +3663,14 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         expertSlug === 'hellenistic_astrologer'
           ? 'western'
           : 'vedic';
+      const councilCitationMap: Record<string, string> = {
+        vedic_astrologer: 'Vedic Astrologer',
+        kp_precision: 'KP Precision Astrologer',
+        jaimini: 'Jaimini Astrologer',
+        western_astrologer: 'Western Astrologer',
+        hellenistic_astrologer: 'Hellenistic Astrologer',
+        learn_astrology: 'Astrology Tutor',
+      };
       void updateProfileMemoryAfterTurn(conversation.profile_id, req.appUser.id, {
         routerResult: stage1Decision?.routerResult || null,
         domain: streamResult.vedicMeta?.domain || modeSlug,
@@ -3537,6 +3680,8 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         tradition: archivistTradition,
         latestUserPrompt: promptText,
         latestAssistantAnswer: finalAssistantText,
+        actorCitation: councilCitationMap[expertSlug] || 'Cosmic Council',
+        actorSlug: expertSlug,
       });
     } else if (
       activePillar === 'companion' &&
@@ -3546,16 +3691,34 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     ) {
       const companionName =
         presetCompanion?.name || activeCompanionPersona?.name || 'Companion';
+      const companionRole =
+        presetCompanion?.primary_expertise || activeCompanionPersona?.role_label || null;
+      const companionProfileId = profileData?.id || conversation.profile_id || null;
       const activeUserId = req.appUser.id;
       const convIdForUpdate = conversation.id;
       scheduleBackgroundTask(async () => {
-        await updateCompanionBondAfterTurn({
-          userId: activeUserId,
-          companionSlug: effectiveCompanionSlug,
-          companionName,
-          userPrompt: promptText,
-          assistantAnswer: finalAssistantText,
-        });
+        await Promise.allSettled([
+          updateCompanionBondAfterTurn({
+            userId: activeUserId,
+            companionSlug: effectiveCompanionSlug,
+            companionName,
+            userPrompt: promptText,
+            assistantAnswer: finalAssistantText,
+          }),
+          ...(companionProfileId
+            ? [
+                updateCompanionProfileMemoryAfterTurn({
+                  profileId: companionProfileId,
+                  userId: activeUserId,
+                  companionName,
+                  companionRole,
+                  companionSlug: effectiveCompanionSlug,
+                  latestUserPrompt: promptText,
+                  latestAssistantAnswer: finalAssistantText,
+                }),
+              ]
+            : []),
+        ]);
         if (effectiveCompanionSlug.startsWith('custom_')) {
           await supabaseAdmin
             .from('user_custom_companions')

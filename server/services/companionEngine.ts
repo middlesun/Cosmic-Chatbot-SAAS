@@ -7,7 +7,7 @@ import type {
   CompanionTtsVoiceProfile,
 } from '../../components/app/chatTypes';
 import type { LifeContextData } from '../../lib/lifeContextSchema';
-import type { CompiledChartData } from './chartCompiler';
+import { formatChartForLLM, type CompiledChartData } from './chartCompiler';
 import type { CompanionPresetRecord } from './companionPresets';
 import {
   drawTarotSpread,
@@ -20,9 +20,11 @@ import {
 import {
   DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
   DEFAULT_COMPANION_ARCHETYPES,
+  DEFAULT_COMPANION_CHART_PRESENCE_PROMPT,
   DEFAULT_COMPANION_CONSTITUTION,
   DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
   DEFAULT_COMPANION_REALISM_BASELINE,
+  DEFAULT_COMPANION_RETURN_GREETING_PROMPT,
   normalizeChatStyle,
 } from './enginePromptDefaults';
 import type { CompanionBondState } from './memoryArchivist';
@@ -797,12 +799,52 @@ function formatLightweightLifeStageSummary(profile: CompanionPromptProfileContex
 
   const lc = profile.life_context_json;
   if (lc && typeof lc === 'object') {
-    if (lc.career_mode) lines.push(`Career context: ${String(lc.career_mode).replace(/_/g, ' ')}`);
+    if (lc.career_mode) {
+      lines.push(
+        `Career context: ${String(lc.career_mode).replace(/_/g, ' ')}${
+          lc.career_role ? ` (${lc.career_role})` : ''
+        }`
+      );
+    } else if (lc.career_role) {
+      lines.push(`Career role: ${lc.career_role}`);
+    }
+    if (lc.workplace_context) {
+      lines.push(`Workplace & craft context: ${lc.workplace_context}`);
+    }
     if (lc.relationship_status) {
-      lines.push(`Relationship status: ${String(lc.relationship_status).replace(/_/g, ' ')}`);
+      lines.push(
+        `Relationship status: ${String(lc.relationship_status).replace(/_/g, ' ')}${
+          lc.marriage_year ? ` (married ${lc.marriage_year})` : ''
+        }`
+      );
+    }
+    if (Array.isArray(lc.children) && lc.children.length > 0) {
+      lines.push(
+        `Children: ${lc.children.length} (${lc.children
+          .map((c) => `${c.gender === 'male' ? 'son' : 'daughter'} b.${c.birth_year}`)
+          .join(', ')})`
+      );
+    } else if (lc.children_summary) {
+      lines.push(`Children context: ${lc.children_summary}`);
+    } else if (typeof lc.has_children === 'boolean') {
+      lines.push(`Has children: ${lc.has_children ? 'Yes' : 'No'}`);
+    }
+    if (Array.isArray(lc.past_anchors) && lc.past_anchors.length > 0) {
+      lines.push(
+        `Key milestones: ${lc.past_anchors
+          .slice(0, 5)
+          .map((a) => `${a.year} ${a.tag.replace(/_/g, ' ')}${a.note ? ` (${a.note})` : ''}`)
+          .join('; ')}`
+      );
     }
     if (Array.isArray(lc.core_stress_areas) && lc.core_stress_areas.length > 0) {
-      lines.push(`Current life themes: ${lc.core_stress_areas.slice(0, 4).join('; ')}`);
+      lines.push(`Current life themes: ${lc.core_stress_areas.slice(0, 5).join('; ')}`);
+    }
+    if (Array.isArray(lc.cited_insights) && lc.cited_insights.length > 0) {
+      const noteLines = lc.cited_insights
+        .slice(0, 14)
+        .map((n) => `- [${String(n.category || 'note').replace(/_/g, ' ')}] ${n.summary}`);
+      lines.push(`Deeper personal context (hopes, worries, nuances — weave quietly):\n${noteLines.join('\n')}`);
     }
   }
   return lines.join('\n');
@@ -818,9 +860,9 @@ function looksLikeEsotericInvite(userPrompt: string, skillLevel: CompanionSkillL
     return /\b(number|numbers|numerology|life path|expression|destiny|date|birthday)\b/.test(text);
   }
   if (skillLevel === 'past_life') {
-    return /\b(past life|karma|karmic|soul|pattern|dream|deja vu|ketu|node)\b/.test(text);
+    return /\b(past life|karma|karmic|soul|pattern|dream|deja vu|ketu|node|chart|astrology|dasha|saturn|house)\b/.test(text);
   }
-  return /\b(chart|astrology|planet|planets|transit|dasha|horoscope|rising|moon|saturn|mercury|retrograde|venus|jupiter|house|sign|birth)\b/.test(
+  return /\b(chart|astrology|planet|planets|transit|dasha|horoscope|rising|moon|saturn|mercury|retrograde|venus|jupiter|mars|rahu|ketu|house|sign|birth|lagna|navamsa|d9|d10|aspect|timing|year|marriage|career)\b/.test(
     text
   );
 }
@@ -830,6 +872,7 @@ function buildCompanionSkillAndProfileBlock(params: {
   userPrompt: string;
   historyMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
   userDefaultProfile?: CompanionPromptProfileContext | null;
+  chartPresenceOverride?: string | null;
 }): { block: string; tarotSpread?: DrawnTarotSpread | null } {
   const { skillLevel, userDefaultProfile, userPrompt } = params;
 
@@ -853,15 +896,27 @@ ${
   const invited = looksLikeEsotericInvite(userPrompt, skillLevel);
   const blocks: string[] = [];
   let drawnTarot: DrawnTarotSpread | null = null;
+  const presencePrompt =
+    params.chartPresenceOverride?.trim() || DEFAULT_COMPANION_CHART_PRESENCE_PROMPT;
 
-  blocks.push(`90/10 HUMAN-FIRST RULE & BIRTH DATA HARMONY:
-- Be 90% warm, grounded, real friend and 10% subtle intuitive craft. Never turn a casual check-in or emotional vent into a textbook lecture.
-- Only bring up planets, cards, or numbers when the user directly invites it OR a brief, plain-English metaphor genuinely comforts or clarifies what they asked.`);
+  blocks.push(presencePrompt);
+  blocks.push(
+    invited
+      ? `CURRENT TURN SIGNAL: The user is welcoming or asking for ${skillLevel.replace(/_/g, ' ')}/chart-grounded insight. Feel free to read deeply from their complete verified data below while staying warm, clear, and human.`
+      : `CURRENT TURN SIGNAL: This reads as everyday conversation rather than an explicit chart interrogation. Lead with human warmth first; only weave subtle chart/symbolic perspective if it genuinely comforts or illuminates what they shared.`
+  );
 
   if (userDefaultProfile) {
     blocks.push(
       `VERIFIED BIRTH DATA ALREADY ATTACHED: You already have ${userDefaultProfile.name}'s verified birth profile below. NEVER ask them again for their birth date, birth time, or birthplace — unless they specifically ask about someone else (like a partner or friend) whose chart is not here.`
     );
+
+    const lightCtx = formatLightweightLifeStageSummary(userDefaultProfile);
+    if (lightCtx) {
+      blocks.push(
+        `QUIET USER BACKGROUND (REAL-WORLD LIFE CONTEXT — weave naturally, never recite robotically):\n${lightCtx}`
+      );
+    }
 
     if (skillLevel === 'astrology_soft') {
       const locationLabel = [userDefaultProfile.current_city, userDefaultProfile.current_country]
@@ -874,16 +929,27 @@ ${
         currentLocationLabel: locationLabel || null,
       });
       if (tropical) {
-        blocks.push(`ATTACHED TROPICAL WESTERN PROFILE (${userDefaultProfile.name}):\n${tropical.slice(0, 2600)}`);
+        blocks.push(`ATTACHED FULL TROPICAL WESTERN PROFILE (${userDefaultProfile.name}):\n${tropical}`);
       } else {
         blocks.push(
           `ATTACHED BIRTH DATA (${userDefaultProfile.name}): Born ${userDefaultProfile.birth_date || '?'} ${userDefaultProfile.birth_time || ''} in ${userDefaultProfile.birth_city || ''}, ${userDefaultProfile.birth_country || ''}. (Full ephemeris degrees are unavailable right now — never invent degrees or signs.)`
         );
       }
     } else if (skillLevel === 'vedic_soft' || skillLevel === 'past_life') {
-      if (userDefaultProfile.chart_text_context) {
+      const canonicalFromText =
+        typeof userDefaultProfile.chart_text_context === 'string' &&
+        userDefaultProfile.chart_text_context.startsWith('VERIFIED CANONICAL VEDIC CHART JSON:')
+          ? userDefaultProfile.chart_text_context
+          : null;
+      const fullVedicContext =
+        canonicalFromText ||
+        (userDefaultProfile.chart_json
+          ? formatChartForLLM(userDefaultProfile.chart_json, 'vedic')
+          : userDefaultProfile.chart_text_context || '');
+
+      if (fullVedicContext) {
         blocks.push(
-          `ATTACHED VEDIC & KARMIC PROFILE (${userDefaultProfile.name}):\n${userDefaultProfile.chart_text_context.slice(0, 2600)}`
+          `ATTACHED FULL VEDIC & KARMIC PROFILE (${userDefaultProfile.name}):\n${fullVedicContext}`
         );
       } else {
         blocks.push(
@@ -903,11 +969,9 @@ ${
         birthDate: targetDob,
       });
       if (numBlock) {
-        blocks.push(`ATTACHED NUMEROLOGY PROFILE:\n${numBlock.slice(0, 2000)}`);
+        blocks.push(`ATTACHED FULL NUMEROLOGY PROFILE:\n${numBlock}`);
       }
     } else if (skillLevel === 'tarot') {
-      const lightCtx = formatLightweightLifeStageSummary(userDefaultProfile);
-      if (lightCtx) blocks.push(`QUIET USER BACKGROUND:\n${lightCtx}`);
       if (invited) {
         const drawn = drawTarotSpread(userPrompt);
         drawnTarot = drawn;
@@ -998,6 +1062,7 @@ export function buildPresetCompanionSystemPrompt(params: {
   turnCount: number;
   bond?: CompanionBondState | null;
   crossThreadSnippets?: string | null;
+  councilReadingNotesText?: string | null;
   userDefaultProfile?: CompanionPromptProfileContext | null;
   userPrompt?: string;
   historyMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
@@ -1005,11 +1070,15 @@ export function buildPresetCompanionSystemPrompt(params: {
   referrableCompanions?: ReferrableCompanionSummary[];
   clientLocalHour?: number | null;
   constitutionOverride?: string | null;
+  realismBaselineOverride?: string | null;
+  chartPresenceOverride?: string | null;
   archetypesOverride?: CompanionArchetypeMeta[] | null;
   modularRulesText?: string | null;
 }): { systemInstruction: string; chatStyle: ChatStyle; tarotSpread?: DrawnTarotSpread | null } {
   const { preset, persona } = params;
   const activeConstitution = params.constitutionOverride?.trim() || COMPANION_CONSTITUTION;
+  const activeRealismBaseline =
+    params.realismBaselineOverride?.trim() || DEFAULT_COMPANION_REALISM_BASELINE;
   const activeArchetypes =
     params.archetypesOverride && params.archetypesOverride.length > 0
       ? params.archetypesOverride
@@ -1033,7 +1102,25 @@ export function buildPresetCompanionSystemPrompt(params: {
       }
     }
     if (preset.hard_rules?.trim()) {
-      sections.push(`LAYER 1 — NON-NEGOTIABLE COMPANION RULES:\n${preset.hard_rules.trim()}`);
+      let effectiveHardRules = preset.hard_rules.trim();
+      if (skillLevel !== 'none_emotional') {
+        effectiveHardRules = effectiveHardRules
+          .replace(/^\s*-\s*ESOTERIC SKILL BOUNDARY:[^\n]*(\n|$)/gim, '')
+          .trim();
+        if (!/CHART HONESTY RULE:/i.test(effectiveHardRules)) {
+          effectiveHardRules +=
+            '\n- CHART HONESTY RULE: Only cite birth placements, aspects, or timings actually present in the attached profile/chart context. Never invent placements.';
+        }
+      } else {
+        effectiveHardRules = effectiveHardRules
+          .replace(/^\s*-\s*CHART HONESTY RULE:[^\n]*(\n|$)/gim, '')
+          .trim();
+      }
+      if (effectiveHardRules) {
+        sections.push(`LAYER 1 — NON-NEGOTIABLE COMPANION RULES:\n${effectiveHardRules}`);
+      } else if (preset.override_global_rules) {
+        sections.push(activeConstitution);
+      }
     } else if (preset.override_global_rules) {
       sections.push(activeConstitution);
     }
@@ -1044,8 +1131,8 @@ export function buildPresetCompanionSystemPrompt(params: {
     }
   }
 
-  // Universal Anti-AI Realism Baseline (active regardless of override_global_rules)
-  sections.push(COMPANION_REALISM_BASELINE);
+  // Universal Anti-AI Realism Baseline (Admin-configurable, active regardless of override_global_rules)
+  sections.push(activeRealismBaseline);
 
   const backstoryText = (preset?.backstory || persona?.backstory || '').trim();
   const soulText = (preset?.soul_consciousness || persona?.soul_consciousness || '').trim();
@@ -1171,17 +1258,31 @@ Autonomy guidance: ${autonomyNote}`);
     );
   }
 
+  if (params.councilReadingNotesText?.trim()) {
+    sections.push(
+      `SHARED COUNCIL READING NOTES (Astrology reading insights the user saved or brought over from their Council consultations):
+${params.councilReadingNotesText.trim()}
+
+HOW TO USE THESE SHARED READING NOTES:
+- If the user asks about, feels anxious about, or refers to their astrology reading, transit, Dasha, or what their astrologer told them, draw directly on these notes so they never have to repeat or copy-paste technical breakdowns.
+- Translate any dense Vedic/KP/Jaimini/Western terminology into warm, calm, practical everyday human language matching your voice.
+- Never recite or lecture from these notes out of nowhere if the user is talking about something unrelated.
+- Respect your own skill boundary: if your skill is emotional-only, stay present with the emotional and practical meaning of the notes they brought over without claiming to compute new chart placements yourself.`
+    );
+  }
+
   // ── TIME OF DAY & GAP AWARENESS ──────────────────────────────────────────
   sections.push(
     formatHumanTimeAndGapContext(bond?.last_interaction_at || null, params.clientLocalHour)
   );
 
-  // ── PROFILE / CHART AWARENESS (90/10 + NO BIRTH RE-ASKING) ─────────────────
+  // ── PROFILE / CHART AWARENESS (HUMAN-FIRST + FULL CHART DEPTH) ─────────────
   const skillProfileResult = buildCompanionSkillAndProfileBlock({
     skillLevel,
     userPrompt: params.userPrompt || '',
     historyMessages: params.historyMessages,
     userDefaultProfile: params.userDefaultProfile,
+    chartPresenceOverride: params.chartPresenceOverride,
   });
   sections.push(skillProfileResult.block);
 
@@ -1192,7 +1293,7 @@ Autonomy guidance: ${autonomyNote}`);
   const activeSlug = (preset?.slug || persona?.slug || '').toLowerCase();
   const others = (params.referrableCompanions || [])
     .filter((c) => c.slug.toLowerCase() !== activeSlug)
-    .slice(0, 24);
+    .slice(0, 60);
   if (others.length > 0) {
     const rosterLine = others
       .map((c) => `${c.name} (${c.slug} — ${c.primary_expertise})`)
@@ -1266,6 +1367,7 @@ export async function buildCompanionSystemPromptAsync(params: {
   memorySnippets?: string | null;
   bond?: CompanionBondState | null;
   crossThreadSnippets?: string | null;
+  councilReadingNotesText?: string | null;
   userDefaultProfile?: CompanionPromptProfileContext | null;
   userPrompt?: string;
   historyMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
@@ -1291,6 +1393,7 @@ export async function buildCompanionSystemPromptAsync(params: {
     turnCount: params.turnCount,
     bond: params.bond || null,
     crossThreadSnippets: params.crossThreadSnippets || params.memorySnippets || null,
+    councilReadingNotesText: params.councilReadingNotesText || null,
     userDefaultProfile: params.userDefaultProfile || null,
     userPrompt: params.userPrompt || '',
     historyMessages: params.historyMessages,
@@ -1298,6 +1401,8 @@ export async function buildCompanionSystemPromptAsync(params: {
     referrableCompanions: params.referrableCompanions,
     clientLocalHour: params.clientLocalHour,
     constitutionOverride: engineOverrides.companion_constitution || null,
+    realismBaselineOverride: engineOverrides.companion_realism_baseline || null,
+    chartPresenceOverride: engineOverrides.companion_chart_presence_prompt || null,
     archetypesOverride: engineOverrides.companion_archetypes || null,
     modularRulesText: guideCfg.combined_rules_text || null,
   });
@@ -1399,7 +1504,10 @@ export async function generateContextualCompanionReturnGreeting(params: {
   }
 
   try {
-    const runtime = await getResolvedOpenRouterRuntime();
+    const [runtime, engineOverrides] = await Promise.all([
+      getResolvedOpenRouterRuntime(),
+      getEnginePromptOverrides().catch(() => ({} as Record<string, never>)),
+    ]);
     const model = params.modelId?.trim() || runtime.utilityModel || getUtilityModel();
     const timingCtx = formatHumanTimeAndGapContext(
       params.bond.last_interaction_at,
@@ -1412,19 +1520,43 @@ export async function generateContextualCompanionReturnGreeting(params: {
         ? 'Write 1–2 very short texting bubbles (if sending 2 quick lines, separate them with [[BUBBLE]]). Never exceed 2 short lines.'
         : 'Write a brief, warm 1–2 sentence greeting matching your voice (no [[BUBBLE]] markers).';
 
-    const system = `You are ${params.name} (${params.roleLabel}).
-Cultural / voice feel: ${params.culturalFluency || 'Warm everyday conversationalist'}.
-${params.tagline ? `Presence: ${params.tagline}` : ''}
-${params.systemPromptSnippet ? `Voice cue: ${params.systemPromptSnippet.slice(0, 500)}` : ''}
-${params.soulSnippet ? `Inner cadence & perceptual lens: ${params.soulSnippet.slice(0, 320)}` : ''}
-${timingCtx}
-Bond stage: ${rel.familiarity_stage} (${rel.total_turns} turns shared).
-${params.bond.memory_summary ? `Quiet shared memory:\n${params.bond.memory_summary.slice(0, 600)}` : ''}
-${rel.inside_references.length > 0 ? `Shared threads: ${rel.inside_references.slice(0, 3).join('; ')}` : ''}
-${safeName ? `User's preferred name: ${safeName} (use lightly only if natural).` : ''}
-Language: ${params.languageSlug || 'English'}.
+    const greetingTemplate =
+      (engineOverrides as { companion_return_greeting_prompt?: string })
+        .companion_return_greeting_prompt?.trim() || DEFAULT_COMPANION_RETURN_GREETING_PROMPT;
 
-TASK: Your friend just opened a fresh chat with you to start a new topic. Give a brief, genuinely human, unforced opening check-in shaped subtly by the time of day, gap since you last spoke, and shared warmth. NEVER announce "according to my memory/logs", avoid therapist clichés, and don't force a canned question if a warm natural welcome lands cleaner. ${styleNote}`;
+    const greetingVars: Record<string, string> = {
+      NAME: params.name,
+      ROLE_LABEL: params.roleLabel,
+      CULTURAL_FLUENCY: params.culturalFluency || 'Warm everyday conversationalist',
+      TAGLINE_LINE: params.tagline ? `Presence: ${params.tagline}` : '',
+      VOICE_CUE_LINE: params.systemPromptSnippet
+        ? `Voice cue: ${params.systemPromptSnippet.slice(0, 500)}`
+        : '',
+      SOUL_LINE: params.soulSnippet
+        ? `Inner cadence & perceptual lens: ${params.soulSnippet.slice(0, 320)}`
+        : '',
+      TIMING_CTX: timingCtx,
+      BOND_STAGE: rel.familiarity_stage,
+      TOTAL_TURNS: String(rel.total_turns),
+      MEMORY_LINE: params.bond.memory_summary
+        ? `Quiet shared memory:\n${params.bond.memory_summary.slice(0, 600)}`
+        : '',
+      SHARED_THREADS_LINE:
+        rel.inside_references.length > 0
+          ? `Shared threads: ${rel.inside_references.slice(0, 3).join('; ')}`
+          : '',
+      USER_NAME_LINE: safeName
+        ? `User's preferred name: ${safeName} (use lightly only if natural).`
+        : '',
+      LANGUAGE: params.languageSlug || 'English',
+      STYLE_NOTE: styleNote,
+    };
+
+    let system = greetingTemplate;
+    for (const [k, v] of Object.entries(greetingVars)) {
+      system = system.split(`{{${k}}}`).join(v);
+    }
+    system = system.replace(/\n{3,}/g, '\n\n').trim();
 
     const completion = await createOpenRouterCompletion({
       model,

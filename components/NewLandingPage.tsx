@@ -24,7 +24,12 @@ import {
   PREVIEW_PUBLIC_COMPANIONS,
 } from './app/previewFixtures';
 import { CLIENT_MINI_APPS, renderMiniAppIcon } from './app/miniAppsClientData';
-import type { PublicCompanionCard } from './app/chatTypes';
+import CompanionDiscoveryControls from './app/CompanionDiscoveryControls';
+import {
+  matchesCompanionDiscoveryFilter,
+  type CompanionDiscoveryTabId,
+  type PublicCompanionCard,
+} from './app/chatTypes';
 import { updatePendingOnboardingCompanion } from '../lib/pendingOnboarding';
 
 interface NewLandingPageProps {
@@ -124,13 +129,6 @@ const HERO_BULLET_POINTS = [
   'Fully private, secure & anonymous',
 ];
 
-function isSpecialistCompanion(card: PublicCompanionCard): boolean {
-  if (card.category_tag === 'friends') return false;
-  const primaryLower = (card.primary_expertise || '').toLowerCase();
-  if (primaryLower === 'mood lifter' || primaryLower === 'friend') return false;
-  return true;
-}
-
 function shuffleFisherYates<T>(items: T[]): T[] {
   const arr = [...items];
   for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -143,7 +141,7 @@ function shuffleFisherYates<T>(items: T[]): T[] {
 const TRADITION_LENSES = [
   {
     id: 'vedic',
-    label: 'Vedic Astrologer',
+    label: 'Vedic',
     systemNote: 'Parashari · D10 Dasamsa · Ashtakavarga',
     answer:
       'Your 10th house holds Ketu in Gemini while your AmK Jupiter sits with Mercury in Leo. Rather than an impulsive exit, your current Saturn-Jupiter cycle favors consolidating an advisory niche quietly until early autumn, when public recognition sharpens.',
@@ -151,7 +149,7 @@ const TRADITION_LENSES = [
   },
   {
     id: 'kp',
-    label: 'KP Timing',
+    label: 'KP',
     systemNote: 'Krishnamurti Paddhati · Cuspal Sub-Lords',
     answer:
       'Your 10th cusp Sub-Lord is Jupiter, signifying houses 2, 4, 7, 9, 10, and 12 through its star lord Venus. That combination strongly supports consulting or independent practice over salaried monotony—especially once Mercury Pratyantardasha activates.',
@@ -159,19 +157,27 @@ const TRADITION_LENSES = [
   },
   {
     id: 'western',
-    label: 'Western Astrologer',
+    label: 'Western',
     systemNote: 'Tropical Placidus · Transits & Aspects',
     answer:
       'With your Virgo Mercury and Venus tightly grouped in the 12th house opposite Aquarius Saturn, clarity arrives when you work behind the scenes first. Give ideas three quiet months to mature before launching outwardly.',
     metrics: 'Sun Leo 21°33′ · Moon Libra 12°39′ · MC Cancer 07°48′',
   },
   {
-    id: 'tarot',
-    label: 'Tarot + Chart',
-    systemNote: 'Rider-Waite Spread · Natal Context',
+    id: 'modern',
+    label: 'Modern',
+    systemNote: 'Evolutionary · Psychological Transits',
     answer:
-      'The Eight of Pentacles beside The Hermit mirrors your chart’s steady Saturn period: the restlessness isn’t a sign you’re failing—it’s mastery asking for deeper craft before the next doorway opens.',
-    metrics: 'Spread: Eight of Pentacles · The Hermit · Ace of Wands',
+      'Restlessness here isn’t failure—it’s your Virgo 12th-house stellium outgrowing roles that underuse your analytical voice. Use the next quarter to prototype work that feels self-authored rather than reacting to burnout.',
+    metrics: 'North Node Sagittarius 3rd · Saturn Opp. Mercury · Evolutionary Cycle',
+  },
+  {
+    id: 'hellenistic',
+    label: 'Hellenistic',
+    systemNote: 'Whole Sign Houses · Annual Profections & Time-Lord',
+    answer:
+      'In a 5th-House Saturn Profection year with the Lot of Fortune anchored in your 11th house of alliances, quiet mastery pays more than a dramatic leap. Build the body of work now while Saturn prepares your next career station.',
+    metrics: 'Annual Profection: 5th House · Time-Lord: Saturn · Lot of Fortune: 11th',
   },
 ] as const;
 
@@ -226,10 +232,15 @@ const MINI_APP_SAMPLE_OUTPUTS: Record<string, { headline: string; preview: strin
 const NewLandingPage: React.FC<NewLandingPageProps> = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Randomized specialist companions (shuffled once per page load)
+  // Randomized companions (shuffled once per page load)
   const [specialists, setSpecialists] = useState<PublicCompanionCard[]>(() =>
-    shuffleFisherYates(PREVIEW_PUBLIC_COMPANIONS.filter(isSpecialistCompanion))
+    shuffleFisherYates(PREVIEW_PUBLIC_COMPANIONS)
   );
+  const [activeCompanionGroup, setActiveCompanionGroup] =
+    useState<CompanionDiscoveryTabId>('all');
+  const [activeSituationChip, setActiveSituationChip] = useState<string | null>(null);
+  const [companionSearchQuery, setCompanionSearchQuery] = useState('');
+  const [showAllCompanions, setShowAllCompanions] = useState(false);
   const [selectedCompanionForChart, setSelectedCompanionForChart] =
     useState<PublicCompanionCard | null>(null);
   const [aboutCompanion, setAboutCompanion] = useState<PublicCompanionCard | null>(null);
@@ -246,9 +257,8 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { companions?: PublicCompanionCard[] } | null) => {
         if (cancelled || !data || !Array.isArray(data.companions)) return;
-        const filtered = data.companions.filter(isSpecialistCompanion);
-        if (filtered.length > 0) {
-          setSpecialists(shuffleFisherYates(filtered));
+        if (data.companions.length > 0) {
+          setSpecialists(shuffleFisherYates(data.companions));
         }
       })
       .catch(() => {
@@ -284,6 +294,30 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
     () => TRADITION_LENSES.find((t) => t.id === traditionId) || TRADITION_LENSES[0],
     [traditionId]
   );
+
+  const filteredSpecialists = useMemo(
+    () =>
+      specialists.filter((card) =>
+        matchesCompanionDiscoveryFilter(card, {
+          groupTab: activeCompanionGroup,
+          situationChipId: activeSituationChip,
+          searchQuery: companionSearchQuery,
+        })
+      ),
+    [specialists, activeCompanionGroup, activeSituationChip, companionSearchQuery]
+  );
+
+  const isDefaultLandingCompanionView =
+    activeCompanionGroup === 'all' &&
+    !activeSituationChip &&
+    !companionSearchQuery.trim();
+
+  const displayedSpecialists = useMemo(() => {
+    if (isDefaultLandingCompanionView && !showAllCompanions) {
+      return filteredSpecialists.slice(0, 9);
+    }
+    return filteredSpecialists;
+  }, [filteredSpecialists, isDefaultLandingCompanionView, showAllCompanions]);
 
   const showcaseMiniApps = useMemo(() => {
     return LANDING_MINI_APP_SLUGS.map((slug) =>
@@ -323,35 +357,35 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
               onClick={() => scrollToSection('hero-birth-chart')}
               className="text-sm font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors duration-200 whitespace-nowrap shrink-0 py-1 border-b border-transparent hover:border-[#3D3830]/40 cursor-pointer"
             >
-              Birth Chart
+              Home
             </button>
             <button
               type="button"
               onClick={() => scrollToSection('specialists-section')}
               className="text-sm font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors duration-200 whitespace-nowrap shrink-0 py-1 border-b border-transparent hover:border-[#3D3830]/40 cursor-pointer"
             >
-              Specialists
+              Companions
             </button>
             <button
               type="button"
               onClick={() => scrollToSection('observatory-showcase')}
               className="text-sm font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors duration-200 whitespace-nowrap shrink-0 py-1 border-b border-transparent hover:border-[#3D3830]/40 cursor-pointer"
             >
-              Chart Breakdown
+              Chart breakdown
             </button>
             <button
               type="button"
               onClick={() => scrollToSection('traditions-showcase')}
               className="text-sm font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors duration-200 whitespace-nowrap shrink-0 py-1 border-b border-transparent hover:border-[#3D3830]/40 cursor-pointer"
             >
-              Disciplines
+              Methodologies
             </button>
             <button
               type="button"
               onClick={() => scrollToSection('miniapps-showcase')}
               className="text-sm font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors duration-200 whitespace-nowrap shrink-0 py-1 border-b border-transparent hover:border-[#3D3830]/40 cursor-pointer"
             >
-              Life Briefs
+              Apps
             </button>
             <button
               type="button"
@@ -392,35 +426,35 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                 onClick={() => scrollToSection('hero-birth-chart')}
                 className="text-left font-medium text-[#3D3830] py-1.5"
               >
-                Birth Chart
+                Home
               </button>
               <button
                 type="button"
                 onClick={() => scrollToSection('specialists-section')}
                 className="text-left font-medium text-[#3D3830] py-1.5"
               >
-                Specialists
+                Companions
               </button>
               <button
                 type="button"
                 onClick={() => scrollToSection('observatory-showcase')}
                 className="text-left font-medium text-[#3D3830] py-1.5"
               >
-                Chart Breakdown
+                Chart breakdown
               </button>
               <button
                 type="button"
                 onClick={() => scrollToSection('traditions-showcase')}
                 className="text-left font-medium text-[#3D3830] py-1.5"
               >
-                Disciplines
+                Methodologies
               </button>
               <button
                 type="button"
                 onClick={() => scrollToSection('miniapps-showcase')}
                 className="text-left font-medium text-[#3D3830] py-1.5"
               >
-                Life Briefs
+                Apps
               </button>
               <button
                 type="button"
@@ -430,7 +464,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                 Tarot
               </button>
               <Link
-                to="/app/chat?preview=1"
+                to="/app/home?preview=1"
                 onClick={() => setMobileMenuOpen(false)}
                 className="text-left font-medium text-[#3D3830] py-1.5"
               >
@@ -502,7 +536,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
             </svg>
           </div>
 
-          <div className="relative z-10 mx-auto max-w-7xl px-5 sm:px-6 pt-28 pb-16 md:pt-32 md:pb-24">
+          <div className="relative z-10 mx-auto max-w-7xl px-5 sm:px-6 pt-36 pb-16 sm:pt-40 md:pt-44 md:pb-24">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-start">
               {/* LEFT COLUMN: Exact User Headline, Description & Animated Line Cards */}
               <div className="lg:col-span-7 space-y-6">
@@ -511,15 +545,11 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                     className="font-serif text-4xl sm:text-5xl md:text-[56px] font-medium text-[#3D3830] tracking-tight leading-[1.05]"
                     style={{ textWrap: 'balance' }}
                   >
-                    Your personal AI astrologers
+                    Chat with Ai Astrologers
                   </h1>
 
                   <p className="text-lg sm:text-xl font-medium text-[#3D3830] leading-snug">
-                    Chat with someone who deeply understand your birth chart and your life
-                  </p>
-
-                  <p className="text-sm sm:text-base text-[#5C5449] leading-relaxed max-w-2xl">
-                    Save your birth details once - explore your life through the lens of different traditions, techniques &amp; disciplines. Ask unlimited follow up questions and get a deeper understanding of your life.
+                    who deeply understand your birthchart and your life
                   </p>
 
                   {/* Mobile quick-jump to form */}
@@ -555,6 +585,33 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                     </li>
                   ))}
                 </ul>
+
+                <Reveal direction="up" delay={440}>
+                  <div className="pt-2 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3.5">
+                    <Link
+                      to="/app/login"
+                      className="group inline-flex min-h-[54px] items-center justify-center gap-3 rounded-full border border-[#3D3830]/25 bg-gradient-to-b from-[#EDE6DA] to-[#DFD5C5] px-7 py-3.5 text-[15px] font-medium text-[#3D3830] shadow-[0_10px_26px_-14px_rgba(61,56,48,0.28),inset_0_1px_0_rgba(255,255,255,0.55)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 hover:border-[#B8965A]/80 hover:from-[#E7DFD1] hover:to-[#D6C9B5] hover:shadow-[0_14px_32px_-12px_rgba(61,56,48,0.32)] active:translate-y-0 active:scale-[0.985] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A] whitespace-nowrap"
+                    >
+                      <svg className="h-4 w-4 shrink-0 text-[#7A6245]" viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          fill="currentColor"
+                          d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27c3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10c5.35 0 9.25-3.67 9.25-9.09c0-1.15-.15-1.81-.15-1.81Z"
+                        />
+                      </svg>
+                      <span>Login with Gmail</span>
+                      <ArrowRight className="h-4 w-4 text-[#7A6245] transition-transform duration-300 group-hover:translate-x-0.5" />
+                    </Link>
+
+                    <Link
+                      to="/app/home?preview=1"
+                      className="group inline-flex min-h-[54px] items-center justify-center gap-3 rounded-full border border-[#3D3830]/25 bg-gradient-to-b from-[#EDE6DA] to-[#DFD5C5] px-7 py-3.5 text-[15px] font-medium text-[#3D3830] shadow-[0_10px_26px_-14px_rgba(61,56,48,0.28),inset_0_1px_0_rgba(255,255,255,0.55)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 hover:border-[#B8965A]/80 hover:from-[#E7DFD1] hover:to-[#D6C9B5] hover:shadow-[0_14px_32px_-12px_rgba(61,56,48,0.32)] active:translate-y-0 active:scale-[0.985] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A] whitespace-nowrap"
+                    >
+                      <Eye className="h-4 w-4 shrink-0 text-[#7A6245]" />
+                      <span>Live Preview</span>
+                      <ArrowRight className="h-4 w-4 text-[#7A6245] transition-transform duration-300 group-hover:translate-x-0.5" />
+                    </Link>
+                  </div>
+                </Reveal>
               </div>
 
               {/* RIGHT COLUMN: Single-Page Birth Chart Form -> Inline Gmail Handoff + Live Preview */}
@@ -567,7 +624,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
 
                 <div className="flex flex-wrap items-center justify-between gap-3 px-2">
                   <Link
-                    to="/app/chat?preview=1"
+                    to="/app/home?preview=1"
                     className="group inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors"
                   >
                     <Eye className="h-3.5 w-3.5 text-[#8B7355]" />
@@ -607,86 +664,144 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
               </div>
             </Reveal>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {specialists.map((card, idx) => {
-                const secondary =
-                  card.secondary_expertise?.[0] &&
-                  card.secondary_expertise[0].toLowerCase() !==
-                    card.primary_expertise.toLowerCase()
-                    ? card.secondary_expertise[0]
-                    : null;
+            <CompanionDiscoveryControls
+              cards={specialists}
+              activeGroup={activeCompanionGroup}
+              onChangeGroup={(group) => {
+                setActiveCompanionGroup(group);
+                setShowAllCompanions(false);
+              }}
+              activeSituationChip={activeSituationChip}
+              onChangeSituationChip={(chipId) => {
+                setActiveSituationChip(chipId);
+                setShowAllCompanions(false);
+              }}
+              searchQuery={companionSearchQuery}
+              onChangeSearchQuery={setCompanionSearchQuery}
+              tabSurface="cream"
+              showCounts
+            />
 
-                return (
-                  <Reveal
-                    key={card.slug}
-                    direction="up"
-                    delay={(idx % 3) * 50}
-                    className="h-full"
-                  >
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => handleOpenCompanionBirthChart(card)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handleOpenCompanionBirthChart(card);
-                        }
-                      }}
-                      className="group h-full flex flex-col justify-between rounded-3xl border border-[#3D3830]/12 bg-[#FAF7F2] p-6 gap-5 text-left hover:border-[#3D3830]/28 hover:-translate-y-1 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A]"
-                    >
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-4">
-                          <CompanionAvatar
-                            name={card.name}
-                            avatarUrl={card.avatar_url}
-                            palette={card.monogram_palette}
-                            size="lg"
-                            shape="circle"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline gap-2">
-                              <h3 className="font-['Cormorant_Garamond',serif] text-2xl font-semibold text-[#3D3830] leading-tight truncate">
-                                {card.name}
-                              </h3>
-                              <span className="font-['JetBrains_Mono',monospace] tabular-nums text-xs text-[#8B8275] shrink-0">
-                                {card.age}
-                              </span>
+            {displayedSpecialists.length === 0 ? (
+              <div className="rounded-3xl border border-[#3D3830]/12 bg-[#FAF7F2] p-8 text-center space-y-3">
+                <p className="font-serif text-xl text-[#3D3830]">
+                  No companions match that moment or search
+                </p>
+                <p className="text-xs text-[#5C5449]">
+                  Try clearing your search or switching companion pillars.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveCompanionGroup('all');
+                    setActiveSituationChip(null);
+                    setCompanionSearchQuery('');
+                  }}
+                  className="min-h-[38px] inline-flex items-center justify-center rounded-full border border-[#3D3830]/18 bg-[#FDFBF7] px-4 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                >
+                  Reset filters
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {displayedSpecialists.map((card, idx) => {
+                    const secondary =
+                      card.secondary_expertise?.[0] &&
+                      card.secondary_expertise[0].toLowerCase() !==
+                        card.primary_expertise.toLowerCase()
+                        ? card.secondary_expertise[0]
+                        : null;
+
+                    return (
+                      <Reveal
+                        key={card.slug}
+                        direction="up"
+                        delay={(idx % 3) * 50}
+                        className="h-full"
+                      >
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => handleOpenCompanionBirthChart(card)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleOpenCompanionBirthChart(card);
+                            }
+                          }}
+                          className="group h-full flex flex-col justify-between rounded-3xl border border-[#3D3830]/12 bg-[#FAF7F2] p-6 gap-5 text-left hover:border-[#3D3830]/28 hover:-translate-y-1 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A]"
+                        >
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-4">
+                              <CompanionAvatar
+                                name={card.name}
+                                avatarUrl={card.avatar_url}
+                                palette={card.monogram_palette}
+                                size="lg"
+                                shape="circle"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-baseline gap-2">
+                                  <h3 className="font-['Cormorant_Garamond',serif] text-2xl font-semibold text-[#3D3830] leading-tight truncate">
+                                    {card.name}
+                                  </h3>
+                                  <span className="font-['JetBrains_Mono',monospace] tabular-nums text-xs text-[#8B8275] shrink-0">
+                                    {card.age}
+                                  </span>
+                                </div>
+                                <p className="text-xs sm:text-[13px] text-[#8B8275] truncate mt-0.5">
+                                  {card.primary_expertise}
+                                  {secondary ? ` · ${secondary}` : ''}
+                                </p>
+                              </div>
                             </div>
-                            <p className="text-xs sm:text-[13px] text-[#8B8275] truncate mt-0.5">
-                              {card.primary_expertise}
-                              {secondary ? ` · ${secondary}` : ''}
+
+                            <p className="text-sm text-[#5C5449] leading-relaxed line-clamp-3">
+                              {card.tagline || card.short_bio}
                             </p>
                           </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-3 border-t border-[#3D3830]/10">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAboutCompanion(card);
+                              }}
+                              className="min-h-[36px] rounded-xl px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EAE3D7]/60 transition-colors cursor-pointer"
+                            >
+                              About
+                            </button>
+
+                            <span className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl bg-[#EDE6DA] group-hover:bg-[#4A453D] px-3.5 py-1.5 text-xs font-medium text-[#3D3830] group-hover:text-[#FAF7F2] transition-colors whitespace-nowrap">
+                              <span>Chat with {card.name}</span>
+                              <ArrowRight className="h-3 w-3" />
+                            </span>
+                          </div>
                         </div>
+                      </Reveal>
+                    );
+                  })}
+                </div>
 
-                        <p className="text-sm text-[#5C5449] leading-relaxed line-clamp-3">
-                          {card.tagline || card.short_bio}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 pt-3 border-t border-[#3D3830]/10">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAboutCompanion(card);
-                          }}
-                          className="min-h-[36px] rounded-xl px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EAE3D7]/60 transition-colors cursor-pointer"
-                        >
-                          About
-                        </button>
-
-                        <span className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl bg-[#EDE6DA] group-hover:bg-[#4A453D] px-3.5 py-1.5 text-xs font-medium text-[#3D3830] group-hover:text-[#FAF7F2] transition-colors whitespace-nowrap">
-                          <span>Chat with {card.name}</span>
-                          <ArrowRight className="h-3 w-3" />
-                        </span>
-                      </div>
-                    </div>
-                  </Reveal>
-                );
-              })}
-            </div>
+                {isDefaultLandingCompanionView && filteredSpecialists.length > 9 && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowAllCompanions((prev) => !prev)}
+                      className="min-h-[42px] inline-flex items-center gap-2 rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] px-5 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                    >
+                      <span>
+                        {showAllCompanions
+                          ? 'Show fewer companions'
+                          : `Show all ${filteredSpecialists.length} companions`}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </section>
 
@@ -703,7 +818,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                     className="font-serif text-3xl sm:text-4xl font-medium text-[#3D3830] tracking-tight leading-tight"
                     style={{ textWrap: 'balance' }}
                   >
-                    Detail chart breakdown
+                    Sample Chart
                   </h2>
                 </div>
                 <p className="text-xs sm:text-sm text-[#5C5449] max-w-xl leading-relaxed">
@@ -793,7 +908,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
 
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                   <Link
-                    to="/app/chat?preview=1"
+                    to="/app/home?preview=1"
                     className="inline-flex items-center gap-1.5 text-xs font-medium text-[#3D3830] underline underline-offset-4 hover:text-[#5C5449]"
                   >
                     <MessageSquare className="h-3.5 w-3.5 text-[#8B7355]" />
@@ -938,7 +1053,7 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-5">
-            <Link to="/app/chat?preview=1" className="hover:text-[#3D3830] transition-colors">
+            <Link to="/app/home?preview=1" className="hover:text-[#3D3830] transition-colors">
               Live Preview
             </Link>
             <Link to="/app/login" className="hover:text-[#3D3830] transition-colors">

@@ -3,10 +3,13 @@ import {
   VALID_ANCHOR_TAGS,
   VALID_BIRTH_TIME_ACCURACIES,
   VALID_CAREER_MODES,
+  VALID_CITED_INSIGHT_CATEGORIES,
   VALID_LOCATION_STATUSES,
   VALID_RELATIONSHIP_STATUSES,
   type BirthTimeAccuracy,
   type CareerContextMode,
+  type CitedInsightCategory,
+  type CitedProfileInsight,
   type LifeContextAnchor,
   type LifeContextChild,
   type LifeContextData,
@@ -18,6 +21,8 @@ import type { ClarificationPayload } from '../../lib/vedicTypes';
 export type {
   BirthTimeAccuracy,
   CareerContextMode,
+  CitedInsightCategory,
+  CitedProfileInsight,
   LifeContextAnchor,
   LifeContextChild,
   LifeContextData,
@@ -28,7 +33,8 @@ export { computeLifeContextCompleteness };
 
 const MAX_CHILDREN = 10;
 const MAX_ANCHORS = 12;
-const MAX_STRESS_AREAS = 8;
+const MAX_STRESS_AREAS = 10;
+const MAX_CITED_INSIGHTS = 40;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_24H_RE = /^\d{2}:\d{2}(:\d{2})?$/;
 
@@ -46,6 +52,15 @@ function cleanShortText(val: unknown, maxLen: number): string | undefined {
     .trim()
     .slice(0, maxLen);
   return cleaned || undefined;
+}
+
+function buildInsightId(category: string, summary: string): string {
+  const slug = summary
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 32);
+  return `${category}_${slug || 'note'}`;
 }
 
 /**
@@ -121,6 +136,11 @@ export function sanitizeLifeContext(rawInput: unknown): {
     }
   }
 
+  const childrenSummary = cleanShortText(src.children_summary, 140);
+  if (childrenSummary) {
+    sanitized.children_summary = childrenSummary;
+  }
+
   if (sanitized.relationship_status === 'married_with_children') {
     sanitized.has_children = true;
   }
@@ -132,6 +152,11 @@ export function sanitizeLifeContext(rawInput: unknown): {
   const careerRole = cleanShortText(src.career_role, 100);
   if (careerRole) {
     sanitized.career_role = careerRole;
+  }
+
+  const workplaceContext = cleanShortText(src.workplace_context, 160);
+  if (workplaceContext) {
+    sanitized.workplace_context = workplaceContext;
   }
 
   if (typeof src.location_status === 'string' && VALID_LOCATION_STATUSES.has(src.location_status)) {
@@ -151,10 +176,22 @@ export function sanitizeLifeContext(rawInput: unknown): {
       if (year === undefined || !safeTag) continue;
 
       const note = cleanShortText(row.note, 80);
+      const citedBy = cleanShortText(row.cited_by, 64);
+      const citedSlug = cleanShortText(row.cited_slug, 64);
       const dedupeKey = `${year}:${safeTag}`;
       const existing = anchorMap.get(dedupeKey);
       if (!existing || ((note?.length || 0) > (existing.note?.length || 0))) {
-        anchorMap.set(dedupeKey, note ? { year, tag: safeTag, note } : { year, tag: safeTag });
+        anchorMap.set(dedupeKey, {
+          year,
+          tag: safeTag,
+          ...(note ? { note } : existing?.note ? { note: existing.note } : {}),
+          ...(citedBy ? { cited_by: citedBy } : existing?.cited_by ? { cited_by: existing.cited_by } : {}),
+          ...(citedSlug
+            ? { cited_slug: citedSlug }
+            : existing?.cited_slug
+            ? { cited_slug: existing.cited_slug }
+            : {}),
+        });
       }
       if (anchorMap.size >= MAX_ANCHORS) break;
     }
@@ -178,6 +215,43 @@ export function sanitizeLifeContext(rawInput: unknown): {
     }
     if (cleanedStress.length > 0) {
       sanitized.core_stress_areas = cleanedStress;
+    }
+  }
+
+  if (Array.isArray(src.cited_insights)) {
+    const insightMap = new Map<string, CitedProfileInsight>();
+    for (const item of src.cited_insights) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      const rawCat = typeof row.category === 'string' ? row.category.trim() : '';
+      const category: CitedInsightCategory = VALID_CITED_INSIGHT_CATEGORIES.has(rawCat)
+        ? (rawCat as CitedInsightCategory)
+        : 'practical_life';
+      const summary = cleanShortText(row.summary, 180);
+      if (!summary || summary.length < 4) continue;
+      const citedBy = cleanShortText(row.cited_by, 64) || 'Cosmic Council';
+      const citedSlug = cleanShortText(row.cited_slug, 64);
+      const id = cleanShortText(row.id, 64) || buildInsightId(category, summary);
+      const updatedAt =
+        typeof row.updated_at === 'string' && row.updated_at.trim()
+          ? row.updated_at.trim().slice(0, 40)
+          : new Date().toISOString();
+
+      const dedupeKey = summary.toLowerCase();
+      if (!insightMap.has(dedupeKey)) {
+        insightMap.set(dedupeKey, {
+          id,
+          category,
+          summary,
+          cited_by: citedBy,
+          ...(citedSlug ? { cited_slug: citedSlug } : {}),
+          updated_at: updatedAt,
+        });
+      }
+      if (insightMap.size >= MAX_CITED_INSIGHTS) break;
+    }
+    if (insightMap.size > 0) {
+      sanitized.cited_insights = Array.from(insightMap.values());
     }
   }
 
@@ -206,17 +280,29 @@ export function mergeLifeContextPatch(
 }
 
 export interface ExtractedLifeFactsPatch {
-  milestones?: Array<{ year: number; tag: string; note?: string }>;
+  milestones?: Array<{ year: number; tag: string; note?: string; cited_by?: string; cited_slug?: string }>;
   core_stress_areas?: string[];
   relationship_status?: RelationshipContextStatus;
   marriage_year?: number;
   has_children?: boolean;
+  children_summary?: string;
   career_mode?: CareerContextMode;
+  career_role?: string;
+  workplace_context?: string;
+  cited_insights?: Array<{
+    category: CitedInsightCategory;
+    summary: string;
+    cited_by?: string;
+    cited_slug?: string;
+  }>;
+  actor_citation?: string;
+  actor_slug?: string;
 }
 
 /**
- * Non-destructively merges silently extracted chat milestones & recurring stress areas
- * onto an existing `life_context_json` object without overwriting user-entered fields.
+ * Non-destructively merges silently extracted chat milestones, psychological/practical insights,
+ * and recurring stress areas onto an existing `life_context_json` object with attribution citations
+ * without overwriting user-entered fields.
  */
 export function mergeExtractedLifeFacts(
   existingRaw: unknown,
@@ -225,11 +311,38 @@ export function mergeExtractedLifeFacts(
   const { sanitized: base } = sanitizeLifeContext(existingRaw);
   const existingAnchors = Array.isArray(base.past_anchors) ? [...base.past_anchors] : [];
   const existingStress = Array.isArray(base.core_stress_areas) ? [...base.core_stress_areas] : [];
+  const existingInsights = Array.isArray(base.cited_insights) ? [...base.cited_insights] : [];
+  const defaultCitedBy = cleanShortText(extracted.actor_citation, 64) || 'Cosmic Council';
+  const defaultCitedSlug = cleanShortText(extracted.actor_slug, 64);
+  const nowIso = new Date().toISOString();
+
+  const incomingAnchors: LifeContextAnchor[] = (extracted.milestones || []).map((m) => ({
+    ...m,
+    cited_by: m.cited_by || defaultCitedBy,
+    ...(m.cited_slug || defaultCitedSlug
+      ? { cited_slug: m.cited_slug || defaultCitedSlug }
+      : {}),
+  }));
+
+  const incomingInsights: CitedProfileInsight[] = (extracted.cited_insights || []).map((item) => ({
+    id: buildInsightId(item.category, item.summary),
+    category: item.category,
+    summary: item.summary,
+    cited_by: cleanShortText(item.cited_by, 64) || defaultCitedBy,
+    ...(item.cited_slug || defaultCitedSlug
+      ? { cited_slug: item.cited_slug || defaultCitedSlug }
+      : {}),
+    updated_at: nowIso,
+  }));
+
+  // Place newer insights first so the 40-slot ring buffer retains freshest ongoing context
+  const mergedInsights = [...incomingInsights, ...existingInsights];
 
   const nextCandidate: LifeContextData = {
     ...base,
-    past_anchors: [...existingAnchors, ...(extracted.milestones || [])],
+    past_anchors: [...existingAnchors, ...incomingAnchors],
     core_stress_areas: [...existingStress, ...(extracted.core_stress_areas || [])],
+    cited_insights: mergedInsights,
   };
 
   if (!base.relationship_status && extracted.relationship_status) {
@@ -241,8 +354,17 @@ export function mergeExtractedLifeFacts(
   if (base.has_children === undefined && typeof extracted.has_children === 'boolean') {
     nextCandidate.has_children = extracted.has_children;
   }
+  if (!base.children_summary && extracted.children_summary) {
+    nextCandidate.children_summary = extracted.children_summary;
+  }
   if (!base.career_mode && extracted.career_mode) {
     nextCandidate.career_mode = extracted.career_mode;
+  }
+  if (!base.career_role && extracted.career_role) {
+    nextCandidate.career_role = extracted.career_role;
+  }
+  if (!base.workplace_context && extracted.workplace_context) {
+    nextCandidate.workplace_context = extracted.workplace_context;
   }
 
   const { sanitized, completeness } = sanitizeLifeContext(nextCandidate);

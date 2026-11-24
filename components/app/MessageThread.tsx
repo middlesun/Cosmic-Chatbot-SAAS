@@ -11,6 +11,7 @@ import {
   Eye,
   EyeOff,
   Heart,
+  HeartHandshake,
   Lightbulb,
   Loader2,
   Plus,
@@ -149,6 +150,7 @@ interface MessageThreadProps {
   onSaveToNotes?: (message: ChatMessageRecord) => void;
   savedNoteMsgIds?: Set<string>;
   savingNoteMsgId?: string | null;
+  onHandoffToCompanion?: (message: ChatMessageRecord) => void;
 }
 
 const TIMING_BAR_TOKEN_RE = /\[\[?TIMING_BAR\s*:\s*([a-z0-9_]+)\s*\]?\]/gi;
@@ -206,6 +208,10 @@ const splitCompanionBubbles = (raw: string): string[] => {
 
 const getCouncilSpeakerLabel = (expertSlug?: string | null): string => {
   switch (normalizeCouncilSlug(expertSlug)) {
+    case 'kp_precision':
+      return 'KP Astrology';
+    case 'jaimini':
+      return 'Jaimini Jyotish';
     case 'western_astrologer':
       return 'Western Astrologer';
     case 'modern_astrologer':
@@ -681,6 +687,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   onSaveToNotes,
   savedNoteMsgIds,
   savingNoteMsgId = null,
+  onHandoffToCompanion,
 }) => {
   const normalizedExpertSlug = normalizeCouncilSlug(expertSlug);
   const isWesternSystem =
@@ -1880,6 +1887,21 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   </Tooltip>
                 )}
 
+                {activePillar === 'council' &&
+                  msg.role === 'assistant' &&
+                  onHandoffToCompanion && (
+                    <Tooltip content="Discuss with a Companion" placement="top">
+                      <button
+                        type="button"
+                        onClick={() => onHandoffToCompanion(msg)}
+                        aria-label="Discuss this reading with a Companion"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
+                      >
+                        <HeartHandshake className="h-3.5 w-3.5" />
+                      </button>
+                    </Tooltip>
+                  )}
+
                 <Tooltip
                   content={msg.is_starred ? 'Unstar' : 'Star'}
                   placement="top"
@@ -2031,7 +2053,11 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     <div className="flex flex-wrap items-center gap-2">
                       {!isBubbleMsg && (
                         <p className="text-[11px] font-medium text-[#8B8275]">
-                          {msg.expert_used === 'western_astrologer'
+                          {msg.expert_used === 'kp_precision'
+                            ? 'KP Astrology (KP)'
+                            : msg.expert_used === 'jaimini'
+                            ? 'Jaimini Jyotish (Jaimini)'
+                            : msg.expert_used === 'western_astrologer'
                             ? 'Western Astrologer (Western)'
                             : msg.expert_used === 'modern_astrologer'
                             ? 'Modern Astrologer (Western)'

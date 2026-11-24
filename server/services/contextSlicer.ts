@@ -72,6 +72,7 @@ export interface Stage2CompileInput {
   extraProfiles?: ExtraProfileSliceInput[];
   contextTrapPromptNote?: string | null;
   userPrompt?: string;
+  expertSlug?: string;
 }
 
 const TIMING_SIGNAL_RE =
@@ -239,23 +240,22 @@ function formatLifeContextAnchor(
       }`
     );
   }
-  if (typeof ctx.has_children === 'boolean') {
-    if (Array.isArray(ctx.children) && ctx.children.length > 0) {
-      lines.push(
-        `Children: ${ctx.children.length} (${ctx.children
-          .map((c) => `${c.gender} b.${c.birth_year}`)
-          .join(', ')})`
-      );
-    } else {
-      lines.push(`Has children: ${ctx.has_children ? 'Yes' : 'No'}`);
-    }
-  }
-  if (ctx.career_mode) {
+  if (Array.isArray(ctx.children) && ctx.children.length > 0) {
     lines.push(
-      `Career setup: ${ctx.career_mode.replace(/_/g, ' ')}${
-        ctx.career_role ? ` (${ctx.career_role})` : ''
-      }`
+      `Children: ${ctx.children.length} (${ctx.children
+        .map((c) => `${c.gender} b.${c.birth_year}`)
+        .join(', ')})`
     );
+  } else if (ctx.children_summary) {
+    lines.push(`Children context: ${ctx.children_summary}`);
+  } else if (typeof ctx.has_children === 'boolean') {
+    lines.push(`Has children: ${ctx.has_children ? 'Yes' : 'No'}`);
+  }
+  if (ctx.career_mode || ctx.career_role || ctx.workplace_context) {
+    const modePart = ctx.career_mode ? ctx.career_mode.replace(/_/g, ' ') : 'Work';
+    const rolePart = ctx.career_role ? ` (${ctx.career_role})` : '';
+    const placePart = ctx.workplace_context ? ` — ${ctx.workplace_context}` : '';
+    lines.push(`Career setup: ${modePart}${rolePart}${placePart}`);
   }
   if (ctx.location_status) {
     lines.push(`Location context: ${ctx.location_status.replace(/_/g, ' ')}`);
@@ -264,7 +264,10 @@ function formatLifeContextAnchor(
     lines.push(
       `Verified past anchors: ${ctx.past_anchors
         .slice(0, 6)
-        .map((a) => `${a.year} ${a.tag}${a.note ? ` (${a.note})` : ''}`)
+        .map(
+          (a) =>
+            `${a.year} ${a.tag}${a.note ? ` (${a.note})` : ''}${a.cited_by ? ` [Noted by ${a.cited_by}]` : ''}`
+        )
         .join('; ')}`
     );
   }
@@ -273,6 +276,14 @@ function formatLifeContextAnchor(
       `Core recurring life concerns (stay empathetic and mindful without reciting mechanically): ${ctx.core_stress_areas
         .slice(0, 5)
         .join('; ')}`
+    );
+  }
+  if (Array.isArray(ctx.cited_insights) && ctx.cited_insights.length > 0) {
+    lines.push(
+      `Depth psychological & practical notes (weave sensitively when helpful; never dump verbatim):\n${ctx.cited_insights
+        .slice(0, 12)
+        .map((n) => `- [${String(n.category || 'note').replace(/_/g, ' ')} · ${n.cited_by}] ${n.summary}`)
+        .join('\n')}`
     );
   }
   if (contextTrapPromptNote) {
@@ -415,6 +426,9 @@ export async function compileStage2ContextPackage(
     focusPlanetSet.add(sh.planet);
   }
 
+  const isKpExpert = input.expertSlug === 'kp_precision';
+  const isJaiminiExpert = input.expertSlug === 'jaimini';
+
   const requestedPadaCodes = new Set<string>();
   const resolvedKarakaRows: Array<{ code: string; planet: string; sign: string; dms: string }> = [];
   for (const item of input.playbook.requiredKarakas || []) {
@@ -435,6 +449,24 @@ export async function compileStage2ContextPackage(
     } else if (CLASSICAL_PLANET_NAMES.has(item)) {
       focusPlanetSet.add(item);
     }
+  }
+
+  if (isJaiminiExpert && Array.isArray(enriched.jaimini?.karakas)) {
+    for (const kRow of enriched.jaimini.karakas) {
+      focusPlanetSet.add(kRow.planet);
+      if (!resolvedKarakaRows.some((r) => r.code === kRow.code)) {
+        resolvedKarakaRows.push({
+          code: kRow.code,
+          planet: kRow.planet,
+          sign: kRow.sign.slice(0, 3),
+          dms: kRow.dms,
+        });
+      }
+    }
+    requestedPadaCodes.add('AL');
+    requestedPadaCodes.add('UL');
+    requestedPadaCodes.add('A7');
+    requestedPadaCodes.add('A10');
   }
 
   if (input.playbook.domain === 'spirituality' || input.playbook.domain === 'open') {
@@ -499,8 +531,13 @@ export async function compileStage2ContextPackage(
     vargasSlice[vKey] = relevantPlacements.join('|');
   }
 
-  // 5. Slice KP Cusps & Significators (ONLY playbook.requiredKpCusps)
-  const requestedKp = (input.playbook.requiredKpCusps || []).filter((h) => h >= 1 && h <= 12);
+  // 5. Slice KP Cusps & Significators (playbook.requiredKpCusps, expanded with focusHouses for kp_precision)
+  const rawKpCusps = isKpExpert
+    ? Array.from(new Set([...(input.playbook.requiredKpCusps || []), ...focusHouses])).sort(
+        (a, b) => a - b
+      )
+    : input.playbook.requiredKpCusps || [];
+  const requestedKp = rawKpCusps.filter((h) => h >= 1 && h <= 12);
   const kpSlice = requestedKp.map((h) => {
     const cusp = enriched.kp?.cusps?.find((c) => c.house === h);
     const cslSig = cusp
@@ -1062,12 +1099,34 @@ export async function compileStage2ContextPackage(
       : {}),
     ...(Object.keys(vargasSlice).length > 0 ? { vargasNoDegrees: vargasSlice } : {}),
     ...(kpSlice.length > 0 ? { kpCusps: kpSlice } : {}),
+    ...(isKpExpert && enriched.kp?.rulingPlanets?.uniqueRulingPlanets?.length
+      ? { kpRulingPlanets: enriched.kp.rulingPlanets.uniqueRulingPlanets }
+      : {}),
     ...(resolvedKarakaRows.length > 0 || arudhaSlice.length > 0
       ? {
           jaimini: {
             km: enriched.jaimini.karakamshaSign.slice(0, 3),
             k: resolvedKarakaRows.map((k) => `${k.code}:${k.planet}(${k.sign} ${k.dms})`),
             ...(arudhaSlice.length > 0 ? { arudhas: arudhaSlice } : {}),
+            ...(isJaiminiExpert && enriched.jaimini?.charaDasha?.currentPeriod
+              ? {
+                  charaDashaCurrent: `${enriched.jaimini.charaDasha.currentPeriod.sign} (${enriched.jaimini.charaDasha.currentPeriod.startDate}..${enriched.jaimini.charaDasha.currentPeriod.endDate})`,
+                  ...(enriched.jaimini.charaDasha.periods?.length
+                    ? {
+                        charaDashaAll: enriched.jaimini.charaDasha.periods.map(
+                          (c) => `${c.sign.slice(0, 3)}(${c.years}y:${c.startDate})`
+                        ),
+                      }
+                    : {}),
+                }
+              : {}),
+            ...(isJaiminiExpert && enriched.jaimini?.argala?.length
+              ? {
+                  argala: enriched.jaimini.argala.map(
+                    (ag) => `H${ag.targetHouse}:${ag.netSupport}`
+                  ),
+                }
+              : {}),
           },
         }
       : {}),

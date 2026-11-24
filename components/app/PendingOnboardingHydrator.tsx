@@ -125,8 +125,9 @@ const PendingOnboardingHydrator: React.FC = () => {
             })
           );
           setStatus('success');
-          navigate(`/app/chat/${encodeURIComponent(startData.conversation.id)}`, {
+          navigate('/app/home', {
             replace: true,
+            state: { selectedProfileId: targetProfile.id, conversationId: startData.conversation.id },
           });
           window.setTimeout(() => setStatus('idle'), 3500);
           return;
@@ -134,7 +135,7 @@ const PendingOnboardingHydrator: React.FC = () => {
       }
 
       setStatus('success');
-      navigate('/app/chat', {
+      navigate('/app/home', {
         replace: true,
         state: { selectedProfileId: targetProfile.id },
       });

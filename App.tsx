@@ -106,7 +106,7 @@ const App: React.FC = () => {
         location.hash.includes('error_description=') ||
         searchObj.has('error') ||
         searchObj.has('error_description');
-      const target = hasError ? '/app/login' : '/app/chat';
+      const target = hasError ? '/app/login' : '/app/home';
       return <Navigate to={`${target}${location.search}${location.hash}`} replace />;
     }
   }

@@ -164,6 +164,308 @@ export type CompanionCategoryTag =
   | 'tarot_numerology'
   | 'past_life';
 
+export type CompanionGroup = 'spiritual' | 'everyday' | 'life';
+
+export const COMPANION_GROUP_OPTIONS: Array<{
+  value: CompanionGroup;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'spiritual',
+    label: 'Spiritual Guides',
+    description: 'Astrology, Tarot, Numerology, Karma & contemplative spiritual guidance.',
+  },
+  {
+    value: 'everyday',
+    label: 'Everyday Companions',
+    description: 'Listeners, Comforters, Mood Lifters, Friends, Confidants & Overthinking Reset.',
+  },
+  {
+    value: 'life',
+    label: 'Life Companions',
+    description: 'Breakup, Divorce, Grief, Career, Founders, Money, Family & Relocation support.',
+  },
+];
+
+export type CompanionDiscoveryTabId = 'all' | CompanionGroup;
+
+export const COMPANION_DISCOVERY_TABS: Array<{
+  id: CompanionDiscoveryTabId;
+  label: string;
+}> = [
+  { id: 'all', label: 'All' },
+  { id: 'spiritual', label: 'Spiritual Guides' },
+  { id: 'everyday', label: 'Everyday Companions' },
+  { id: 'life', label: 'Life Companions' },
+];
+
+export interface CompanionSituationChip {
+  id: string;
+  label: string;
+  matchTags: string[];
+  fallbackKeywords: string[];
+}
+
+export const COMPANION_SITUATION_CHIPS: CompanionSituationChip[] = [
+  {
+    id: 'heartbreak',
+    label: 'Heartbreak',
+    matchTags: ['heartbreak', 'breakup', 'moving-on', 'ex', 'closure', 'red-flags'],
+    fallbackKeywords: ['heartbreak', 'breakup', 'letting go', 'red flags'],
+  },
+  {
+    id: 'vent',
+    label: 'Vent',
+    matchTags: ['vent', 'listen', 'overwhelmed', 'judgment-free', 'heavy-day'],
+    fallbackKeywords: ['vent', 'listen', 'judgment-free', 'heavy day'],
+  },
+  {
+    id: 'career',
+    label: 'Career',
+    matchTags: [
+      'career',
+      'job-switch',
+      'workplace',
+      'work-stress',
+      'founders',
+      'startup',
+      'business',
+      'burnout',
+    ],
+    fallbackKeywords: ['career', 'job', 'workplace', 'founder', 'startup', 'business', 'burnout'],
+  },
+  {
+    id: 'grief',
+    label: 'Grief',
+    matchTags: ['grief', 'loss', 'bereavement', 'mourning'],
+    fallbackKeywords: ['grief', 'loss', 'bereavement', 'mourning'],
+  },
+  {
+    id: 'bedtime',
+    label: 'Bedtime',
+    matchTags: ['bedtime', 'late-night', 'insomnia', 'sleep', 'lonely'],
+    fallbackKeywords: ['bedtime', 'late-night', 'late night', 'insomnia', 'sleep'],
+  },
+  {
+    id: 'tarot',
+    label: 'Tarot',
+    matchTags: ['tarot', 'crossroads', 'mixed-signals'],
+    fallbackKeywords: ['tarot', 'spread', 'cards'],
+  },
+  {
+    id: 'astrology',
+    label: 'Astrology',
+    matchTags: ['astrology', 'vedic', 'chart', 'timing', 'dharma', 'mood-cycles'],
+    fallbackKeywords: ['astrology', 'vedic', 'jyotish', 'natal', 'transit'],
+  },
+  {
+    id: 'stuck',
+    label: 'Feeling Stuck',
+    matchTags: ['stuck', 'unmotivated', 'procrastination', 'restarting', 'motivation', 'inertia'],
+    fallbackKeywords: ['stuck', 'unmotivated', 'procrastination', 'motivation'],
+  },
+  {
+    id: 'money',
+    label: 'Money Stress',
+    matchTags: ['money', 'finance', 'debt', 'financial-stress', 'budget'],
+    fallbackKeywords: ['money', 'finance', 'debt', 'financial'],
+  },
+  {
+    id: 'divorce',
+    label: 'Divorce & Family',
+    matchTags: [
+      'divorce',
+      'marriage',
+      'co-parenting',
+      'second-chapter',
+      'family',
+      'parents',
+      'progeny',
+    ],
+    fallbackKeywords: ['divorce', 'marriage', 'co-parenting', 'family', 'parents', 'progeny'],
+  },
+  {
+    id: 'new_city',
+    label: 'New City',
+    matchTags: ['new-city', 'relocation', 'expat', 'lonely'],
+    fallbackKeywords: ['new city', 'relocation', 'expat', 'moved'],
+  },
+];
+
+export type CompanionDiscoveryFilterableCard = Partial<
+  Pick<
+    PublicCompanionCard,
+    | 'name'
+    | 'tagline'
+    | 'short_bio'
+    | 'primary_expertise'
+    | 'secondary_expertise'
+    | 'category_tag'
+    | 'companion_group'
+    | 'situation_tags'
+    | 'skill_level'
+    | 'cultural_fluency'
+  >
+>;
+
+export function resolveCompanionGroup(card: CompanionDiscoveryFilterableCard): CompanionGroup {
+  if (
+    card.companion_group === 'spiritual' ||
+    card.companion_group === 'everyday' ||
+    card.companion_group === 'life'
+  ) {
+    return card.companion_group;
+  }
+  if (card.skill_level && card.skill_level !== 'none_emotional') {
+    return 'spiritual';
+  }
+  if (
+    card.category_tag === 'astrology' ||
+    card.category_tag === 'tarot_numerology' ||
+    card.category_tag === 'past_life'
+  ) {
+    return 'spiritual';
+  }
+  const combined = `${card.primary_expertise || ''} ${(card.situation_tags || []).join(' ')}`.toLowerCase();
+  if (
+    /(breakup|heartbreak|divorce|marriage|grief|loss|founder|business|money|finance|debt|career|workplace|stuck|unstuck|family|progeny|relocation|new city|transition)/.test(
+      combined
+    )
+  ) {
+    return 'life';
+  }
+  return 'everyday';
+}
+
+export function matchesCompanionSituationChip(
+  card: CompanionDiscoveryFilterableCard,
+  chipId: string | null
+): boolean {
+  if (!chipId) return true;
+  const chip = COMPANION_SITUATION_CHIPS.find((c) => c.id === chipId);
+  if (!chip) return true;
+
+  const tags = (card.situation_tags || []).map((t) => t.trim().toLowerCase());
+  if (tags.some((t) => chip.matchTags.includes(t))) {
+    return true;
+  }
+
+  const haystack = [
+    card.primary_expertise || '',
+    ...(card.secondary_expertise || []),
+    card.tagline || '',
+    card.short_bio || '',
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  if (chip.id === 'tarot' && card.skill_level === 'tarot') return true;
+  if (
+    chip.id === 'astrology' &&
+    (card.skill_level === 'astrology_soft' || card.skill_level === 'vedic_soft')
+  ) {
+    return true;
+  }
+
+  return chip.fallbackKeywords.some((kw) => haystack.includes(kw));
+}
+
+export function matchesCompanionDiscoveryFilter(
+  card: CompanionDiscoveryFilterableCard,
+  options: {
+    groupTab: CompanionDiscoveryTabId;
+    situationChipId?: string | null;
+    searchQuery?: string;
+  }
+): boolean {
+  if (options.groupTab !== 'all' && resolveCompanionGroup(card) !== options.groupTab) {
+    return false;
+  }
+
+  if (options.situationChipId && !matchesCompanionSituationChip(card, options.situationChipId)) {
+    return false;
+  }
+
+  const q = (options.searchQuery || '').trim().toLowerCase();
+  if (q) {
+    const terms = q.split(/\s+/).filter(Boolean);
+    const haystack = [
+      card.name || '',
+      card.primary_expertise || '',
+      ...(card.secondary_expertise || []),
+      ...(card.situation_tags || []),
+      card.tagline || '',
+      card.short_bio || '',
+      card.cultural_fluency || '',
+    ]
+      .join(' ')
+      .toLowerCase();
+    if (!terms.every((term) => haystack.includes(term))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export type CompanionCategoryFilterId =
+  | 'all'
+  | 'astrology'
+  | 'tarot'
+  | 'numerology'
+  | 'past_life'
+  | 'support'
+  | 'friends';
+
+export const COMPANION_CATEGORY_FILTERS: Array<{
+  id: CompanionCategoryFilterId;
+  label: string;
+}> = [
+  { id: 'all', label: 'All' },
+  { id: 'astrology', label: 'Astrology' },
+  { id: 'tarot', label: 'Tarot' },
+  { id: 'numerology', label: 'Numerology' },
+  { id: 'past_life', label: 'Past Life' },
+  { id: 'support', label: 'Support & Listening' },
+  { id: 'friends', label: 'Friends' },
+];
+
+export function matchesCompanionCategoryFilter(
+  card: Pick<
+    PublicCompanionCard,
+    'category_tag' | 'skill_level' | 'primary_expertise' | 'secondary_expertise'
+  >,
+  filterId: CompanionCategoryFilterId
+): boolean {
+  if (filterId === 'all') return true;
+  if (filterId === 'astrology') return card.category_tag === 'astrology';
+  if (filterId === 'tarot') {
+    const primary = (card.primary_expertise || '').toLowerCase();
+    const secondary = (card.secondary_expertise || []).map((s) => s.toLowerCase());
+    return (
+      card.skill_level === 'tarot' ||
+      primary.includes('tarot') ||
+      secondary.some((s) => s.includes('tarot'))
+    );
+  }
+  if (filterId === 'numerology') {
+    const primary = (card.primary_expertise || '').toLowerCase();
+    const secondary = (card.secondary_expertise || []).map((s) => s.toLowerCase());
+    return (
+      card.skill_level === 'numerology' ||
+      primary.includes('numerology') ||
+      secondary.some((s) => s.includes('numerology'))
+    );
+  }
+  if (filterId === 'past_life') {
+    return card.category_tag === 'past_life' || card.skill_level === 'past_life';
+  }
+  if (filterId === 'support') return card.category_tag === 'support';
+  if (filterId === 'friends') return card.category_tag === 'friends';
+  return false;
+}
+
 export type CompanionSkillLevel =
   | 'none_emotional'
   | 'astrology_soft'
@@ -208,6 +510,8 @@ export interface PublicCompanionCard {
   primary_expertise: string;
   secondary_expertise: string[];
   category_tag: CompanionCategoryTag;
+  companion_group?: CompanionGroup;
+  situation_tags?: string[];
   cultural_fluency: string;
   avatar_url: string | null;
   monogram_palette: CompanionMonogramPalette;
@@ -437,3 +741,19 @@ export interface PublicChatbotUiConfig {
   guide_overrides?: Record<string, PublicGuideUiConfig>;
   companion_archetypes?: CompanionArchetypeConfigItem[];
 }
+
+export interface SharedReadingNoteRecord {
+  id: string;
+  profile_id: string | null;
+  profile_label: string | null;
+  expert_slug: string | null;
+  expert_label: string;
+  astrology_mode: 'vedic' | 'western' | null;
+  conversation_id: string | null;
+  message_id: string | null;
+  title: string;
+  summary: string;
+  created_at: string;
+  origin?: 'shared_handoff' | 'saved_note';
+}
+

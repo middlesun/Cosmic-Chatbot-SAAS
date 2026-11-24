@@ -8,19 +8,27 @@ import {
   ALL_GUIDE_CATALOG_META,
   DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
   DEFAULT_COMPANION_ARCHETYPES,
+  DEFAULT_COMPANION_BOND_EXTRACTOR_PROMPT,
+  DEFAULT_COMPANION_CHART_PRESENCE_PROMPT,
   DEFAULT_COMPANION_CONSTITUTION,
   DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
+  DEFAULT_COMPANION_REALISM_BASELINE,
+  DEFAULT_COMPANION_RETURN_GREETING_PROMPT,
   DEFAULT_CORE_COUNCIL_CONSTITUTION,
   DEFAULT_DEEP_AUDIT_ADJUDICATOR_MANDATE,
   DEFAULT_DEEP_AUDIT_LENSES,
   DEFAULT_FLUENCY_INSTRUCTIONS,
   DEFAULT_FORMAT_CONTRACTS,
   DEFAULT_INTENT_OUTPUT_CONTRACTS,
+  DEFAULT_PROFILE_MEMORY_EXTRACTOR_PROMPT,
+  DEFAULT_SHORT_REPLY_BREAKDOWN_WRAPPER,
   DEFAULT_STAGE1_ROUTER_PROMPT,
   DEFAULT_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
   DEFAULT_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
+  DEFAULT_TIMING_WIDGET_PLACEMENT_WRAPPER,
   DEFAULT_VEDIC_ANTI_CLICHE_RULES,
   DEFAULT_VEDIC_TIER1_REASONING_LAWS,
+  DEFAULT_VEDIC_TURN_MODIFIER_PROMPT,
   WESTERN_ANTI_CLICHE_RULES,
   WESTERN_CORE_COUNCIL_CONSTITUTION,
   WESTERN_DEEP_AUDIT_ADJUDICATOR_MANDATE,
@@ -31,6 +39,7 @@ import {
   WESTERN_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
   WESTERN_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
   WESTERN_TIER1_REASONING_LAWS,
+  DEFAULT_WESTERN_TURN_MODIFIER_PROMPT,
   getGuideCatalogMeta,
   GUIDE_SLUGS,
   isValidGuideSlug,
@@ -166,11 +175,19 @@ export type PerGuideChatbotConfigMap = Partial<Record<GuideSlug, GuideChatbotOve
 export interface EnginePromptOverrides {
   core_council_constitution?: string;
   companion_constitution?: string;
+  companion_realism_baseline?: string;
+  companion_chart_presence_prompt?: string;
+  companion_return_greeting_prompt?: string;
+  companion_bond_extractor_prompt?: string;
+  profile_memory_extractor_prompt?: string;
   companion_archetypes?: DefaultCompanionArchetype[];
   companion_matcher_instructions?: string;
   clarity_helper_system_prompt?: string;
   vedic_tier1_reasoning_laws?: string;
   vedic_anti_cliche_rules?: string;
+  vedic_turn_modifier_prompt?: string;
+  short_reply_breakdown_wrapper?: string;
+  timing_widget_placement_wrapper?: string;
   intent_output_contracts?: Partial<Record<keyof typeof DEFAULT_INTENT_OUTPUT_CONTRACTS, string>>;
   fluency_instructions?: Partial<Record<keyof typeof DEFAULT_FLUENCY_INSTRUCTIONS, string>>;
   format_contracts?: Partial<Record<keyof typeof DEFAULT_FORMAT_CONTRACTS, string>>;
@@ -182,6 +199,7 @@ export interface EnginePromptOverrides {
   western_core_council_constitution?: string;
   western_tier1_reasoning_laws?: string;
   western_anti_cliche_rules?: string;
+  western_turn_modifier_prompt?: string;
   western_intent_output_contracts?: Partial<Record<keyof typeof WESTERN_INTENT_OUTPUT_CONTRACTS, string>>;
   western_fluency_instructions?: Partial<Record<keyof typeof WESTERN_FLUENCY_INSTRUCTIONS, string>>;
   western_format_contracts?: Partial<Record<keyof typeof WESTERN_FORMAT_CONTRACTS, string>>;
@@ -345,10 +363,9 @@ export const DEFAULT_CHATBOT_CONFIG: ChatbotConfig = {
   chat_numeric_font: 'dm_sans',
   expert_order: [
     DEFAULT_COUNCIL_EXPERT_SLUG,
+    'kp_precision',
+    'jaimini',
     'western_astrologer',
-    'modern_astrologer',
-    'tarot_reader',
-    'numerologist',
     'hellenistic_astrologer',
     'learn_astrology',
   ],
@@ -597,6 +614,7 @@ export type PlatformSettingKey =
   | 'mini_apps_registry'
   | 'mini_apps_rules_overlay'
   | 'companion_soul_backstory_overlay'
+  | 'companion_meta_overlay'
   | 'per_guide_chatbot_config'
   | 'engine_prompt_overrides'
   | 'playbook_overrides';
@@ -965,8 +983,9 @@ export function buildDefaultModularRulesForGuide(
   ];
   if (
     slug === DEFAULT_COUNCIL_EXPERT_SLUG ||
+    slug === 'kp_precision' ||
+    slug === 'jaimini' ||
     slug === 'western_astrologer' ||
-    slug === 'modern_astrologer' ||
     slug === 'hellenistic_astrologer' ||
     slug === 'learn_astrology'
   ) {
@@ -1141,11 +1160,19 @@ export function getEnginePromptDefaultsBundle() {
   return {
     core_council_constitution: DEFAULT_CORE_COUNCIL_CONSTITUTION,
     companion_constitution: DEFAULT_COMPANION_CONSTITUTION,
+    companion_realism_baseline: DEFAULT_COMPANION_REALISM_BASELINE,
+    companion_chart_presence_prompt: DEFAULT_COMPANION_CHART_PRESENCE_PROMPT,
+    companion_return_greeting_prompt: DEFAULT_COMPANION_RETURN_GREETING_PROMPT,
+    companion_bond_extractor_prompt: DEFAULT_COMPANION_BOND_EXTRACTOR_PROMPT,
+    profile_memory_extractor_prompt: DEFAULT_PROFILE_MEMORY_EXTRACTOR_PROMPT,
     companion_archetypes: DEFAULT_COMPANION_ARCHETYPES,
     companion_matcher_instructions: DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
     clarity_helper_system_prompt: DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
     vedic_tier1_reasoning_laws: DEFAULT_VEDIC_TIER1_REASONING_LAWS,
     vedic_anti_cliche_rules: DEFAULT_VEDIC_ANTI_CLICHE_RULES,
+    vedic_turn_modifier_prompt: DEFAULT_VEDIC_TURN_MODIFIER_PROMPT,
+    short_reply_breakdown_wrapper: DEFAULT_SHORT_REPLY_BREAKDOWN_WRAPPER,
+    timing_widget_placement_wrapper: DEFAULT_TIMING_WIDGET_PLACEMENT_WRAPPER,
     intent_output_contracts: { ...DEFAULT_INTENT_OUTPUT_CONTRACTS },
     fluency_instructions: { ...DEFAULT_FLUENCY_INSTRUCTIONS },
     format_contracts: { ...DEFAULT_FORMAT_CONTRACTS },
@@ -1157,6 +1184,7 @@ export function getEnginePromptDefaultsBundle() {
     western_core_council_constitution: WESTERN_CORE_COUNCIL_CONSTITUTION,
     western_tier1_reasoning_laws: WESTERN_TIER1_REASONING_LAWS,
     western_anti_cliche_rules: WESTERN_ANTI_CLICHE_RULES,
+    western_turn_modifier_prompt: DEFAULT_WESTERN_TURN_MODIFIER_PROMPT,
     western_intent_output_contracts: { ...WESTERN_INTENT_OUTPUT_CONTRACTS },
     western_fluency_instructions: { ...WESTERN_FLUENCY_INSTRUCTIONS },
     western_format_contracts: { ...WESTERN_FORMAT_CONTRACTS },

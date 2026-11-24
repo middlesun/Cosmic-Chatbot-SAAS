@@ -73,9 +73,25 @@ const EXPERT_META: Record<string, { title: string; subtitle: string }> = {
     title: 'Vedic Astrologer',
     subtitle: 'Parashari, KP, Jaimini & Dasha synthesis',
   },
+  kp_precision: {
+    title: 'KP Astrology',
+    subtitle: 'Placidus Cuspal Sub-Lords & event timing',
+  },
+  jaimini: {
+    title: 'Jaimini Jyotish',
+    subtitle: 'Chara Karakas, Karakamsha & Chara Dasha',
+  },
   western_astrologer: {
     title: 'Western Astrologer',
     subtitle: 'Tropical Zodiac, Placidus & aspects',
+  },
+  hellenistic_astrologer: {
+    title: 'Hellenistic Astrologer',
+    subtitle: 'Whole Sign houses, Sect, Hermetic Lots & Profections',
+  },
+  learn_astrology: {
+    title: 'Learn Astrology',
+    subtitle: 'Step-by-step Jyotish principles & chart mechanics',
   },
   modern_astrologer: {
     title: 'Modern Astrologer',
@@ -88,10 +104,6 @@ const EXPERT_META: Record<string, { title: string; subtitle: string }> = {
   numerologist: {
     title: 'Numerology',
     subtitle: 'Pythagorean Life Path & timing cycles',
-  },
-  hellenistic_astrologer: {
-    title: 'Hellenistic Astrologer',
-    subtitle: 'Whole Sign houses, Sect, Hermetic Lots & Profections',
   },
 };
 
@@ -610,18 +622,23 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     }
   }
   for (const card of companionCatalog) {
-    if (orderedFeaturedCards.length >= 6) break;
     if (!featuredSet.has(card.slug)) {
       featuredSet.add(card.slug);
       orderedFeaturedCards.push(card);
     }
   }
-  const featuredCompanions = orderedFeaturedCards.slice(0, 6).map((card) => ({
+  const featuredCompanions = orderedFeaturedCards.map((card) => ({
     slug: card.slug,
     name: card.name,
     age: card.age,
     primary_expertise: card.primary_expertise,
+    secondary_expertise: card.secondary_expertise,
+    category_tag: card.category_tag,
+    companion_group: card.companion_group,
+    situation_tags: card.situation_tags,
+    skill_level: card.skill_level,
     tagline: card.tagline,
+    short_bio: card.short_bio,
     avatar_url: card.avatar_url,
     monogram_palette: card.monogram_palette,
     last_conversation_id: lastConvIdBySlug.get(card.slug.toLowerCase()) || null,
@@ -660,11 +677,11 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
 
   const orderedSlugs = [
     DEFAULT_COUNCIL_EXPERT_SLUG,
-    'modern_astrologer',
+    'kp_precision',
+    'jaimini',
     'western_astrologer',
-    'tarot_reader',
-    'numerologist',
     'hellenistic_astrologer',
+    'learn_astrology',
   ] as const;
 
   const recentGuides: Array<{

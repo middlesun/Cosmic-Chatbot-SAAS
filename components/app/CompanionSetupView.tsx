@@ -16,15 +16,17 @@ import {
 } from 'lucide-react';
 import CustomSelect from './CustomSelect';
 import CompanionAvatar from './CompanionAvatar';
+import CompanionDiscoveryControls from './CompanionDiscoveryControls';
 import CompanionProfileSheet from './CompanionProfileSheet';
 import { PREVIEW_PUBLIC_COMPANIONS } from './previewFixtures';
-import type {
-  CompanionArchetypeConfigItem,
-  CompanionArchetypeSlug,
-  CompanionCategoryTag,
-  CompanionPersona,
-  ConversationRecord,
-  PublicCompanionCard,
+import {
+  matchesCompanionDiscoveryFilter,
+  type CompanionArchetypeConfigItem,
+  type CompanionArchetypeSlug,
+  type CompanionDiscoveryTabId,
+  type CompanionPersona,
+  type ConversationRecord,
+  type PublicCompanionCard,
 } from './chatTypes';
 
 export interface CustomCompanionSummary {
@@ -61,16 +63,7 @@ interface CompanionSetupViewProps {
   ) => void;
 }
 
-type CategoryFilterId = 'all' | CompanionCategoryTag;
-
-const CATEGORY_TABS: Array<{ id: CategoryFilterId; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'support', label: 'Support & Listening' },
-  { id: 'friends', label: 'Friends' },
-  { id: 'astrology', label: 'Astrology' },
-  { id: 'tarot_numerology', label: 'Tarot & Numerology' },
-  { id: 'past_life', label: 'Past Life' },
-];
+// Category filter tabs & matching imported from ./chatTypes to stay consistent with homepage.
 
 interface ArchetypeOption {
   slug: CompanionArchetypeSlug;
@@ -263,7 +256,9 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
   const [loadingHub, setLoadingHub] = useState<boolean>(
     !isPreviewMode && (!companionCatalog || companionCatalog.length === 0)
   );
-  const [activeCategory, setActiveCategory] = useState<CategoryFilterId>('all');
+  const [activeGroup, setActiveGroup] = useState<CompanionDiscoveryTabId>('all');
+  const [activeSituationChip, setActiveSituationChip] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [sheetCompanion, setSheetCompanion] = useState<PublicCompanionCard | null>(null);
 
   // Standard 2-question intake
@@ -382,15 +377,20 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
     });
   }, [presets, pastCompanionConversations]);
 
-  const filteredPresets = useMemo(() => {
-    if (activeCategory === 'all') return enrichedPresets;
-    return enrichedPresets.filter((c) => c.category_tag === activeCategory);
-  }, [enrichedPresets, activeCategory]);
+  const filteredPresets = useMemo(
+    () =>
+      enrichedPresets.filter((c) =>
+        matchesCompanionDiscoveryFilter(c, {
+          groupTab: activeGroup,
+          situationChipId: activeSituationChip,
+          searchQuery,
+        })
+      ),
+    [enrichedPresets, activeGroup, activeSituationChip, searchQuery]
+  );
 
-  const availableCategories = useMemo(() => {
-    const present = new Set(enrichedPresets.map((c) => c.category_tag));
-    return CATEGORY_TABS.filter((tab) => tab.id === 'all' || present.has(tab.id));
-  }, [enrichedPresets]);
+  const isDefaultDirectoryView =
+    activeGroup === 'all' && !activeSituationChip && !searchQuery.trim();
 
   const handleChooseArchetype = (slug: CompanionArchetypeSlug) => {
     setSelectedType(slug);
@@ -605,37 +605,21 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
               </div>
             )}
 
-            {/* Category Filter Controls */}
-            {availableCategories.length > 1 && (
-              <div
-                className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar"
-                role="tablist"
-                aria-label="Filter companions by focus"
-              >
-                {availableCategories.map((cat) => {
-                  const isActive = activeCategory === cat.id;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      onClick={() => setActiveCategory(cat.id)}
-                      className={`min-h-[38px] shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-                        isActive
-                          ? 'bg-[#4A453D] text-[#FAF7F2]'
-                          : 'border border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:bg-[#F1ECE3] hover:text-[#3D3830]'
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {/* Pillar Tabs, Situation Search & Quick Chips */}
+            <CompanionDiscoveryControls
+              cards={enrichedPresets}
+              activeGroup={activeGroup}
+              onChangeGroup={setActiveGroup}
+              activeSituationChip={activeSituationChip}
+              onChangeSituationChip={setActiveSituationChip}
+              searchQuery={searchQuery}
+              onChangeSearchQuery={setSearchQuery}
+              tabSurface="white"
+              showCounts
+            />
 
             {/* Saved Custom Companions from "Find someone new" (if user has any) */}
-            {activeCategory === 'all' && customCompanions.length > 0 && (
+            {isDefaultDirectoryView && customCompanions.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-[#5C5449]">
@@ -787,97 +771,119 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {filteredPresets.map((card) => {
-                  const isStarting = startingId === card.slug;
-                  const hasHistory = Boolean(card.last_conversation_id);
-                  return (
-                    <div
-                      key={card.slug}
-                      className="flex flex-col justify-between rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-4 sm:p-5 gap-4 hover:border-[#3D3830]/25 transition-colors"
+                {filteredPresets.length === 0 ? (
+                  <div className="md:col-span-2 rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-7 text-center space-y-2.5">
+                    <p className="font-['Cormorant_Garamond',serif] text-xl font-medium text-[#3D3830]">
+                      No companions match that moment or search
+                    </p>
+                    <p className="text-xs text-[#5C5449]">
+                      Reset your filters or match a custom companion below.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveGroup('all');
+                        setActiveSituationChip(null);
+                        setSearchQuery('');
+                      }}
+                      className="min-h-[36px] inline-flex items-center justify-center rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] px-4 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
                     >
-                      <div className="flex items-start gap-3.5 min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => setSheetCompanion(card)}
-                          aria-label={`View ${card.name}'s profile`}
-                          className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A] cursor-pointer"
-                        >
-                          <CompanionAvatar
-                            name={card.name}
-                            avatarUrl={card.avatar_url}
-                            palette={card.monogram_palette}
-                            size="lg"
-                            shape="circle"
-                          />
-                        </button>
+                      Reset filters
+                    </button>
+                  </div>
+                ) : (
+                  filteredPresets.map((card) => {
+                    const isStarting = startingId === card.slug;
+                    const hasHistory = Boolean(card.last_conversation_id);
+                    return (
+                      <div
+                        key={card.slug}
+                        className="flex flex-col justify-between rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-4 sm:p-5 gap-4 hover:border-[#3D3830]/25 transition-colors"
+                      >
+                        <div className="flex items-start gap-3.5 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => setSheetCompanion(card)}
+                            aria-label={`View ${card.name}'s profile`}
+                            className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A] cursor-pointer"
+                          >
+                            <CompanionAvatar
+                              name={card.name}
+                              avatarUrl={card.avatar_url}
+                              palette={card.monogram_palette}
+                              size="lg"
+                              shape="circle"
+                            />
+                          </button>
 
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <div className="flex items-center justify-between gap-2 min-w-0">
-                            <button
-                              type="button"
-                              onClick={() => setSheetCompanion(card)}
-                              className="flex items-baseline gap-2 min-w-0 text-left hover:opacity-80 transition-opacity cursor-pointer"
-                            >
-                              <h3 className="font-['Cormorant_Garamond',serif] text-[21px] font-semibold text-[#3D3830] leading-tight truncate">
-                                {card.name}
-                              </h3>
-                              <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] shrink-0">
-                                {card.age}
-                              </span>
-                            </button>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex items-center justify-between gap-2 min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => setSheetCompanion(card)}
+                                className="flex items-baseline gap-2 min-w-0 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                              >
+                                <h3 className="font-['Cormorant_Garamond',serif] text-[21px] font-semibold text-[#3D3830] leading-tight truncate">
+                                  {card.name}
+                                </h3>
+                                <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] shrink-0">
+                                  {card.age}
+                                </span>
+                              </button>
 
-                            {hasHistory && (
-                              <span className="text-[11px] font-medium text-[#2D6A4F] shrink-0">
-                                Active chat
-                              </span>
-                            )}
+                              {hasHistory && (
+                                <span className="text-[11px] font-medium text-[#2D6A4F] shrink-0">
+                                  Active chat
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-xs text-[#8B8275] truncate">
+                              {card.primary_expertise}
+                              {card.secondary_expertise?.[0] &&
+                              card.secondary_expertise[0].toLowerCase() !==
+                                card.primary_expertise.toLowerCase()
+                                ? ` · ${card.secondary_expertise[0]}`
+                                : ''}
+                            </p>
+
+                            <p className="text-xs text-[#5C5449] leading-relaxed line-clamp-2 pt-0.5">
+                              {card.tagline || card.short_bio}
+                            </p>
                           </div>
+                        </div>
 
-                          <p className="text-xs text-[#8B8275] truncate">
-                            {card.primary_expertise}
-                            {card.secondary_expertise?.[0] &&
-                            card.secondary_expertise[0].toLowerCase() !==
-                              card.primary_expertise.toLowerCase()
-                              ? ` · ${card.secondary_expertise[0]}`
-                              : ''}
-                          </p>
+                        <div className="grid grid-cols-3 items-center gap-1.5 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setSheetCompanion(card)}
+                            className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] transition-colors cursor-pointer truncate"
+                          >
+                            About
+                          </button>
 
-                          <p className="text-xs text-[#5C5449] leading-relaxed line-clamp-2 pt-0.5">
-                            {card.tagline || card.short_bio}
-                          </p>
+                          <button
+                            type="button"
+                            disabled={startingId !== null}
+                            onClick={() => void handleStartPreset(card, { forceNew: true })}
+                            className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] disabled:opacity-50 transition-colors cursor-pointer truncate"
+                          >
+                            Start new
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={startingId !== null}
+                            onClick={() => void handleStartPreset(card)}
+                            className="min-h-[36px] rounded-xl border border-[#3D3830]/14 bg-[#EDE6DA] px-2.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#E4DCCD] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer truncate"
+                          >
+                            {isStarting ? 'Connecting…' : 'Continue Chat'}
+                          </button>
                         </div>
                       </div>
-
-                      <div className="grid grid-cols-3 items-center gap-1.5 pt-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setSheetCompanion(card)}
-                          className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] transition-colors cursor-pointer truncate"
-                        >
-                          About
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={startingId !== null}
-                          onClick={() => void handleStartPreset(card, { forceNew: true })}
-                          className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] disabled:opacity-50 transition-colors cursor-pointer truncate"
-                        >
-                          Start new
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={startingId !== null}
-                          onClick={() => void handleStartPreset(card)}
-                          className="min-h-[36px] rounded-xl border border-[#3D3830]/14 bg-[#EDE6DA] px-2.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#E4DCCD] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer truncate"
-                        >
-                          {isStarting ? 'Connecting…' : 'Continue Chat'}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
 
                 {/* LAST OPTION ON THE LIST: Find someone new (preserved custom matcher) */}
                 <button

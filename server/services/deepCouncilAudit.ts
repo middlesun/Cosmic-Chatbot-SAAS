@@ -21,6 +21,7 @@ import {
   type OpenRouterMessage,
 } from './openrouter';
 import {
+  appendTurnVerificationModifier,
   buildIntentOutputContract,
   buildShortReplyBreakdownInstruction,
   buildTimingWidgetPlacementInstruction,
@@ -290,7 +291,12 @@ function buildAdjudicatorSystemPrompt(params: {
 
   const dualViewRule =
     base.responseLength === 'short'
-      ? buildShortReplyBreakdownInstruction(effectiveFluency, base.languageSlug, tradition)
+      ? buildShortReplyBreakdownInstruction(
+          effectiveFluency,
+          base.languageSlug,
+          tradition,
+          base.engineOverrides
+        )
       : effectiveFluency !== 'beginner' || base.outputSlug === 'marriage_master'
       ? tradition === 'western'
         ? `TECHNICAL TRACE REQUIREMENT:
@@ -359,7 +365,7 @@ End cleanly with a concise, clearly labeled **System Convergence & Technical Tra
     `SCOPED CHART & TIMING DATA:\n${JSON.stringify(base.pkg.chartSlice)}`,
     `SYNTHESIS INPUTS TO ADJUDICATE:\n${lensNotesBlock}`,
     base.pkg.requiresTimingStack && base.pkg.timingWidgets?.length
-      ? buildTimingWidgetPlacementInstruction(base.pkg.timingWidgets)
+      ? buildTimingWidgetPlacementInstruction(base.pkg.timingWidgets, base.engineOverrides)
       : '',
     base.profileMemorySummary?.trim()
       ? `PRIOR THREAD THEMES (Continuity Background):\n${base.profileMemorySummary.trim()}`
@@ -554,12 +560,18 @@ export async function runDeepCouncilAudit(
       }
     };
 
+    const adjudicatorUserText = appendTurnVerificationModifier(
+      params.finalUserText,
+      tradition,
+      params.engineOverrides
+    );
+
     const streamResult = await streamOpenRouterCompletion({
       model: params.model,
       system: adjudicatorSystem,
       messages: [
         ...params.historyMessages,
-        { role: 'user', content: params.finalUserText },
+        { role: 'user', content: adjudicatorUserText },
       ],
       temperature: 0.35,
       maxTokens: Math.max(params.maxOutputTokens, 4800),
@@ -584,7 +596,7 @@ export async function runDeepCouncilAudit(
         system: adjudicatorSystem,
         messages: [
           ...params.historyMessages,
-          { role: 'user', content: params.finalUserText },
+          { role: 'user', content: adjudicatorUserText },
           { role: 'assistant', content: rawAccumulated },
           {
             role: 'user',

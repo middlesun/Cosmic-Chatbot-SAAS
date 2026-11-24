@@ -84,6 +84,7 @@ import {
 } from './intentRouter';
 import type { NatalTruthDossierV1 } from './natalDossier';
 import {
+  appendTurnVerificationModifier,
   buildShortReplyBreakdownInstruction,
   buildVedicPathAPrompt,
   extractTechBreakdown,
@@ -167,6 +168,7 @@ export interface StreamConsultationParams {
   companionBond?: CompanionBondState | null;
   companionChatMode?: CompanionChatCue | null;
   companionCrossThreadSummary?: string | null;
+  councilReadingNotesText?: string | null;
   referrableCompanions?: ReferrableCompanionSummary[];
   clientLocalHour?: number | null;
   conversation: {
@@ -982,6 +984,7 @@ User's specific question: ${finalUserText}`;
       extraProfiles: extraSlices,
       contextTrapPromptNote: resolvedDecision.contextTrapPromptNote || null,
       userPrompt: params.userPrompt,
+      expertSlug: normalizedExpertSlug,
     });
 
     if (stage2Pkg.timingWidgets && stage2Pkg.timingWidgets.length > 0) {
@@ -1166,12 +1169,18 @@ User's specific question: ${finalUserText}`;
         }
       };
 
+      const pathAUserText = appendTurnVerificationModifier(
+        finalUserText,
+        astroTradition,
+        engineOverrides
+      );
+
       const streamResult = await streamOpenRouterCompletion({
         model: vedicModel,
         system: pathAPrompt.systemInstruction,
         messages: [
           ...historyOpenRouterMessages,
-          { role: 'user', content: finalUserText },
+          { role: 'user', content: pathAUserText },
         ],
         maxTokens: vedicBaseTokens,
         abortSignal: pathAAbortController.signal,
@@ -1194,7 +1203,7 @@ User's specific question: ${finalUserText}`;
           system: pathAPrompt.systemInstruction,
           messages: [
             ...historyOpenRouterMessages,
-            { role: 'user', content: finalUserText },
+            { role: 'user', content: pathAUserText },
             { role: 'assistant', content: rawAccumulated },
             {
               role: 'user',
@@ -1315,6 +1324,7 @@ User's specific question: ${finalUserText}`;
         : null,
       bond: params.companionBond || null,
       crossThreadSnippets: params.companionCrossThreadSummary || null,
+      councilReadingNotesText: params.councilReadingNotesText || null,
       userDefaultProfile: params.profile,
       userPrompt: params.userPrompt,
       historyMessages: activeHistory,

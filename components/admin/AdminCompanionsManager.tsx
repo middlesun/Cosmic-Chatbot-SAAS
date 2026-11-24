@@ -25,9 +25,11 @@ import CustomSelect from '../app/CustomSelect';
 import { speakMessageText, stopSpeaking } from '../app/chatUtilities';
 import {
   CHAT_STYLE_OPTIONS,
+  COMPANION_GROUP_OPTIONS,
   type ChatStyle,
   type CompanionAutonomyLevel,
   type CompanionCategoryTag,
+  type CompanionGroup,
   type CompanionMonogramPalette,
   type CompanionSkillLevel,
   type CompanionTtsVoiceProfile,
@@ -47,6 +49,8 @@ export interface AdminCompanionRecord {
   primary_expertise: string;
   secondary_expertise: string[];
   category_tag: CompanionCategoryTag;
+  companion_group?: CompanionGroup;
+  situation_tags?: string[];
   cultural_fluency: string;
   avatar_url: string | null;
   monogram_palette: CompanionMonogramPalette;
@@ -161,6 +165,50 @@ const DEFAULT_NEW_PALETTE: CompanionMonogramPalette = {
   ink: '#3D3830',
 };
 
+const SKILL_BADGE_MAP: Record<CompanionSkillLevel, string> = {
+  none_emotional: 'Human Only',
+  astrology_soft: 'Astrology',
+  vedic_soft: 'Vedic',
+  tarot: 'Tarot',
+  numerology: 'Numerology',
+  past_life: 'Past Life',
+};
+
+const GLOBAL_COMPANION_PROMPT_META = [
+  {
+    key: 'companion_constitution',
+    label: 'Global Companion Constitution (Fallback Layer 1)',
+    description:
+      'Active whenever a companion has "Override Global Rules" turned OFF (or lacks custom Hard Rules).',
+  },
+  {
+    key: 'companion_realism_baseline',
+    label: 'Universal Realism & Anti-AI Baseline (Always Active)',
+    description:
+      'Enforces natural human conversation across ALL 45 companions regardless of override toggles.',
+  },
+  {
+    key: 'companion_chart_presence_prompt',
+    label: 'Chart & Life-Awareness Guidance (Esoteric-Enabled Companions)',
+    description:
+      'Controls how companions with Astrology / Vedic / Tarot / Numerology / Past-Life skills blend chart knowledge warmly.',
+  },
+  {
+    key: 'companion_return_greeting_prompt',
+    label: 'Natural Return-Greeting Guidance',
+    description:
+      'Shapes how companions greet returning users across time gaps without sounding scripted.',
+  },
+  {
+    key: 'companion_bond_extractor_prompt',
+    label: 'Shared Bond & Relationship Memory Extractor',
+    description:
+      'Extracts slang cues, tone preferences, and inside references per (user x companion) bond.',
+  },
+] as const;
+
+type GlobalCompanionPromptKey = (typeof GLOBAL_COMPANION_PROMPT_META)[number]['key'];
+
 function createBlankCompanion(nextSortOrder: number): AdminCompanionRecord {
   return {
     id: '__new__',
@@ -175,6 +223,8 @@ function createBlankCompanion(nextSortOrder: number): AdminCompanionRecord {
     primary_expertise: 'Friend',
     secondary_expertise: [],
     category_tag: 'friends',
+    companion_group: 'everyday',
+    situation_tags: [],
     cultural_fluency: 'English · Warm Everyday',
     avatar_url: null,
     monogram_palette: { ...DEFAULT_NEW_PALETTE },
@@ -239,12 +289,25 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
+  const [managerView, setManagerView] = useState<'roster' | 'global'>('roster');
   const [searchQuery, setSearchQuery] = useState('');
+  const [groupFilter, setGroupFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [skillFilter, setSkillFilter] = useState<string>('all');
+  const [sexFilter, setSexFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AdminCompanionRecord | null>(null);
   const [secondaryText, setSecondaryText] = useState('');
+  const [situationTagsText, setSituationTagsText] = useState('');
   const [editorTab, setEditorTab] = useState<EditorTab>('identity');
+
+  const [globalPromptsLoaded, setGlobalPromptsLoaded] = useState(false);
+  const [globalPromptsLoading, setGlobalPromptsLoading] = useState(false);
+  const [globalPromptsSaving, setGlobalPromptsSaving] = useState(false);
+  const [engineOverrides, setEngineOverrides] = useState<Record<string, string>>({});
+  const [engineDefaults, setEngineDefaults] = useState<Record<string, string>>({});
+  const [quickUpdatingId, setQuickUpdatingId] = useState<string | null>(null);
 
   const isCreating = draft?.id === '__new__';
 
@@ -281,9 +344,11 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
           setSelectedId(target.id);
           setDraft({ ...target });
           setSecondaryText((target.secondary_expertise || []).join(', '));
+          setSituationTagsText((target.situation_tags || []).join(', '));
         } else {
           setSelectedId(null);
           setDraft(null);
+          setSituationTagsText('');
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unable to load companions');
@@ -294,25 +359,69 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
     [getAccessToken, selectedId]
   );
 
+  const loadGlobalCompanionPrompts = useCallback(async () => {
+    setGlobalPromptsLoading(true);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/admin/settings/chatbot', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load global companion settings');
+      setEngineOverrides(
+        data.engineOverrides && typeof data.engineOverrides === 'object' ? data.engineOverrides : {}
+      );
+      setEngineDefaults(
+        data.engineDefaults && typeof data.engineDefaults === 'object' ? data.engineDefaults : {}
+      );
+      setGlobalPromptsLoaded(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load global companion controls');
+    } finally {
+      setGlobalPromptsLoading(false);
+    }
+  }, [getAccessToken]);
+
   useEffect(() => {
     void loadCompanions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (managerView === 'global' && !globalPromptsLoaded && !globalPromptsLoading) {
+      void loadGlobalCompanionPrompts();
+    }
+  }, [managerView, globalPromptsLoaded, globalPromptsLoading, loadGlobalCompanionPrompts]);
+
   const filteredCompanions = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return companions.filter((c) => {
+      if (groupFilter !== 'all' && (c.companion_group || 'everyday') !== groupFilter) return false;
       if (categoryFilter !== 'all' && c.category_tag !== categoryFilter) return false;
+      if (skillFilter === 'human_only' && c.skill_level !== 'none_emotional') return false;
+      if (skillFilter === 'esoteric' && c.skill_level === 'none_emotional') return false;
+      if (
+        skillFilter !== 'all' &&
+        skillFilter !== 'human_only' &&
+        skillFilter !== 'esoteric' &&
+        c.skill_level !== skillFilter
+      ) {
+        return false;
+      }
+      if (sexFilter !== 'all' && c.sex !== sexFilter) return false;
+      if (statusFilter === 'active' && !c.is_active) return false;
+      if (statusFilter === 'hidden' && c.is_active) return false;
       if (!q) return true;
       return (
         c.name.toLowerCase().includes(q) ||
         c.slug.toLowerCase().includes(q) ||
         c.primary_expertise.toLowerCase().includes(q) ||
         c.cultural_fluency.toLowerCase().includes(q) ||
-        c.tagline.toLowerCase().includes(q)
+        c.tagline.toLowerCase().includes(q) ||
+        (c.situation_tags || []).some((t) => t.toLowerCase().includes(q))
       );
     });
-  }, [companions, searchQuery, categoryFilter]);
+  }, [companions, searchQuery, groupFilter, categoryFilter, skillFilter, sexFilter, statusFilter]);
 
   const [uploadingDp, setUploadingDp] = useState(false);
   const [dpUploadError, setDpUploadError] = useState<string | null>(null);
@@ -407,8 +516,10 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
       tts_voice_profile: { ...item.tts_voice_profile },
       welcome_messages: [...(item.welcome_messages || [])],
       secondary_expertise: [...(item.secondary_expertise || [])],
+      situation_tags: [...(item.situation_tags || [])],
     });
     setSecondaryText((item.secondary_expertise || []).join(', '));
+    setSituationTagsText((item.situation_tags || []).join(', '));
     setConfirmDelete(false);
     setError(null);
     setFeedback(null);
@@ -417,9 +528,11 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
   const handleStartNewCompanion = () => {
     const maxOrder = companions.reduce((m, c) => Math.max(m, c.sort_order || 0), 0);
     const blank = createBlankCompanion(maxOrder + 10);
+    setManagerView('roster');
     setSelectedId('__new__');
     setDraft(blank);
     setSecondaryText('');
+    setSituationTagsText('');
     setEditorTab('identity');
     setConfirmDelete(false);
     setError(null);
@@ -438,12 +551,18 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const parsedSituationTags = situationTagsText
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+
     const payload = {
       ...draft,
       slug: (draft.slug || slugifyName(draft.name)).trim().toLowerCase(),
       backstory: (draft.backstory || '').trim(),
       soul_consciousness: (draft.soul_consciousness || '').trim(),
       secondary_expertise: parsedSecondary,
+      situation_tags: parsedSituationTags,
       welcome_messages: (draft.welcome_messages || []).map((w) => w.trim()).filter(Boolean),
     };
 
@@ -637,24 +756,159 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
     [draft?.autonomy_level]
   );
 
-  const canReorder = searchQuery.trim() === '' && categoryFilter === 'all';
+  const handleQuickPatchCompanion = async (
+    item: AdminCompanionRecord,
+    patch: Partial<
+      Pick<
+        AdminCompanionRecord,
+        'is_active' | 'skill_level' | 'override_global_rules' | 'companion_group'
+      >
+    >,
+    successLabel: string
+  ) => {
+    setQuickUpdatingId(item.id);
+    setError(null);
+    setFeedback(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/admin/companions/${encodeURIComponent(item.id)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...item,
+          ...patch,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update companion');
+      const updated: AdminCompanionRecord = data.companion;
+      setCompanions((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      if (draft?.id === updated.id) {
+        setDraft(updated);
+      }
+      setFeedback(successLabel);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update companion');
+    } finally {
+      setQuickUpdatingId(null);
+    }
+  };
+
+  const handleSaveGlobalCompanionPrompts = async () => {
+    setGlobalPromptsSaving(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      const token = await getAccessToken();
+      const bodyPayload: Record<string, string> = {};
+      for (const meta of GLOBAL_COMPANION_PROMPT_META) {
+        const val = (engineOverrides[meta.key] || '').trim();
+        bodyPayload[meta.key] = val;
+      }
+      const res = await fetch('/api/admin/settings/chatbot/engine-prompts', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(bodyPayload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save global companion controls');
+      setEngineOverrides(
+        data.overrides && typeof data.overrides === 'object' ? data.overrides : {}
+      );
+      setFeedback('Saved global companion baselines and prompts across all companions.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to save global companion prompts');
+    } finally {
+      setGlobalPromptsSaving(false);
+    }
+  };
+
+  const handleResetGlobalPromptKey = async (key: GlobalCompanionPromptKey) => {
+    setError(null);
+    setFeedback(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/admin/settings/chatbot/engine-prompts/reset', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ key }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to reset global prompt');
+      setEngineOverrides(
+        data.overrides && typeof data.overrides === 'object' ? data.overrides : {}
+      );
+      setFeedback(`Reset "${key}" back to canonical default.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to reset global prompt');
+    }
+  };
+
+  const canReorder =
+    searchQuery.trim() === '' &&
+    groupFilter === 'all' &&
+    categoryFilter === 'all' &&
+    skillFilter === 'all' &&
+    sexFilter === 'all' &&
+    statusFilter === 'all';
+
+  const esotericCount = useMemo(
+    () => companions.filter((c) => c.skill_level !== 'none_emotional').length,
+    [companions]
+  );
 
   return (
     <div className="space-y-5">
       {/* Top Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] px-5 py-4">
-        <div>
-          <h2 className="font-['Cormorant_Garamond',serif] text-2xl font-medium text-[#3D3830]">
-            Companions Roster &amp; Governance
-          </h2>
-          <p className="text-xs text-[#5C5449] mt-0.5">
-            Create, edit, reorder, and tune portraits, layered rules, chat style, and per-companion AI models.
-          </p>
+        <div className="space-y-2">
+          <div>
+            <h2 className="font-['Cormorant_Garamond',serif] text-2xl font-medium text-[#3D3830]">
+              Companions Roster &amp; Governance
+            </h2>
+            <p className="text-xs text-[#5C5449] mt-0.5">
+              Manage individual personas, birth-chart skill boundaries, chat style, and global companion baselines.
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-1 rounded-2xl bg-[#F1ECE3] p-1">
+            <button
+              type="button"
+              onClick={() => setManagerView('roster')}
+              className={`rounded-xl px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                managerView === 'roster'
+                  ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                  : 'text-[#5C5449] hover:text-[#3D3830]'
+              }`}
+            >
+              Roster &amp; Editor ({companions.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setManagerView('global')}
+              className={`rounded-xl px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                managerView === 'global'
+                  ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                  : 'text-[#5C5449] hover:text-[#3D3830]'
+              }`}
+            >
+              Global Controls &amp; Skill Matrix
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <span className="font-mono text-xs tabular-nums text-[#8B8275]">
-            {companions.filter((c) => c.is_active).length} active / {companions.length} total
+            {companions.filter((c) => c.is_active).length} active · {esotericCount} chart-skilled ·{' '}
+            {companions.length} total
           </span>
           <button
             type="button"
@@ -700,6 +954,268 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
         <div className="rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-10 text-center text-sm text-[#8B8275]">
           Loading companions roster...
         </div>
+      ) : managerView === 'global' ? (
+        <div className="space-y-5">
+          {/* Global Companion Prompts */}
+          <div className="rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-5 sm:p-6 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#3D3830]/10">
+              <div>
+                <h3 className="font-['Cormorant_Garamond',serif] text-xl font-medium text-[#3D3830]">
+                  Global Companion Rules &amp; Prompt Architecture
+                </h3>
+                <p className="text-xs text-[#5C5449] mt-0.5">
+                  Configure platform-wide companion realism, chart-presence blending, return greetings, and bond extraction. Clear any field to revert to canonical defaults.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={globalPromptsSaving || globalPromptsLoading}
+                onClick={() => void handleSaveGlobalCompanionPrompts()}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Save className="h-3.5 w-3.5" />
+                <span>{globalPromptsSaving ? 'Saving...' : 'Save Global Controls'}</span>
+              </button>
+            </div>
+
+            {globalPromptsLoading ? (
+              <p className="text-xs text-[#8B8275] py-4">Loading global companion baselines...</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {GLOBAL_COMPANION_PROMPT_META.map((meta) => {
+                  const overrideVal = engineOverrides[meta.key] ?? '';
+                  const defaultVal = engineDefaults[meta.key] ?? '';
+                  const effectiveText = overrideVal || defaultVal;
+                  const isOverridden = Boolean(overrideVal.trim());
+                  return (
+                    <div
+                      key={meta.key}
+                      className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-2"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-[#3D3830]">
+                              {meta.label}
+                            </span>
+                            <span className="font-mono text-[10px] text-[#8B8275]">
+                              {isOverridden ? 'Custom Override' : 'Default'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[#8B8275] mt-0.5">{meta.description}</p>
+                        </div>
+                        {isOverridden && (
+                          <button
+                            type="button"
+                            onClick={() => void handleResetGlobalPromptKey(meta.key)}
+                            className="inline-flex items-center gap-1 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-2.5 py-1 text-[11px] text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            <span>Reset</span>
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        rows={4}
+                        value={effectiveText}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEngineOverrides((prev) => ({ ...prev, [meta.key]: val }));
+                        }}
+                        className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] p-3 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Quick Governance & Chart-Skill Matrix */}
+          <div className="rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-5 sm:p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-['Cormorant_Garamond',serif] text-xl font-medium text-[#3D3830]">
+                  Quick Companion Skill &amp; Visibility Matrix
+                </h3>
+                <p className="text-xs text-[#5C5449] mt-0.5">
+                  Flip any companion&apos;s Birth Chart / Esoteric skill boundary, pillar group, global rule inheritance, or active visibility in one click.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="h-3.5 w-3.5 text-[#8B8275] absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Filter companions..."
+                    className="rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] pl-8 pr-3 py-1.5 text-xs text-[#3D3830] placeholder:text-[#8B8275] focus:outline-none"
+                  />
+                </div>
+                <CustomSelect
+                  value={groupFilter}
+                  onChange={setGroupFilter}
+                  ariaLabel="Filter matrix by pillar group"
+                  surface="canvas"
+                  size="sm"
+                  options={[
+                    { value: 'all', label: 'All Pillars' },
+                    ...COMPANION_GROUP_OPTIONS.map((g) => ({ value: g.value, label: g.label })),
+                  ]}
+                />
+                <CustomSelect
+                  value={skillFilter}
+                  onChange={setSkillFilter}
+                  ariaLabel="Filter matrix by chart skill"
+                  surface="canvas"
+                  size="sm"
+                  options={[
+                    { value: 'all', label: 'All Skill Levels' },
+                    { value: 'human_only', label: 'Human Only' },
+                    { value: 'esoteric', label: 'Chart / Esoteric Active' },
+                    ...SKILL_LEVEL_OPTIONS.map((s) => ({ value: s.value, label: s.label })),
+                  ]}
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-[#3D3830]/12">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#F1ECE3]/70 text-[11px] uppercase tracking-wider text-[#8B8275] border-b border-[#3D3830]/10">
+                  <tr>
+                    <th className="py-2.5 px-3 font-medium">Companion</th>
+                    <th className="py-2.5 px-3 font-medium">Pillar Group</th>
+                    <th className="py-2.5 px-3 font-medium">Chart / Esoteric Skill</th>
+                    <th className="py-2.5 px-3 font-medium text-center">Global Override</th>
+                    <th className="py-2.5 px-3 font-medium text-center">Active</th>
+                    <th className="py-2.5 px-3 font-medium text-right">Edit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#3D3830]/8">
+                  {filteredCompanions.map((item) => {
+                    const busy = quickUpdatingId === item.id;
+                    return (
+                      <tr key={item.id} className="hover:bg-[#FAF7F2]/80">
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2.5 min-w-[160px]">
+                            <CompanionAvatar
+                              name={item.name}
+                              avatarUrl={item.avatar_url}
+                              palette={item.monogram_palette}
+                              size="xs"
+                              shape="circle"
+                            />
+                            <div className="min-w-0">
+                              <div className="font-medium text-[#3D3830] truncate">
+                                {item.name}{' '}
+                                <span className="font-mono text-[11px] text-[#8B8275]">
+                                  {item.age}
+                                  {item.sex}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-[#8B8275] truncate">
+                                {item.primary_expertise}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 min-w-[165px]">
+                          <CustomSelect
+                            value={item.companion_group || 'everyday'}
+                            disabled={busy}
+                            onChange={(val) =>
+                              void handleQuickPatchCompanion(
+                                item,
+                                { companion_group: val as CompanionGroup },
+                                `Updated ${item.name} pillar group.`
+                              )
+                            }
+                            ariaLabel={`Group for ${item.name}`}
+                            surface="canvas"
+                            size="sm"
+                            options={COMPANION_GROUP_OPTIONS.map((g) => ({
+                              value: g.value,
+                              label: g.label,
+                            }))}
+                          />
+                        </td>
+                        <td className="py-2.5 px-3 min-w-[215px]">
+                          <CustomSelect
+                            value={item.skill_level}
+                            disabled={busy}
+                            onChange={(val) =>
+                              void handleQuickPatchCompanion(
+                                item,
+                                { skill_level: val as CompanionSkillLevel },
+                                `Updated ${item.name} skill level to ${SKILL_BADGE_MAP[val as CompanionSkillLevel]}.`
+                              )
+                            }
+                            ariaLabel={`Skill level for ${item.name}`}
+                            surface="canvas"
+                            size="sm"
+                            options={SKILL_LEVEL_OPTIONS.map((s) => ({
+                              value: s.value,
+                              label: s.label,
+                            }))}
+                          />
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              void handleQuickPatchCompanion(
+                                item,
+                                { override_global_rules: !item.override_global_rules },
+                                `${item.name}: Override global rules ${
+                                  !item.override_global_rules ? 'enabled' : 'disabled'
+                                }.`
+                              )
+                            }
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors cursor-pointer ${
+                              item.override_global_rules
+                                ? 'border-[#3D3830]/20 bg-[#EAE3D7] text-[#3D3830]'
+                                : 'border-[#3D3830]/12 bg-[#FAF7F2] text-[#8B8275]'
+                            }`}
+                          >
+                            {item.override_global_rules ? 'Custom' : 'Global'}
+                          </button>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void handleQuickToggleActive(item)}
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors cursor-pointer ${
+                              item.is_active
+                                ? 'border-[#2D6A4F]/25 bg-[#2D6A4F]/10 text-[#2D6A4F]'
+                                : 'border-[#3D3830]/15 bg-[#F1ECE3] text-[#8B8275]'
+                            }`}
+                          >
+                            {item.is_active ? 'Active' : 'Hidden'}
+                          </button>
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSelectCompanion(item);
+                              setManagerView('roster');
+                            }}
+                            className="text-xs font-medium text-[#4A453D] hover:underline cursor-pointer"
+                          >
+                            Open
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           {/* LEFT DIRECTORY RAIL */}
@@ -711,10 +1227,69 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by name, slug, or style..."
+                  placeholder="Search name, expertise, situation..."
                   className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] pl-8 pr-3 py-2 text-xs text-[#3D3830] placeholder:text-[#8B8275] focus:border-[#3D3830]/40 focus:outline-none"
                 />
               </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <CustomSelect
+                  value={groupFilter}
+                  onChange={setGroupFilter}
+                  ariaLabel="Filter companions by pillar group"
+                  surface="elevated"
+                  size="sm"
+                  className="w-full"
+                  options={[
+                    { value: 'all', label: 'All Pillars' },
+                    ...COMPANION_GROUP_OPTIONS.map((g) => ({ value: g.value, label: g.label })),
+                  ]}
+                />
+                <CustomSelect
+                  value={skillFilter}
+                  onChange={setSkillFilter}
+                  ariaLabel="Filter companions by chart skill"
+                  surface="elevated"
+                  size="sm"
+                  className="w-full"
+                  options={[
+                    { value: 'all', label: 'All Skills' },
+                    { value: 'human_only', label: 'Human Only' },
+                    { value: 'esoteric', label: 'Chart / Esoteric' },
+                    ...SKILL_LEVEL_OPTIONS.map((s) => ({ value: s.value, label: s.label })),
+                  ]}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <CustomSelect
+                  value={sexFilter}
+                  onChange={setSexFilter}
+                  ariaLabel="Filter companions by sex"
+                  surface="elevated"
+                  size="sm"
+                  className="w-full"
+                  options={[
+                    { value: 'all', label: 'All Genders' },
+                    { value: 'F', label: 'Female (F)' },
+                    { value: 'M', label: 'Male (M)' },
+                  ]}
+                />
+                <CustomSelect
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  ariaLabel="Filter companions by status"
+                  surface="elevated"
+                  size="sm"
+                  className="w-full"
+                  options={[
+                    { value: 'all', label: 'All Status' },
+                    { value: 'active', label: 'Active Only' },
+                    { value: 'hidden', label: 'Hidden Only' },
+                  ]}
+                />
+              </div>
+
               <CustomSelect
                 value={categoryFilter}
                 onChange={setCategoryFilter}
@@ -723,19 +1298,34 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                 size="sm"
                 className="w-full"
                 options={[
-                  { value: 'all', label: 'All Categories' },
+                  { value: 'all', label: 'All Legacy Categories' },
                   ...CATEGORY_OPTIONS.map((c) => ({ value: c.value, label: c.label })),
                 ]}
               />
-              {canReorder ? (
-                <p className="text-[11px] text-[#8B8275]">
-                  Drag handle or ↑ ↓ to reorder companions.
-                </p>
-              ) : (
-                <p className="text-[11px] text-[#8B8275]">
-                  Clear search &amp; category filter to reorder companions.
-                </p>
-              )}
+
+              <div className="flex items-center justify-between gap-2 text-[11px] text-[#8B8275]">
+                <span>
+                  {canReorder
+                    ? 'Drag handle or ↑ ↓ to reorder.'
+                    : `Showing ${filteredCompanions.length} of ${companions.length}`}
+                </span>
+                {!canReorder && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setGroupFilter('all');
+                      setCategoryFilter('all');
+                      setSkillFilter('all');
+                      setSexFilter('all');
+                      setStatusFilter('all');
+                    }}
+                    className="text-[#4A453D] hover:underline cursor-pointer"
+                  >
+                    Reset filters
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="max-h-[72vh] overflow-y-auto divide-y divide-[#3D3830]/8">
@@ -828,7 +1418,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                             </span>
                           </div>
                           <p className="text-[11px] text-[#8B8275] truncate">
-                            {item.primary_expertise} · {item.chat_style.replace('_', ' ')}
+                            {item.primary_expertise} · {SKILL_BADGE_MAP[item.skill_level] || 'Human Only'}
                           </p>
                         </div>
                       </button>
@@ -1100,7 +1690,29 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       <div className="space-y-1.5">
-                        <span className="text-xs font-medium text-[#5C5449]">Hub Category</span>
+                        <span className="text-xs font-medium text-[#5C5449]">Companion Pillar Group</span>
+                        <CustomSelect
+                          value={draft.companion_group || 'everyday'}
+                          onChange={(val) =>
+                            setDraft((prev) =>
+                              prev
+                                ? { ...prev, companion_group: val as CompanionGroup }
+                                : prev
+                            )
+                          }
+                          ariaLabel="Companion pillar group"
+                          surface="canvas"
+                          className="w-full"
+                          options={COMPANION_GROUP_OPTIONS.map((g) => ({
+                            value: g.value,
+                            label: g.label,
+                            description: g.description,
+                          }))}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <span className="text-xs font-medium text-[#5C5449]">Database Category</span>
                         <CustomSelect
                           value={draft.category_tag}
                           onChange={(val) =>
@@ -1143,6 +1755,19 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                           value={secondaryText}
                           onChange={(e) => setSecondaryText(e.target.value)}
                           placeholder="e.g. Grief Holding, Late-Night Company, Quiet Reflection"
+                          className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none"
+                        />
+                      </label>
+
+                      <label className="block space-y-1.5">
+                        <span className="text-xs font-medium text-[#5C5449]">
+                          Situation Tags (comma-separated)
+                        </span>
+                        <input
+                          type="text"
+                          value={situationTagsText}
+                          onChange={(e) => setSituationTagsText(e.target.value)}
+                          placeholder="e.g. heartbreak, breakup, moving-on"
                           className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none"
                         />
                       </label>
@@ -1663,7 +2288,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
 
                       <div className="space-y-1.5">
                         <span className="text-xs font-semibold text-[#3D3830]">
-                          Esoteric Skill Boundary
+                          Birth Chart &amp; Esoteric Skill Access
                         </span>
                         <CustomSelect
                           value={draft.skill_level}
@@ -1684,7 +2309,10 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                           }))}
                         />
                         <p className="text-[11px] text-[#8B8275]">
-                          {selectedSkillMeta.description}
+                          {selectedSkillMeta.description}{' '}
+                          {draft.skill_level === 'none_emotional'
+                            ? 'Chart JSON is NOT injected unless switched to an astrological/esoteric level.'
+                            : 'User birth chart / ephemeris data is automatically unlocked for this companion.'}
                         </p>
                       </div>
 

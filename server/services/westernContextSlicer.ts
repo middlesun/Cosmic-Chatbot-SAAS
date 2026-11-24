@@ -91,23 +91,22 @@ function formatWesternLifeContextAnchor(
       }`
     );
   }
-  if (typeof ctx.has_children === 'boolean') {
-    if (Array.isArray(ctx.children) && ctx.children.length > 0) {
-      lines.push(
-        `Children: ${ctx.children.length} (${ctx.children
-          .map((c) => `${c.gender} b.${c.birth_year}`)
-          .join(', ')})`
-      );
-    } else {
-      lines.push(`Has children: ${ctx.has_children ? 'Yes' : 'No'}`);
-    }
-  }
-  if (ctx.career_mode) {
+  if (Array.isArray(ctx.children) && ctx.children.length > 0) {
     lines.push(
-      `Career setup: ${ctx.career_mode.replace(/_/g, ' ')}${
-        ctx.career_role ? ` (${ctx.career_role})` : ''
-      }`
+      `Children: ${ctx.children.length} (${ctx.children
+        .map((c) => `${c.gender} b.${c.birth_year}`)
+        .join(', ')})`
     );
+  } else if (ctx.children_summary) {
+    lines.push(`Children context: ${ctx.children_summary}`);
+  } else if (typeof ctx.has_children === 'boolean') {
+    lines.push(`Has children: ${ctx.has_children ? 'Yes' : 'No'}`);
+  }
+  if (ctx.career_mode || ctx.career_role || ctx.workplace_context) {
+    const modePart = ctx.career_mode ? ctx.career_mode.replace(/_/g, ' ') : 'Work';
+    const rolePart = ctx.career_role ? ` (${ctx.career_role})` : '';
+    const placePart = ctx.workplace_context ? ` — ${ctx.workplace_context}` : '';
+    lines.push(`Career setup: ${modePart}${rolePart}${placePart}`);
   }
   if (ctx.location_status) {
     lines.push(`Location context: ${ctx.location_status.replace(/_/g, ' ')}`);
@@ -116,7 +115,10 @@ function formatWesternLifeContextAnchor(
     lines.push(
       `Verified past anchors: ${ctx.past_anchors
         .slice(0, 6)
-        .map((a) => `${a.year} ${a.tag}${a.note ? ` (${a.note})` : ''}`)
+        .map(
+          (a) =>
+            `${a.year} ${a.tag}${a.note ? ` (${a.note})` : ''}${a.cited_by ? ` [Noted by ${a.cited_by}]` : ''}`
+        )
         .join('; ')}`
     );
   }
@@ -125,6 +127,14 @@ function formatWesternLifeContextAnchor(
       `Core recurring life concerns (stay empathetic and mindful without reciting mechanically): ${ctx.core_stress_areas
         .slice(0, 5)
         .join('; ')}`
+    );
+  }
+  if (Array.isArray(ctx.cited_insights) && ctx.cited_insights.length > 0) {
+    lines.push(
+      `Depth psychological & practical notes (weave sensitively when helpful; never dump verbatim):\n${ctx.cited_insights
+        .slice(0, 12)
+        .map((n) => `- [${String(n.category || 'note').replace(/_/g, ' ')} · ${n.cited_by}] ${n.summary}`)
+        .join('\n')}`
     );
   }
   if (contextTrapPromptNote) {

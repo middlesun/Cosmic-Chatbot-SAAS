@@ -132,7 +132,13 @@ export interface HomeSummaryResponse {
     name: string;
     age: number;
     primary_expertise: string;
+    secondary_expertise?: string[];
+    category_tag?: 'support' | 'friends' | 'astrology' | 'tarot_numerology' | 'past_life';
+    companion_group?: 'spiritual' | 'everyday' | 'life';
+    situation_tags?: string[];
+    skill_level?: 'none_emotional' | 'astrology_soft' | 'tarot' | 'numerology' | 'past_life' | 'vedic_soft';
     tagline: string;
+    short_bio?: string;
     avatar_url: string | null;
     monogram_palette: { bg: string; ring: string; ink: string };
     last_conversation_id?: string | null;

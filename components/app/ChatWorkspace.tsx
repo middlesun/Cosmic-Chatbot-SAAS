@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
+  BookOpen,
   Check,
   ChevronDown,
   ChevronUp,
@@ -36,6 +37,11 @@ import ChatSettingsModal, {
 } from './ChatSettingsModal';
 import BirthChartModal from './BirthChartModal';
 import AskLaterDrawer from './AskLaterDrawer';
+import CouncilToCompanionModal, {
+  type CouncilHandoffConfirmPayload,
+  type CouncilHandoffSource,
+} from './CouncilToCompanionModal';
+import SharedReadingNotesModal from './SharedReadingNotesModal';
 import { getUserProfileDisplayLabel, isAffirmativeReply } from './chatUtilities';
 import {
   CHAT_NUMERIC_FONT_OPTIONS,
@@ -68,6 +74,7 @@ import {
   type PublicChatbotUiConfig,
   type PublicCompanionCard,
   type PublicSuggestionsUiConfig,
+  type SharedReadingNoteRecord,
   type SuggestionItem,
   type TimingProgressWidget,
 } from './chatTypes';
@@ -173,6 +180,8 @@ function enrichConversationWithLocalMeta(conv: ConversationRecord): Conversation
 
 const COUNCIL_EXPERT_FALLBACK_NAMES: Record<string, string> = {
   [DEFAULT_COUNCIL_EXPERT_SLUG]: 'Vedic Astrologer',
+  kp_precision: 'KP Astrology',
+  jaimini: 'Jaimini Jyotish',
   western_astrologer: 'Western Astrologer',
   modern_astrologer: 'Modern Astrologer',
   tarot_reader: 'Tarot',
@@ -451,6 +460,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
   const [savedNoteMsgIds, setSavedNoteMsgIds] = useState<Set<string>>(() => new Set());
   const [savingNoteMsgId, setSavingNoteMsgId] = useState<string | null>(null);
+  const [handoffSource, setHandoffSource] = useState<CouncilHandoffSource | null>(null);
+  const [handoffSubmittingSlug, setHandoffSubmittingSlug] = useState<string | null>(null);
+  const [sharedReadingNotes, setSharedReadingNotes] = useState<SharedReadingNoteRecord[]>([]);
+  const [showSharedReadingNotesModal, setShowSharedReadingNotesModal] = useState(false);
+  const [deletingReadingNoteId, setDeletingReadingNoteId] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const inChatSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -662,6 +676,29 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       // Non-fatal; CompanionSetupView also fetches when mounted
     }
   }, [getAccessToken, isPreviewMode]);
+
+  const loadSharedReadingNotes = useCallback(
+    async (profileId?: string | null) => {
+      if (isPreviewMode || embeddedPreview) return;
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        const params = profileId ? `?profileId=${encodeURIComponent(profileId)}` : '';
+        const res = await fetch(`/api/chat/reading-notes${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (Array.isArray(data.notes)) {
+            setSharedReadingNotes(data.notes as SharedReadingNoteRecord[]);
+          }
+        }
+      } catch {
+        // Non-fatal
+      }
+    },
+    [getAccessToken, isPreviewMode, embeddedPreview]
+  );
 
   const loadConversations = useCallback(async () => {
     if (isPreviewMode) {
@@ -884,6 +921,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
+
+  useEffect(() => {
+    if (activePillar !== 'companion') return;
+    void loadSharedReadingNotes(activeConversation?.profile_id || null);
+  }, [activePillar, activeConversation?.id, activeConversation?.profile_id, loadSharedReadingNotes]);
 
   useEffect(() => {
     if (embeddedPreview || isPreviewMode) return;
@@ -1240,7 +1282,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         normalizedSeed === 'hellenistic_astrologer'
       ) {
         setAstrologyMode('western');
-      } else if (normalizedSeed === DEFAULT_COUNCIL_EXPERT_SLUG) {
+      } else if (
+        normalizedSeed === DEFAULT_COUNCIL_EXPERT_SLUG ||
+        normalizedSeed === 'kp_precision' ||
+        normalizedSeed === 'jaimini'
+      ) {
         setAstrologyMode('vedic');
       }
     }
@@ -1355,9 +1401,21 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     if (isThreadLocked || activeConversation || activePillar !== 'council' || seededExpertRef.current) {
       return;
     }
-    const nextExpert = astrologyMode === 'western' ? 'western_astrologer' : DEFAULT_COUNCIL_EXPERT_SLUG;
-    const nextLabel = astrologyMode === 'western' ? 'Western Astrologer' : 'Vedic Astrologer';
-    if (astrologyMode === 'western' && normalizeCouncilSlug(expertSlug) === DEFAULT_COUNCIL_EXPERT_SLUG) {
+    const nextExpert =
+      astrologyMode === 'western'
+        ? expertSlug === 'modern_astrologer' || expertSlug === 'hellenistic_astrologer'
+          ? expertSlug
+          : 'western_astrologer'
+        : expertSlug === 'kp_precision' || expertSlug === 'jaimini'
+        ? expertSlug
+        : DEFAULT_COUNCIL_EXPERT_SLUG;
+    const nextLabel = resolveCouncilDisplayName(nextExpert, catalog);
+    if (
+      astrologyMode === 'western' &&
+      (normalizeCouncilSlug(expertSlug) === DEFAULT_COUNCIL_EXPERT_SLUG ||
+        expertSlug === 'kp_precision' ||
+        expertSlug === 'jaimini')
+    ) {
       setExpertSlug('western_astrologer');
     } else if (
       astrologyMode === 'vedic' &&
@@ -1373,12 +1431,16 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         t.pillar === 'council' &&
         !t.conversationId &&
         !t.customLabel &&
-        (t.label === 'Council' || t.label === 'Vedic Astrologer' || t.label === 'Western Astrologer')
+        (t.label === 'Council' ||
+          t.label === 'Vedic Astrologer' ||
+          t.label === 'Western Astrologer' ||
+          t.label === 'KP Astrology' ||
+          t.label === 'Jaimini Jyotish')
           ? { ...t, label: nextLabel, expertSlug: nextExpert }
           : t
       )
     );
-  }, [astrologyMode, isThreadLocked, activeConversation, activePillar, expertSlug, activeTabId]);
+  }, [astrologyMode, isThreadLocked, activeConversation, activePillar, expertSlug, activeTabId, catalog]);
 
   const handleChangeChatAstrologyMode = (nextMode: AstrologyMode) => {
     seededExpertRef.current = false;
@@ -1389,22 +1451,19 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           ? expertSlug === 'modern_astrologer' || expertSlug === 'hellenistic_astrologer'
             ? expertSlug
             : 'western_astrologer'
+          : expertSlug === 'kp_precision' || expertSlug === 'jaimini'
+          ? expertSlug
           : DEFAULT_COUNCIL_EXPERT_SLUG;
       if (nextMode === 'western') {
         if (expertSlug !== 'modern_astrologer' && expertSlug !== 'hellenistic_astrologer') {
           setExpertSlug('western_astrologer');
         }
       } else {
-        setExpertSlug(DEFAULT_COUNCIL_EXPERT_SLUG);
+        if (expertSlug !== 'kp_precision' && expertSlug !== 'jaimini') {
+          setExpertSlug(DEFAULT_COUNCIL_EXPERT_SLUG);
+        }
       }
-      const nextLabel =
-        nextExpert === 'modern_astrologer'
-          ? 'Modern Astrologer'
-          : nextExpert === 'hellenistic_astrologer'
-          ? 'Hellenistic Astrologer'
-          : nextMode === 'western'
-          ? 'Western Astrologer'
-          : 'Vedic Astrologer';
+      const nextLabel = resolveCouncilDisplayName(nextExpert, catalog);
       setTabs((prev) =>
         prev.map((t) =>
           t.tabId === activeTabId && t.pillar === 'council' && !t.conversationId && !t.customLabel
@@ -1756,7 +1815,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       normalizedGuideSlug === 'hellenistic_astrologer'
     ) {
       setAstrologyMode('western');
-    } else if (normalizedGuideSlug === DEFAULT_COUNCIL_EXPERT_SLUG) {
+    } else if (
+      normalizedGuideSlug === DEFAULT_COUNCIL_EXPERT_SLUG ||
+      normalizedGuideSlug === 'kp_precision' ||
+      normalizedGuideSlug === 'jaimini'
+    ) {
       setAstrologyMode('vedic');
     }
 
@@ -2160,10 +2223,22 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       if (destTabId !== activeTabId) {
         setActiveTabId(destTabId);
       }
+      if (!embeddedPreview && routeConversationId) {
+        navigate(`/app/chat/${encodeURIComponent(startedConv.id)}`, { replace: true });
+      }
       setComposerFocusTrigger((n) => n + 1);
       void loadCompanionCatalog();
+      void loadSharedReadingNotes(startedConv.profile_id || null);
     },
-    [activeTabId, loadCompanionCatalog, loadConversationMessages]
+    [
+      activeTabId,
+      embeddedPreview,
+      loadCompanionCatalog,
+      loadConversationMessages,
+      loadSharedReadingNotes,
+      navigate,
+      routeConversationId,
+    ]
   );
 
   const handleStartWithCompanion = async (
@@ -2283,6 +2358,15 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       handoffNote?: string;
       fromName?: string;
       targetTabId?: string;
+      profileId?: string | null;
+      handoffFullContext?: string;
+      handoffTitle?: string;
+      handoffExpertLabel?: string;
+      handoffExpertSlug?: string | null;
+      handoffMessageId?: string | null;
+      handoffConversationId?: string | null;
+      handoffAstrologyMode?: AstrologyMode | null;
+      rememberReadingNote?: boolean;
     }
   ) => {
     setErrorBanner(null);
@@ -2331,7 +2415,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       const previewConv: ConversationRecord = {
         id: previewId,
         user_id: 'preview-user',
-        profile_id: null,
+        profile_id: options?.profileId ?? null,
         linked_report_id: null,
         title: card.name,
         mode_type: 'reading',
@@ -2366,6 +2450,26 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       };
       previewConvStoreRef.current[previewId] = previewConv;
       previewMsgStoreRef.current[previewId] = [openingMsg];
+      if (options?.handoffFullContext && options?.rememberReadingNote !== false) {
+        const previewNote: SharedReadingNoteRecord = {
+          id: `preview-rn-${Date.now()}`,
+          title: options.handoffTitle || 'Council Reading Note',
+          summary: options.handoffFullContext,
+          expert_slug: options.handoffExpertSlug || null,
+          expert_label: options.handoffExpertLabel || options.fromName || 'Astrology Council',
+          astrology_mode: options.handoffAstrologyMode || null,
+          profile_id: options.profileId ?? null,
+          profile_label:
+            options.profileId
+              ? profiles.find((p) => p.id === options.profileId)?.name || null
+              : null,
+          conversation_id: options.handoffConversationId || null,
+          message_id: options.handoffMessageId || null,
+          created_at: nowIso,
+          origin: 'shared_handoff',
+        };
+        setSharedReadingNotes((prev) => [previewNote, ...prev].slice(0, 15));
+      }
       setCompanionCatalog((prev) =>
         prev.map((c) =>
           c.slug === card.slug
@@ -2399,8 +2503,17 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       body: JSON.stringify({
         companionSlug: card.slug,
         forceNew: options?.forceNew,
+        profileId: options?.profileId ?? undefined,
         handoffNote: options?.handoffNote,
         handoffFromName: options?.fromName,
+        handoffFullContext: options?.handoffFullContext,
+        handoffTitle: options?.handoffTitle,
+        handoffExpertLabel: options?.handoffExpertLabel,
+        handoffExpertSlug: options?.handoffExpertSlug,
+        handoffMessageId: options?.handoffMessageId,
+        handoffConversationId: options?.handoffConversationId,
+        handoffAstrologyMode: options?.handoffAstrologyMode,
+        rememberReadingNote: options?.rememberReadingNote,
         clientLocalHour: new Date().getHours(),
         pinAsTab: true,
       }),
@@ -2821,8 +2934,46 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           startCompanionPersona?: CompanionPersona;
           forceNew?: boolean;
           selectedProfileId?: string;
+          councilHandoff?: CouncilHandoffConfirmPayload;
         }
       | null;
+    if (navState?.councilHandoff) {
+      const payload = navState.councilHandoff;
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+      let destTabId =
+        tabs.find((t) => t.pillar === 'companion' && t.companionSlug === payload.card.slug)
+          ?.tabId ||
+        tabs.find((t) => t.pillar === 'companion' && !t.conversationId)?.tabId ||
+        tabs.find((t) => t.pillar === 'companion')?.tabId;
+      if (!destTabId && tabs.length < MAX_ACTIVE_TABS) {
+        const newCompTab: ActiveChatTab = {
+          tabId: `tab-companion-${Date.now()}`,
+          pillar: 'companion',
+          conversationId: null,
+          companionSlug: payload.card.slug,
+          label: payload.card.name,
+          isCore: false,
+        };
+        setTabs((prev) => (prev.length < MAX_ACTIVE_TABS ? [...prev, newCompTab] : prev));
+        destTabId = newCompTab.tabId;
+      }
+      void handleStartPresetCompanion(payload.card, {
+        forceNew: true,
+        targetTabId: destTabId,
+        profileId: payload.source.profileId ?? null,
+        handoffNote: payload.handoffNote,
+        fromName: payload.source.expertLabel,
+        handoffFullContext: payload.fullContext,
+        handoffTitle: payload.title,
+        handoffExpertLabel: payload.source.expertLabel,
+        handoffExpertSlug: payload.source.expertSlug ?? null,
+        handoffMessageId: payload.source.messageId ?? null,
+        handoffConversationId: payload.source.conversationId ?? null,
+        handoffAstrologyMode: payload.source.astrologyMode ?? null,
+        rememberReadingNote: payload.rememberReadingNote,
+      });
+      return;
+    }
     if (navState?.selectedProfileId && !navState.startCompanionPersona) {
       setPendingProfileId(navState.selectedProfileId);
       navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
@@ -4171,6 +4322,133 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     }
   };
 
+  const handleOpenHandoffFromCouncilMessage = useCallback(
+    (msg: ChatMessageRecord) => {
+      const msgExpert = msg.expert_used || expertSlug;
+      const expertLabel = resolveCouncilDisplayName(msgExpert, catalog);
+      const inferredMode: AstrologyMode =
+        msgExpert === 'western_astrologer' ||
+        msgExpert === 'modern_astrologer' ||
+        msgExpert === 'hellenistic_astrologer'
+          ? 'western'
+          : normalizeCouncilSlug(msgExpert) === DEFAULT_COUNCIL_EXPERT_SLUG
+          ? 'vedic'
+          : astrologyMode;
+      const firstLine = msg.content
+        .replace(/^#+\s*/gm, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .split('\n')
+        .find((line) => line.trim().length > 0)
+        ?.trim()
+        .slice(0, 90);
+      const convTitle = activeConversation?.title?.trim();
+      const title =
+        convTitle &&
+        convTitle.toLowerCase() !== 'new consultation' &&
+        convTitle.toLowerCase() !== 'new chat'
+          ? convTitle.slice(0, 110)
+          : firstLine || `${expertLabel} Reading`;
+      const profileLabel = activeProfile
+        ? activeProfile.is_default
+          ? activeProfile.short_name?.trim()
+            ? `You (${activeProfile.short_name.trim()})`
+            : 'You'
+          : activeProfile.short_name?.trim() || activeProfile.name
+        : null;
+
+      setHandoffSource({
+        title,
+        rawContent: msg.content,
+        expertSlug: msgExpert,
+        expertLabel,
+        astrologyMode: inferredMode,
+        profileId: effectiveProfileId || null,
+        profileLabel,
+        conversationId: activeConversation?.id || null,
+        messageId: msg.id,
+      });
+    },
+    [
+      activeConversation?.id,
+      activeConversation?.title,
+      activeProfile,
+      astrologyMode,
+      catalog,
+      effectiveProfileId,
+      expertSlug,
+    ]
+  );
+
+  const handleConfirmCouncilHandoff = async (payload: CouncilHandoffConfirmPayload) => {
+    setHandoffSubmittingSlug(payload.card.slug);
+    try {
+      snapshotActiveTabState(activeTabId);
+      let destTabId =
+        tabs.find(
+          (t) => t.pillar === 'companion' && t.companionSlug === payload.card.slug
+        )?.tabId ||
+        tabs.find((t) => t.pillar === 'companion' && !t.conversationId)?.tabId ||
+        tabs.find((t) => t.pillar === 'companion')?.tabId;
+
+      if (!destTabId && tabs.length < MAX_ACTIVE_TABS) {
+        const newCompTab: ActiveChatTab = {
+          tabId: `tab-companion-${Date.now()}`,
+          pillar: 'companion',
+          conversationId: null,
+          companionSlug: payload.card.slug,
+          label: payload.card.name,
+          isCore: false,
+        };
+        setTabs((prev) => (prev.length < MAX_ACTIVE_TABS ? [...prev, newCompTab] : prev));
+        destTabId = newCompTab.tabId;
+      }
+
+      await handleStartPresetCompanion(payload.card, {
+        forceNew: false,
+        targetTabId: destTabId,
+        profileId: payload.source.profileId ?? null,
+        handoffNote: payload.handoffNote,
+        fromName: payload.source.expertLabel,
+        handoffFullContext: payload.fullContext,
+        handoffTitle: payload.title,
+        handoffExpertLabel: payload.source.expertLabel,
+        handoffExpertSlug: payload.source.expertSlug ?? null,
+        handoffMessageId: payload.source.messageId ?? null,
+        handoffConversationId: payload.source.conversationId ?? null,
+        handoffAstrologyMode: payload.source.astrologyMode ?? null,
+        rememberReadingNote: payload.rememberReadingNote,
+      });
+
+      setHandoffSource(null);
+      if (!isPreviewMode) {
+        await loadSharedReadingNotes(payload.source.profileId ?? null);
+      }
+    } finally {
+      setHandoffSubmittingSlug(null);
+    }
+  };
+
+  const handleDeleteSharedReadingNote = async (noteId: string) => {
+    if (isPreviewMode) {
+      setSharedReadingNotes((prev) => prev.filter((n) => n.id !== noteId));
+      return;
+    }
+    const token = await getAccessToken();
+    if (!token) return;
+    setDeletingReadingNoteId(noteId);
+    try {
+      const res = await fetch(`/api/chat/reading-notes/${encodeURIComponent(noteId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setSharedReadingNotes((prev) => prev.filter((n) => n.id !== noteId));
+      }
+    } finally {
+      setDeletingReadingNoteId(null);
+    }
+  };
+
   const handleSubmitSuggestion = (item: SuggestionItem) => {
     void handleSendMessage(item.text, undefined, item.technical_directive, {
       bypassClarification: Boolean(
@@ -4985,6 +5263,25 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
               </div>
             )}
 
+            {activePillar === 'companion' &&
+              activeConversation &&
+              sharedReadingNotes.length > 0 && (
+                <Tooltip content="View Council reading notes shared with companions" placement="bottom">
+                  <button
+                    type="button"
+                    onClick={() => setShowSharedReadingNotesModal(true)}
+                    aria-label="Council reading notes"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-[#3D3830]/12 bg-[#FDFBF7] px-2 sm:px-2.5 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+                  >
+                    <BookOpen className="h-3.5 w-3.5 text-[#8B7355]" />
+                    <span className="hidden md:inline">Council notes</span>
+                    <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[10px] text-[#8B8275]">
+                      {sharedReadingNotes.length}
+                    </span>
+                  </button>
+                </Tooltip>
+              )}
+
             {activePillar === 'companion' && activeConversation && (
               <Tooltip content="Start a fresh topic thread" placement="bottom">
                 <button
@@ -5040,6 +5337,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                   ? 'Tarot'
                   : expertSlug === 'numerologist'
                   ? 'Numerology'
+                  : expertSlug === 'kp_precision'
+                  ? 'KP Astrology'
+                  : expertSlug === 'jaimini'
+                  ? 'Jaimini'
                   : expertSlug === 'hellenistic_astrologer'
                   ? 'Hellenistic'
                   : expertSlug === 'western_astrologer' || expertSlug === 'modern_astrologer'
@@ -5401,7 +5702,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                   normalizedNext === 'hellenistic_astrologer'
                 ) {
                   setAstrologyMode('western');
-                } else if (normalizedNext === DEFAULT_COUNCIL_EXPERT_SLUG) {
+                } else if (
+                  normalizedNext === DEFAULT_COUNCIL_EXPERT_SLUG ||
+                  normalizedNext === 'kp_precision' ||
+                  normalizedNext === 'jaimini'
+                ) {
                   setAstrologyMode('vedic');
                 }
                 const nextLabel =
@@ -5427,6 +5732,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             onSaveToNotes={(msg) => void handleSaveMessageToNotes(msg)}
             savedNoteMsgIds={savedNoteMsgIds}
             savingNoteMsgId={savingNoteMsgId}
+            onHandoffToCompanion={handleOpenHandoffFromCouncilMessage}
           />
         )}
 
@@ -5644,6 +5950,27 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             void handleStartCustomBySlug(card.slug, activeCompanionPersona, opts);
           }
         }}
+      />
+
+      {/* Council Reading -> Companion Handoff Modal */}
+      <CouncilToCompanionModal
+        isOpen={Boolean(handoffSource)}
+        source={handoffSource}
+        companions={companionCatalog}
+        submittingSlug={handoffSubmittingSlug}
+        onClose={() => {
+          if (!handoffSubmittingSlug) setHandoffSource(null);
+        }}
+        onConfirm={handleConfirmCouncilHandoff}
+      />
+
+      {/* Shared Council Reading Notes Viewer */}
+      <SharedReadingNotesModal
+        isOpen={showSharedReadingNotesModal}
+        notes={sharedReadingNotes}
+        deletingId={deletingReadingNoteId}
+        onDeleteNote={handleDeleteSharedReadingNote}
+        onClose={() => setShowSharedReadingNotesModal(false)}
       />
     </div>
   );

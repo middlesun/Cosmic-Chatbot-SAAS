@@ -14,6 +14,7 @@ import CustomSelect from './CustomSelect';
 import {
   BIRTH_TIME_ACCURACY_OPTIONS,
   CAREER_MODE_OPTIONS,
+  CITED_INSIGHT_CATEGORY_LABELS,
   computeLifeContextCompleteness,
   isMarriedRelationshipStatus,
   LIFE_CONTEXT_FRAMING_COPY,
@@ -81,11 +82,19 @@ function cloneInitial(raw?: LifeContextData | null): LifeContextData {
     ...(Array.isArray(raw.children)
       ? { children: raw.children.map((c) => ({ ...c })) }
       : {}),
+    ...(raw.children_summary ? { children_summary: raw.children_summary } : {}),
     ...(raw.career_mode ? { career_mode: raw.career_mode } : {}),
     ...(raw.career_role ? { career_role: raw.career_role } : {}),
+    ...(raw.workplace_context ? { workplace_context: raw.workplace_context } : {}),
     ...(raw.location_status ? { location_status: raw.location_status } : {}),
     ...(Array.isArray(raw.past_anchors)
       ? { past_anchors: raw.past_anchors.map((a) => ({ ...a })) }
+      : {}),
+    ...(Array.isArray(raw.core_stress_areas)
+      ? { core_stress_areas: [...raw.core_stress_areas] }
+      : {}),
+    ...(Array.isArray(raw.cited_insights)
+      ? { cited_insights: raw.cited_insights.map((i) => ({ ...i })) }
       : {}),
   };
 }
@@ -665,6 +674,24 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                   className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2 text-xs text-[#3D3830] placeholder:text-[#8B8275] focus:border-[#4A453D] focus:outline-none"
                 />
               </div>
+              <div>
+                <label className="block text-[11px] text-[#5C5449] mb-1">
+                  Workplace &amp; day-to-day setup (optional)
+                </label>
+                <input
+                  type="text"
+                  maxLength={160}
+                  value={draft.workplace_context || ''}
+                  onChange={(e) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      workplace_context: e.target.value || undefined,
+                    }))
+                  }
+                  placeholder="e.g. Remote fintech team, family-run textile studio, independent clinic"
+                  className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2 text-xs text-[#3D3830] placeholder:text-[#8B8275] focus:border-[#4A453D] focus:outline-none"
+                />
+              </div>
             </div>
 
             {/* 5. Current Living Location vs Birthplace (10%) */}
@@ -740,6 +767,11 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                           options={PAST_ANCHOR_TAG_OPTIONS}
                           size="sm"
                         />
+                        {anchor.cited_by && (
+                          <p className="mt-1 text-[10px] text-[#8B8275]">
+                            Noted by {anchor.cited_by}
+                          </p>
+                        )}
                       </div>
                       <div className="sm:col-span-1 flex justify-end">
                         <button
@@ -756,6 +788,119 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* 6. Living Profile Notes & Citations */}
+            {((Array.isArray(draft.core_stress_areas) && draft.core_stress_areas.length > 0) ||
+              (Array.isArray(draft.cited_insights) && draft.cited_insights.length > 0) ||
+              Boolean(draft.children_summary)) && (
+              <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-[#3D3830]">
+                    6. Living Profile Notes &amp; Reflections
+                  </label>
+                  <p className="text-[11px] text-[#8B8275] mt-0.5">
+                    Details quietly remembered from your conversations so you never have to repeat yourself. Remove any note anytime.
+                  </p>
+                </div>
+
+                {draft.children_summary && (
+                  <div className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3 py-2 flex items-center justify-between gap-2 text-xs text-[#5C5449]">
+                    <span>
+                      <span className="font-medium text-[#3D3830]">Children note:</span>{' '}
+                      {draft.children_summary}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraft((prev) => ({ ...prev, children_summary: undefined }))
+                      }
+                      aria-label="Remove children note"
+                      className="p-1 rounded-lg text-[#8B8275] hover:text-[#A94438] cursor-pointer shrink-0"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {Array.isArray(draft.core_stress_areas) && draft.core_stress_areas.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] font-medium text-[#5C5449]">
+                      Recurring Life Themes
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {draft.core_stress_areas.map((theme, idx) => (
+                        <span
+                          key={`${theme}-${idx}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-[#3D3830]/12 bg-[#FAF7F2] px-2.5 py-1 text-[11px] text-[#3D3830]"
+                        >
+                          <span>{theme}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraft((prev) => ({
+                                ...prev,
+                                core_stress_areas: (prev.core_stress_areas || []).filter(
+                                  (_, i) => i !== idx
+                                ),
+                              }))
+                            }
+                            aria-label={`Remove theme ${theme}`}
+                            className="text-[#8B8275] hover:text-[#A94438] cursor-pointer"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {Array.isArray(draft.cited_insights) && draft.cited_insights.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-medium text-[#5C5449]">
+                      Personal Insights &amp; Context
+                    </p>
+                    <div className="space-y-2">
+                      {draft.cited_insights.map((insight, idx) => (
+                        <div
+                          key={`${insight.id}-${idx}`}
+                          className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/12 px-3 py-2.5 flex items-start justify-between gap-2.5"
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2 text-[10px] text-[#8B8275]">
+                              <span className="font-semibold uppercase tracking-[0.08em] text-[#8B7355]">
+                                {CITED_INSIGHT_CATEGORY_LABELS[insight.category] ||
+                                  insight.category.replace(/_/g, ' ')}
+                              </span>
+                              <span>·</span>
+                              <span>Added by {insight.cited_by}</span>
+                            </div>
+                            <p className="text-xs text-[#3D3830] leading-relaxed">
+                              {insight.summary}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraft((prev) => ({
+                                ...prev,
+                                cited_insights: (prev.cited_insights || []).filter(
+                                  (_, i) => i !== idx
+                                ),
+                              }))
+                            }
+                            aria-label={`Remove insight ${idx + 1}`}
+                            className="p-1 rounded-lg text-[#8B8275] hover:text-[#A94438] hover:bg-[#A94438]/10 transition-colors cursor-pointer shrink-0"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {error && (
               <p className="rounded-xl bg-[#7A3E36]/10 px-3.5 py-2.5 text-xs text-[#7A3E36]">
