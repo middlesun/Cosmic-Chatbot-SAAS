@@ -535,6 +535,9 @@ const AppDashboardHome: React.FC = () => {
             merged.push({
               ...full,
               ...item,
+              sex: item.sex || full?.sex,
+              card_subtitle: item.card_subtitle || full?.card_subtitle,
+              how_conversations_feel: item.how_conversations_feel || full?.how_conversations_feel,
               companion_group: item.companion_group || full?.companion_group,
               situation_tags: item.situation_tags || full?.situation_tags,
               secondary_expertise: item.secondary_expertise || full?.secondary_expertise,
@@ -653,11 +656,11 @@ const AppDashboardHome: React.FC = () => {
                               </span>
                             </div>
                             <p className="text-[11px] font-medium text-[#8B7355] truncate">
-                              {comp.primary_expertise}
+                              {comp.card_subtitle || comp.primary_expertise}
                               {comp.last_conversation_id ? ' · Active' : ''}
                             </p>
                             <p className="text-xs text-[#5C5449] leading-snug line-clamp-2 pt-0.5">
-                              {comp.tagline}
+                              {comp.short_bio || comp.tagline}
                             </p>
                           </div>
                         </div>

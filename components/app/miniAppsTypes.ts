@@ -4,6 +4,7 @@ import type {
   CompanionAdvisoryMode,
   CompanionChartAccess,
   CompanionGenderVariants,
+  CompanionSex,
 } from './chatTypes';
 
 export type MiniAppTemplate = 'auto_brief' | 'domain_explorer' | 'form_reading' | 'guided_quiz';
@@ -137,8 +138,9 @@ export interface HomeSummaryResponse {
     slug: string;
     name: string;
     age: number;
-    sex?: 'M' | 'F';
+    sex?: CompanionSex;
     primary_expertise: string;
+    card_subtitle?: string;
     secondary_expertise?: string[];
     category_tag?: 'support' | 'friends' | 'astrology' | 'tarot_numerology' | 'past_life';
     companion_group?: AnyCompanionGroup;
@@ -151,6 +153,7 @@ export interface HomeSummaryResponse {
     skill_level?: 'none_emotional' | 'astrology_soft' | 'tarot' | 'numerology' | 'past_life' | 'vedic_soft';
     tagline: string;
     short_bio?: string;
+    how_conversations_feel?: string;
     avatar_url: string | null;
     monogram_palette: { bg: string; ring: string; ink: string };
     last_conversation_id?: string | null;

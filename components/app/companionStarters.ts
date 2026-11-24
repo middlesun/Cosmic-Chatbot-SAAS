@@ -9,112 +9,330 @@ import type {
  * so anyone can drop in for quiet company even when they don't have a "big problem."
  */
 const SLUG_STARTERS: Record<string, string[]> = {
+  // Group A — Spiritual Guides (1–14)
+  dev: [
+    'Just having an evening chai — mind talking through something on my mind?',
+    'A Monday that felt oddly heavy — help me step back?',
+    'What does my current chapter seem to be asking of me?',
+  ],
+  nandini: [
+    'Trying to balance what my heart wants with family expectations',
+    'Can we talk through a relationship question gently?',
+    'Just need warm perspective over a cup of tea',
+  ],
+  marc: [
+    'Having a quiet coffee — hang out and look at the bigger picture?',
+    'Familiar patterns feel like they are shifting lately',
+    'What kind of turning point does this season resemble?',
+  ],
+  luna: [
+    'Just hanging out — my heart feels a bit tangled today',
+    'Trying to make sense of a connection and mixed feelings',
+    'What emotional themes stand out in my chart right now?',
+  ],
+  sofia: [
+    'Thinking about how much I have outgrown lately',
+    'Why do certain personal patterns keep circling back?',
+    'Just want an open, reflective conversation tonight',
+  ],
+  tara: [
+    'Just hanging out over coffee — how is today’s sky feeling?',
+    'Rough week — need cheerful, grounded company',
+    'Explain what today’s planetary mood actually feels like',
+  ],
+  bella: [
+    'Okay, so there’s this person… pull a card with me?',
+    'My head and my heart are saying two different things',
+    'Just want a warm heart-to-heart before any cards',
+  ],
+  julian: [
+    'Standing at a crossroads and overthinking the options',
+    'Let’s pull a quiet Tarot reflection on this choice',
+    'Help me see what I might be overlooking',
+  ],
+  ines: [
+    'It feels like a completely new chapter is starting',
+    'Curious what my Personal Year symbolizes right now',
+    'Can we reflect on a meaningful milestone together?',
+  ],
+  kai: [
+    'Just checking in on an ordinary day',
+    'Curious what today’s rhythm looks like by the numbers',
+    'Can we talk through a decision step by step?',
+  ],
+  anya: [
+    'Why do certain people or feelings feel strangely familiar?',
+    'Had a vivid dream I cannot quite shake',
+    'Just sitting with a quiet question tonight',
+  ],
+  vikram: [
+    'Sitting with an unanswered question for a while',
+    'Thinking about duty, choice, and letting go',
+    'Can we talk philosophy without rushing to fix anything?',
+  ],
+  shanti: [
+    'Trying to make peace with something that hurt',
+    'Just want a quiet, unhurried space to breathe',
+    'How do you soften towards yourself after a hard season?',
+  ],
+  omar: [
+    'Questioning something I used to be certain about',
+    'Thinking honestly about faith, doubt, and meaning',
+    'Up for a calm late-evening conversation?',
+  ],
+
+  // Group B — Everyday Companions (15–43)
+  mira: [
+    'Just hanging out while making tea',
+    'Today felt weirdly flat — not sure I have the words yet',
+    'I just need quiet company right now',
+  ],
+  samir: [
+    'Can I tell you the whole messy story without advice yet?',
+    'Rough day — just want someone steady to listen',
+    'Just unwinding after work',
+  ],
+  kira: [
+    'Need a warm, gentle lift after a tiring week',
+    'Just unwinding — tell me something comforting',
+    'Can we talk about nothing heavy right now?',
+  ],
   aira: [
     'Just hanging out while making tea',
     'Today felt weirdly heavy — soften the mood?',
-    'Tell me something small and comforting',
     'Can we just talk about nothing for 5 minutes?',
   ],
-  kira: [
-    'Need a gentle distraction for a few minutes',
-    'Just unwinding after a long day',
-    'Can we talk about nothing heavy right now?',
+  hannah: [
+    'I need a kind reality check without feeling judged',
+    'Something feels off and I want an honest sounding board',
+    'Help me look at this situation clearly',
   ],
-  mira: [
-    'Just hanging out while making tea',
-    'Today felt weirdly flat',
-    'Can we talk about nothing for a bit?',
-    'I just need quiet company right now',
-  ],
-  aniya: [
-    'My head feels crowded — just need someone to listen',
-    'Rough day, not looking for advice yet',
-    'Just sitting here quietly for a minute',
-  ],
-  anya: [
-    'Today felt strangely quiet and lonely',
-    'Tell me something calm',
-    'Just sitting with my thoughts — keep me company?',
-  ],
-  camila: [
-    'Missing home a little tonight',
-    'Just decompressing after work',
-    'Can we hang out and talk about ordinary stuff?',
+  noah: [
+    'Give me the plain-spoken version — what am I missing?',
+    'Circling the same problem all week',
+    'Help me separate what matters from noise',
   ],
   elia: [
     'Brain will not slow down tonight',
-    'Just trying to breathe and decompress',
-    'Can we talk about nothing complicated?',
+    'Trying to stop reading into one text message',
+    'Just need calm comfort while unwinding',
   ],
-  max: [
-    'Half venting, half hanging out',
-    'Give me honest perspective — I am procrastinating',
-    'Rough week, need steady company',
+  priya: [
+    'Everything feels loud inside my head today',
+    'Walk me back down to earth gently?',
+    'Can we untangle one worry at a time?',
   ],
-  kabir: [
-    'Long day — hang out for a bit?',
-    'Need a straight-talking friend for 5 minutes',
-    'Just talking through random thoughts',
+  ethan: [
+    'Tell me something slightly ridiculous to take my mind off today',
+    'Long day — in the mood for light banter',
+    'Need a five-minute distraction from serious life',
+  ],
+  valeria: [
+    'Feeling pulled in ten directions — give it to me straight',
+    'Should I say no to this or am I overreacting?',
+    'Need clear boundaries and zero sugarcoating',
+  ],
+  zoya: [
+    'In the mood for sharp wit and zero drama',
+    'Give me a confident pep talk before I walk into this',
+    'Just hanging out — make me laugh a little',
   ],
   leo: [
     'Feeling stuck in low gear today',
     'Help me get a tiny bit of momentum',
     'Just hanging out before I tackle my evening',
   ],
+  kabir: [
+    'Long day — hang out for a late-night chai chat?',
+    'Need a straight-talking friend for 5 minutes',
+    'Just talking through random thoughts',
+  ],
   mateo: [
-    'Just decompressing over coffee/tea',
-    'Tell me a calmer way to look at today',
+    'Just decompressing over coffee',
+    'Work and family both felt heavy today',
     'Can we talk about life in general for a minute?',
   ],
-  tara: [
-    'Rough week — just need calm company',
-    'Just hanging out while making tea',
-    'Why does everything feel weirdly slow lately?',
+  nora: [
+    'Trying to build one steadier daily habit',
+    'I know what to do — I just keep stalling',
+    'Help me take one small realistic step today',
   ],
-  sofia: [
-    'Just need warm company tonight',
-    'Tell me something calm and grounding',
-    'Wait — is anything weird going on in my chart lately?',
+  naomi: [
+    'Wide awake past midnight with too many thoughts',
+    'Just keeping each other company in the quiet hours',
+    'Too tired to analyze — just sit with me a bit',
   ],
-  luna_grey: [
-    'Just hanging out — mind feels noisy',
-    'Trying to make sense of a relationship dynamic',
-    'Could my timing be shifting right now?',
+  elias: [
+    'Not looking for optimism — just honest reflection',
+    'Quiet evening thoughts on how life shifts over time',
+    'Can we talk calmly about something complicated?',
   ],
-  marc: [
-    'Having a quiet coffee — hang out for a bit?',
-    'Work has felt heavy this week',
-    'What kind of phase does this week feel like?',
+  maya: [
+    'My brain is running twenty tabs at once',
+    'Remind me how to slow down and breathe',
+    'Just need a calm reset in the middle of the day',
   ],
-  dev: [
-    'Need grounded perspective without sugarcoating',
-    'Rough day — help me step back cleanly',
-    'Can you glance at my career timing for a second?',
+  nina: [
+    'Cannot sleep — mind will not switch off',
+    'Tell me a gentle reflection for the end of the day',
+    'Just winding down quietly before bed',
   ],
-  valeria: [
-    'Feeling pulled in ten directions today',
-    'Just need calm, clear company',
-    'What feels worth focusing on this month?',
+  alex: [
+    'My shoulders have been up by my ears all week',
+    'Too drained to explain much — just want gentle company',
+    'Give me something simple and soothing to focus on',
+  ],
+  zara: [
+    'I feel invisible in a room full of people lately',
+    'Just craving easy, warm company tonight',
+    'Tell me about something small and ordinary',
+  ],
+  ari: [
+    'Can we sort this messy problem into plain English?',
+    'Too many pros and cons — help me think straight',
+    'What is the simplest way to frame what I am facing?',
+  ],
+  elena: [
+    'Stuck in perfectionism and afraid to start',
+    'Feeling creatively dry and harsh on myself',
+    'Help me loosen the pressure so I can move again',
+  ],
+  jamie: [
+    'Need a quick boost before something intimidating',
+    'Celebrate a small win with me today',
+    'Remind me I can actually handle this',
+  ],
+  camila: [
+    'Missing home a little tonight',
+    'Just decompressing after work',
+    'Can we hang out and talk about ordinary stuff?',
+  ],
+  luca: [
+    'Having a weirdly good day — share the moment?',
+    'Bored and up for playful everyday banter',
+    'Tell me something unexpectedly cheerful',
+  ],
+  theo: [
+    'Everyone around me has an opinion — help me think for myself',
+    'Trying to check a blind spot calmly',
+    'Can we examine both sides of this choice?',
+  ],
+  serena: [
+    'Still hurting over something old I thought I was over',
+    'Need gentle patience while I catch my emotional breath',
+    'Just sitting quietly with a tender memory',
+  ],
+
+  // Group C — Life Companions (44–65)
+  isla: [
+    'The breakup still hurts more than I expected',
+    'Trying not to text someone I know is wrong for me',
+    'How do I stop replaying what went wrong?',
+  ],
+  ryan: [
+    'Dealing with silence and heartbreak without pretending I am fine',
+    'Just need steady ground after a painful ending',
+    'How do you rebuild your footing after losing someone you loved?',
+  ],
+  sienna: [
+    'Unsure if this relationship is healthy or just familiar',
+    'Want to talk honestly about dating patterns',
+    'What does real emotional safety feel like?',
+  ],
+  adrian: [
+    'My partner and I keep having the same argument',
+    'Trying to figure out if I am settling or communicating poorly',
+    'Help me think through a serious relationship crossroads',
+  ],
+  kavita: [
+    'Caught between my family’s expectations and my own life',
+    'Trying to stay loving without losing myself',
+    'Family dynamics felt exhausting this week',
+  ],
+  daniel: [
+    'Worrying quietly about aging parents and changing roles',
+    'Trying to handle family responsibility without burning out',
+    'Can we talk honestly about family pressure?',
+  ],
+  grace: [
+    'Hard to explain how heavy infertility / waiting feels',
+    'Navigating hope and disappointment around starting a family',
+    'Just need gentle space where nobody offers quick fixes',
+  ],
+  anjali: [
+    'Holding space for family tension and quiet hopes at home',
+    'Parenting feels lonely even when you love your family deeply',
+    'Can we talk without nosy advice or guilt?',
+  ],
+  eva: [
+    'Wondering if I missed my timing on marriage or family',
+    'Dealing with quiet envy when everyone else is announcing milestones',
+    'Just need honest, compassionate company tonight',
+  ],
+  adam: [
+    'Stepping back into dating after a long break feels weird',
+    'Tired of games — what do I actually want in a partner?',
+    'Help me sort my nerves before putting myself out there',
+  ],
+  clara: [
+    'Marriage feels quieter and more distant than I expected',
+    'Trying to talk about partnership pressure without blame',
+    'How do couples reconnect when life gets crowded?',
   ],
   rohan: [
-    'Feeling tired and in my own head',
-    'Just hanging out after work',
-    'Does anything in my chart explain this restless energy?',
+    'Feeling tired and in my own head after a heavy loss',
+    'Grief keeps showing up on ordinary days',
+    'Just sit with me for a bit — no pressure to cheer me up',
   ],
-  bella: [
-    'Just hanging out — pull a gentle reflection card?',
-    'My intuition feels foggy today',
-    'Can we just talk calmly for a minute?',
+  neha: [
+    'Work politics and burnout have left me completely drained',
+    'Thinking about changing careers and second-guessing myself',
+    'Help me separate real ambition from exhaustion',
   ],
-  kai: [
-    'Just checking in on an ordinary day',
-    'Curious what today’s energy feels like by the numbers',
-    'Can we talk about nothing heavy first?',
+  nikhil: [
+    'Founder stress — carrying payroll and decisions alone',
+    'Need a steady sounding board on a tough business call',
+    'Everything feels urgent; help me prioritize what actually matters',
   ],
-  aura: [
-    'Tell me something calm',
-    'Just sitting with a quiet thought tonight',
-    'Why do certain feelings keep coming back?',
+  rachel: [
+    'Anxious about money even when things look okay on paper',
+    'Trying to face finances calmly without shame spirals',
+    'Help me make a sane plan for my next financial step',
+  ],
+  victor: [
+    'Stressed about debt, income, and rebuilding stability',
+    'Give me calm perspective on a money setback',
+    'What is one practical move I can focus on this week?',
+  ],
+  kenji: [
+    'New city, quiet apartment — nobody knows my history here yet',
+    'Moving abroad sounded exciting, so why does tonight feel lonely?',
+    'Still trying to make this new place feel like home',
+  ],
+  lucas: [
+    'Stuck staring at everything I keep putting off',
+    'Mad at myself for stalling again — help me shrink the task',
+    'How do you restart without shame?',
+  ],
+  iris: [
+    'Exhausted by my own perfectionism and inner critic',
+    'Even when I do well, it never feels like enough',
+    'Help me notice how harsh I am being on myself',
+  ],
+  mila: [
+    'Tired of pleasing everyone and forgetting what I want',
+    'Said yes again when every cell in me wanted to say no',
+    'Help me practice a kind, firm boundary',
+  ],
+  robin: [
+    'Trying to belong without shrinking myself to fit in',
+    'Feeling out of place even around people I care about',
+    'Just need an honest, accepting space to be myself',
+  ],
+  riya: [
+    'I am around people all day and still feel deeply lonely',
+    'Waiting to feel understood instead of performing fine',
+    'Just glad someone is genuinely here tonight',
   ],
 };
 

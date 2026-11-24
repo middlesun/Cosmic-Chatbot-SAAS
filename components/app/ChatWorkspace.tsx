@@ -511,7 +511,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         slug: persona.slug || persona.id,
         name: persona.name,
         age: persona.age,
-        sex: persona.gender === 'M' ? 'M' : 'F',
+        sex: persona.gender === 'M' ? 'M' : persona.gender === 'NB' ? 'NB' : 'F',
         tagline: persona.tagline,
         short_bio: persona.bio,
         full_bio:

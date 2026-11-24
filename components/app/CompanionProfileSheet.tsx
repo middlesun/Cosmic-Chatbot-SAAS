@@ -43,12 +43,17 @@ const CompanionProfileSheet: React.FC<CompanionProfileSheetProps> = ({
   if (!isOpen || !companion) return null;
 
   const hasExistingThread = Boolean(companion.last_conversation_id);
-  const expertiseLine = [
-    companion.primary_expertise,
-    ...(companion.secondary_expertise || []).filter(
-      (item) => item.toLowerCase() !== companion.primary_expertise.toLowerCase()
-    ),
-  ].join(' · ');
+  const expertiseLine =
+    companion.secondary_expertise && companion.secondary_expertise.length > 0
+      ? companion.secondary_expertise.join(' · ')
+      : companion.primary_expertise;
+  const sexLabel =
+    companion.sex === 'F' ? 'Woman' : companion.sex === 'NB' ? 'Non-binary' : 'Man';
+  const cleanTagline = (companion.tagline || '').replace(/^[“"]|[”"]$/g, '').trim();
+  const conversationsFeelText =
+    companion.how_conversations_feel?.trim() ||
+    SKILL_NOTE_MAP[companion.skill_level] ||
+    SKILL_NOTE_MAP.none_emotional;
 
   return (
     <div
@@ -87,12 +92,12 @@ const CompanionProfileSheet: React.FC<CompanionProfileSheetProps> = ({
               <p className="mt-1 text-xs text-[#8B8275] leading-relaxed">
                 <span>{companion.age}</span>
                 <span aria-hidden="true"> · </span>
-                <span>{companion.sex === 'F' ? 'Woman' : 'Man'}</span>
+                <span>{sexLabel}</span>
                 <span aria-hidden="true"> · </span>
                 <span>{companion.primary_expertise}</span>
               </p>
               {companion.cultural_fluency && (
-                <p className="mt-0.5 text-xs text-[#8B8275]/90 truncate">
+                <p className="mt-0.5 text-xs text-[#8B8275]/90 leading-snug">
                   {companion.cultural_fluency}
                 </p>
               )}
@@ -111,9 +116,9 @@ const CompanionProfileSheet: React.FC<CompanionProfileSheetProps> = ({
 
         {/* Scrollable Editorial Body */}
         <div className="flex-1 overflow-y-auto px-5 sm:px-7 py-5 space-y-5">
-          {companion.tagline && (
+          {cleanTagline && (
             <p className="font-['Cormorant_Garamond',serif] text-lg sm:text-[19px] italic text-[#3D3830] leading-snug">
-              “{companion.tagline}”
+              “{cleanTagline}”
             </p>
           )}
 
@@ -134,7 +139,7 @@ const CompanionProfileSheet: React.FC<CompanionProfileSheetProps> = ({
           <div className="pt-4 border-t border-[#3D3830]/10 space-y-1.5">
             <h3 className="text-xs font-medium text-[#8B8275]">How conversations feel</h3>
             <p className="text-sm text-[#5C5449] leading-relaxed">
-              {SKILL_NOTE_MAP[companion.skill_level] || SKILL_NOTE_MAP.none_emotional}
+              {conversationsFeelText}
             </p>
           </div>
         </div>

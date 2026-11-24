@@ -751,14 +751,14 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                                   </span>
                                 </div>
                                 <p className="text-xs sm:text-[13px] text-[#8B8275] truncate mt-0.5">
-                                  {card.primary_expertise}
-                                  {secondary ? ` · ${secondary}` : ''}
+                                  {card.card_subtitle ||
+                                    `${card.primary_expertise}${secondary ? ` · ${secondary}` : ''}`}
                                 </p>
                               </div>
                             </div>
 
                             <p className="text-sm text-[#5C5449] leading-relaxed line-clamp-3">
-                              {card.tagline || card.short_bio}
+                              {card.short_bio || card.tagline}
                             </p>
                           </div>
 

@@ -1,21 +1,32 @@
 import type {
   CareerContextMode,
   CitedInsightCategory,
+  DeepProfileBucketKey,
+  LocationContextStatus,
   RelationshipContextStatus,
 } from '../../lib/lifeContextSchema';
 import {
+  DEEP_PROFILE_BUCKET_LABELS,
   VALID_ANCHOR_TAGS,
   VALID_CAREER_MODES,
   VALID_CITED_INSIGHT_CATEGORIES,
+  VALID_LOCATION_STATUSES,
   VALID_RELATIONSHIP_STATUSES,
 } from '../../lib/lifeContextSchema';
 import type { Stage1RouterResult, UserFluencyTier, VedicUserProfile } from '../../lib/vedicTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import {
-  DEFAULT_COMPANION_BOND_EXTRACTOR_PROMPT,
-  DEFAULT_PROFILE_MEMORY_EXTRACTOR_PROMPT,
+  DEFAULT_MEMORY_COMPANION_BOND_PROMPT,
+  DEFAULT_MEMORY_DEEP_PROFILE_EXTRACTOR_PROMPT,
+  DEFAULT_MEMORY_PROFILE_SYNTHESIZER_PROMPT,
+  DEFAULT_MEMORY_ROLLING_THREAD_COMPACTOR_PROMPT,
 } from './enginePromptDefaults';
-import { mergeExtractedLifeFacts } from './lifeContextGuard';
+import {
+  appendCouncilAnalystNotes,
+  mergeExtractedDeepProfile,
+  mergeExtractedLifeFacts,
+  type ExtractedLifeFactsPatch,
+} from './lifeContextGuard';
 import {
   createOpenRouterCompletion,
   getUtilityModelAsync,
@@ -36,8 +47,10 @@ export interface ArchivistTurnContext {
   extractedStressAreas?: string[];
   actorCitation?: string;
   actorSlug?: string;
+  conversationId?: string | null;
 }
 
+const VALID_DEEP_BUCKETS = new Set<string>(Object.keys(DEEP_PROFILE_BUCKET_LABELS));
 const TRIVIAL_ACK_RE = /^(ok|okay|k|kk|yes|yeah|yep|yup|no|nope|nah|thanks|thank you|thx|ty|hmm+|hm+|oh|ah|hi|hey|hello|cool|nice|sure|got it)[.!?]*$/i;
 
 function applyPromptTemplate(template: string, vars: Record<string, string>): string {
@@ -170,7 +183,7 @@ export function computeUpdatedVedicUserProfile(
   };
 }
 
-async function extractAndPersistLifeEvents(
+export async function extractAndPersistDeepProfileFacts(
   profileId: string,
   userId: string,
   turnContext?: ArchivistTurnContext
@@ -182,15 +195,43 @@ async function extractAndPersistLifeEvents(
   if (!supabaseAdmin || !(await isOpenRouterConfiguredAsync())) return [];
 
   try {
-    const [{ data: profile }, engineOverrides] = await Promise.all([
+    const [primaryProfileRes, engineOverrides] = await Promise.all([
       supabaseAdmin
         .from('profiles')
-        .select('id, user_id, life_context_json')
+        .select('id, user_id, life_context_json, deep_profile_json')
         .eq('id', profileId)
         .eq('user_id', userId)
         .maybeSingle(),
       getEnginePromptOverrides().catch(() => ({} as Record<string, never>)),
     ]);
+
+    let hasDeepProfileCol = !primaryProfileRes.error;
+    let profile: {
+      id: string;
+      user_id: string;
+      life_context_json?: unknown;
+      deep_profile_json?: unknown;
+    } | null = primaryProfileRes.data as unknown as {
+      id: string;
+      user_id: string;
+      life_context_json?: unknown;
+      deep_profile_json?: unknown;
+    } | null;
+
+    if (primaryProfileRes.error) {
+      hasDeepProfileCol = false;
+      const fallbackRes = await supabaseAdmin
+        .from('profiles')
+        .select('id, user_id, life_context_json')
+        .eq('id', profileId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      profile = fallbackRes.data as unknown as {
+        id: string;
+        user_id: string;
+        life_context_json?: unknown;
+      } | null;
+    }
 
     if (!profile) return [];
 
@@ -198,31 +239,49 @@ async function extractAndPersistLifeEvents(
       profile.life_context_json && typeof profile.life_context_json === 'object'
         ? (profile.life_context_json as Record<string, unknown>)
         : {};
+    const existingDeep =
+      profile.deep_profile_json && typeof profile.deep_profile_json === 'object'
+        ? (profile.deep_profile_json as Record<string, unknown>)
+        : {};
+
     const existingNotesList = Array.isArray(existingCtx.cited_insights)
       ? (existingCtx.cited_insights as Array<Record<string, unknown>>)
           .slice(0, 12)
           .map((n) => `- [${String(n.category || 'note')}] ${String(n.summary || '')}`)
           .join('\n')
       : '';
-    const existingSummary = [
-      existingCtx.relationship_status ? `Relationship: ${String(existingCtx.relationship_status)}` : '',
-      existingCtx.children_summary ? `Children: ${String(existingCtx.children_summary)}` : '',
-      existingCtx.career_role ? `Role: ${String(existingCtx.career_role)}` : '',
-      existingCtx.workplace_context ? `Workplace: ${String(existingCtx.workplace_context)}` : '',
-      existingNotesList,
-    ]
+    const existingDeepLines = (Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[])
+      .map((bucketKey) => {
+        const arr = existingDeep[bucketKey];
+        if (!Array.isArray(arr) || arr.length === 0) return '';
+        return `${DEEP_PROFILE_BUCKET_LABELS[bucketKey]}: ${arr.slice(0, 3).map(String).join('; ')}`;
+      })
       .filter(Boolean)
-      .join('\n') || '(none recorded yet)';
+      .join('\n');
+
+    const existingSummary =
+      [
+        existingCtx.relationship_status ? `Relationship: ${String(existingCtx.relationship_status)}` : '',
+        existingCtx.children_summary ? `Children: ${String(existingCtx.children_summary)}` : '',
+        existingCtx.career_role ? `Role: ${String(existingCtx.career_role)}` : '',
+        existingCtx.workplace_context ? `Workplace: ${String(existingCtx.workplace_context)}` : '',
+        existingCtx.location_status ? `Location status: ${String(existingCtx.location_status)}` : '',
+        existingDeepLines,
+        existingNotesList,
+      ]
+        .filter(Boolean)
+        .join('\n') || '(none recorded yet)';
 
     const actorCitation = turnContext?.actorCitation?.trim() || 'Cosmic Council';
     const actorSlug = turnContext?.actorSlug?.trim() || undefined;
     const promptTemplate =
-      (engineOverrides as { profile_memory_extractor_prompt?: string })
-        .profile_memory_extractor_prompt?.trim() || DEFAULT_PROFILE_MEMORY_EXTRACTOR_PROMPT;
+      engineOverrides.memory_deep_profile_extractor_prompt?.trim() ||
+      engineOverrides.profile_memory_extractor_prompt?.trim() ||
+      DEFAULT_MEMORY_DEEP_PROFILE_EXTRACTOR_PROMPT;
 
     const renderedPrompt = applyPromptTemplate(promptTemplate, {
       ACTOR_CITATION: actorCitation,
-      EXISTING_CONTEXT: existingSummary.slice(0, 1400),
+      EXISTING_CONTEXT: existingSummary.slice(0, 1600),
       ALLOWED_MILESTONE_TAGS: Array.from(VALID_ANCHOR_TAGS).join(', '),
       ALLOWED_RELATIONSHIP_STATUSES: Array.from(VALID_RELATIONSHIP_STATUSES).join(', '),
       ALLOWED_CAREER_MODES: Array.from(VALID_CAREER_MODES).join(', '),
@@ -236,7 +295,7 @@ async function extractAndPersistLifeEvents(
       jsonMode: true,
       disableReasoning: true,
       temperature: 0.1,
-      maxTokens: 480,
+      maxTokens: 560,
       messages: [
         {
           role: 'user',
@@ -246,6 +305,7 @@ async function extractAndPersistLifeEvents(
     });
 
     const parsed = safeExtractJson<{
+      supersede_status_updates?: unknown;
       milestones?: unknown;
       core_stress_areas?: unknown;
       relationship_status?: unknown;
@@ -255,6 +315,8 @@ async function extractAndPersistLifeEvents(
       career_mode?: unknown;
       career_role?: unknown;
       workplace_context?: unknown;
+      location_status?: unknown;
+      deep_profile_buckets?: unknown;
       cited_insights?: unknown;
     }>(completion.text, {});
 
@@ -328,12 +390,33 @@ async function extractAndPersistLifeEvents(
         ? parsed.workplace_context.trim().slice(0, 160)
         : undefined;
 
-    const citedInsights: Array<{
-      category: CitedInsightCategory;
-      summary: string;
-      cited_by: string;
-      cited_slug?: string;
-    }> = [];
+    const locationStatus =
+      typeof parsed.location_status === 'string' &&
+      VALID_LOCATION_STATUSES.has(parsed.location_status)
+        ? (parsed.location_status as LocationContextStatus)
+        : undefined;
+
+    const deepBuckets: Partial<Record<DeepProfileBucketKey, string[]>> = {};
+    if (
+      parsed.deep_profile_buckets &&
+      typeof parsed.deep_profile_buckets === 'object' &&
+      !Array.isArray(parsed.deep_profile_buckets)
+    ) {
+      const rawBuckets = parsed.deep_profile_buckets as Record<string, unknown>;
+      for (const [bKey, bVal] of Object.entries(rawBuckets)) {
+        if (!VALID_DEEP_BUCKETS.has(bKey) || !Array.isArray(bVal)) continue;
+        const cleanedArr = bVal
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.replace(/\s+/g, ' ').trim().slice(0, 180))
+          .filter((item) => item.length >= 4)
+          .slice(0, 3);
+        if (cleanedArr.length > 0) {
+          deepBuckets[bKey as DeepProfileBucketKey] = cleanedArr;
+        }
+      }
+    }
+
+    const citedInsights: NonNullable<ExtractedLifeFactsPatch['cited_insights']> = [];
     if (Array.isArray(parsed.cited_insights)) {
       for (const rawItem of parsed.cited_insights.slice(0, 6)) {
         if (!rawItem || typeof rawItem !== 'object') continue;
@@ -342,17 +425,29 @@ async function extractAndPersistLifeEvents(
         const category: CitedInsightCategory = VALID_CITED_INSIGHT_CATEGORIES.has(rawCat)
           ? (rawCat as CitedInsightCategory)
           : 'practical_life';
+        const rawBucket = typeof row.bucket === 'string' ? row.bucket.trim() : '';
+        const bucket = VALID_DEEP_BUCKETS.has(rawBucket)
+          ? (rawBucket as DeepProfileBucketKey)
+          : undefined;
         const summary = typeof row.summary === 'string' ? row.summary.trim().slice(0, 180) : '';
         if (!summary || summary.length < 4) continue;
+        const supersedesTopic =
+          typeof row.supersedes_topic === 'string' && row.supersedes_topic.trim().length >= 3
+            ? row.supersedes_topic.trim().slice(0, 48)
+            : undefined;
         citedInsights.push({
           category,
+          ...(bucket ? { bucket } : {}),
           summary,
+          ...(supersedesTopic ? { supersedes_topic: supersedesTopic } : {}),
           cited_by: actorCitation,
           ...(actorSlug ? { cited_slug: actorSlug } : {}),
+          conversation_id: turnContext?.conversationId || null,
         });
       }
     }
 
+    const hasDeepBuckets = Object.keys(deepBuckets).length > 0;
     if (
       milestones.length === 0 &&
       stressAreas.length === 0 &&
@@ -363,12 +458,14 @@ async function extractAndPersistLifeEvents(
       !careerMode &&
       !careerRole &&
       !workplaceContext &&
+      !locationStatus &&
+      !hasDeepBuckets &&
       citedInsights.length === 0
     ) {
       return [];
     }
 
-    const merged = mergeExtractedLifeFacts(profile.life_context_json, {
+    const patchPayload: ExtractedLifeFactsPatch = {
       milestones,
       core_stress_areas: stressAreas,
       relationship_status: relStatus,
@@ -378,21 +475,49 @@ async function extractAndPersistLifeEvents(
       career_mode: careerMode,
       career_role: careerRole,
       workplace_context: workplaceContext,
+      location_status: locationStatus,
+      supersede_status_updates: Boolean(parsed.supersede_status_updates),
+      ...(hasDeepBuckets ? { deep_profile_buckets: deepBuckets } : {}),
       cited_insights: citedInsights,
       actor_citation: actorCitation,
       actor_slug: actorSlug,
-    });
+      conversation_id: turnContext?.conversationId || null,
+    };
 
-    if (merged.changed) {
-      await supabaseAdmin
+    const mergedLife = mergeExtractedLifeFacts(profile.life_context_json, patchPayload);
+    const mergedDeep = hasDeepProfileCol
+      ? mergeExtractedDeepProfile(profile.deep_profile_json, patchPayload)
+      : { sanitized: {}, changed: false };
+
+    if (mergedLife.changed || mergedDeep.changed) {
+      const updatePayload: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (mergedLife.changed) {
+        updatePayload.life_context_json = mergedLife.sanitized;
+        updatePayload.life_context_completeness = mergedLife.completeness;
+      }
+      if (hasDeepProfileCol && mergedDeep.changed) {
+        updatePayload.deep_profile_json = mergedDeep.sanitized;
+      }
+
+      const updateRes = await supabaseAdmin
         .from('profiles')
-        .update({
-          life_context_json: merged.sanitized,
-          life_context_completeness: merged.completeness,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', profileId)
         .eq('user_id', userId);
+
+      if (updateRes.error && hasDeepProfileCol && mergedLife.changed) {
+        await supabaseAdmin
+          .from('profiles')
+          .update({
+            life_context_json: mergedLife.sanitized,
+            life_context_completeness: mergedLife.completeness,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', profileId)
+          .eq('user_id', userId);
+      }
     }
 
     return stressAreas;
@@ -408,6 +533,7 @@ export async function updateCompanionProfileMemoryAfterTurn(params: {
   companionName: string;
   companionRole?: string | null;
   companionSlug: string;
+  conversationId?: string | null;
   latestUserPrompt: string;
   latestAssistantAnswer?: string;
 }): Promise<void> {
@@ -415,11 +541,12 @@ export async function updateCompanionProfileMemoryAfterTurn(params: {
   const cleanName = params.companionName.trim() || 'Companion';
   const cleanRole = (params.companionRole || '').trim();
   const actorCitation = cleanRole ? `${cleanName} · ${cleanRole}` : cleanName;
-  await extractAndPersistLifeEvents(params.profileId, params.userId, {
+  await extractAndPersistDeepProfileFacts(params.profileId, params.userId, {
     latestUserPrompt: params.latestUserPrompt,
     latestAssistantAnswer: params.latestAssistantAnswer,
     actorCitation,
     actorSlug: params.companionSlug,
+    conversationId: params.conversationId || null,
   });
 }
 
@@ -465,9 +592,11 @@ export async function updateProfileMemoryAfterTurn(
   userId: string,
   turnContext?: ArchivistTurnContext
 ): Promise<void> {
-  const extractedStress = await extractAndPersistLifeEvents(profileId, userId, turnContext).catch(
-    () => [] as string[]
-  );
+  const extractedStress = await extractAndPersistDeepProfileFacts(
+    profileId,
+    userId,
+    turnContext
+  ).catch(() => [] as string[]);
   const enrichedTurnContext: ArchivistTurnContext | undefined = turnContext
     ? {
         ...turnContext,
@@ -479,7 +608,7 @@ export async function updateProfileMemoryAfterTurn(
     : undefined;
 
   await Promise.allSettled([
-    rebuildProfileMemory(profileId, userId),
+    rebuildProfileMemory(profileId, userId, turnContext),
     updateSilentUserIntelligence(userId, enrichedTurnContext),
   ]);
 }
@@ -490,18 +619,22 @@ export async function updateProfileMemoryAfterTurn(
  */
 export async function rebuildProfileMemory(
   profileId: string,
-  userId: string
+  userId: string,
+  turnContext?: Pick<ArchivistTurnContext, 'latestUserPrompt' | 'latestAssistantAnswer'>
 ): Promise<void> {
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin || !(await isOpenRouterConfiguredAsync())) return;
 
   try {
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('id, name, user_id')
-      .eq('id', profileId)
-      .eq('user_id', userId)
-      .maybeSingle();
+    const [{ data: profile }, engineOverrides] = await Promise.all([
+      supabaseAdmin
+        .from('profiles')
+        .select('id, name, user_id, profile_memory_summary')
+        .eq('id', profileId)
+        .eq('user_id', userId)
+        .maybeSingle(),
+      getEnginePromptOverrides().catch(() => ({} as Record<string, never>)),
+    ]);
 
     if (!profile) return;
 
@@ -538,10 +671,38 @@ export async function rebuildProfileMemory(
       return;
     }
 
-    const transcript = [...messages]
-      .reverse()
+    const chronological = [...messages].reverse();
+    const transcript = chronological
       .map((m) => `${m.role === 'user' ? 'USER' : 'COUNCIL'}: ${String(m.content).slice(0, 600)}`)
       .join('\n\n');
+
+    const latestUserEx =
+      turnContext?.latestUserPrompt?.trim() ||
+      [...chronological].reverse().find((m) => m.role === 'user')?.content ||
+      '';
+    const latestAssistantEx =
+      turnContext?.latestAssistantAnswer?.trim() ||
+      [...chronological].reverse().find((m) => m.role === 'assistant')?.content ||
+      '';
+
+    const synthesizerTemplate =
+      engineOverrides.memory_profile_synthesizer_prompt?.trim() ||
+      DEFAULT_MEMORY_PROFILE_SYNTHESIZER_PROMPT;
+
+    const renderedPrompt = applyPromptTemplate(synthesizerTemplate, {
+      PROFILE_NAME: String(profile.name || 'Profile'),
+      EXISTING_SUMMARY:
+        typeof profile.profile_memory_summary === 'string' && profile.profile_memory_summary.trim()
+          ? profile.profile_memory_summary.trim()
+          : '(none recorded yet)',
+      USER_MESSAGE: String(latestUserEx).slice(0, 1200),
+      ASSISTANT_REPLY: String(latestAssistantEx).slice(0, 1200),
+      TRANSCRIPT: transcript.slice(0, 3600),
+    });
+
+    const finalSynthPrompt = renderedPrompt.includes(transcript.slice(0, 80))
+      ? renderedPrompt
+      : `${renderedPrompt}\n\nRECENT ACTIVE SESSION EXCERPTS (For "${profile.name}"):\n${transcript.slice(0, 3200)}`;
 
     const utilityModel = await getUtilityModelAsync();
     const completion = await createOpenRouterCompletion({
@@ -550,14 +711,7 @@ export async function rebuildProfileMemory(
       messages: [
         {
           role: 'user',
-          content: `Summarize the longitudinal consultation memory for profile "${profile.name}" from these recent active consultation excerpts.
-Focus strictly on:
-- Key life events, goals, or decisions the user shared (e.g., marriage, career change, relocation, health focus).
-- Major astrological themes and active timing cycles (Dasha, Annual Profection, Progressions, or Transit periods) already explored so future sessions remain coherent without repeating basics.
-Keep the summary under 220 words in concise bullet points.
-
-TRANSCRIPT EXCERPTS:
-${transcript}`,
+          content: finalSynthPrompt,
         },
       ],
     });
@@ -572,6 +726,171 @@ ${transcript}`,
       .eq('id', profileId);
   } catch (err) {
     console.warn('[memoryArchivist] Non-fatal memory rebuild error:', err);
+  }
+}
+
+export async function compactConversationThreadMemory(params: {
+  conversationId: string;
+  userId: string;
+  previousSummary?: string | null;
+  messagesToCompact: Array<{ role: string; content: string }>;
+  totalCompactedCount: number;
+}): Promise<string | null> {
+  if (!params.conversationId || !params.userId || params.messagesToCompact.length === 0) {
+    return null;
+  }
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !(await isOpenRouterConfiguredAsync())) return null;
+
+  try {
+    const [engineOverrides, utilityModel] = await Promise.all([
+      getEnginePromptOverrides().catch(() => ({} as Record<string, never>)),
+      getUtilityModelAsync(),
+    ]);
+
+    const messagesBlock = params.messagesToCompact
+      .map((m) => {
+        const speaker = m.role === 'assistant' ? 'ASSISTANT' : 'USER';
+        const cleaned = String(m.content || '')
+          .replace(/\[\[BUBBLE\]\]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 700);
+        return `${speaker}: ${cleaned}`;
+      })
+      .join('\n\n')
+      .slice(0, 9500);
+
+    const template =
+      engineOverrides.memory_rolling_thread_compactor_prompt?.trim() ||
+      DEFAULT_MEMORY_ROLLING_THREAD_COMPACTOR_PROMPT;
+
+    const rendered = applyPromptTemplate(template, {
+      PREVIOUS_SUMMARY: params.previousSummary?.trim() || '(none yet — start fresh from these turns)',
+      MESSAGES_BLOCK: messagesBlock,
+    });
+
+    const completion = await createOpenRouterCompletion({
+      model: utilityModel,
+      temperature: 0.2,
+      disableReasoning: true,
+      maxTokens: 540,
+      messages: [{ role: 'user', content: rendered }],
+    });
+
+    const nextSummary = completion.text.trim().slice(0, 2600);
+    if (!nextSummary) return null;
+
+    const { error } = await supabaseAdmin
+      .from('conversations')
+      .update({
+        thread_memory_summary: nextSummary,
+        thread_memory_msg_count: Math.max(0, Math.trunc(params.totalCompactedCount)),
+      })
+      .eq('id', params.conversationId)
+      .eq('user_id', params.userId);
+
+    if (error) {
+      // Gracefully ignore if Migration 018 columns aren't applied yet
+      return null;
+    }
+    return nextSummary;
+  } catch (err) {
+    console.warn('[memoryArchivist] Non-fatal thread compaction error:', err);
+    return null;
+  }
+}
+
+export async function extractAndPersistCouncilAnalystNotes(params: {
+  profileId: string;
+  userId: string;
+  conversationId?: string | null;
+  expertLabel: string;
+  expertSlug: string;
+  userPrompt: string;
+  assistantAnswer: string;
+}): Promise<void> {
+  if (!params.profileId || !params.userId) return;
+  const promptClean = String(params.userPrompt || '').trim();
+  const answerClean = String(params.assistantAnswer || '')
+    .replace(/\[\[BUBBLE\]\]/g, ' ')
+    .trim();
+  if (promptClean.length < 6 || answerClean.length < 80 || TRIVIAL_ACK_RE.test(promptClean)) {
+    return;
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin || !(await isOpenRouterConfiguredAsync())) return;
+
+  try {
+    const { data: profile, error: readErr } = await supabaseAdmin
+      .from('profiles')
+      .select('id, user_id, analyst_notes_json')
+      .eq('id', params.profileId)
+      .eq('user_id', params.userId)
+      .maybeSingle();
+
+    if (readErr || !profile) {
+      // Gracefully skip if Migration 018 analyst_notes_json is not yet applied
+      return;
+    }
+
+    const utilityModel = await getUtilityModelAsync();
+    const completion = await createOpenRouterCompletion({
+      model: utilityModel,
+      jsonMode: true,
+      disableReasoning: true,
+      temperature: 0.1,
+      maxTokens: 280,
+      messages: [
+        {
+          role: 'user',
+          content: `Distill 0 to 2 concise factual chart/timing takeaways from this ${params.expertLabel} reading so a chart-aware Companion can stay aligned with the user's Council readings.
+
+RULES:
+- Only record concrete structural findings, planetary strengths/cancellations, or Dasha/transit timing windows explicitly stated in the ASSISTANT REPLY.
+- Never invent placements, degrees, or dates not in the reply.
+- Keep each note calm, grounded, and under 200 characters (return {"notes": []} if the reply is purely introductory or non-chart-specific).
+
+USER QUESTION: ${promptClean.slice(0, 400)}
+
+ASSISTANT REPLY EXCERPT:
+${answerClean.slice(0, 2200)}
+
+Return strictly JSON: {"notes": ["..."]}`,
+        },
+      ],
+    });
+
+    const parsed = safeExtractJson<{ notes?: unknown }>(completion.text, {});
+    const rawNotes = Array.isArray(parsed.notes)
+      ? parsed.notes.filter((n): n is string => typeof n === 'string' && n.trim().length >= 8).slice(0, 2)
+      : [];
+
+    if (rawNotes.length === 0) return;
+
+    const { notes, changed } = appendCouncilAnalystNotes(
+      (profile as { analyst_notes_json?: unknown }).analyst_notes_json,
+      rawNotes.map((summary) => ({
+        summary: summary.trim().slice(0, 220),
+        system_label: params.expertLabel.trim() || 'Cosmic Council',
+        system_slug: params.expertSlug.trim() || 'vedic_astrologer',
+        conversation_id: params.conversationId || null,
+      }))
+    );
+
+    if (changed) {
+      await supabaseAdmin
+        .from('profiles')
+        .update({
+          analyst_notes_json: notes,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', params.profileId)
+        .eq('user_id', params.userId);
+    }
+  } catch (err) {
+    console.warn('[memoryArchivist] Non-fatal analyst notes extraction error:', err);
   }
 }
 
@@ -808,8 +1127,9 @@ export async function updateCompanionBondAfterTurn(params: {
           getEnginePromptOverrides().catch(() => ({} as Record<string, never>)),
         ]);
         const bondTemplate =
-          (engineOverrides as { companion_bond_extractor_prompt?: string })
-            .companion_bond_extractor_prompt?.trim() || DEFAULT_COMPANION_BOND_EXTRACTOR_PROMPT;
+          engineOverrides.memory_companion_bond_prompt?.trim() ||
+          engineOverrides.companion_bond_extractor_prompt?.trim() ||
+          DEFAULT_MEMORY_COMPANION_BOND_PROMPT;
         const bondPrompt = applyPromptTemplate(bondTemplate, {
           COMPANION_NAME: params.companionName,
           EXISTING_SUMMARY: current.memory_summary || '(none yet)',

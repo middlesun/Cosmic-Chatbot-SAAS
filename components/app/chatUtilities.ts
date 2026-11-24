@@ -48,6 +48,8 @@ export function cleanCompanionMarkupText(raw: string): string {
 /**
  * Converts Markdown into clean, calm spoken prose with natural pauses and zero symbol artifacts.
  */
+import type { CompanionSex } from './chatTypes';
+
 export function stripMarkdownForSpeech(markdown: string): string {
   if (!markdown) return '';
   let text = cleanCompanionMarkupText(markdown)
@@ -108,7 +110,7 @@ const LANGUAGE_TO_BCP47: Record<string, string[]> = {
 function pickBestSpeechVoice(
   voices: SpeechSynthesisVoice[],
   languageSlug?: string | null,
-  preferredGender?: 'M' | 'F'
+  preferredGender?: CompanionSex
 ): { voice: SpeechSynthesisVoice | null; lang: string } {
   const preferredLangs =
     (languageSlug && LANGUAGE_TO_BCP47[languageSlug]) || LANGUAGE_TO_BCP47.English;
@@ -238,7 +240,7 @@ export function speakMessageText(
     onError?: () => void;
     rate?: number;
     pitch?: number;
-    gender?: 'M' | 'F';
+    gender?: CompanionSex;
   } = {}
 ): boolean {
   if (!isSpeechSynthesisSupported()) {

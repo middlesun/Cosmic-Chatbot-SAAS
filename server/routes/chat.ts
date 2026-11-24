@@ -18,6 +18,8 @@ import {
 import { isAstrologyApiConfigured } from '../services/astrologyApi';
 import { compileBirthChart, enrichCompiledChart, type CompiledChartData } from '../services/chartCompiler';
 import {
+  compactConversationThreadMemory,
+  extractAndPersistCouncilAnalystNotes,
   getCompanionBond,
   rebuildProfileMemory,
   recordCompanionBubbleReactionBond,
@@ -28,6 +30,7 @@ import {
 } from '../services/memoryArchivist';
 import { getPublicChatCatalogCached } from '../services/promptDefaults';
 import {
+  getEnginePromptOverrides,
   getPricingConfig,
   getPublicChatbotUiConfig,
   getPublicSuggestionsConfig,
@@ -47,6 +50,7 @@ import {
   getCompanionBySlug,
   getPublicCompanionsCatalogCached,
   normalizeCompanionSlug,
+  resolveCompanionCapabilities,
   toPublicCompanionCard,
   type CompanionPresetRecord,
 } from '../services/companionPresets';
@@ -70,6 +74,10 @@ import {
   mergeLifeContextPatch,
   type LifeContextData,
 } from '../services/lifeContextGuard';
+import type {
+  CouncilAnalystNote,
+  DeepProfileData,
+} from '../../lib/lifeContextSchema';
 import {
   buildNatalTruthDossierLayerA,
   buildWesternTruthDossier,
@@ -100,6 +108,7 @@ const CONVERSATION_LIST_COLUMNS_BASE =
 const CONVERSATION_LIST_COLUMNS_V5 = `${CONVERSATION_LIST_COLUMNS_BASE}, ask_later_json`;
 const CONVERSATION_LIST_COLUMNS_V6 = `${CONVERSATION_LIST_COLUMNS_V5}, pillar, is_active_tab, active_tab_order, companion_type, companion_persona_json`;
 const CONVERSATION_LIST_COLUMNS_V7 = `${CONVERSATION_LIST_COLUMNS_V6}, companion_slug, companion_chat_mode`;
+const CONVERSATION_TURN_COLUMNS_V8 = `${CONVERSATION_LIST_COLUMNS_V7}, thread_memory_summary, thread_memory_msg_count`;
 
 const MESSAGE_SELECT_COLUMNS_BASE =
   'id, conversation_id, parent_message_id, role, content, word_count, expert_used, mode_used, output_format_used, language_used, is_starred, excluded_from_context, followups_json, credits_charged, created_at';
@@ -153,7 +162,9 @@ function buildPublicCompanionPersonaSnapshot(preset: CompanionPresetRecord): Rec
     role_label: preset.primary_expertise,
     background: preset.cultural_fluency,
     tagline: preset.tagline,
+    card_subtitle: preset.card_subtitle || undefined,
     bio: preset.short_bio || preset.full_bio,
+    how_conversations_feel: preset.how_conversations_feel || undefined,
     conversation_style: preset.primary_expertise,
     opening_message: preset.welcome_messages[0] || '',
     avatar_url: preset.avatar_url,
@@ -1596,7 +1607,7 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
     slug: customSlug,
     name: String(rawPersona.name).trim().slice(0, 50),
     age: Number.isFinite(Number(rawPersona.age)) ? Math.round(Number(rawPersona.age)) : 32,
-    gender: rawPersona.gender === 'M' ? 'M' : 'F',
+    gender: rawPersona.gender === 'M' ? 'M' : rawPersona.gender === 'NB' ? 'NB' : 'F',
     companion_type: safeType,
     role_label: String(rawPersona.role_label || 'Companion').trim().slice(0, 60),
     background: String(rawPersona.background || '').trim().slice(0, 140),
@@ -2288,41 +2299,56 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     companion_slug?: string | null;
     companion_chat_mode?: CompanionChatCue | null;
     companion_persona_json?: CompanionPersona | null;
+    thread_memory_summary?: string | null;
+    thread_memory_msg_count?: number | null;
   } | null = null;
 
-  const convLoadV7 = await supabaseAdmin
+  const convLoadV8 = await supabaseAdmin
     .from('conversations')
-    .select(CONVERSATION_LIST_COLUMNS_V7)
+    .select(CONVERSATION_TURN_COLUMNS_V8)
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
 
-  if (!convLoadV7.error && convLoadV7.data) {
+  if (!convLoadV8.error && convLoadV8.data) {
     conversation = normalizeConversationDefaults(
-      convLoadV7.data as unknown as Record<string, unknown>
+      convLoadV8.data as unknown as Record<string, unknown>
     ) as unknown as typeof conversation;
   } else {
-    const convLoadV6 = await supabaseAdmin
+    const convLoadV7 = await supabaseAdmin
       .from('conversations')
-      .select(CONVERSATION_LIST_COLUMNS_V6)
+      .select(CONVERSATION_LIST_COLUMNS_V7)
       .eq('id', req.params.id)
       .eq('user_id', req.appUser.id)
       .maybeSingle();
-    if (!convLoadV6.error && convLoadV6.data) {
+
+    if (!convLoadV7.error && convLoadV7.data) {
       conversation = normalizeConversationDefaults(
-        convLoadV6.data as unknown as Record<string, unknown>
+        convLoadV7.data as unknown as Record<string, unknown>
       ) as unknown as typeof conversation;
     } else {
-      const convLoadBase = await supabaseAdmin
+      const convLoadV6 = await supabaseAdmin
         .from('conversations')
-        .select(CONVERSATION_LIST_COLUMNS_BASE)
+        .select(CONVERSATION_LIST_COLUMNS_V6)
         .eq('id', req.params.id)
         .eq('user_id', req.appUser.id)
         .maybeSingle();
-      if (convLoadBase.data) {
+      if (!convLoadV6.error && convLoadV6.data) {
         conversation = normalizeConversationDefaults(
-          convLoadBase.data as unknown as Record<string, unknown>
+          convLoadV6.data as unknown as Record<string, unknown>
         ) as unknown as typeof conversation;
+      } else {
+        const convLoadBase = await supabaseAdmin
+          .from('conversations')
+          .select(CONVERSATION_LIST_COLUMNS_BASE)
+          .eq('id', req.params.id)
+          .eq('user_id', req.appUser.id)
+          .maybeSingle();
+        if (convLoadBase.data) {
+          conversation = normalizeConversationDefaults(
+            convLoadBase.data as unknown as Record<string, unknown>
+          ) as unknown as typeof conversation;
+        }
       }
     }
   }
@@ -2532,6 +2558,8 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     profile_memory_summary: string | null;
     life_context_json?: LifeContextData | null;
     life_context_completeness?: number | null;
+    deep_profile_json?: DeepProfileData | null;
+    analyst_notes_json?: CouncilAnalystNote[] | null;
     birth_date: string;
     birth_time: string;
     birth_city: string;
@@ -2549,9 +2577,10 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   if (activePillar === 'council' && conversation.profile_id) {
     const baseCols =
       'id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_state, birth_country, gender, relationship, latitude, longitude, timezone_offset';
-    const fullCols = `${baseCols}, short_name, current_city, current_state, current_country, life_context_json, life_context_completeness${
+    const pre018Cols = `${baseCols}, short_name, current_city, current_state, current_country, life_context_json, life_context_completeness${
       needsChartJson ? ', chart_json' : ''
     }${isAstrologyReadingTurn ? ', natal_truth_dossier_json' : ''}`;
+    const fullCols = `${pre018Cols}, deep_profile_json`;
     const fallbackCols = `${baseCols}${needsChartJson ? ', chart_json' : ''}`;
 
     const profPrimary = await supabaseAdmin
@@ -2563,13 +2592,23 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
     let prof = profPrimary.data as unknown as typeof profileData;
     if (profPrimary.error) {
-      const profFallback = await supabaseAdmin
+      const profPre018 = await supabaseAdmin
         .from('profiles')
-        .select(fallbackCols)
+        .select(pre018Cols)
         .eq('id', conversation.profile_id)
         .eq('user_id', req.appUser.id)
         .maybeSingle();
-      prof = profFallback.data as unknown as typeof profileData;
+      if (!profPre018.error && profPre018.data) {
+        prof = profPre018.data as unknown as typeof profileData;
+      } else {
+        const profFallback = await supabaseAdmin
+          .from('profiles')
+          .select(fallbackCols)
+          .eq('id', conversation.profile_id)
+          .eq('user_id', req.appUser.id)
+          .maybeSingle();
+        prof = profFallback.data as unknown as typeof profileData;
+      }
     }
 
     if (prof && (!prof.chart_text_context || (needsChartJson && !prof.chart_json)) && isAstrologyApiConfigured()) {
@@ -2670,31 +2709,80 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     // Companions share conversational bond across ALL conversations with this same companion slug,
     // honor the per-thread focused chart (conversation.profile_id) when set or fall back to the
     // user's default ("You") profile, and strictly isolate Council memory from Companions.
-    const companionSkillLevel =
-      presetCompanion?.skill_level || activeCompanionPersona?.skill_level || 'none_emotional';
-    const needsCompanionChartJson =
-      companionSkillLevel === 'astrology_soft' ||
-      companionSkillLevel === 'vedic_soft' ||
-      companionSkillLevel === 'past_life';
-    const compProfileCols = `id, name, short_name, is_activated, chart_text_context, birth_date, birth_time, birth_city, birth_country, gender, current_city, current_country, life_context_json${
+    const engineOverridesForComp = await getEnginePromptOverrides();
+    const companionCaps = resolveCompanionCapabilities(
+      presetCompanion ||
+        (activeCompanionPersona
+          ? {
+              slug: activeCompanionPersona.slug || effectiveCompanionSlug || '',
+              primary_expertise: activeCompanionPersona.role_label || '',
+              skill_level: activeCompanionPersona.skill_level || 'none_emotional',
+              companion_group: activeCompanionPersona.companion_group,
+              advisory_mode: activeCompanionPersona.advisory_mode,
+              chart_access: activeCompanionPersona.chart_access,
+              formula_cartridge_slugs: activeCompanionPersona.formula_cartridge_slugs,
+              max_output_tokens: activeCompanionPersona.max_output_tokens ?? null,
+              chat_style: activeCompanionPersona.chat_style,
+            }
+          : null),
+      engineOverridesForComp
+    );
+    const needsCompanionChartJson = Boolean(
+      companionCaps.chart_access.vedic ||
+        companionCaps.chart_access.western ||
+        companionCaps.chart_access.past_life
+    );
+    const needsCompanionNotes = Boolean(
+      companionCaps.chart_access.council_notes ||
+        companionCaps.chart_access.vedic ||
+        companionCaps.chart_access.western ||
+        companionCaps.chart_access.tarot ||
+        companionCaps.chart_access.numerology ||
+        companionCaps.chart_access.past_life
+    );
+    const compBaseCols = `id, name, is_activated, chart_text_context, birth_date, birth_time, birth_city, birth_state, birth_country, gender, latitude, longitude, timezone_offset${
       needsCompanionChartJson ? ', chart_json' : ''
     }`;
+    const compProfileColsPre018 = `${compBaseCols}, short_name, current_city, current_state, current_country, life_context_json`;
+    const compProfileCols = `${compProfileColsPre018}, deep_profile_json${
+      needsCompanionNotes ? ', analyst_notes_json' : ''
+    }`;
 
-    let focusedCompanionProf: Record<string, unknown> | null = null;
+    let focusedCompanionProf: NonNullable<typeof profileData> | null = null;
     if (conversation.profile_id) {
-      const { data: threadProf } = await supabaseAdmin
+      const threadRes = await supabaseAdmin
         .from('profiles')
         .select(compProfileCols)
         .eq('id', conversation.profile_id)
         .eq('user_id', req.appUser.id)
         .maybeSingle();
-      if (threadProf) {
-        focusedCompanionProf = threadProf as unknown as Record<string, unknown>;
+      if (!threadRes.error && threadRes.data) {
+        focusedCompanionProf = threadRes.data as unknown as NonNullable<typeof profileData>;
+      } else if (threadRes.error) {
+        const threadPre018 = await supabaseAdmin
+          .from('profiles')
+          .select(compProfileColsPre018)
+          .eq('id', conversation.profile_id)
+          .eq('user_id', req.appUser.id)
+          .maybeSingle();
+        if (!threadPre018.error && threadPre018.data) {
+          focusedCompanionProf = threadPre018.data as unknown as NonNullable<typeof profileData>;
+        } else {
+          const threadFallback = await supabaseAdmin
+            .from('profiles')
+            .select(compBaseCols)
+            .eq('id', conversation.profile_id)
+            .eq('user_id', req.appUser.id)
+            .maybeSingle();
+          if (threadFallback.data) {
+            focusedCompanionProf = threadFallback.data as unknown as NonNullable<typeof profileData>;
+          }
+        }
       }
     }
 
     if (!focusedCompanionProf) {
-      const { data: ownDefaultProf } = await supabaseAdmin
+      const ownRes = await supabaseAdmin
         .from('profiles')
         .select(compProfileCols)
         .eq('user_id', req.appUser.id)
@@ -2702,14 +2790,79 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         .order('created_at', { ascending: true })
         .limit(1)
         .maybeSingle();
-      if (ownDefaultProf) {
-        focusedCompanionProf = ownDefaultProf as unknown as Record<string, unknown>;
+      if (!ownRes.error && ownRes.data) {
+        focusedCompanionProf = ownRes.data as unknown as NonNullable<typeof profileData>;
+      } else if (ownRes.error) {
+        const ownPre018 = await supabaseAdmin
+          .from('profiles')
+          .select(compProfileColsPre018)
+          .eq('user_id', req.appUser.id)
+          .order('is_default', { ascending: false })
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (!ownPre018.error && ownPre018.data) {
+          focusedCompanionProf = ownPre018.data as unknown as NonNullable<typeof profileData>;
+        } else {
+          const ownFallback = await supabaseAdmin
+            .from('profiles')
+            .select(compBaseCols)
+            .eq('user_id', req.appUser.id)
+            .order('is_default', { ascending: false })
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          if (ownFallback.data) {
+            focusedCompanionProf = ownFallback.data as unknown as NonNullable<typeof profileData>;
+          }
+        }
+      }
+    }
+
+    if (
+      focusedCompanionProf &&
+      needsCompanionChartJson &&
+      (!focusedCompanionProf.chart_text_context || !focusedCompanionProf.chart_json) &&
+      isAstrologyApiConfigured()
+    ) {
+      try {
+        const compiled = await compileBirthChart({
+          name: focusedCompanionProf.name,
+          birthDate: focusedCompanionProf.birth_date,
+          birthTime: focusedCompanionProf.birth_time,
+          birthCity: focusedCompanionProf.birth_city,
+          birthState: focusedCompanionProf.birth_state || null,
+          birthCountry: focusedCompanionProf.birth_country,
+          latitude: focusedCompanionProf.latitude ?? null,
+          longitude: focusedCompanionProf.longitude ?? null,
+          timezoneOffset: focusedCompanionProf.timezone_offset ?? null,
+        });
+        await supabaseAdmin
+          .from('profiles')
+          .update({
+            latitude: compiled.location.latitude,
+            longitude: compiled.location.longitude,
+            timezone_offset: compiled.location.timezoneOffset,
+            chart_json: compiled.chartJson,
+            chart_text_context: compiled.chartTextContext,
+            is_activated: true,
+            activated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', focusedCompanionProf.id)
+          .eq('user_id', req.appUser.id);
+
+        focusedCompanionProf.is_activated = true;
+        focusedCompanionProf.chart_text_context = compiled.chartTextContext;
+        focusedCompanionProf.chart_json = compiled.chartJson;
+      } catch {
+        // Proceed gracefully even if live ephemeris fetch fails transiently
       }
     }
 
     if (focusedCompanionProf) {
       profileData = {
-        ...(focusedCompanionProf as unknown as NonNullable<typeof profileData>),
+        ...focusedCompanionProf,
         profile_memory_summary: null, // Strictly isolate Council memory from Companions
       };
     }
@@ -3650,87 +3803,142 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
             .single()
       );
 
-    // Async non-blocking memory updates strictly isolated per pillar
-    if (
-      activePillar === 'council' &&
-      conversation.profile_id &&
-      !streamResult.aborted &&
-      !wasLeakIntercepted
-    ) {
-      const archivistTradition: 'vedic' | 'western' =
-        expertSlug === 'western_astrologer' ||
-        expertSlug === 'modern_astrologer' ||
-        expertSlug === 'hellenistic_astrologer'
-          ? 'western'
-          : 'vedic';
-      const councilCitationMap: Record<string, string> = {
-        vedic_astrologer: 'Vedic Astrologer',
-        kp_precision: 'KP Precision Astrologer',
-        jaimini: 'Jaimini Astrologer',
-        western_astrologer: 'Western Astrologer',
-        hellenistic_astrologer: 'Hellenistic Astrologer',
-        learn_astrology: 'Astrology Tutor',
-      };
-      void updateProfileMemoryAfterTurn(conversation.profile_id, req.appUser.id, {
-        routerResult: stage1Decision?.routerResult || null,
-        domain: streamResult.vedicMeta?.domain || modeSlug,
-        effectiveFluency: streamResult.vedicMeta?.effectiveFluency || null,
-        hasTechnicalDirective: Boolean(safeTechnicalDirective),
-        isDeepAudit: useDeepAudit,
-        tradition: archivistTradition,
-        latestUserPrompt: promptText,
-        latestAssistantAnswer: finalAssistantText,
-        actorCitation: councilCitationMap[expertSlug] || 'Cosmic Council',
-        actorSlug: expertSlug,
-      });
-    } else if (
-      activePillar === 'companion' &&
-      effectiveCompanionSlug &&
-      !streamResult.aborted &&
-      !wasLeakIntercepted
-    ) {
-      const companionName =
-        presetCompanion?.name || activeCompanionPersona?.name || 'Companion';
-      const companionRole =
-        presetCompanion?.primary_expertise || activeCompanionPersona?.role_label || null;
-      const companionProfileId = profileData?.id || conversation.profile_id || null;
-      const activeUserId = req.appUser.id;
-      const convIdForUpdate = conversation.id;
-      scheduleBackgroundTask(async () => {
-        await Promise.allSettled([
-          updateCompanionBondAfterTurn({
-            userId: activeUserId,
-            companionSlug: effectiveCompanionSlug,
-            companionName,
-            userPrompt: promptText,
-            assistantAnswer: finalAssistantText,
-          }),
-          ...(companionProfileId
-            ? [
-                updateCompanionProfileMemoryAfterTurn({
-                  profileId: companionProfileId,
-                  userId: activeUserId,
-                  companionName,
-                  companionRole,
-                  companionSlug: effectiveCompanionSlug,
-                  latestUserPrompt: promptText,
-                  latestAssistantAnswer: finalAssistantText,
-                }),
-              ]
-            : []),
-        ]);
-        if (effectiveCompanionSlug.startsWith('custom_')) {
-          await supabaseAdmin
-            .from('user_custom_companions')
-            .update({
-              last_conversation_id: convIdForUpdate,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('user_id', activeUserId)
-            .eq('slug', effectiveCompanionSlug)
-            .then(() => undefined, () => undefined);
+    // Async non-blocking memory, deep-profile, analyst notes & rolling thread compaction
+    if (!streamResult.aborted && !wasLeakIntercepted) {
+      const postTurnActiveHistory = [
+        ...(historyRows || [])
+          .filter((m) => !m.excluded_from_context)
+          .map((m) => ({ role: String(m.role), content: String(m.content || '') })),
+        { role: 'user', content: persistedUserContent },
+        { role: 'assistant', content: finalAssistantText },
+      ];
+      const verbatimWindow = 18;
+      if (postTurnActiveHistory.length > verbatimWindow) {
+        const targetCompactedCount = postTurnActiveHistory.length - verbatimWindow;
+        const prevCompactedCount = Math.max(
+          0,
+          Math.trunc(Number(conversation.thread_memory_msg_count) || 0)
+        );
+        const hasPrevSummary = Boolean(conversation.thread_memory_summary?.trim());
+        const shouldCompactThread =
+          !hasPrevSummary || targetCompactedCount - prevCompactedCount >= 8;
+
+        if (shouldCompactThread) {
+          const sliceStart =
+            hasPrevSummary && prevCompactedCount > 0 && prevCompactedCount < targetCompactedCount
+              ? prevCompactedCount
+              : 0;
+          const messagesToCompact = postTurnActiveHistory.slice(sliceStart, targetCompactedCount);
+          const convIdForCompact = conversation.id;
+          const userIdForCompact = req.appUser.id;
+          const prevSummaryForCompact =
+            sliceStart > 0 ? conversation.thread_memory_summary || null : null;
+          scheduleBackgroundTask(async () => {
+            await compactConversationThreadMemory({
+              conversationId: convIdForCompact,
+              userId: userIdForCompact,
+              previousSummary: prevSummaryForCompact,
+              messagesToCompact,
+              totalCompactedCount: targetCompactedCount,
+            });
+          });
         }
-      });
+      }
+
+      if (
+        activePillar === 'council' &&
+        conversation.profile_id &&
+        conversation.use_full_profile_memory !== false
+      ) {
+        const archivistTradition: 'vedic' | 'western' =
+          expertSlug === 'western_astrologer' ||
+          expertSlug === 'modern_astrologer' ||
+          expertSlug === 'hellenistic_astrologer'
+            ? 'western'
+            : 'vedic';
+        const publicCatalogForMemory = await getPublicChatCatalogCached().catch(() => null);
+        const councilDisplayLabel = getCouncilExpertDisplayName(expertSlug, publicCatalogForMemory);
+        const profileIdForMemory = conversation.profile_id;
+        const userIdForMemory = req.appUser.id;
+        const convIdForMemory = conversation.id;
+
+        scheduleBackgroundTask(async () => {
+          await Promise.allSettled([
+            updateProfileMemoryAfterTurn(profileIdForMemory, userIdForMemory, {
+              routerResult: stage1Decision?.routerResult || null,
+              domain: streamResult.vedicMeta?.domain || modeSlug,
+              effectiveFluency: streamResult.vedicMeta?.effectiveFluency || null,
+              hasTechnicalDirective: Boolean(safeTechnicalDirective),
+              isDeepAudit: useDeepAudit,
+              tradition: archivistTradition,
+              latestUserPrompt: promptText,
+              latestAssistantAnswer: finalAssistantText,
+              actorCitation: `${councilDisplayLabel} (Council)`,
+              actorSlug: expertSlug,
+              conversationId: convIdForMemory,
+            }),
+            ...(isAstrologyReadingTurn
+              ? [
+                  extractAndPersistCouncilAnalystNotes({
+                    profileId: profileIdForMemory,
+                    userId: userIdForMemory,
+                    conversationId: convIdForMemory,
+                    expertLabel: councilDisplayLabel,
+                    expertSlug,
+                    userPrompt: promptText,
+                    assistantAnswer: finalAssistantText,
+                  }),
+                ]
+              : []),
+          ]);
+        });
+      } else if (activePillar === 'companion' && effectiveCompanionSlug) {
+        const companionName =
+          presetCompanion?.name || activeCompanionPersona?.name || 'Companion';
+        const companionRole =
+          presetCompanion?.primary_expertise || activeCompanionPersona?.role_label || null;
+        const companionProfileId = profileData?.id || conversation.profile_id || null;
+        const canUpdateProfileDeepMemory =
+          Boolean(companionProfileId) && conversation.use_full_profile_memory !== false;
+        const activeUserId = req.appUser.id;
+        const convIdForUpdate = conversation.id;
+        scheduleBackgroundTask(async () => {
+          await Promise.allSettled([
+            updateCompanionBondAfterTurn({
+              userId: activeUserId,
+              companionSlug: effectiveCompanionSlug,
+              companionName,
+              userPrompt: promptText,
+              assistantAnswer: finalAssistantText,
+            }),
+            ...(canUpdateProfileDeepMemory && companionProfileId
+              ? [
+                  updateCompanionProfileMemoryAfterTurn({
+                    profileId: companionProfileId,
+                    userId: activeUserId,
+                    companionName,
+                    companionRole,
+                    companionSlug: effectiveCompanionSlug,
+                    conversationId: convIdForUpdate,
+                    latestUserPrompt: promptText,
+                    latestAssistantAnswer: finalAssistantText,
+                  }),
+                ]
+              : []),
+          ]);
+          if (effectiveCompanionSlug.startsWith('custom_')) {
+            await supabaseAdmin
+              .from('user_custom_companions')
+              .update({
+                last_conversation_id: convIdForUpdate,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('user_id', activeUserId)
+              .eq('slug', effectiveCompanionSlug)
+              .then(() => undefined, () => undefined);
+          }
+        });
+      }
     }
 
     const enrichedConversation = normalizeConversationDefaults({

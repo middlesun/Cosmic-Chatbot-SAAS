@@ -611,7 +611,7 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
 
   // 3. Council Guides (All 6 Council experts; Companions render in the Companions grid below)
 
-  const featuredSlugs = ['mira', 'aira', 'luna', 'kabir', 'rohan', 'dev', 'tara', 'marc', 'bella'];
+  const featuredSlugs = ['dev', 'nandini', 'luna', 'marc', 'bella', 'mira', 'aira', 'kabir', 'rohan', 'nikhil', 'neha', 'robin'];
   const featuredSet = new Set<string>();
   const orderedFeaturedCards = [];
   for (const slug of featuredSlugs) {
@@ -631,14 +631,22 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     slug: card.slug,
     name: card.name,
     age: card.age,
+    sex: card.sex,
     primary_expertise: card.primary_expertise,
+    card_subtitle: card.card_subtitle,
     secondary_expertise: card.secondary_expertise,
     category_tag: card.category_tag,
     companion_group: card.companion_group,
+    advisory_mode: card.advisory_mode,
+    chart_access: card.chart_access,
+    discoverable_tags: card.discoverable_tags,
     situation_tags: card.situation_tags,
+    gender_variants: card.gender_variants,
+    supports_gender_toggle: card.supports_gender_toggle,
     skill_level: card.skill_level,
     tagline: card.tagline,
     short_bio: card.short_bio,
+    how_conversations_feel: card.how_conversations_feel,
     avatar_url: card.avatar_url,
     monogram_palette: card.monogram_palette,
     last_conversation_id: lastConvIdBySlug.get(card.slug.toLowerCase()) || null,

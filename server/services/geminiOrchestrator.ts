@@ -10,6 +10,7 @@ import { formatChartForLLM, type CompiledChartData } from './chartCompiler';
 import {
   normalizeCompanionSlug,
   type CompanionPresetRecord,
+  type ResolvedCompanionCapabilities,
 } from './companionPresets';
 import {
   drawTarotSpread,
@@ -63,7 +64,12 @@ import {
   sanitizeAssistantOutput,
   sanitizeVedicProse,
 } from './abuseGuard';
-import type { LifeContextData } from '../../lib/lifeContextSchema';
+import type {
+  CouncilAnalystNote,
+  DeepProfileData,
+  LifeContextData,
+} from '../../lib/lifeContextSchema';
+import { formatDeepProfileForLLM } from './lifeContextGuard';
 import {
   DEFAULT_COUNCIL_EXPERT_SLUG,
   normalizeCouncilSlug,
@@ -88,6 +94,7 @@ import {
   buildShortReplyBreakdownInstruction,
   buildVedicPathAPrompt,
   extractTechBreakdown,
+  resolveTurnVerificationModifier,
   type VedicVoicePreset,
 } from './vedicAstrologerEngine';
 
@@ -150,6 +157,8 @@ export interface ConsultationProfileRecord {
   profile_memory_summary: string | null;
   life_context_json?: LifeContextData | null;
   life_context_completeness?: number | null;
+  deep_profile_json?: DeepProfileData | null;
+  analyst_notes_json?: CouncilAnalystNote[] | null;
   natal_truth_dossier_json?: NatalTruthDossierV1 | null;
   birth_date: string;
   birth_time: string;
@@ -181,6 +190,8 @@ export interface StreamConsultationParams {
     companion_slug?: string | null;
     companion_chat_mode?: CompanionChatCue | null;
     companion_persona_json?: CompanionPersona | null;
+    thread_memory_summary?: string | null;
+    thread_memory_msg_count?: number | null;
   };
   profile: ConsultationProfileRecord | null;
   scopeMemoryContext?: string | null;
@@ -820,9 +831,10 @@ Keep the JSON strictly valid UTF-8 single-line JSON with double quotes and no tr
 export async function streamConsultationResponse(
   params: StreamConsultationParams
 ): Promise<StreamConsultationResult> {
-  const [runtime, pricingConfig] = await Promise.all([
+  const [runtime, pricingConfig, engineOverrides] = await Promise.all([
     getResolvedOpenRouterRuntime(),
     getPricingConfig(),
+    getEnginePromptOverrides(),
   ]);
 
   const activePillar: ChatPillar =
@@ -835,14 +847,52 @@ export async function streamConsultationResponse(
   const toneMode = params.toneMode === 'friendly' ? 'friendly' : 'technical';
   const responseLength = params.responseLength === 'short' ? 'short' : 'detailed';
   const activeHistory = params.historyMessages.filter((m) => !m.excluded_from_context);
-  const maxHistoryTurns = runtime.tokenLimits.max_history_turns || 24;
+  const verbatimWindowSize = Math.max(
+    14,
+    Math.min(20, runtime.tokenLimits.max_history_turns || 18)
+  );
+  const verbatimHistory = activeHistory.slice(-verbatimWindowSize);
+  const historyOpenRouterMessages: OpenRouterMessage[] = [];
 
-  const historyOpenRouterMessages: OpenRouterMessage[] = activeHistory
-    .slice(-maxHistoryTurns)
-    .map((m) => ({
+  if (activeHistory.length > verbatimWindowSize) {
+    const olderTurns = activeHistory.slice(0, activeHistory.length - verbatimWindowSize);
+    const storedSummary = params.conversation.thread_memory_summary?.trim();
+    const fallbackOlderDigest = !storedSummary
+      ? olderTurns
+          .slice(-14)
+          .map(
+            (m) =>
+              `${m.role === 'assistant' ? 'Assistant' : 'User'}: ${String(m.content || '')
+                .replace(/\[\[BUBBLE\]\]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 140)}`
+          )
+          .join('\n')
+          .slice(0, 1600)
+      : '';
+    const compactionBrief = storedSummary || fallbackOlderDigest;
+    if (compactionBrief) {
+      historyOpenRouterMessages.push({
+        role: 'user',
+        content: `[LOSSLESS THREAD CONTINUITY SUMMARY — EARLIER CONVERSATION CONTEXT]\n${compactionBrief}\n[Use this summary to maintain 100% continuity on personal facts, prior conclusions, and chart elements already covered without repeating basic introductions.]`,
+      });
+      if (verbatimHistory[0]?.role !== 'assistant') {
+        historyOpenRouterMessages.push({
+          role: 'assistant',
+          content:
+            'Understood — I have the full continuity from our earlier messages and will build directly on it.',
+        });
+      }
+    }
+  }
+
+  for (const m of verbatimHistory) {
+    historyOpenRouterMessages.push({
       role: m.role === 'assistant' ? 'assistant' : 'user',
       content: m.content,
-    }));
+    });
+  }
 
   let finalUserText = params.userPrompt.trim();
   if (params.parentQuoteMessage) {
@@ -890,10 +940,9 @@ User's specific question: ${finalUserText}`;
   const astroTradition: 'vedic' | 'western' = isWesternCouncilTurn ? 'western' : 'vedic';
 
   if (isStructuredAstrologyTurn && params.profile?.chart_json) {
-    const [guideCfg, coreConstitution, engineOverrides, activeModeRecipe] = await Promise.all([
+    const [guideCfg, coreConstitution, activeModeRecipe] = await Promise.all([
       getResolvedGuideConfig(normalizedExpertSlug),
       getCoreCouncilConstitutionAsync(),
-      getEnginePromptOverrides(),
       getActiveRecipeForTarget('mode', params.modeSlug),
     ]);
 
@@ -1012,10 +1061,22 @@ User's specific question: ${finalUserText}`;
       .filter(Boolean)
       .join('\n\n');
 
-    const memoryText =
+    const deepProfileBlock =
+      params.conversation.use_full_profile_memory && params.profile.deep_profile_json
+        ? formatDeepProfileForLLM(params.profile.deep_profile_json, {
+            maxItemsPerBucket: 3,
+            maxEntries: 8,
+          })
+        : '';
+    const memoryParts = [
       params.conversation.use_full_profile_memory && params.profile.profile_memory_summary
         ? params.profile.profile_memory_summary
-        : null;
+        : '',
+      deepProfileBlock
+        ? `CITED DEEP PROFILE CONTEXT (Emotional reality, practical constraints & goals — weave gently):\n${deepProfileBlock}`
+        : '',
+    ].filter(Boolean);
+    const memoryText = memoryParts.length > 0 ? memoryParts.join('\n\n') : null;
 
     // Path B: Explicit 4-Lens Parallel Deep Council Audit + Adjudicator
     if (params.deepAudit) {
@@ -1311,6 +1372,8 @@ User's specific question: ${finalUserText}`;
   let activeSuggestionsSpec: SuggestionsConfig | undefined;
   let resolvedRenderStyle: ChatStyle | undefined;
   let activeTarotSpread: DrawnTarotSpread | null = null;
+  let companionCaps: ResolvedCompanionCapabilities | null = null;
+  let companionInvitedEsoteric = false;
 
   if (activePillar === 'companion') {
     const builtComp = await buildCompanionSystemPromptAsync({
@@ -1337,6 +1400,8 @@ User's specific question: ${finalUserText}`;
     modelOverride = builtComp.modelOverride;
     resolvedRenderStyle = builtComp.chatStyle;
     activeTarotSpread = builtComp.tarotSpread || null;
+    companionCaps = builtComp.capabilities;
+    companionInvitedEsoteric = builtComp.invitedEsoteric;
     wantsSuggestions = false;
   } else if (activePillar === 'clarity') {
     const builtClarity = await buildClaritySystemPromptAsync({
@@ -1407,6 +1472,17 @@ User's specific question: ${finalUserText}`;
           `LONGITUDINAL ${scopeTitle} MEMORY (Themes and progress from earlier active sessions):\n${params.scopeMemoryContext.trim()}`
         );
       }
+      const deepProfileCouncilBlock = params.profile?.deep_profile_json
+        ? formatDeepProfileForLLM(params.profile.deep_profile_json, {
+            maxItemsPerBucket: 3,
+            maxEntries: 8,
+          })
+        : '';
+      if (deepProfileCouncilBlock) {
+        dynamicContextBlocks.push(
+          `CITED DEEP PROFILE CONTEXT (Practical reality, emotional patterns & goals — weave quietly):\n${deepProfileCouncilBlock}`
+        );
+      }
     }
 
     systemInstructionWithDynamic = [
@@ -1421,10 +1497,34 @@ User's specific question: ${finalUserText}`;
     params.onTarotSpread?.(activeTarotSpread);
   }
 
+  const companionPresetTokens =
+    typeof params.companionPreset?.max_output_tokens === 'number' &&
+    params.companionPreset.max_output_tokens >= 300
+      ? Math.round(params.companionPreset.max_output_tokens)
+      : null;
+  const companionGroupTokens =
+    companionCaps &&
+    typeof engineOverrides.companion_group_configs?.[companionCaps.companion_group]
+      ?.default_max_output_tokens === 'number' &&
+    engineOverrides.companion_group_configs[companionCaps.companion_group]!
+      .default_max_output_tokens! >= 300
+      ? Math.round(
+          engineOverrides.companion_group_configs[companionCaps.companion_group]!
+            .default_max_output_tokens!
+        )
+      : null;
+  const companionMaxOutputTokens =
+    companionPresetTokens ??
+    companionGroupTokens ??
+    Math.max(
+      runtime.tokenLimits.companion_detailed || companionCaps?.max_output_tokens || 3200,
+      2800
+    );
+
   const model = modelOverride || runtime.consultationModel || getConsultationModel();
   const baseOutputTokens =
     activePillar === 'companion'
-      ? Math.max(Math.min(runtime.tokenLimits.chat_detailed, 1400), 1100)
+      ? companionMaxOutputTokens
       : activePillar === 'clarity'
       ? Math.max(Math.min(runtime.tokenLimits.chat_detailed, 1800), 1400)
       : responseLength === 'short'
@@ -1433,12 +1533,44 @@ User's specific question: ${finalUserText}`;
   // Reserve headroom for compact single-turn suggestions JSON so prose is never clipped
   const maxOutputTokens = wantsSuggestions ? baseOutputTokens + 420 : baseOutputTokens;
 
+  let requestUserText = finalUserText;
+  if (
+    activePillar === 'companion' &&
+    companionCaps &&
+    (companionCaps.advisory_mode === 'esoteric_guide' ||
+      companionCaps.advisory_mode === 'balanced_support') &&
+    (companionCaps.chart_access.vedic ||
+      companionCaps.chart_access.western ||
+      companionCaps.chart_access.past_life) &&
+    companionInvitedEsoteric &&
+    Boolean(params.profile?.chart_json)
+  ) {
+    const hasVedicAccess = Boolean(
+      companionCaps.chart_access.vedic || companionCaps.chart_access.past_life
+    );
+    const hasWesternAccess = Boolean(companionCaps.chart_access.western);
+    const primaryTradition: 'vedic' | 'western' =
+      hasWesternAccess && !hasVedicAccess ? 'western' : 'vedic';
+    requestUserText = appendTurnVerificationModifier(
+      finalUserText,
+      primaryTradition,
+      engineOverrides
+    );
+    if (hasVedicAccess && hasWesternAccess) {
+      const westernMod = resolveTurnVerificationModifier('western', engineOverrides);
+      if (westernMod) {
+        requestUserText = `${requestUserText}\n\n[SECONDARY TROPICAL CHECK (APPLY SILENTLY IF BLENDING WESTERN CONTEXT; KEEP COMPANION HUMAN VOICE)]\n${westernMod}`;
+      }
+    }
+    requestUserText = `${requestUserText}\n\n[COMPANION VOICE REMINDER: Apply the forensic chart verification above silently, then respond strictly in your warm, natural human Companion voice without quoting audit headers or sounding like a technical report.]`;
+  }
+
   // Filter out messages excluded from context (already filtered above)
   const messages: OpenRouterMessage[] = [...historyOpenRouterMessages];
 
   if (params.attachments && params.attachments.length > 0) {
     const contentParts: OpenRouterContentPart[] = [
-      { type: 'text', text: finalUserText },
+      { type: 'text', text: requestUserText },
     ];
     for (const att of params.attachments) {
       if (att.kind === 'image' && att.dataUrl.startsWith('data:image/')) {
@@ -1463,7 +1595,7 @@ User's specific question: ${finalUserText}`;
   } else {
     messages.push({
       role: 'user',
-      content: finalUserText,
+      content: requestUserText,
     });
   }
 

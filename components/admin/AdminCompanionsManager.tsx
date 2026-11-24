@@ -31,6 +31,7 @@ import {
   type CompanionCategoryTag,
   type CompanionGroup,
   type CompanionMonogramPalette,
+  type CompanionSex,
   type CompanionSkillLevel,
   type CompanionTtsVoiceProfile,
 } from '../app/chatTypes';
@@ -42,10 +43,12 @@ export interface AdminCompanionRecord {
   legacy_id: string | null;
   name: string;
   age: number;
-  sex: 'M' | 'F';
+  sex: CompanionSex;
   tagline: string;
+  card_subtitle?: string;
   short_bio: string;
   full_bio: string;
+  how_conversations_feel?: string;
   primary_expertise: string;
   secondary_expertise: string[];
   category_tag: CompanionCategoryTag;
@@ -157,6 +160,7 @@ const AUTONOMY_OPTIONS: Array<{
 const SEX_OPTIONS = [
   { value: 'F', label: 'Female (F)' },
   { value: 'M', label: 'Male (M)' },
+  { value: 'NB', label: 'Non-binary (NB)' },
 ];
 
 const DEFAULT_NEW_PALETTE: CompanionMonogramPalette = {
@@ -218,8 +222,10 @@ function createBlankCompanion(nextSortOrder: number): AdminCompanionRecord {
     age: 30,
     sex: 'F',
     tagline: '',
+    card_subtitle: '',
     short_bio: '',
     full_bio: '',
+    how_conversations_feel: '',
     primary_expertise: 'Friend',
     secondary_expertise: [],
     category_tag: 'friends',
@@ -1273,6 +1279,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                     { value: 'all', label: 'All Genders' },
                     { value: 'F', label: 'Female (F)' },
                     { value: 'M', label: 'Male (M)' },
+                    { value: 'NB', label: 'Non-binary (NB)' },
                   ]}
                 />
                 <CustomSelect
@@ -1676,7 +1683,12 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                             value={draft.sex}
                             onChange={(val) =>
                               setDraft((prev) =>
-                                prev ? { ...prev, sex: val === 'M' ? 'M' : 'F' } : prev
+                                prev
+                                  ? {
+                                      ...prev,
+                                      sex: val === 'M' ? 'M' : val === 'NB' ? 'NB' : 'F',
+                                    }
+                                  : prev
                               )
                             }
                             ariaLabel="Companion sex"
@@ -1743,6 +1755,23 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                           }
                           placeholder="e.g. Deep Listener"
                           className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-sm text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none"
+                        />
+                      </label>
+
+                      <label className="block space-y-1.5">
+                        <span className="text-xs font-medium text-[#5C5449]">
+                          Card Subtitle (Mini Card Role Line)
+                        </span>
+                        <input
+                          type="text"
+                          value={draft.card_subtitle || ''}
+                          onChange={(e) =>
+                            setDraft((prev) =>
+                              prev ? { ...prev, card_subtitle: e.target.value } : prev
+                            )
+                          }
+                          placeholder="e.g. Vedic Astrology · Life & Wisdom"
+                          className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none"
                         />
                       </label>
 
@@ -1827,6 +1856,23 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                         onChange={(e) =>
                           setDraft((prev) => (prev ? { ...prev, full_bio: e.target.value } : prev))
                         }
+                        className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                      />
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className="text-xs font-medium text-[#5C5449]">
+                        How Conversations Feel (Expanded Profile Sheet)
+                      </span>
+                      <textarea
+                        rows={3}
+                        value={draft.how_conversations_feel || ''}
+                        onChange={(e) =>
+                          setDraft((prev) =>
+                            prev ? { ...prev, how_conversations_feel: e.target.value } : prev
+                          )
+                        }
+                        placeholder="Warm narrative describing what chatting with this companion feels like..."
                         className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-2.5 text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
                       />
                     </label>

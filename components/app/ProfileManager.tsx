@@ -29,6 +29,7 @@ import CustomSelect from './CustomSelect';
 import LifeContextModal from './LifeContextModal';
 import Tooltip from './Tooltip';
 import type { LifeContextData, PlaceSuggestion } from './chatTypes';
+import type { CouncilAnalystNote, DeepProfileData } from '../../lib/lifeContextSchema';
 import {
   PREVIEW_CHART_JSON,
   PREVIEW_DAILY_TRANSITS,
@@ -62,6 +63,8 @@ interface ProfileSummary {
   chart_json?: CompiledChartJson | null;
   life_context_json?: LifeContextData | null;
   life_context_completeness?: number;
+  deep_profile_json?: DeepProfileData | null;
+  analyst_notes_json?: CouncilAnalystNote[] | null;
   natal_dossier_version?: number;
   natal_truth_dossier_json?: NatalTruthDossierClient | null;
 }
@@ -600,10 +603,12 @@ const ProfileManager: React.FC = () => {
             profileId={lifeContextTarget.id}
             profileName={lifeContextTarget.short_name || lifeContextTarget.name}
             initialContext={lifeContextTarget.life_context_json}
+            initialDeepProfile={lifeContextTarget.deep_profile_json}
+            initialAnalystNotes={lifeContextTarget.analyst_notes_json}
             getAccessToken={getAccessToken}
             isPreviewMode={isPreviewMode}
             onClose={() => setLifeContextTarget(null)}
-            onSaved={(updatedCtx, completeness) => {
+            onSaved={(updatedCtx, completeness, extra) => {
               setProfiles((prev) =>
                 prev.map((p) =>
                   p.id === lifeContextTarget.id
@@ -611,6 +616,12 @@ const ProfileManager: React.FC = () => {
                         ...p,
                         life_context_json: updatedCtx,
                         life_context_completeness: completeness,
+                        ...(extra?.deep_profile_json
+                          ? { deep_profile_json: extra.deep_profile_json }
+                          : {}),
+                        ...(extra?.analyst_notes_json
+                          ? { analyst_notes_json: extra.analyst_notes_json }
+                          : {}),
                       }
                     : p
                 )
@@ -621,6 +632,12 @@ const ProfileManager: React.FC = () => {
                       ...prev,
                       life_context_json: updatedCtx,
                       life_context_completeness: completeness,
+                      ...(extra?.deep_profile_json
+                        ? { deep_profile_json: extra.deep_profile_json }
+                        : {}),
+                      ...(extra?.analyst_notes_json
+                        ? { analyst_notes_json: extra.analyst_notes_json }
+                        : {}),
                     }
                   : prev
               );
@@ -1269,10 +1286,12 @@ const ProfileManager: React.FC = () => {
           profileId={lifeContextTarget.id}
           profileName={lifeContextTarget.short_name || lifeContextTarget.name}
           initialContext={lifeContextTarget.life_context_json}
+          initialDeepProfile={lifeContextTarget.deep_profile_json}
+          initialAnalystNotes={lifeContextTarget.analyst_notes_json}
           getAccessToken={getAccessToken}
           isPreviewMode={isPreviewMode}
           onClose={() => setLifeContextTarget(null)}
-          onSaved={(updatedCtx, completeness) => {
+          onSaved={(updatedCtx, completeness, extra) => {
             setProfiles((prev) =>
               prev.map((p) =>
                 p.id === lifeContextTarget.id
@@ -1280,6 +1299,12 @@ const ProfileManager: React.FC = () => {
                       ...p,
                       life_context_json: updatedCtx,
                       life_context_completeness: completeness,
+                      ...(extra?.deep_profile_json
+                        ? { deep_profile_json: extra.deep_profile_json }
+                        : {}),
+                      ...(extra?.analyst_notes_json
+                        ? { analyst_notes_json: extra.analyst_notes_json }
+                        : {}),
                     }
                   : p
               )
@@ -1290,6 +1315,12 @@ const ProfileManager: React.FC = () => {
                     ...prev,
                     life_context_json: updatedCtx,
                     life_context_completeness: completeness,
+                    ...(extra?.deep_profile_json
+                      ? { deep_profile_json: extra.deep_profile_json }
+                      : {}),
+                    ...(extra?.analyst_notes_json
+                      ? { analyst_notes_json: extra.analyst_notes_json }
+                      : {}),
                   }
                 : prev
             );

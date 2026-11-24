@@ -524,17 +524,36 @@ export function mergeExtractedDeepProfile(
   const sourceSlug = cleanShortText(extracted.actor_slug, 64) || 'council';
   const conversationId = cleanShortText(extracted.conversation_id, 80) || null;
 
+  const supersedeTopics = (extracted.cited_insights || [])
+    .map((item) => cleanShortText(item.supersedes_topic, 48)?.toLowerCase())
+    .filter((t): t is string => Boolean(t && t.length >= 3));
+
   const candidate: DeepProfileData = { ...base };
 
   const incomingBuckets = extracted.deep_profile_buckets || {};
   for (const key of Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]) {
     const newItems = incomingBuckets[key];
-    if (!Array.isArray(newItems) || newItems.length === 0) continue;
-    const prevList = Array.isArray(base[key]) ? base[key]! : [];
-    candidate[key] = [...newItems, ...prevList];
+    let prevList = Array.isArray(base[key]) ? [...base[key]!] : [];
+    if (supersedeTopics.length > 0 && prevList.length > 0) {
+      prevList = prevList.filter((oldLine) => {
+        const lower = oldLine.toLowerCase();
+        return !supersedeTopics.some((topic) => lower.includes(topic));
+      });
+    }
+    if (Array.isArray(newItems) && newItems.length > 0) {
+      candidate[key] = [...newItems, ...prevList];
+    } else if (supersedeTopics.length > 0 && prevList.length !== (base[key]?.length || 0)) {
+      candidate[key] = prevList;
+    }
   }
 
-  const existingEntries = Array.isArray(base.entries) ? [...base.entries] : [];
+  let existingEntries = Array.isArray(base.entries) ? [...base.entries] : [];
+  if (supersedeTopics.length > 0 && existingEntries.length > 0) {
+    existingEntries = existingEntries.filter((old) => {
+      const lower = old.fact.toLowerCase();
+      return !supersedeTopics.some((topic) => lower.includes(topic));
+    });
+  }
   const newEntries: DeepProfileEntry[] = [];
 
   for (const insight of extracted.cited_insights || []) {
@@ -589,6 +608,8 @@ export function mergeExtractedDeepProfile(
 
   if (newEntries.length > 0 || existingEntries.length > 0) {
     candidate.entries = [...newEntries, ...existingEntries];
+  } else {
+    delete candidate.entries;
   }
 
   const sanitized = sanitizeDeepProfile(candidate);
@@ -597,6 +618,71 @@ export function mergeExtractedDeepProfile(
     JSON.stringify({ ...sanitized, updated_at: undefined });
 
   return { sanitized, changed };
+}
+
+export function formatDeepProfileForLLM(
+  deepProfile?: DeepProfileData | null,
+  options?: { maxItemsPerBucket?: number; maxEntries?: number; excludeSummaries?: Set<string> }
+): string {
+  if (!deepProfile || typeof deepProfile !== 'object') return '';
+  const maxPerBucket = options?.maxItemsPerBucket ?? 4;
+  const maxEntries = options?.maxEntries ?? 10;
+  const excluded = options?.excludeSummaries;
+  const lines: string[] = [];
+  const seenFacts = new Set<string>();
+
+  for (const key of Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]) {
+    const items = deepProfile[key];
+    if (!Array.isArray(items) || items.length === 0) continue;
+    const filtered: string[] = [];
+    for (const item of items) {
+      const clean = cleanShortText(item, 180);
+      if (!clean) continue;
+      const norm = clean.toLowerCase();
+      if (excluded?.has(norm) || seenFacts.has(norm)) continue;
+      seenFacts.add(norm);
+      filtered.push(clean);
+      if (filtered.length >= maxPerBucket) break;
+    }
+    if (filtered.length > 0) {
+      lines.push(`- ${DEEP_PROFILE_BUCKET_LABELS[key]}: ${filtered.join(' | ')}`);
+    }
+  }
+
+  if (Array.isArray(deepProfile.entries) && deepProfile.entries.length > 0) {
+    const extraNotes: string[] = [];
+    for (const entry of deepProfile.entries) {
+      const clean = cleanShortText(entry.fact, 180);
+      if (!clean) continue;
+      const norm = clean.toLowerCase();
+      if (excluded?.has(norm) || seenFacts.has(norm)) continue;
+      seenFacts.add(norm);
+      extraNotes.push(
+        `- [${DEEP_PROFILE_BUCKET_LABELS[entry.bucket || 'practical_reality'] || entry.category}] ${clean} (noted via ${entry.source_label})`
+      );
+      if (extraNotes.length >= maxEntries) break;
+    }
+    if (extraNotes.length > 0) {
+      lines.push(...extraNotes);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+export function formatAnalystNotesForCompanion(
+  notes?: CouncilAnalystNote[] | null,
+  maxNotes = 6
+): string {
+  const clean = sanitizeAnalystNotes(notes);
+  if (clean.length === 0) return '';
+  return clean
+    .slice(0, maxNotes)
+    .map((n) => {
+      const dateTag = n.captured_at ? ` · ${String(n.captured_at).slice(0, 10)}` : '';
+      return `- [${n.system_label}${dateTag}] ${n.summary}`;
+    })
+    .join('\n');
 }
 
 export function sanitizeAnalystNotes(rawInput: unknown): CouncilAnalystNote[] {

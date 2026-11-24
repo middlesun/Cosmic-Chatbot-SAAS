@@ -356,6 +356,7 @@ EXISTING KNOWN CONTEXT:
 
 Return STRICTLY JSON:
 {
+  "supersede_status_updates": false,
   "milestones": [{"year": 2019, "tag": "married", "note": "short 3-8 word fact"}],
   "core_stress_areas": ["0 to 2 concise recurring life themes if expressed"],
   "relationship_status": null,
@@ -365,6 +366,7 @@ Return STRICTLY JSON:
   "career_mode": null,
   "career_role": null,
   "workplace_context": null,
+  "location_status": null,
   "deep_profile_buckets": {
     "practical_reality": ["0 to 2 concise factual details"],
     "emotional_triggers": ["0 to 2 concise triggers"],
@@ -379,7 +381,8 @@ Return STRICTLY JSON:
     {
       "category": "desire_dream",
       "bucket": "desires_and_goals",
-      "summary": "Concise specific personal fact, desire, concern, or pattern from this message"
+      "summary": "Concise specific personal fact, desire, concern, or pattern from this message",
+      "supersedes_topic": "optional 1-3 word keyword of outdated note if this updates/replaces a prior fact"
     }
   ]
 }
@@ -387,6 +390,7 @@ Return STRICTLY JSON:
 Allowed milestone tags: {{ALLOWED_MILESTONE_TAGS}}.
 Allowed relationship_status: {{ALLOWED_RELATIONSHIP_STATUSES}} or null.
 Allowed career_mode: {{ALLOWED_CAREER_MODES}} or null.
+Allowed location_status: hometown, relocated_same_country, living_abroad, living_abroad_temp, planning_move, or null.
 Allowed cited_insights categories: workplace, family_children, desire_dream, worry_problem, relationship, emotional_pattern, practical_life, spiritual.
 
 USER MESSAGE:

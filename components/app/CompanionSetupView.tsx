@@ -839,16 +839,18 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                             </div>
 
                             <p className="text-xs text-[#8B8275] truncate">
-                              {card.primary_expertise}
-                              {card.secondary_expertise?.[0] &&
-                              card.secondary_expertise[0].toLowerCase() !==
-                                card.primary_expertise.toLowerCase()
-                                ? ` · ${card.secondary_expertise[0]}`
-                                : ''}
+                              {card.card_subtitle ||
+                                `${card.primary_expertise}${
+                                  card.secondary_expertise?.[0] &&
+                                  card.secondary_expertise[0].toLowerCase() !==
+                                    card.primary_expertise.toLowerCase()
+                                    ? ` · ${card.secondary_expertise[0]}`
+                                    : ''
+                                }`}
                             </p>
 
                             <p className="text-xs text-[#5C5449] leading-relaxed line-clamp-2 pt-0.5">
-                              {card.tagline || card.short_bio}
+                              {card.short_bio || card.tagline}
                             </p>
                           </div>
                         </div>

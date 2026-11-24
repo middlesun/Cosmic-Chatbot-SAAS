@@ -16,6 +16,8 @@ import {
 import { getPricingConfig } from '../services/platformSettings';
 import {
   mergeLifeContextPatch,
+  sanitizeAnalystNotes,
+  sanitizeDeepProfile,
   sanitizeLifeContext,
   type LifeContextData,
 } from '../services/lifeContextGuard';
@@ -59,6 +61,8 @@ const VEDIC_PROFILE_SUMMARY_COLUMNS =
 
 const PROFILE_DETAIL_COLUMNS = `${PROFILE_SUMMARY_COLUMNS}, chart_json`;
 const VEDIC_PROFILE_DETAIL_COLUMNS = `${VEDIC_PROFILE_SUMMARY_COLUMNS}, chart_json, natal_truth_dossier_json`;
+const VEDIC_PROFILE_CONTEXT_COLUMNS = `${VEDIC_PROFILE_SUMMARY_COLUMNS}, deep_profile_json, analyst_notes_json`;
+const VEDIC_PROFILE_DEEP_DETAIL_COLUMNS = `${VEDIC_PROFILE_DETAIL_COLUMNS}, deep_profile_json, analyst_notes_json`;
 
 function withEmptyCurrentLocation<T extends Record<string, unknown>>(row: T): T & {
   current_city: null;
@@ -96,6 +100,23 @@ function withDefaultMetaFields<T extends Record<string, unknown>>(row: T): T & {
       typeof row.life_context_completeness === 'number' ? row.life_context_completeness : 0,
     natal_dossier_version:
       typeof row.natal_dossier_version === 'number' ? row.natal_dossier_version : 0,
+    ...(Object.prototype.hasOwnProperty.call(row, 'deep_profile_json')
+      ? {
+          deep_profile_json:
+            row.deep_profile_json &&
+            typeof row.deep_profile_json === 'object' &&
+            !Array.isArray(row.deep_profile_json)
+              ? (row.deep_profile_json as Record<string, unknown>)
+              : {},
+        }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(row, 'analyst_notes_json')
+      ? {
+          analyst_notes_json: Array.isArray(row.analyst_notes_json)
+            ? row.analyst_notes_json
+            : [],
+        }
+      : {}),
   };
 }
 
@@ -336,20 +357,37 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 
   const includeChart = req.query.includeChart !== '0';
+  const deepSelectColumns = includeChart
+    ? VEDIC_PROFILE_DEEP_DETAIL_COLUMNS
+    : VEDIC_PROFILE_CONTEXT_COLUMNS;
   const vedicSelectColumns = includeChart ? VEDIC_PROFILE_DETAIL_COLUMNS : VEDIC_PROFILE_SUMMARY_COLUMNS;
   const legacySelectColumns = includeChart ? PROFILE_DETAIL_COLUMNS : PROFILE_SUMMARY_COLUMNS;
 
-  const vedicQuery = await supabaseAdmin
+  const deepQuery = await supabaseAdmin
     .from('profiles')
-    .select(vedicSelectColumns)
+    .select(deepSelectColumns)
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
 
-  let rawProfile: Record<string, unknown> | null = vedicQuery.data
-    ? withDefaultMetaFields(vedicQuery.data as unknown as Record<string, unknown>)
+  let rawProfile: Record<string, unknown> | null = deepQuery.data
+    ? withDefaultMetaFields(deepQuery.data as unknown as Record<string, unknown>)
     : null;
-  let queryError = vedicQuery.error;
+  let queryError = deepQuery.error;
+
+  if (queryError) {
+    const vedicQuery = await supabaseAdmin
+      .from('profiles')
+      .select(vedicSelectColumns)
+      .eq('id', req.params.id)
+      .eq('user_id', req.appUser.id)
+      .maybeSingle();
+
+    rawProfile = vedicQuery.data
+      ? withDefaultMetaFields(vedicQuery.data as unknown as Record<string, unknown>)
+      : null;
+    queryError = vedicQuery.error;
+  }
 
   if (queryError) {
     const initialQuery = await supabaseAdmin
@@ -1341,17 +1379,17 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
     }
   }
 
+  const bodyObj =
+    req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+      ? (req.body as Record<string, unknown>)
+      : {};
   const isPatchRequest =
-    Boolean(req.body) &&
-    typeof req.body === 'object' &&
-    !Array.isArray(req.body) &&
-    Boolean((req.body as Record<string, unknown>).patch) &&
-    typeof (req.body as Record<string, unknown>).patch === 'object';
+    Boolean(bodyObj.patch) && typeof bodyObj.patch === 'object' && !Array.isArray(bodyObj.patch);
 
-  const selectCols = 'id, life_context_json';
+  const deepSelectCols = 'id, life_context_json, deep_profile_json, analyst_notes_json';
   const primaryFetch = await supabaseAdmin
     .from('profiles')
-    .select(selectCols)
+    .select(deepSelectCols)
     .eq('id', req.params.id)
     .eq('user_id', req.appUser.id)
     .maybeSingle();
@@ -1359,15 +1397,30 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
   let existing = primaryFetch.data as unknown as {
     id: string;
     life_context_json?: unknown;
+    deep_profile_json?: unknown;
+    analyst_notes_json?: unknown;
   } | null;
+  let hasMigration018Cols = !primaryFetch.error;
+
   if (primaryFetch.error) {
-    const fallbackFetch = await supabaseAdmin
+    hasMigration018Cols = false;
+    const pre018Fetch = await supabaseAdmin
       .from('profiles')
-      .select('id')
+      .select('id, life_context_json')
       .eq('id', req.params.id)
       .eq('user_id', req.appUser.id)
       .maybeSingle();
-    existing = fallbackFetch.data as unknown as { id: string } | null;
+    if (!pre018Fetch.error && pre018Fetch.data) {
+      existing = pre018Fetch.data as unknown as { id: string; life_context_json?: unknown };
+    } else {
+      const fallbackFetch = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .eq('id', req.params.id)
+        .eq('user_id', req.appUser.id)
+        .maybeSingle();
+      existing = fallbackFetch.data as unknown as { id: string } | null;
+    }
   }
 
   if (!existing) {
@@ -1386,14 +1439,10 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
   if (isPatchRequest) {
     sanitizedPayload = mergeLifeContextPatch(
       existingObj,
-      (req.body as { patch: Partial<LifeContextData> }).patch
+      bodyObj.patch as Partial<LifeContextData>
     );
   } else {
-    const incomingBody =
-      req.body && typeof req.body === 'object' && !Array.isArray(req.body)
-        ? (req.body as Record<string, unknown>)
-        : {};
-    const preservedBody: Record<string, unknown> = { ...incomingBody };
+    const preservedBody: Record<string, unknown> = { ...bodyObj };
     for (const bgKey of [
       'core_stress_areas',
       'cited_insights',
@@ -1407,17 +1456,59 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
     sanitizedPayload = sanitizeLifeContext(preservedBody);
   }
   const { sanitized, completeness } = sanitizedPayload;
-  const { data: updated, error } = await supabaseAdmin
+
+  const hasIncomingDeepProfile =
+    bodyObj.deep_profile_json !== undefined &&
+    bodyObj.deep_profile_json !== null &&
+    typeof bodyObj.deep_profile_json === 'object' &&
+    !Array.isArray(bodyObj.deep_profile_json);
+  const hasIncomingAnalystNotes = Array.isArray(bodyObj.analyst_notes_json);
+
+  const sanitizedDeepProfile = hasIncomingDeepProfile
+    ? sanitizeDeepProfile(bodyObj.deep_profile_json)
+    : sanitizeDeepProfile(existing.deep_profile_json);
+  const sanitizedAnalystNotes = hasIncomingAnalystNotes
+    ? sanitizeAnalystNotes(bodyObj.analyst_notes_json)
+    : sanitizeAnalystNotes(existing.analyst_notes_json);
+
+  const updateFields: Record<string, unknown> = {
+    life_context_json: sanitized,
+    life_context_completeness: completeness,
+    updated_at: new Date().toISOString(),
+  };
+  if (hasMigration018Cols && hasIncomingDeepProfile) {
+    updateFields.deep_profile_json = sanitizedDeepProfile;
+  }
+  if (hasMigration018Cols && hasIncomingAnalystNotes) {
+    updateFields.analyst_notes_json = sanitizedAnalystNotes;
+  }
+
+  let updatedRes = await supabaseAdmin
     .from('profiles')
-    .update({
-      life_context_json: sanitized,
-      life_context_completeness: completeness,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updateFields)
     .eq('id', existing.id)
     .eq('user_id', req.appUser.id)
-    .select(VEDIC_PROFILE_SUMMARY_COLUMNS)
+    .select(hasMigration018Cols ? VEDIC_PROFILE_CONTEXT_COLUMNS : VEDIC_PROFILE_SUMMARY_COLUMNS)
     .single();
+
+  if (
+    updatedRes.error &&
+    (updateFields.deep_profile_json !== undefined || updateFields.analyst_notes_json !== undefined)
+  ) {
+    updatedRes = await supabaseAdmin
+      .from('profiles')
+      .update({
+        life_context_json: sanitized,
+        life_context_completeness: completeness,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id)
+      .eq('user_id', req.appUser.id)
+      .select(VEDIC_PROFILE_SUMMARY_COLUMNS)
+      .single();
+  }
+
+  const { data: updated, error } = updatedRes;
 
   if (error || !updated) {
     const msg = String(error?.message || '');
@@ -1435,6 +1526,8 @@ router.patch('/:id/life-context', requireAuth, async (req: AuthenticatedRequest,
   res.json({
     profile: withDefaultMetaFields(updated as unknown as Record<string, unknown>),
     life_context_json: sanitized,
+    deep_profile_json: sanitizedDeepProfile,
+    analyst_notes_json: sanitizedAnalystNotes,
     completeness,
   });
 });

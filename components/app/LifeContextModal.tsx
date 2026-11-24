@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Pencil,
   Plus,
   Sparkles,
   Trash2,
@@ -16,6 +17,7 @@ import {
   CAREER_MODE_OPTIONS,
   CITED_INSIGHT_CATEGORY_LABELS,
   computeLifeContextCompleteness,
+  DEEP_PROFILE_BUCKET_LABELS,
   isMarriedRelationshipStatus,
   LIFE_CONTEXT_FRAMING_COPY,
   LOCATION_STATUS_OPTIONS,
@@ -23,6 +25,11 @@ import {
   RELATIONSHIP_STATUS_OPTIONS,
   type BirthTimeAccuracy,
   type CareerContextMode,
+  type CitedInsightCategory,
+  type CouncilAnalystNote,
+  type DeepProfileBucketKey,
+  type DeepProfileData,
+  type DeepProfileEntry,
   type LifeContextAnchor,
   type LifeContextChild,
   type LifeContextData,
@@ -35,10 +42,19 @@ interface LifeContextModalProps {
   profileId: string;
   profileName: string;
   initialContext?: LifeContextData | null;
+  initialDeepProfile?: DeepProfileData | null;
+  initialAnalystNotes?: CouncilAnalystNote[] | null;
   getAccessToken: () => Promise<string | null>;
   isPreviewMode?: boolean;
   onClose: () => void;
-  onSaved: (updatedContext: LifeContextData, completeness: number) => void;
+  onSaved: (
+    updatedContext: LifeContextData,
+    completeness: number,
+    extra?: {
+      deep_profile_json?: DeepProfileData;
+      analyst_notes_json?: CouncilAnalystNote[];
+    }
+  ) => void;
 }
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -99,17 +115,55 @@ function cloneInitial(raw?: LifeContextData | null): LifeContextData {
   };
 }
 
+const CITED_CATEGORY_OPTIONS = (
+  Object.entries(CITED_INSIGHT_CATEGORY_LABELS) as Array<[CitedInsightCategory, string]>
+).map(([value, label]) => ({ value, label }));
+
+function cloneDeepProfile(raw?: DeepProfileData | null): DeepProfileData {
+  if (!raw || typeof raw !== 'object') return {};
+  const next: DeepProfileData = {};
+  for (const key of Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]) {
+    if (Array.isArray(raw[key]) && raw[key]!.length > 0) {
+      next[key] = [...raw[key]!];
+    }
+  }
+  if (Array.isArray(raw.entries) && raw.entries.length > 0) {
+    next.entries = raw.entries.map((entry) => ({ ...entry }));
+  }
+  if (raw.updated_at) next.updated_at = raw.updated_at;
+  return next;
+}
+
 const LifeContextModal: React.FC<LifeContextModalProps> = ({
   isOpen,
   profileId,
   profileName,
   initialContext,
+  initialDeepProfile,
+  initialAnalystNotes,
   getAccessToken,
   isPreviewMode = false,
   onClose,
   onSaved,
 }) => {
   const [draft, setDraft] = useState<LifeContextData>(() => cloneInitial(initialContext));
+  const [deepDraft, setDeepDraft] = useState<DeepProfileData>(() =>
+    cloneDeepProfile(initialDeepProfile)
+  );
+  const [analystNotesDraft, setAnalystNotesDraft] = useState<CouncilAnalystNote[]>(() =>
+    Array.isArray(initialAnalystNotes) ? initialAnalystNotes.map((n) => ({ ...n })) : []
+  );
+  const [deepTouched, setDeepTouched] = useState(false);
+  const [analystTouched, setAnalystTouched] = useState(false);
+
+  const [editingInsightIdx, setEditingInsightIdx] = useState<number | null>(null);
+  const [editingInsightSummary, setEditingInsightSummary] = useState('');
+  const [editingInsightCategory, setEditingInsightCategory] =
+    useState<CitedInsightCategory>('practical_life');
+
+  const [editingDeepEntryId, setEditingDeepEntryId] = useState<string | null>(null);
+  const [editingDeepEntryFact, setEditingDeepEntryFact] = useState('');
+
   const [expandedChildExactIdx, setExpandedChildExactIdx] = useState<Record<number, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,9 +171,61 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setDraft(cloneInitial(initialContext));
+    setDeepDraft(cloneDeepProfile(initialDeepProfile));
+    setAnalystNotesDraft(
+      Array.isArray(initialAnalystNotes) ? initialAnalystNotes.map((n) => ({ ...n })) : []
+    );
+    setDeepTouched(false);
+    setAnalystTouched(false);
+    setEditingInsightIdx(null);
+    setEditingDeepEntryId(null);
     setExpandedChildExactIdx({});
     setError(null);
-  }, [isOpen, initialContext, profileId]);
+  }, [isOpen, initialContext, initialDeepProfile, initialAnalystNotes, profileId]);
+
+  useEffect(() => {
+    if (!isOpen || isPreviewMode) return;
+    if (initialDeepProfile !== undefined || initialAnalystNotes !== undefined) return;
+    let active = true;
+    const controller = new AbortController();
+
+    void (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token || !active) return;
+        const res = await fetch(`/api/profiles/${profileId}?includeChart=0`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        if (!res.ok || !active) return;
+        const data = await res.json().catch(() => ({}));
+        const prof = data?.profile as
+          | {
+              deep_profile_json?: DeepProfileData | null;
+              analyst_notes_json?: CouncilAnalystNote[] | null;
+            }
+          | undefined;
+        if (!active || !prof) return;
+        if (prof.deep_profile_json && typeof prof.deep_profile_json === 'object') {
+          setDeepDraft((prev) =>
+            Object.keys(prev).length > 0 ? prev : cloneDeepProfile(prof.deep_profile_json)
+          );
+        }
+        if (Array.isArray(prof.analyst_notes_json)) {
+          setAnalystNotesDraft((prev) =>
+            prev.length > 0 ? prev : prof.analyst_notes_json!.map((n) => ({ ...n }))
+          );
+        }
+      } catch {
+        // Non-fatal silent hydration
+      }
+    })();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [isOpen, isPreviewMode, profileId, initialDeepProfile, initialAnalystNotes, getAccessToken]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -239,12 +345,96 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
     });
   };
 
+  const handleStartEditInsight = (idx: number) => {
+    const target = draft.cited_insights?.[idx];
+    if (!target) return;
+    setEditingInsightIdx(idx);
+    setEditingInsightSummary(target.summary || '');
+    setEditingInsightCategory(target.category || 'practical_life');
+  };
+
+  const handleSaveEditInsight = (idx: number) => {
+    const trimmed = editingInsightSummary.trim().slice(0, 180);
+    if (!trimmed || trimmed.length < 4) return;
+    setDraft((prev) => {
+      const list = Array.isArray(prev.cited_insights) ? [...prev.cited_insights] : [];
+      if (!list[idx]) return prev;
+      list[idx] = {
+        ...list[idx],
+        summary: trimmed,
+        category: editingInsightCategory,
+        updated_at: new Date().toISOString(),
+      };
+      return { ...prev, cited_insights: list };
+    });
+    setEditingInsightIdx(null);
+  };
+
+  const handleDeleteDeepEntry = (entry: DeepProfileEntry) => {
+    setDeepTouched(true);
+    setDeepDraft((prev) => {
+      const nextEntries = (prev.entries || []).filter((e) => e.id !== entry.id);
+      const next: DeepProfileData = { ...prev, entries: nextEntries };
+      if (entry.bucket && Array.isArray(next[entry.bucket])) {
+        const lowerFact = entry.fact.trim().toLowerCase();
+        next[entry.bucket] = next[entry.bucket]!.filter(
+          (item) => item.trim().toLowerCase() !== lowerFact
+        );
+      }
+      return next;
+    });
+  };
+
+  const handleSaveEditDeepEntry = (entry: DeepProfileEntry) => {
+    const trimmed = editingDeepEntryFact.trim().slice(0, 200);
+    if (!trimmed || trimmed.length < 4) return;
+    setDeepTouched(true);
+    setDeepDraft((prev) => {
+      const oldLower = entry.fact.trim().toLowerCase();
+      const nextEntries = (prev.entries || []).map((e) =>
+        e.id === entry.id ? { ...e, fact: trimmed, updated_at: new Date().toISOString() } : e
+      );
+      const next: DeepProfileData = { ...prev, entries: nextEntries };
+      if (entry.bucket && Array.isArray(next[entry.bucket])) {
+        next[entry.bucket] = next[entry.bucket]!.map((item) =>
+          item.trim().toLowerCase() === oldLower ? trimmed : item
+        );
+      }
+      return next;
+    });
+    setEditingDeepEntryId(null);
+  };
+
+  const handleRemoveBucketFact = (bucketKey: DeepProfileBucketKey, idx: number, factText: string) => {
+    setDeepTouched(true);
+    setDeepDraft((prev) => {
+      const nextList = (prev[bucketKey] || []).filter((_, i) => i !== idx);
+      const lower = factText.trim().toLowerCase();
+      const nextEntries = (prev.entries || []).filter(
+        (e) => e.fact.trim().toLowerCase() !== lower
+      );
+      return {
+        ...prev,
+        [bucketKey]: nextList,
+        entries: nextEntries,
+      };
+    });
+  };
+
+  const handleRemoveAnalystNote = (noteId: string) => {
+    setAnalystTouched(true);
+    setAnalystNotesDraft((prev) => prev.filter((n) => n.id !== noteId));
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (isPreviewMode) {
-      onSaved(draft, liveCompleteness);
+      onSaved(draft, liveCompleteness, {
+        ...(deepTouched ? { deep_profile_json: deepDraft } : {}),
+        ...(analystTouched ? { analyst_notes_json: analystNotesDraft } : {}),
+      });
       onClose();
       return;
     }
@@ -257,13 +447,17 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
 
     setSaving(true);
     try {
+      const payload: Record<string, unknown> = { ...draft };
+      if (deepTouched) payload.deep_profile_json = deepDraft;
+      if (analystTouched) payload.analyst_notes_json = analystNotesDraft;
+
       const res = await fetch(`/api/profiles/${profileId}/life-context`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(draft),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -272,7 +466,12 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
         const finalCtx = (data.life_context_json || draft) as LifeContextData;
         const finalScore =
           typeof data.completeness === 'number' ? data.completeness : liveCompleteness;
-        onSaved(finalCtx, finalScore);
+        onSaved(finalCtx, finalScore, {
+          ...(data.deep_profile_json ? { deep_profile_json: data.deep_profile_json } : {}),
+          ...(Array.isArray(data.analyst_notes_json)
+            ? { analyst_notes_json: data.analyst_notes_json }
+            : {}),
+        });
         onClose();
       }
     } catch {
@@ -284,6 +483,26 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
 
   const childrenList = Array.isArray(draft.children) ? draft.children : [];
   const anchorsList = Array.isArray(draft.past_anchors) ? draft.past_anchors : [];
+  const deepEntries = Array.isArray(deepDraft.entries) ? deepDraft.entries : [];
+  const deepEntryFactsSet = new Set(deepEntries.map((e) => e.fact.trim().toLowerCase()));
+  const unindexedDeepBuckets = (
+    Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]
+  )
+    .map((key) => ({
+      key,
+      label: DEEP_PROFILE_BUCKET_LABELS[key],
+      items: (deepDraft[key] || []).filter(
+        (fact) => !deepEntryFactsSet.has(fact.trim().toLowerCase())
+      ),
+    }))
+    .filter((b) => b.items.length > 0);
+  const hasAnyLivingProfileSection =
+    (Array.isArray(draft.core_stress_areas) && draft.core_stress_areas.length > 0) ||
+    (Array.isArray(draft.cited_insights) && draft.cited_insights.length > 0) ||
+    Boolean(draft.children_summary) ||
+    deepEntries.length > 0 ||
+    unindexedDeepBuckets.length > 0 ||
+    analystNotesDraft.length > 0;
 
   return (
     <div
@@ -789,17 +1008,15 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
               )}
             </div>
 
-            {/* 6. Living Profile Notes & Citations */}
-            {((Array.isArray(draft.core_stress_areas) && draft.core_stress_areas.length > 0) ||
-              (Array.isArray(draft.cited_insights) && draft.cited_insights.length > 0) ||
-              Boolean(draft.children_summary)) && (
-              <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-3">
+            {/* 6. Living Profile Notes, Deep Context & Council Takeaways */}
+            {hasAnyLivingProfileSection && (
+              <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-4">
                 <div>
                   <label className="text-xs font-semibold text-[#3D3830]">
-                    6. Living Profile Notes &amp; Reflections
+                    6. Living Profile Notes &amp; Citations
                   </label>
                   <p className="text-[11px] text-[#8B8275] mt-0.5">
-                    Details quietly remembered from your conversations so you never have to repeat yourself. Remove any note anytime.
+                    Details remembered across conversations with your Council and Companions so you never have to repeat yourself. Edit or remove anything anytime.
                   </p>
                 </div>
 
@@ -861,36 +1078,268 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                       Personal Insights &amp; Context
                     </p>
                     <div className="space-y-2">
-                      {draft.cited_insights.map((insight, idx) => (
+                      {draft.cited_insights.map((insight, idx) => {
+                        const isEditing = editingInsightIdx === idx;
+                        return (
+                          <div
+                            key={`${insight.id}-${idx}`}
+                            className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/12 px-3 py-2.5 space-y-2"
+                          >
+                            {isEditing ? (
+                              <div className="space-y-2">
+                                <CustomSelect
+                                  ariaLabel="Insight category"
+                                  value={editingInsightCategory}
+                                  onChange={(val) =>
+                                    setEditingInsightCategory(val as CitedInsightCategory)
+                                  }
+                                  options={CITED_CATEGORY_OPTIONS}
+                                  size="sm"
+                                />
+                                <textarea
+                                  rows={2}
+                                  maxLength={180}
+                                  value={editingInsightSummary}
+                                  onChange={(e) => setEditingInsightSummary(e.target.value)}
+                                  className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-2 text-xs text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+                                />
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingInsightIdx(null)}
+                                    className="rounded-full px-3 py-1 text-[11px] text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveEditInsight(idx)}
+                                    disabled={editingInsightSummary.trim().length < 4}
+                                    className="rounded-full bg-[#4A453D] px-3.5 py-1 text-[11px] font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-40 cursor-pointer"
+                                  >
+                                    Apply
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-start justify-between gap-2.5">
+                                <div className="min-w-0 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-[#8B8275]">
+                                    <span className="font-semibold uppercase tracking-[0.08em] text-[#8B7355]">
+                                      {CITED_INSIGHT_CATEGORY_LABELS[insight.category] ||
+                                        insight.category.replace(/_/g, ' ')}
+                                    </span>
+                                    <span>·</span>
+                                    <span>Added by {insight.cited_by}</span>
+                                    {insight.captured_at && (
+                                      <>
+                                        <span>·</span>
+                                        <span className="font-['JetBrains_Mono',monospace] tabular-nums">
+                                          {insight.captured_at.slice(0, 10)}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-[#3D3830] leading-relaxed">
+                                    {insight.summary}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditInsight(idx)}
+                                    aria-label={`Edit insight ${idx + 1}`}
+                                    className="p-1.5 rounded-lg text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/5 transition-colors cursor-pointer"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (editingInsightIdx === idx) setEditingInsightIdx(null);
+                                      setDraft((prev) => ({
+                                        ...prev,
+                                        cited_insights: (prev.cited_insights || []).filter(
+                                          (_, i) => i !== idx
+                                        ),
+                                      }));
+                                    }}
+                                    aria-label={`Remove insight ${idx + 1}`}
+                                    className="p-1.5 rounded-lg text-[#8B8275] hover:text-[#A94438] hover:bg-[#A94438]/10 transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {(deepEntries.length > 0 || unindexedDeepBuckets.length > 0) && (
+                  <div className="pt-2 border-t border-[#3D3830]/10 space-y-2.5">
+                    <div>
+                      <p className="text-[11px] font-medium text-[#5C5449]">
+                        Deep Personal Patterns &amp; Tendencies
+                      </p>
+                      <p className="text-[10px] text-[#8B8275]">
+                        Emotional habits, goals, and practical dynamics shared across your Council &amp; Companion sessions.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      {deepEntries.map((entry) => {
+                        const isEditing = editingDeepEntryId === entry.id;
+                        const bucketLabel = entry.bucket
+                          ? DEEP_PROFILE_BUCKET_LABELS[entry.bucket]
+                          : CITED_INSIGHT_CATEGORY_LABELS[entry.category] || 'Life Pattern';
+                        return (
+                          <div
+                            key={entry.id}
+                            className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/12 px-3 py-2.5 space-y-2"
+                          >
+                            {isEditing ? (
+                              <div className="space-y-2">
+                                <textarea
+                                  rows={2}
+                                  maxLength={200}
+                                  value={editingDeepEntryFact}
+                                  onChange={(e) => setEditingDeepEntryFact(e.target.value)}
+                                  className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-2 text-xs text-[#3D3830] focus:border-[#4A453D] focus:outline-none"
+                                />
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingDeepEntryId(null)}
+                                    className="rounded-full px-3 py-1 text-[11px] text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveEditDeepEntry(entry)}
+                                    disabled={editingDeepEntryFact.trim().length < 4}
+                                    className="rounded-full bg-[#4A453D] px-3.5 py-1 text-[11px] font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-40 cursor-pointer"
+                                  >
+                                    Apply
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-start justify-between gap-2.5">
+                                <div className="min-w-0 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-[#8B8275]">
+                                    <span className="font-semibold uppercase tracking-[0.08em] text-[#8B7355]">
+                                      {bucketLabel}
+                                    </span>
+                                    <span>·</span>
+                                    <span>Noted via {entry.source_label}</span>
+                                    {entry.updated_at && (
+                                      <>
+                                        <span>·</span>
+                                        <span className="font-['JetBrains_Mono',monospace] tabular-nums">
+                                          {entry.updated_at.slice(0, 10)}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-[#3D3830] leading-relaxed">
+                                    {entry.fact}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingDeepEntryId(entry.id);
+                                      setEditingDeepEntryFact(entry.fact);
+                                    }}
+                                    aria-label="Edit pattern note"
+                                    className="p-1.5 rounded-lg text-[#8B8275] hover:text-[#3D3830] hover:bg-[#3D3830]/5 transition-colors cursor-pointer"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteDeepEntry(entry)}
+                                    aria-label="Remove pattern note"
+                                    className="p-1.5 rounded-lg text-[#8B8275] hover:text-[#A94438] hover:bg-[#A94438]/10 transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {unindexedDeepBuckets.map((bucket) =>
+                        bucket.items.map((fact, bIdx) => (
+                          <div
+                            key={`${bucket.key}-${bIdx}`}
+                            className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/12 px-3 py-2 flex items-start justify-between gap-2.5"
+                          >
+                            <div className="min-w-0 space-y-0.5">
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8B7355]">
+                                {bucket.label}
+                              </span>
+                              <p className="text-xs text-[#3D3830] leading-relaxed">{fact}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveBucketFact(bucket.key, bIdx, fact)}
+                              aria-label={`Remove ${bucket.label} note`}
+                              className="p-1.5 rounded-lg text-[#8B8275] hover:text-[#A94438] hover:bg-[#A94438]/10 transition-colors cursor-pointer shrink-0"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {analystNotesDraft.length > 0 && (
+                  <div className="pt-2 border-t border-[#3D3830]/10 space-y-2">
+                    <div>
+                      <p className="text-[11px] font-medium text-[#5C5449]">
+                        Council Chart Takeaways
+                      </p>
+                      <p className="text-[10px] text-[#8B8275]">
+                        Key astrology findings shared silently with chart-aware Companions so advice stays consistent.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      {analystNotesDraft.map((note) => (
                         <div
-                          key={`${insight.id}-${idx}`}
+                          key={note.id}
                           className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/12 px-3 py-2.5 flex items-start justify-between gap-2.5"
                         >
                           <div className="min-w-0 space-y-1">
                             <div className="flex flex-wrap items-center gap-2 text-[10px] text-[#8B8275]">
                               <span className="font-semibold uppercase tracking-[0.08em] text-[#8B7355]">
-                                {CITED_INSIGHT_CATEGORY_LABELS[insight.category] ||
-                                  insight.category.replace(/_/g, ' ')}
+                                {note.system_label}
                               </span>
-                              <span>·</span>
-                              <span>Added by {insight.cited_by}</span>
+                              {note.captured_at && (
+                                <>
+                                  <span>·</span>
+                                  <span className="font-['JetBrains_Mono',monospace] tabular-nums">
+                                    {note.captured_at.slice(0, 10)}
+                                  </span>
+                                </>
+                              )}
                             </div>
-                            <p className="text-xs text-[#3D3830] leading-relaxed">
-                              {insight.summary}
-                            </p>
+                            <p className="text-xs text-[#3D3830] leading-relaxed">{note.summary}</p>
                           </div>
                           <button
                             type="button"
-                            onClick={() =>
-                              setDraft((prev) => ({
-                                ...prev,
-                                cited_insights: (prev.cited_insights || []).filter(
-                                  (_, i) => i !== idx
-                                ),
-                              }))
-                            }
-                            aria-label={`Remove insight ${idx + 1}`}
-                            className="p-1 rounded-lg text-[#8B8275] hover:text-[#A94438] hover:bg-[#A94438]/10 transition-colors cursor-pointer shrink-0"
+                            onClick={() => handleRemoveAnalystNote(note.id)}
+                            aria-label="Remove chart takeaway"
+                            className="p-1.5 rounded-lg text-[#8B8275] hover:text-[#A94438] hover:bg-[#A94438]/10 transition-colors cursor-pointer shrink-0"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>

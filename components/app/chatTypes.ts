@@ -210,6 +210,8 @@ export const EMPTY_COMPANION_CHART_ACCESS: CompanionChartAccess = {
   council_notes: false,
 };
 
+export type CompanionSex = 'M' | 'F' | 'NB';
+
 export interface CompanionPersonaVariant {
   name: string;
   age: number;
@@ -230,6 +232,7 @@ export interface CompanionPersonaVariant {
 export interface CompanionGenderVariants {
   F?: CompanionPersonaVariant;
   M?: CompanionPersonaVariant;
+  NB?: CompanionPersonaVariant;
 }
 
 export interface CompanionGroupConfig {
@@ -325,24 +328,36 @@ export const COMPANION_SITUATION_CHIPS: CompanionSituationChip[] = [
   {
     id: 'heartbreak',
     label: 'Missing an ex',
-    matchTags: ['heartbreak', 'breakup', 'moving-on', 'ex', 'missing an ex', 'no contact', 'closure', 'red-flags'],
+    matchTags: ['heartbreak', 'breakup', 'moving-on', 'ex', 'missing-an-ex', 'missing an ex', 'no-contact', 'closure', 'red-flags', 'rejection', 'betrayal'],
     fallbackKeywords: ['heartbreak', 'breakup', 'missing an ex', 'no contact', 'letting go', 'red flags'],
+  },
+  {
+    id: 'love',
+    label: 'Love & Marriage',
+    matchTags: ['love', 'dating', 'marriage', 'relationships', 'intimacy', 'compatibility', 'mixed-signals', 'second-chances'],
+    fallbackKeywords: ['love', 'dating', 'marriage', 'relationships', 'intimacy', 'compatibility'],
   },
   {
     id: 'vent',
     label: 'Vent',
-    matchTags: ['vent', 'listen', 'overwhelmed', 'judgment-free', 'heavy-day'],
-    fallbackKeywords: ['vent', 'listen', 'judgment-free', 'heavy day'],
+    matchTags: ['vent', 'venting', 'listen', 'overwhelmed', 'judgment-free', 'heavy-day', 'rant', 'anger', 'unfiltered'],
+    fallbackKeywords: ['vent', 'listen', 'judgment-free', 'heavy day', 'rant'],
+  },
+  {
+    id: 'calm',
+    label: 'Overthinking & Calm',
+    matchTags: ['overthinking', 'anxiety', 'stress', 'calm', 'mindfulness', 'overwhelm', 'restlessness', 'emotional-wellness'],
+    fallbackKeywords: ['overthinking', 'anxiety', 'mindfulness', 'peace of mind', 'restlessness'],
   },
   {
     id: 'bedtime',
     label: 'Bedtime',
-    matchTags: ['bedtime', 'late-night', 'insomnia', 'sleep', 'lonely'],
-    fallbackKeywords: ['bedtime', 'late-night', 'late night', 'insomnia', 'sleep'],
+    matchTags: ['bedtime', 'late-night', 'insomnia', 'sleep', 'nighttime', 'winding-down'],
+    fallbackKeywords: ['bedtime', 'late-night', 'late night', 'insomnia', 'sleep', 'winding down'],
   },
   {
     id: 'career',
-    label: 'Career switch',
+    label: 'Career & Founders',
     matchTags: [
       'career',
       'job-switch',
@@ -352,33 +367,36 @@ export const COMPANION_SITUATION_CHIPS: CompanionSituationChip[] = [
       'founders',
       'startup',
       'business',
+      'entrepreneurship',
       'burnout',
+      'exams',
+      'studies',
     ],
-    fallbackKeywords: ['career', 'job', 'workplace', 'founder', 'startup', 'business', 'burnout'],
+    fallbackKeywords: ['career', 'job', 'workplace', 'founder', 'startup', 'business', 'burnout', 'exam'],
   },
   {
     id: 'grief',
     label: 'Grief',
-    matchTags: ['grief', 'loss', 'bereavement', 'mourning'],
-    fallbackKeywords: ['grief', 'loss', 'bereavement', 'mourning'],
+    matchTags: ['grief', 'loss', 'bereavement', 'mourning', 'anniversaries', 'health-recovery'],
+    fallbackKeywords: ['grief', 'loss', 'bereavement', 'mourning', 'illness'],
   },
   {
     id: 'ivf',
     label: 'IVF & Family',
-    matchTags: ['fertility', 'ivf', 'pregnancy', 'parenthood', 'family', 'progeny'],
+    matchTags: ['fertility', 'ivf', 'pregnancy', 'parenthood', 'family', 'progeny', 'ageing-parents'],
     fallbackKeywords: ['fertility', 'ivf', 'pregnancy', 'parenthood', 'family', 'children'],
   },
   {
     id: 'money',
     label: 'Debt & Money',
-    matchTags: ['money', 'finance', 'debt', 'financial-stress', 'budget'],
-    fallbackKeywords: ['money', 'finance', 'debt', 'financial'],
+    matchTags: ['money', 'finance', 'debt', 'financial-stress', 'budget', 'legal', 'disputes'],
+    fallbackKeywords: ['money', 'finance', 'debt', 'financial', 'legal dispute'],
   },
   {
     id: 'lonely',
     label: 'Lonely',
-    matchTags: ['lonely', 'loneliness', 'company', 'new-city', 'relocation', 'late-night'],
-    fallbackKeywords: ['lonely', 'loneliness', 'company', 'isolated', 'new city'],
+    matchTags: ['lonely', 'loneliness', 'company', 'new-city', 'relocation', 'homesickness', 'late-night'],
+    fallbackKeywords: ['lonely', 'loneliness', 'company', 'isolated', 'new city', 'homesickness'],
   },
   {
     id: 'tarot',
@@ -388,37 +406,44 @@ export const COMPANION_SITUATION_CHIPS: CompanionSituationChip[] = [
   },
   {
     id: 'astrology',
-    label: 'Astrology',
-    matchTags: ['astrology', 'vedic', 'western', 'chart', 'timing', 'dharma', 'karma'],
-    fallbackKeywords: ['astrology', 'vedic', 'western', 'jyotish', 'natal', 'transit'],
+    label: 'Astrology & Soul',
+    matchTags: ['astrology', 'vedic', 'western', 'evolutionary', 'chart', 'timing', 'dharma', 'karma', 'numerology', 'past-life', 'spiritual', 'faith'],
+    fallbackKeywords: ['astrology', 'vedic', 'western', 'numerology', 'karma', 'spiritual', 'faith'],
   },
   {
     id: 'stuck',
     label: 'Feeling Stuck',
-    matchTags: ['stuck', 'unmotivated', 'procrastination', 'restarting', 'motivation', 'inertia'],
-    fallbackKeywords: ['stuck', 'unmotivated', 'procrastination', 'motivation'],
+    matchTags: ['stuck', 'unmotivated', 'procrastination', 'restarting', 'motivation', 'inertia', 'identity', 'self-discovery', 'decision-making'],
+    fallbackKeywords: ['stuck', 'unmotivated', 'procrastination', 'motivation', 'self-discovery', 'decision'],
   },
 ];
 
-export type CompanionDiscoveryFilterableCard = Partial<
-  Pick<
-    PublicCompanionCard,
-    | 'name'
-    | 'tagline'
-    | 'short_bio'
-    | 'primary_expertise'
-    | 'secondary_expertise'
-    | 'category_tag'
-    | 'companion_group'
-    | 'situation_tags'
-    | 'discoverable_tags'
-    | 'skill_level'
-    | 'advisory_mode'
-    | 'chart_access'
-    | 'gender_variants'
-    | 'cultural_fluency'
-  >
->;
+export type CompanionDiscoveryFilterableCard = Omit<
+  Partial<
+    Pick<
+      PublicCompanionCard,
+      | 'name'
+      | 'card_subtitle'
+      | 'tagline'
+      | 'short_bio'
+      | 'primary_expertise'
+      | 'secondary_expertise'
+      | 'how_conversations_feel'
+      | 'category_tag'
+      | 'companion_group'
+      | 'situation_tags'
+      | 'discoverable_tags'
+      | 'skill_level'
+      | 'advisory_mode'
+      | 'chart_access'
+      | 'gender_variants'
+      | 'cultural_fluency'
+    >
+  >,
+  'companion_group'
+> & {
+  companion_group?: AnyCompanionGroup;
+};
 
 export function resolveCompanionGroup(card: CompanionDiscoveryFilterableCard): CompanionGroup {
   if (card.companion_group) {
@@ -487,6 +512,7 @@ export function matchesCompanionSituationChip(
   }
 
   const haystack = [
+    card.card_subtitle || '',
     card.primary_expertise || '',
     ...(card.secondary_expertise || []),
     card.tagline || '',
@@ -500,8 +526,12 @@ export function matchesCompanionSituationChip(
     chip.id === 'astrology' &&
     (card.chart_access?.vedic ||
       card.chart_access?.western ||
+      card.chart_access?.numerology ||
+      card.chart_access?.past_life ||
       card.skill_level === 'astrology_soft' ||
-      card.skill_level === 'vedic_soft')
+      card.skill_level === 'vedic_soft' ||
+      card.skill_level === 'numerology' ||
+      card.skill_level === 'past_life')
   ) {
     return true;
   }
@@ -534,10 +564,12 @@ export function matchesCompanionDiscoveryFilter(
     const variantNames = [
       card.gender_variants?.F?.name || '',
       card.gender_variants?.M?.name || '',
+      card.gender_variants?.NB?.name || '',
     ];
     const haystack = [
       card.name || '',
       ...variantNames,
+      card.card_subtitle || '',
       card.primary_expertise || '',
       ...(card.secondary_expertise || []),
       ...(card.discoverable_tags || []),
@@ -650,12 +682,14 @@ export interface PublicCompanionCard {
   slug: string;
   name: string;
   age: number;
-  sex: 'M' | 'F';
+  sex: CompanionSex;
+  card_subtitle?: string;
   tagline: string;
   short_bio: string;
   full_bio: string;
   primary_expertise: string;
   secondary_expertise: string[];
+  how_conversations_feel?: string;
   category_tag: CompanionCategoryTag;
   companion_group?: CompanionGroup;
   advisory_mode?: CompanionAdvisoryMode;
@@ -685,12 +719,14 @@ export interface CompanionPersona {
   slug?: string;
   name: string;
   age: number;
-  gender: 'M' | 'F';
+  gender: CompanionSex;
   companion_type: CompanionArchetypeSlug;
   role_label: string;
+  card_subtitle?: string;
   background: string;
   tagline: string;
   bio: string;
+  how_conversations_feel?: string;
   conversation_style: string;
   opening_message: string;
   system_prompt: string;
@@ -723,7 +759,7 @@ export interface ActiveChatTab {
   expertSlug?: string;
   companionType?: CompanionArchetypeSlug | null;
   companionSlug?: string | null;
-  selectedGender?: 'F' | 'M' | null;
+  selectedGender?: CompanionSex | null;
   companionPersona?: CompanionPersona | null;
   isCore?: boolean;
 }
@@ -740,7 +776,7 @@ export interface ConversationRecord {
   active_tab_order?: number;
   companion_type?: CompanionArchetypeSlug | null;
   companion_slug?: string | null;
-  selected_gender?: 'F' | 'M' | null;
+  selected_gender?: CompanionSex | null;
   companion_chat_mode?: CompanionChatCue | null;
   companion_persona_json?: CompanionPersona | null;
   thread_memory_summary?: string | null;

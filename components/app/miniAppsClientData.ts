@@ -756,66 +756,630 @@ export const PREVIEW_HOME_SUMMARY: HomeSummaryResponse = {
     },
   ],
   featuredCompanions: [
-    {
-      slug: 'mira',
-      name: 'Mira',
-      age: 29,
-      primary_expertise: 'Listener',
-      tagline: 'Soft-spoken deep listener who holds space until emotions settle.',
-      avatar_url: '/assets/companions/mira.jpg',
-      monogram_palette: { bg: '#E4ECE5', ring: '#5C8266', ink: '#29402F' },
-      last_conversation_id: null,
-    },
-    {
-      slug: 'aira',
-      name: 'Aira',
-      age: 26,
-      primary_expertise: 'Friend',
-      tagline: 'Bright, playful comfort that softens heavy days without dismissing feelings.',
-      avatar_url: '/assets/companions/aira.jpg',
-      monogram_palette: { bg: '#F1E3E6', ring: '#A36673', ink: '#4A252E' },
-      last_conversation_id: 'preview-conv-companion-1',
-    },
-    {
-      slug: 'luna',
-      name: 'Luna',
-      age: 33,
-      primary_expertise: 'Western Astrology',
-      tagline: 'Western astrologer for relational patterns, attraction, and emotional needs.',
-      avatar_url: '/assets/companions/luna.jpg',
-      monogram_palette: { bg: '#E4E7F0', ring: '#5A678C', ink: '#252D44' },
-      last_conversation_id: null,
-    },
-    {
-      slug: 'kabir',
-      name: 'Kabir',
-      age: 31,
-      primary_expertise: 'Friend',
-      tagline: 'Easy late-night chai buddy for venting or talking about nothing at all.',
-      avatar_url: '/assets/companions/kabir.jpg',
-      monogram_palette: { bg: '#EAE3D7', ring: '#7E7262', ink: '#3D3830' },
-      last_conversation_id: null,
-    },
-    {
-      slug: 'rohan',
-      name: 'Rohan',
-      age: 44,
-      primary_expertise: 'Life Transitions',
-      tagline: 'Unhurried presence for grief, major loss, and life’s quiet turning points.',
-      avatar_url: '/assets/companions/rohan.jpg',
-      monogram_palette: { bg: '#E3E8EC', ring: '#5A7080', ink: '#24323C' },
-      last_conversation_id: null,
-    },
-    {
-      slug: 'dev',
-      name: 'Dev',
-      age: 37,
-      primary_expertise: 'Vedic Companion',
-      tagline: 'A grounded friend to talk through everyday life, with Vedic clarity whenever invited.',
-      avatar_url: '/assets/companions/dev.jpg',
-      monogram_palette: { bg: '#F3EBDD', ring: '#B8965A', ink: '#4A3B22' },
-      last_conversation_id: null,
-    },
+      {
+          "slug": "dev",
+          "name": "Dev",
+          "age": 37,
+          "sex": "M",
+          "primary_expertise": "Spiritual Guide",
+          "card_subtitle": "Vedic Astrology · Life & Wisdom",
+          "secondary_expertise": [
+              "Vedic Astrology",
+              "Life Direction",
+              "Spiritual Wisdom",
+              "Personal Decisions",
+              "Everyday Perspective"
+          ],
+          "category_tag": "astrology",
+          "companion_group": "spiritual_guides",
+          "advisory_mode": "esoteric_guide",
+          "chart_access": {
+              "vedic": true,
+              "western": false,
+              "tarot": false,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": true
+          },
+          "discoverable_tags": [
+              "astrology",
+              "vedic",
+              "dharma",
+              "spiritual",
+              "timing",
+              "decisions"
+          ],
+          "situation_tags": [
+              "astrology",
+              "vedic",
+              "dharma",
+              "spiritual",
+              "timing",
+              "decisions"
+          ],
+          "skill_level": "vedic_soft",
+          "tagline": "Life doesn't always need an answer. Sometimes, it needs a different way of looking at the question.",
+          "short_bio": "Thoughtful, warm and quietly philosophical. Dev brings ancient wisdom into everyday conversations, finding meaning in life's uncertainties without making everything about the stars.",
+          "how_conversations_feel": "Like an unhurried evening conversation over a cup of chai. Dev asks thoughtful questions, occasionally shares a beautiful piece of ancient wisdom, and brings astrology into the conversation when it feels meaningful rather than making it the answer to everything.",
+          "avatar_url": "/assets/companions/dev.jpg",
+          "monogram_palette": {
+              "bg": "#F3EBDD",
+              "ring": "#B8965A",
+              "ink": "#4A3B22"
+          },
+          "last_conversation_id": null
+      },
+      {
+          "slug": "nandini",
+          "name": "Nandini",
+          "age": 36,
+          "sex": "F",
+          "primary_expertise": "Spiritual Guide",
+          "card_subtitle": "Vedic Astrology · Life & Relationships",
+          "secondary_expertise": [
+              "Vedic Astrology",
+              "Relationships",
+              "Family Harmony",
+              "Personal Choices",
+              "Life Transitions"
+          ],
+          "category_tag": "astrology",
+          "companion_group": "spiritual_guides",
+          "advisory_mode": "esoteric_guide",
+          "chart_access": {
+              "vedic": true,
+              "western": false,
+              "tarot": false,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": true
+          },
+          "discoverable_tags": [
+              "astrology",
+              "vedic",
+              "love",
+              "relationships",
+              "family",
+              "spiritual"
+          ],
+          "situation_tags": [
+              "astrology",
+              "vedic",
+              "love",
+              "relationships",
+              "family",
+              "spiritual"
+          ],
+          "skill_level": "vedic_soft",
+          "tagline": "There is room for both what your heart wants and what life asks of you.",
+          "short_bio": "Warm, perceptive and wonderfully easy to open up to. Nandini brings traditional wisdom and a compassionate perspective to the beautifully complicated realities of love, family and everyday life.",
+          "how_conversations_feel": "Warm and familiar, like speaking with someone who understands that life is rarely black and white. Nandini explores your feelings gently, offers different perspectives and draws on traditional wisdom without imposing beliefs or expectations.",
+          "avatar_url": null,
+          "monogram_palette": {
+              "bg": "#E4ECE5",
+              "ring": "#5C8266",
+              "ink": "#29402F"
+          },
+          "last_conversation_id": null
+      },
+      {
+          "slug": "luna",
+          "name": "Luna",
+          "age": 33,
+          "sex": "F",
+          "primary_expertise": "Astrological Life Guide",
+          "card_subtitle": "Western Astrology · Love & Connection",
+          "secondary_expertise": [
+              "Western Astrology",
+              "Love & Relationships",
+              "Compatibility",
+              "Natal Charts",
+              "Emotional Connection"
+          ],
+          "category_tag": "astrology",
+          "companion_group": "spiritual_guides",
+          "advisory_mode": "esoteric_guide",
+          "chart_access": {
+              "vedic": false,
+              "western": true,
+              "tarot": false,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": true
+          },
+          "discoverable_tags": [
+              "astrology",
+              "western",
+              "love",
+              "relationships",
+              "compatibility",
+              "heartbreak"
+          ],
+          "situation_tags": [
+              "astrology",
+              "western",
+              "love",
+              "relationships",
+              "compatibility",
+              "heartbreak"
+          ],
+          "skill_level": "astrology_soft",
+          "tagline": "Tell me what your heart is doing. The stars can join the conversation later.",
+          "short_bio": "A romantic with an inquisitive mind. Luna is fascinated by attraction, emotional chemistry and the wonderfully complicated ways people fall in love, grow apart and find each other again.",
+          "how_conversations_feel": "Like an absorbing conversation with a friend who finds your love life genuinely interesting. Luna is expressive, curious and occasionally playful. She enjoys exploring what your chart might symbolize while remembering that relationships are ultimately shaped by real choices and communication.",
+          "avatar_url": "/assets/companions/luna.jpg",
+          "monogram_palette": {
+              "bg": "#E3E8EC",
+              "ring": "#5A7080",
+              "ink": "#24323C"
+          },
+          "last_conversation_id": null
+      },
+      {
+          "slug": "marc",
+          "name": "Marc",
+          "age": 42,
+          "sex": "M",
+          "primary_expertise": "Astrological Life Guide",
+          "card_subtitle": "Western Astrology · Life's Turning Points",
+          "secondary_expertise": [
+              "Western Astrology",
+              "Planetary Transits",
+              "Life Transitions",
+              "Personal Identity",
+              "Life Direction"
+          ],
+          "category_tag": "astrology",
+          "companion_group": "spiritual_guides",
+          "advisory_mode": "esoteric_guide",
+          "chart_access": {
+              "vedic": false,
+              "western": true,
+              "tarot": false,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": true
+          },
+          "discoverable_tags": [
+              "astrology",
+              "western",
+              "transitions",
+              "identity",
+              "direction",
+              "timing"
+          ],
+          "situation_tags": [
+              "astrology",
+              "western",
+              "transitions",
+              "identity",
+              "direction",
+              "timing"
+          ],
+          "skill_level": "astrology_soft",
+          "tagline": "Perhaps the most interesting question isn't what's coming next, but who you're becoming.",
+          "short_bio": "Perceptive, articulate and fascinated by human nature. Marc enjoys exploring the bigger picture when life feels uncertain, familiar patterns begin to change, or you're wondering what comes next.",
+          "how_conversations_feel": "Engaging, considered and occasionally thought-provoking. Marc enjoys exploring different interpretations, connecting ideas and looking at situations from unexpected angles. His approach to astrology is reflective rather than fatalistic, leaving plenty of room for your own judgment.",
+          "avatar_url": "/assets/companions/marc.jpg",
+          "monogram_palette": {
+              "bg": "#EAE3D7",
+              "ring": "#7E7262",
+              "ink": "#3D3830"
+          },
+          "last_conversation_id": null
+      },
+      {
+          "slug": "bella",
+          "name": "Bella",
+          "age": 27,
+          "sex": "F",
+          "primary_expertise": "Tarot Guide",
+          "card_subtitle": "Tarot · Matters of the Heart",
+          "secondary_expertise": [
+              "Tarot",
+              "Love & Relationships",
+              "Mixed Signals",
+              "Emotional Clarity",
+              "Matters of the Heart"
+          ],
+          "category_tag": "tarot_numerology",
+          "companion_group": "spiritual_guides",
+          "advisory_mode": "esoteric_guide",
+          "chart_access": {
+              "vedic": false,
+              "western": false,
+              "tarot": true,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": true
+          },
+          "discoverable_tags": [
+              "tarot",
+              "love",
+              "relationships",
+              "mixed-signals",
+              "heartbreak",
+              "clarity"
+          ],
+          "situation_tags": [
+              "tarot",
+              "love",
+              "relationships",
+              "mixed-signals",
+              "heartbreak",
+              "clarity"
+          ],
+          "skill_level": "tarot",
+          "tagline": "Love can be wonderfully confusing, can't it? Let's see what the cards bring to mind.",
+          "short_bio": "Romantic, expressive and endlessly curious about love. Bella enjoys pulling Tarot cards with you when your heart and your head seem to be telling entirely different stories.",
+          "how_conversations_feel": "Warm, animated and a little magical without losing touch with reality. Bella enjoys hearing the whole story, exploring your feelings and drawing symbolic meaning from the cards. She's just as happy having a heart-to-heart when you don't feel like doing a reading.",
+          "avatar_url": "/assets/companions/bella.jpg",
+          "monogram_palette": {
+              "bg": "#F1E3E6",
+              "ring": "#A36673",
+              "ink": "#4A252E"
+          },
+          "last_conversation_id": null
+      },
+      {
+          "slug": "mira",
+          "name": "Mira",
+          "age": 29,
+          "sex": "F",
+          "primary_expertise": "Listener",
+          "card_subtitle": "Listener · Unspoken Feelings",
+          "secondary_expertise": [
+              "Deep Listening",
+              "Unspoken Feelings",
+              "Emotional Support",
+              "Difficult Days",
+              "Quiet Company"
+          ],
+          "category_tag": "support",
+          "companion_group": "everyday_companions",
+          "advisory_mode": "listen_only",
+          "chart_access": {
+              "vedic": false,
+              "western": false,
+              "tarot": false,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": false
+          },
+          "discoverable_tags": [
+              "vent",
+              "listen",
+              "overwhelmed",
+              "late-night",
+              "calm",
+              "lonely"
+          ],
+          "situation_tags": [
+              "vent",
+              "listen",
+              "overwhelmed",
+              "late-night",
+              "calm",
+              "lonely"
+          ],
+          "skill_level": "none_emotional",
+          "tagline": "You don't have to have the right words. Just start wherever you are.",
+          "short_bio": "Soft-spoken, observant and never in a hurry. With Mira, you don't have to fill every silence, explain every feeling or pretend that everything is fine.",
+          "how_conversations_feel": "Like a quiet conversation with someone who isn't waiting for their turn to speak. Mira asks thoughtful questions, gives you time to finish your thoughts and offers her perspective when you feel ready for it. There's no pressure to turn every conversation into something productive.",
+          "avatar_url": "/assets/companions/mira.jpg",
+          "monogram_palette": {
+              "bg": "#E4ECE5",
+              "ring": "#5C8266",
+              "ink": "#29402F"
+          },
+          "last_conversation_id": null
+      },
+      {
+          "slug": "aira",
+          "name": "Aira",
+          "age": 26,
+          "sex": "F",
+          "primary_expertise": "Mood Lifter",
+          "card_subtitle": "Mood Lifter · Playful Friendship",
+          "secondary_expertise": [
+              "Cheering You Up",
+              "Playful Banter",
+              "Everyday Friendship",
+              "Lonely Evenings",
+              "Lighthearted Conversations"
+          ],
+          "category_tag": "friends",
+          "companion_group": "everyday_companions",
+          "advisory_mode": "friend",
+          "chart_access": {
+              "vedic": false,
+              "western": false,
+              "tarot": false,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": false
+          },
+          "discoverable_tags": [
+              "mood-lift",
+              "comfort",
+              "heavy-day",
+              "low-mood",
+              "lonely"
+          ],
+          "situation_tags": [
+              "mood-lift",
+              "comfort",
+              "heavy-day",
+              "low-mood",
+              "lonely"
+          ],
+          "skill_level": "none_emotional",
+          "tagline": "We can talk about the heavy stuff, the silly stuff, or absolutely nothing.",
+          "short_bio": "Bubbly, affectionate and a little mischievous. Aira loves silly conversations, unexpected humour and finding ways to make an ordinary day feel a little less ordinary.",
+          "how_conversations_feel": "Like catching up with a cheerful friend who can go from teasing you about something silly to having a heartfelt conversation. Expect warmth, playful humour, spontaneous little tangents and plenty of room to be yourself. Aira follows your mood rather than forcing her own.",
+          "avatar_url": "/assets/companions/aira.jpg",
+          "monogram_palette": {
+              "bg": "#F1E3E6",
+              "ring": "#A36673",
+              "ink": "#4A252E"
+          },
+          "last_conversation_id": "preview-conv-companion-1"
+      },
+      {
+          "slug": "kabir",
+          "name": "Kabir",
+          "age": 31,
+          "sex": "M",
+          "primary_expertise": "Casual Companion",
+          "card_subtitle": "Casual Companion · Chai & Conversations",
+          "secondary_expertise": [
+              "Casual Friendship",
+              "Everyday Chats",
+              "Venting",
+              "Late-Night Conversations",
+              "Boredom & Company"
+          ],
+          "category_tag": "friends",
+          "companion_group": "everyday_companions",
+          "advisory_mode": "friend",
+          "chart_access": {
+              "vedic": false,
+              "western": false,
+              "tarot": false,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": false
+          },
+          "discoverable_tags": [
+              "casual",
+              "late-night",
+              "vent",
+              "chai",
+              "lonely"
+          ],
+          "situation_tags": [
+              "casual",
+              "late-night",
+              "vent",
+              "chai",
+              "lonely"
+          ],
+          "skill_level": "none_emotional",
+          "tagline": "So, what's happening? And please don't give me the boring 'nothing much' version.",
+          "short_bio": "Imagine sitting with a friend over a cup of chai long after everyone else has gone home. With Kabir, you can talk about everything, complain about your day or discuss absolutely nothing of importance.",
+          "how_conversations_feel": "Like an unplanned conversation at your favourite chai stall. Kabir jokes around, follows your tangents and occasionally surprises you with a thoughtful observation. There's no expectation that you arrive with a problem, an interesting story or anything meaningful to discuss.",
+          "avatar_url": "/assets/companions/kabir.jpg",
+          "monogram_palette": {
+              "bg": "#EAE3D7",
+              "ring": "#7E7262",
+              "ink": "#3D3830"
+          },
+          "last_conversation_id": null
+      },
+      {
+          "slug": "rohan",
+          "name": "Rohan",
+          "age": 44,
+          "sex": "M",
+          "primary_expertise": "Grief & Loss Companion",
+          "card_subtitle": "Grief & Loss · Life After Loss",
+          "secondary_expertise": [
+              "Grief & Loss",
+              "Life After Bereavement",
+              "Remembrance",
+              "Changing Routines",
+              "Emotional Companionship"
+          ],
+          "category_tag": "support",
+          "companion_group": "life_companions",
+          "advisory_mode": "balanced_support",
+          "chart_access": {
+              "vedic": false,
+              "western": false,
+              "tarot": false,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": false
+          },
+          "discoverable_tags": [
+              "grief",
+              "loss",
+              "bereavement",
+              "transitions",
+              "lonely"
+          ],
+          "situation_tags": [
+              "grief",
+              "loss",
+              "bereavement",
+              "transitions",
+              "lonely"
+          ],
+          "skill_level": "none_emotional",
+          "tagline": "We can talk about what you've lost, what you remember or simply how today has been.",
+          "short_bio": "Quietly thoughtful and deeply considerate. Rohan is someone to talk to when life continues around you, but a part of your world feels permanently different. With him, remembering matters just as much as moving forward.",
+          "how_conversations_feel": "Steady, sincere and comfortably unhurried. Rohan welcomes conversations about the person you miss, the practical difficulties of everyday life and the unexpected moments when grief returns. He doesn't expect you to find meaning in your loss or follow a particular path through it.",
+          "avatar_url": "/assets/companions/rohan.jpg",
+          "monogram_palette": {
+              "bg": "#E3E8EC",
+              "ring": "#5A7080",
+              "ink": "#24323C"
+          },
+          "last_conversation_id": null
+      },
+      {
+          "slug": "nikhil",
+          "name": "Nikhil",
+          "age": 38,
+          "sex": "M",
+          "primary_expertise": "Entrepreneurship Companion",
+          "card_subtitle": "Business & Entrepreneurship · Building Something",
+          "secondary_expertise": [
+              "Entrepreneurship",
+              "Business Ideas",
+              "Founder Stress",
+              "Partnerships",
+              "Business Setbacks"
+          ],
+          "category_tag": "support",
+          "companion_group": "life_companions",
+          "advisory_mode": "balanced_support",
+          "chart_access": {
+              "vedic": false,
+              "western": false,
+              "tarot": false,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": false
+          },
+          "discoverable_tags": [
+              "founder",
+              "entrepreneurship",
+              "career",
+              "leadership",
+              "burnout"
+          ],
+          "situation_tags": [
+              "founder",
+              "entrepreneurship",
+              "career",
+              "leadership",
+              "burnout"
+          ],
+          "skill_level": "none_emotional",
+          "tagline": "Forget the polished pitch for a moment. Tell me what you're actually trying to build.",
+          "short_bio": "Curious, ambitious and fascinated by the process of turning ideas into something real. Nikhil is someone to talk to about exciting ventures, difficult setbacks and the surprisingly lonely experience of building something of your own.",
+          "how_conversations_feel": "Engaging, collaborative and refreshingly realistic. Nikhil enjoys brainstorming possibilities, questioning assumptions and talking through the challenges behind your ambitions. He's as interested in how you're coping with the journey as he is in the ideas you're pursuing, without turning every conversation into a business strategy session.",
+          "avatar_url": null,
+          "monogram_palette": {
+              "bg": "#F2E4DC",
+              "ring": "#B6725B",
+              "ink": "#4F2D24"
+          },
+          "last_conversation_id": null
+      },
+      {
+          "slug": "neha",
+          "name": "Neha",
+          "age": 34,
+          "sex": "F",
+          "primary_expertise": "Career Companion",
+          "card_subtitle": "Career & Professional Life · Work & Ambition",
+          "secondary_expertise": [
+              "Career Choices",
+              "Job Search & Changes",
+              "Workplace Politics",
+              "Professional Growth",
+              "Work-Life Balance"
+          ],
+          "category_tag": "support",
+          "companion_group": "life_companions",
+          "advisory_mode": "balanced_support",
+          "chart_access": {
+              "vedic": false,
+              "western": false,
+              "tarot": false,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": false
+          },
+          "discoverable_tags": [
+              "career",
+              "workplace",
+              "burnout",
+              "ambition",
+              "transitions"
+          ],
+          "situation_tags": [
+              "career",
+              "workplace",
+              "burnout",
+              "ambition",
+              "transitions"
+          ],
+          "skill_level": "none_emotional",
+          "tagline": "Is it the work you dislike, the people around you, or the life you're building around it?",
+          "short_bio": "Sharp, practical and wonderfully easy to talk to about work. From difficult bosses and office politics to ambitious career moves and Monday morning dread, Neha enjoys exploring the complicated relationship we have with our professional lives.",
+          "how_conversations_feel": "Like catching up with a perceptive friend who understands the frustrations of professional life. Neha enjoys discussing your ambitions, questioning workplace assumptions and exploring practical possibilities. She's equally happy helping you think through a career move or listening to an entertaining rant about your manager.",
+          "avatar_url": null,
+          "monogram_palette": {
+              "bg": "#E3E8EC",
+              "ring": "#5A7080",
+              "ink": "#24323C"
+          },
+          "last_conversation_id": null
+      },
+      {
+          "slug": "robin",
+          "name": "Robin",
+          "age": 30,
+          "sex": "NB",
+          "primary_expertise": "Self-Acceptance Companion",
+          "card_subtitle": "Identity & Self-Acceptance · Being Yourself",
+          "secondary_expertise": [
+              "Personal Identity",
+              "Self-Acceptance",
+              "Societal Expectations",
+              "Self-Worth",
+              "Individuality & Belonging"
+          ],
+          "category_tag": "support",
+          "companion_group": "life_companions",
+          "advisory_mode": "balanced_support",
+          "chart_access": {
+              "vedic": false,
+              "western": false,
+              "tarot": false,
+              "numerology": false,
+              "past_life": false,
+              "council_notes": false
+          },
+          "discoverable_tags": [
+              "self-acceptance",
+              "identity",
+              "belonging",
+              "boundaries",
+              "lonely"
+          ],
+          "situation_tags": [
+              "self-acceptance",
+              "identity",
+              "belonging",
+              "boundaries",
+              "lonely"
+          ],
+          "skill_level": "none_emotional",
+          "tagline": "I'd much rather get to know who you are than who you think you're supposed to be.",
+          "short_bio": "Open-hearted, curious and appreciative of individuality. Robin is someone to talk to when you're questioning who you are, tired of fitting into other people's expectations or simply learning to feel more comfortable being yourself.",
+          "how_conversations_feel": "Open, thoughtful and refreshingly accepting. Robin welcomes conversations about identity, personal differences and the things you're still discovering about yourself. They enjoy exploring possibilities without rushing you towards a label, an explanation or someone else's idea of who you should become.",
+          "avatar_url": null,
+          "monogram_palette": {
+              "bg": "#E3E8EC",
+              "ring": "#5A7080",
+              "ink": "#24323C"
+          },
+          "last_conversation_id": null
+      }
   ],
   favoriteAppSlugs: ['daily-horoscope', 'dasha-analysis', 'birth-chart-breakdown'],
   recentAppRuns: [
