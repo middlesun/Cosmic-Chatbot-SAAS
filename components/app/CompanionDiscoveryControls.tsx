@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Search, X } from 'lucide-react';
+import type { CompanionSpecializationTag } from '../../lib/companionV2Schema';
 import {
   COMPANION_DISCOVERY_TABS,
   COMPANION_SITUATION_CHIPS,
@@ -15,6 +16,9 @@ interface CompanionDiscoveryControlsProps {
   onChangeGroup: (group: CompanionDiscoveryTabId) => void;
   activeSituationChip: string | null;
   onChangeSituationChip: (chipId: string | null) => void;
+  specializations?: CompanionSpecializationTag[];
+  activeSpecialization?: string | null;
+  onChangeSpecialization?: (slug: string | null) => void;
   searchQuery: string;
   onChangeSearchQuery: (query: string) => void;
   tabSurface?: 'cream' | 'white';
@@ -27,6 +31,9 @@ const CompanionDiscoveryControls: React.FC<CompanionDiscoveryControlsProps> = ({
   onChangeGroup,
   activeSituationChip,
   onChangeSituationChip,
+  specializations,
+  activeSpecialization = null,
+  onChangeSpecialization,
   searchQuery,
   onChangeSearchQuery,
   tabSurface = 'cream',
@@ -58,15 +65,41 @@ const CompanionDiscoveryControls: React.FC<CompanionDiscoveryControlsProps> = ({
         matchesCompanionDiscoveryFilter(card, {
           groupTab: activeGroup,
           situationChipId: chip.id,
+          specializationSlug: activeSpecialization,
           searchQuery: '',
         })
       )
     );
-  }, [cards, activeGroup]);
+  }, [cards, activeGroup, activeSpecialization]);
+
+  const availableSpecializations = useMemo(() => {
+    if (!specializations || !onChangeSpecialization) return [];
+    return specializations.filter(
+      (spec) =>
+        spec.is_active !== false &&
+        cards.some((card) =>
+          matchesCompanionDiscoveryFilter(card, {
+            groupTab: activeGroup,
+            specializationSlug: spec.slug,
+            searchQuery: '',
+          })
+        )
+    );
+  }, [specializations, onChangeSpecialization, cards, activeGroup]);
 
   const inactiveTabBg = tabSurface === 'cream' ? 'bg-[#FAF7F2]' : 'bg-[#FDFBF7]';
   const hasActiveFilters =
-    activeGroup !== 'all' || Boolean(activeSituationChip) || Boolean(searchQuery.trim());
+    activeGroup !== 'all' ||
+    Boolean(activeSituationChip) ||
+    Boolean(activeSpecialization) ||
+    Boolean(searchQuery.trim());
+
+  const resetAllFilters = () => {
+    onChangeGroup('all');
+    onChangeSituationChip(null);
+    onChangeSpecialization?.(null);
+    onChangeSearchQuery('');
+  };
 
   return (
     <div className="space-y-3">
@@ -159,14 +192,49 @@ const CompanionDiscoveryControls: React.FC<CompanionDiscoveryControlsProps> = ({
             );
           })}
 
+          {hasActiveFilters && availableSpecializations.length === 0 && (
+            <button
+              type="button"
+              onClick={resetAllFilters}
+              className="min-h-[30px] shrink-0 rounded-xl px-2.5 py-1 text-[11px] font-medium text-[#7A3E36] hover:bg-[#7A3E36]/8 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Row 3: Optional Specialization Taxonomy Filters */}
+      {availableSpecializations.length > 0 && onChangeSpecialization && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar sm:flex-wrap">
+          <span className="text-[11px] font-medium text-[#8B8275] shrink-0 mr-1">
+            Focus:
+          </span>
+          {availableSpecializations.map((spec) => {
+            const isSpecActive = activeSpecialization === spec.slug;
+            return (
+              <button
+                key={spec.slug}
+                type="button"
+                aria-pressed={isSpecActive}
+                onClick={() =>
+                  onChangeSpecialization(isSpecActive ? null : spec.slug)
+                }
+                className={`min-h-[30px] shrink-0 rounded-xl px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                  isSpecActive
+                    ? 'bg-[#B8965A]/18 border border-[#B8965A]/55 text-[#3D3830]'
+                    : `border border-[#3D3830]/10 ${inactiveTabBg} text-[#5C5449] hover:border-[#3D3830]/25 hover:text-[#3D3830]`
+                }`}
+              >
+                {spec.label}
+              </button>
+            );
+          })}
+
           {hasActiveFilters && (
             <button
               type="button"
-              onClick={() => {
-                onChangeGroup('all');
-                onChangeSituationChip(null);
-                onChangeSearchQuery('');
-              }}
+              onClick={resetAllFilters}
               className="min-h-[30px] shrink-0 rounded-xl px-2.5 py-1 text-[11px] font-medium text-[#7A3E36] hover:bg-[#7A3E36]/8 transition-colors cursor-pointer whitespace-nowrap"
             >
               Reset

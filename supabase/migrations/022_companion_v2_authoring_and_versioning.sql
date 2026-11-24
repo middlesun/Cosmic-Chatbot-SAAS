@@ -6,6 +6,7 @@ ALTER TABLE public.companions
   ADD COLUMN IF NOT EXISTS draft_payload_json JSONB,
   ADD COLUMN IF NOT EXISTS published_version INTEGER NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS has_unpublished_draft BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS core_identity_locked BOOLEAN NOT NULL DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS specialization_slugs TEXT[] NOT NULL DEFAULT '{}'::text[],
   ADD COLUMN IF NOT EXISTS last_published_at TIMESTAMPTZ;
 

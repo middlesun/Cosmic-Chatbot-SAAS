@@ -27,6 +27,7 @@ import {
   type CompanionPersonalityV2,
   type CoreIdentityProtectedDiff,
 } from '../../lib/companionV2Schema';
+import { ensureCompanionV2Initialized } from './companionV2Mapper';
 import { normalizeChatStyle } from './enginePromptDefaults';
 import {
   savePlatformSetting,
@@ -81,6 +82,7 @@ export interface CompanionPresetRecord {
   draft_payload_json?: Record<string, unknown> | null;
   published_version?: number;
   has_unpublished_draft?: boolean;
+  core_identity_locked?: boolean;
   specialization_slugs?: string[];
   last_published_at?: string | null;
   created_at?: string;
@@ -3326,6 +3328,7 @@ export function isMissing022ColumnError(err: { code?: string; message?: string }
     msg.includes('draft_payload_json') ||
     msg.includes('published_version') ||
     msg.includes('has_unpublished_draft') ||
+    msg.includes('core_identity_locked') ||
     msg.includes('specialization_slugs') ||
     msg.includes('last_published_at')
   );
@@ -3336,6 +3339,7 @@ export interface CompanionV2OverlayEntry {
   draft_payload_json?: Record<string, unknown> | null;
   published_version?: number;
   has_unpublished_draft?: boolean;
+  core_identity_locked?: boolean;
   specialization_slugs?: string[];
   last_published_at?: string | null;
 }
@@ -3376,6 +3380,9 @@ export async function readCompanionV2Overlay(): Promise<CompanionV2OverlayMap> {
           : {}),
         ...(typeof entry.has_unpublished_draft === 'boolean'
           ? { has_unpublished_draft: entry.has_unpublished_draft }
+          : {}),
+        ...(typeof entry.core_identity_locked === 'boolean'
+          ? { core_identity_locked: entry.core_identity_locked }
           : {}),
         ...(Array.isArray(entry.specialization_slugs)
           ? { specialization_slugs: sanitizeSpecializationSlugs(entry.specialization_slugs) }
@@ -3722,11 +3729,20 @@ function mapDbRowToCompanionPreset(
     typeof row.personality_v2_json === 'object' &&
     !Array.isArray(row.personality_v2_json) &&
     Object.keys(row.personality_v2_json as Record<string, unknown>).length > 0;
-  const resolvedPersonalityV2 = hasDbPersonalityV2
+  const rawPersonalityV2 = hasDbPersonalityV2
     ? normalizePersonalityV2(row.personality_v2_json)
     : v2Entry?.personality_v2_json
     ? normalizePersonalityV2(v2Entry.personality_v2_json)
-    : { ...DEFAULT_COMPANION_PERSONALITY_V2 };
+    : undefined;
+
+  const resolvedCoreIdentityLocked =
+    typeof row.core_identity_locked === 'boolean'
+      ? row.core_identity_locked
+      : typeof v2Entry?.core_identity_locked === 'boolean'
+      ? v2Entry.core_identity_locked
+      : typeof rawPersonalityV2?.core_identity_locked === 'boolean'
+      ? rawPersonalityV2.core_identity_locked
+      : true;
 
   const dbSpecializations = Array.isArray(row.specialization_slugs)
     ? sanitizeSpecializationSlugs(row.specialization_slugs)
@@ -3782,7 +3798,7 @@ function mapDbRowToCompanionPreset(
       ? row.updated_at
       : null;
 
-  return {
+  const baseRecord: CompanionPresetRecord = {
     id: String(row.id || `comp_${String(row.slug || 'unknown')}`),
     slug: slugLower,
     legacy_id: typeof row.legacy_id === 'string' ? row.legacy_id : null,
@@ -3807,10 +3823,11 @@ function mapDbRowToCompanionPreset(
     discoverable_tags: resolvedTags,
     situation_tags: resolvedTags,
     specialization_slugs: resolvedSpecializations,
-    personality_v2_json: resolvedPersonalityV2,
+    personality_v2_json: rawPersonalityV2,
     draft_payload_json: resolvedDraftPayload,
     published_version: resolvedPublishedVersion,
     has_unpublished_draft: resolvedHasDraft,
+    core_identity_locked: resolvedCoreIdentityLocked,
     last_published_at: resolvedLastPublishedAt,
     gender_variants: resolvedGenderVariants,
     override_group_rules: resolvedOverrideGroupRules,
@@ -3845,6 +3862,9 @@ function mapDbRowToCompanionPreset(
     created_at: typeof row.created_at === 'string' ? row.created_at : undefined,
     updated_at: typeof row.updated_at === 'string' ? row.updated_at : undefined,
   };
+
+  baseRecord.personality_v2_json = ensureCompanionV2Initialized(baseRecord);
+  return baseRecord;
 }
 
 async function readDeletedDefaultSlugs(): Promise<Set<string>> {
@@ -4148,7 +4168,8 @@ function getEnrichedDefaultCompanions(): CompanionPresetRecord[] {
             discoverable_tags: meta.situation_tags,
             tagline: p.tagline,
           });
-    return {
+    const coreLocked = p.core_identity_locked !== false;
+    const enriched: CompanionPresetRecord = {
       ...p,
       companion_group: meta.companion_group,
       advisory_mode: p.advisory_mode || caps.advisory_mode,
@@ -4158,14 +4179,14 @@ function getEnrichedDefaultCompanions(): CompanionPresetRecord[] {
       discoverable_tags: meta.situation_tags,
       situation_tags: meta.situation_tags,
       specialization_slugs: specializations,
-      personality_v2_json: p.personality_v2_json
-        ? normalizePersonalityV2(p.personality_v2_json)
-        : { ...DEFAULT_COMPANION_PERSONALITY_V2 },
+      core_identity_locked: coreLocked,
       published_version: p.published_version || 1,
       has_unpublished_draft: Boolean(p.has_unpublished_draft),
       draft_payload_json: p.draft_payload_json || null,
       last_published_at: p.last_published_at || null,
     };
+    enriched.personality_v2_json = ensureCompanionV2Initialized(enriched);
+    return enriched;
   });
 }
 
@@ -4388,7 +4409,7 @@ const COMPANION_018_SELECT_COLUMNS = `${COMPANION_SELECT_COLUMNS}, companion_gro
 
 const COMPANION_019_SELECT_COLUMNS = `${COMPANION_018_SELECT_COLUMNS}, card_subtitle, how_conversations_feel`;
 
-export const COMPANION_022_SELECT_COLUMNS = `${COMPANION_019_SELECT_COLUMNS}, personality_v2_json, draft_payload_json, published_version, has_unpublished_draft, specialization_slugs, last_published_at`;
+export const COMPANION_022_SELECT_COLUMNS = `${COMPANION_019_SELECT_COLUMNS}, personality_v2_json, draft_payload_json, published_version, has_unpublished_draft, core_identity_locked, specialization_slugs, last_published_at`;
 
 const RASTER_AVATAR_DATA_URL_RE =
   /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/i;
@@ -4729,7 +4750,9 @@ export async function upsertAdminCompanion(
     legacy_id:
       typeof input.legacy_id === 'string' && input.legacy_id.trim()
         ? input.legacy_id.trim().slice(0, 80)
-        : existingRow?.legacy_id ?? null,
+        : typeof existingRow?.legacy_id === 'string'
+        ? existingRow.legacy_id
+        : null,
     name,
     age,
     sex,
@@ -4796,6 +4819,13 @@ export async function upsertAdminCompanion(
 
   // Phase 2 V2 authoring & versioning fields
   const existingV2Overlay = existingRow ? (await readCompanionV2Overlay())[slug] : undefined;
+  const existingCoreIdentityLocked =
+    typeof existingRow?.core_identity_locked === 'boolean'
+      ? existingRow.core_identity_locked
+      : typeof existingV2Overlay?.core_identity_locked === 'boolean'
+      ? existingV2Overlay.core_identity_locked
+      : true;
+
   const existingV2Norm =
     existingRow?.personality_v2_json &&
     typeof existingRow.personality_v2_json === 'object' &&
@@ -4803,12 +4833,50 @@ export async function upsertAdminCompanion(
       ? normalizePersonalityV2(existingRow.personality_v2_json)
       : existingV2Overlay?.personality_v2_json
       ? normalizePersonalityV2(existingV2Overlay.personality_v2_json)
+      : existingRow
+      ? ensureCompanionV2Initialized({
+          name: String(existingRow.name || name),
+          age: Number(existingRow.age || age),
+          sex: normalizeCompanionSex(existingRow.sex),
+          tagline: String(existingRow.tagline || ''),
+          short_bio: String(existingRow.short_bio || ''),
+          how_conversations_feel: String(existingRow.how_conversations_feel || ''),
+          primary_expertise: String(existingRow.primary_expertise || primaryExpertiseStr),
+          secondary_expertise: Array.isArray(existingRow.secondary_expertise)
+            ? existingRow.secondary_expertise.map(String)
+            : secondary_expertise,
+          cultural_fluency: String(existingRow.cultural_fluency || ''),
+          system_prompt: String(existingRow.system_prompt || ''),
+          backstory: String(existingRow.backstory || ''),
+          soul_consciousness: String(existingRow.soul_consciousness || ''),
+          hard_rules: String(existingRow.hard_rules || ''),
+          soft_rules: String(existingRow.soft_rules || ''),
+          autonomy_level: (existingRow.autonomy_level as CompanionAutonomyLevel) || autonomy_level,
+          skill_level: (existingRow.skill_level as CompanionSkillLevel) || skill_level,
+          advisory_mode,
+          chart_access,
+          core_identity_locked: existingCoreIdentityLocked,
+        })
       : { ...DEFAULT_COMPANION_PERSONALITY_V2 };
+
+  const core_identity_locked =
+    typeof input.core_identity_locked === 'boolean'
+      ? input.core_identity_locked
+      : existingCoreIdentityLocked;
 
   const personality_v2_json =
     input.personality_v2_json !== undefined
-      ? normalizePersonalityV2(input.personality_v2_json)
-      : existingV2Norm;
+      ? normalizePersonalityV2({
+          ...(typeof input.personality_v2_json === 'object' && input.personality_v2_json
+            ? (input.personality_v2_json as Record<string, unknown>)
+            : {}),
+          core_identity_locked,
+        })
+      : ensureCompanionV2Initialized({
+          ...payload019,
+          personality_v2_json: existingV2Norm,
+          core_identity_locked,
+        });
 
   const specialization_slugs =
     input.specialization_slugs !== undefined
@@ -4837,6 +4905,7 @@ export async function upsertAdminCompanion(
         slug: String(existingRow.slug || ''),
         sex: existingResolvedSex,
         backstory: String(existingRow.backstory || ''),
+        core_identity_locked: existingCoreIdentityLocked,
         personality_v2_json: existingV2Norm,
       },
       {
@@ -4893,6 +4962,7 @@ export async function upsertAdminCompanion(
     draft_payload_json: nextDraftPayload,
     published_version: nextPublishedVersion,
     has_unpublished_draft: nextHasUnpublishedDraft,
+    core_identity_locked,
     specialization_slugs,
     last_published_at: nextLastPublishedAt,
   };
@@ -4967,6 +5037,7 @@ export async function upsertAdminCompanion(
     used022OverlayFallback ||
     input.personality_v2_json !== undefined ||
     input.specialization_slugs !== undefined ||
+    input.core_identity_locked !== undefined ||
     input.clear_draft === true
   ) {
     await saveCompanionV2OverlayEntry(slug, {
@@ -4974,6 +5045,7 @@ export async function upsertAdminCompanion(
       draft_payload_json: nextDraftPayload,
       published_version: nextPublishedVersion,
       has_unpublished_draft: nextHasUnpublishedDraft,
+      core_identity_locked,
       specialization_slugs,
       last_published_at: nextLastPublishedAt,
     });
@@ -5025,6 +5097,7 @@ export async function upsertAdminCompanion(
           draft_payload_json: nextDraftPayload,
           published_version: nextPublishedVersion,
           has_unpublished_draft: nextHasUnpublishedDraft,
+          core_identity_locked,
           specialization_slugs,
           last_published_at: nextLastPublishedAt,
         },
@@ -5086,6 +5159,28 @@ export async function resetAdminCompanionToDefault(
 
   const resetMetaPreview = resolveDefaultMetaForRecord(preset);
   const resetCaps = resolveCompanionCapabilities(preset, null);
+  const resetSpecializations =
+    preset.specialization_slugs && preset.specialization_slugs.length > 0
+      ? preset.specialization_slugs
+      : inferSpecializationsForCompanion({
+          slug: preset.slug,
+          companion_group: resetCaps.companion_group,
+          category_tag: preset.category_tag,
+          skill_level: preset.skill_level,
+          primary_expertise: preset.primary_expertise,
+          secondary_expertise: preset.secondary_expertise,
+          discoverable_tags: preset.discoverable_tags || resetMetaPreview.situation_tags,
+          tagline: preset.tagline,
+        });
+  const resetV2 = ensureCompanionV2Initialized({
+    ...preset,
+    companion_group: resetCaps.companion_group,
+    advisory_mode: resetCaps.advisory_mode,
+    chart_access: resetCaps.chart_access,
+    core_identity_locked: true,
+    specialization_slugs: resetSpecializations,
+  });
+
   const payload019 = {
     slug: preset.slug,
     legacy_id: preset.legacy_id,
@@ -5130,7 +5225,18 @@ export async function resetAdminCompanionToDefault(
     updated_at: new Date().toISOString(),
   };
 
+  const payload022 = {
+    ...payload019,
+    personality_v2_json: resetV2,
+    draft_payload_json: null,
+    has_unpublished_draft: false,
+    core_identity_locked: true,
+    specialization_slugs: resetSpecializations,
+    last_published_at: new Date().toISOString(),
+  };
+
   let usedSexConstraintFallback = false;
+  let used022OverlayFallback = false;
   let used019OverlayFallback = false;
   let usedOverlayFallback = false;
 
@@ -5154,7 +5260,12 @@ export async function resetAdminCompanionToDefault(
     return attempt;
   };
 
-  let resetRes = await upsertResetWithSexFallback(payload019, COMPANION_019_SELECT_COLUMNS);
+  let resetRes = await upsertResetWithSexFallback(payload022, COMPANION_022_SELECT_COLUMNS);
+
+  if (isMissing022ColumnError(resetRes.error)) {
+    used022OverlayFallback = true;
+    resetRes = await upsertResetWithSexFallback(payload019, COMPANION_019_SELECT_COLUMNS);
+  }
 
   if (isMissing019ColumnError(resetRes.error)) {
     used019OverlayFallback = true;
@@ -5215,6 +5326,26 @@ export async function resetAdminCompanionToDefault(
     );
   }
 
+  if (used022OverlayFallback) {
+    await saveCompanionV2OverlayEntry(preset.slug, {
+      personality_v2_json: resetV2,
+      draft_payload_json: null,
+      has_unpublished_draft: false,
+      core_identity_locked: true,
+      specialization_slugs: resetSpecializations,
+      last_published_at: payload022.last_published_at,
+    });
+  } else {
+    await saveCompanionV2OverlayEntry(preset.slug, {
+      personality_v2_json: resetV2,
+      draft_payload_json: null,
+      has_unpublished_draft: false,
+      core_identity_locked: true,
+      specialization_slugs: resetSpecializations,
+      last_published_at: payload022.last_published_at,
+    });
+  }
+
   const resetMeta = resolveDefaultMetaForRecord(preset);
   await saveCompanionMetaOverlayEntry(
     preset.slug,
@@ -5254,6 +5385,16 @@ export async function resetAdminCompanionToDefault(
                 how_conversations_feel: preset.how_conversations_feel || '',
               }
             : {}),
+        },
+      },
+      {
+        [preset.slug.toLowerCase()]: {
+          personality_v2_json: resetV2,
+          draft_payload_json: null,
+          has_unpublished_draft: false,
+          core_identity_locked: true,
+          specialization_slugs: resetSpecializations,
+          last_published_at: payload022.last_published_at,
         },
       }
     ),

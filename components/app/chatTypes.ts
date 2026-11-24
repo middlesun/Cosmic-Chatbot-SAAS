@@ -437,6 +437,7 @@ export type CompanionDiscoveryFilterableCard = Omit<
       | 'companion_group'
       | 'situation_tags'
       | 'discoverable_tags'
+      | 'specialization_slugs'
       | 'skill_level'
       | 'advisory_mode'
       | 'chart_access'
@@ -548,6 +549,7 @@ export function matchesCompanionDiscoveryFilter(
   options: {
     groupTab: CompanionDiscoveryTabId | LegacyCompanionGroup;
     situationChipId?: string | null;
+    specializationSlug?: string | null;
     searchQuery?: string;
   }
 ): boolean {
@@ -560,6 +562,14 @@ export function matchesCompanionDiscoveryFilter(
 
   if (options.situationChipId && !matchesCompanionSituationChip(card, options.situationChipId)) {
     return false;
+  }
+
+  if (options.specializationSlug) {
+    const targetSpec = options.specializationSlug.trim().toLowerCase();
+    const cardSpecs = (card.specialization_slugs || []).map((s) => s.trim().toLowerCase());
+    if (!cardSpecs.includes(targetSpec)) {
+      return false;
+    }
   }
 
   const q = (options.searchQuery || '').trim().toLowerCase();
@@ -578,6 +588,7 @@ export function matchesCompanionDiscoveryFilter(
       ...(card.secondary_expertise || []),
       ...(card.discoverable_tags || []),
       ...(card.situation_tags || []),
+      ...(card.specialization_slugs || []),
       card.tagline || '',
       card.short_bio || '',
       card.cultural_fluency || '',

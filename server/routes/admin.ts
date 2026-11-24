@@ -62,6 +62,27 @@ import {
   upsertAdminCompanion,
 } from '../services/companionPresets';
 import {
+  compileCompanionCapsule,
+  discardCompanionDraft,
+  exportBulkCompanionsBundle,
+  exportGlobalCompanionBundle,
+  exportSingleCompanionBundle,
+  getBlankV2Templates,
+  getCompanionSpecializations,
+  getCompanionV2EditorState,
+  getFormulaCartridgesCatalogSummary,
+  getMigration022Status,
+  importBulkCompanionsBundle,
+  importGlobalCompanionBundle,
+  importSingleCompanionBundle,
+  listCompanionVersions,
+  publishCompanionDraft,
+  rollbackCompanionToVersion,
+  saveCompanionDraft,
+  saveCompanionSpecializations,
+  toAdminCompanionRosterSummary,
+} from '../services/companionV2Service';
+import {
   BUILTIN_MODEL_SUGGESTIONS,
   DEFAULT_CONVERSATIONAL_RULES,
   DEFAULT_DEEPER_ANALYSIS_RULES,
@@ -2937,6 +2958,7 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
 
   invalidateAllPlatformCaches();
   invalidatePromptCache();
+  invalidateCompanionsCache();
   res.json({ saved: true, overrides: await getEnginePromptOverrides() });
 });
 
@@ -4926,12 +4948,17 @@ router.post('/companions/upload-dp', async (req: AuthenticatedRequest, res) => {
 
 router.get('/companions', async (_req: AuthenticatedRequest, res) => {
   try {
-    const [companions, tableReady] = await Promise.all([
+    const [companions, tableReady, specializations, migration022Status] = await Promise.all([
       getAdminCompanionsList(),
       isCompanionsTableReady(),
+      getCompanionSpecializations(),
+      getMigration022Status(),
     ]);
     res.json({
-      companions,
+      companions: companions.map(toAdminCompanionRosterSummary),
+      specializations,
+      formulaCartridges: getFormulaCartridgesCatalogSummary(),
+      migration022Status,
       tableReady,
       defaultSlugs: DEFAULT_COMPANION_PRESETS.map((p) => p.slug),
       availablePortraits: COMPANION_PORTRAIT_GALLERY,
@@ -4940,6 +4967,91 @@ router.get('/companions', async (_req: AuthenticatedRequest, res) => {
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to load companions' });
   }
+});
+
+// Static V2 governance, specialization taxonomy & bulk/global JSON endpoints
+// IMPORTANT: Must remain registered BEFORE parameterized /companions/:id or /companions/:slug routes.
+
+router.get('/companions/specializations', async (_req: AuthenticatedRequest, res) => {
+  try {
+    const specializations = await getCompanionSpecializations();
+    res.json({ specializations });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : 'Failed to load specializations' });
+  }
+});
+
+router.put('/companions/specializations', async (req: AuthenticatedRequest, res) => {
+  const rawList = Array.isArray(req.body?.specializations) ? req.body.specializations : req.body;
+  const result = await saveCompanionSpecializations(rawList, req.appUser?.id || null);
+  if (!result.ok) {
+    res.status(400).json({ error: result.error || 'Failed to save specializations' });
+    return;
+  }
+  res.json({ ok: true, specializations: result.specializations });
+});
+
+router.get('/companions/templates', (_req: AuthenticatedRequest, res) => {
+  res.json(getBlankV2Templates());
+});
+
+router.get('/companions/export/bulk', async (req: AuthenticatedRequest, res) => {
+  try {
+    const stage = req.query.stage === 'draft' ? 'draft' : 'published';
+    const bundle = await exportBulkCompanionsBundle(stage);
+    res.json(bundle);
+  } catch (err) {
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : 'Failed to export bulk companions' });
+  }
+});
+
+router.post('/companions/import/bulk', async (req: AuthenticatedRequest, res) => {
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const rawBundle = body.bundle !== undefined ? body.bundle : req.body;
+  const mode = body.mode === 'publish' ? 'publish' : 'draft';
+  const dryRun = Boolean(body.dryRun);
+  const confirmCoreIdentityChange = Boolean(
+    body.confirmCoreIdentityChange || body.unlockCoreIdentity
+  );
+  const result = await importBulkCompanionsBundle(rawBundle, {
+    mode,
+    dryRun,
+    confirmCoreIdentityChange,
+    unlockCoreIdentity: confirmCoreIdentityChange,
+    adminUserId: req.appUser?.id || null,
+  });
+  if (!result.ok) {
+    res.status(400).json({ error: result.error || 'Bulk companion import failed' });
+    return;
+  }
+  res.json(result);
+});
+
+router.get('/companions/export/global', async (_req: AuthenticatedRequest, res) => {
+  try {
+    const bundle = await exportGlobalCompanionBundle();
+    res.json(bundle);
+  } catch (err) {
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : 'Failed to export global config' });
+  }
+});
+
+router.post('/companions/import/global', async (req: AuthenticatedRequest, res) => {
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const rawBundle = body.bundle !== undefined ? body.bundle : req.body;
+  const dryRun = Boolean(body.dryRun);
+  const result = await importGlobalCompanionBundle(rawBundle, req.appUser?.id || null, { dryRun });
+  if (!result.ok) {
+    res.status(400).json({ error: result.error || 'Global companion config import failed' });
+    return;
+  }
+  res.json(result);
 });
 
 router.post('/companions', async (req: AuthenticatedRequest, res) => {
@@ -4965,13 +5077,206 @@ router.patch('/companions/reorder', async (req: AuthenticatedRequest, res) => {
   res.json({ reordered: true });
 });
 
+router.get('/companions/:slug/v2', async (req: AuthenticatedRequest, res) => {
+  const result = await getCompanionV2EditorState(String(req.params.slug || ''));
+  if (!result.ok) {
+    res.status('status' in result ? result.status : 404).json({
+      error: 'error' in result ? result.error : 'Companion not found',
+    });
+    return;
+  }
+  res.json(result.state);
+});
+
+router.put('/companions/:slug/draft', async (req: AuthenticatedRequest, res) => {
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const payload =
+    body.draft && typeof body.draft === 'object' && !Array.isArray(body.draft)
+      ? (body.draft as Record<string, unknown>)
+      : body;
+  const unlockCoreIdentity = Boolean(
+    body.unlockCoreIdentity || body.confirmCoreIdentityChange
+  );
+  const enforceCoreLock = body.enforceCoreLock === false ? false : true;
+
+  const result = await saveCompanionDraft(
+    String(req.params.slug || ''),
+    payload,
+    req.appUser?.id || null,
+    {
+      enforceCoreLock,
+      confirmCoreIdentityChange: unlockCoreIdentity,
+      unlockCoreIdentity,
+    }
+  );
+  if (!result.ok) {
+    res.status(result.status || 400).json({
+      error: result.error || 'Failed to save draft',
+      ...(result.code ? { code: result.code } : {}),
+      ...(result.protectedChanges ? { protectedChanges: result.protectedChanges } : {}),
+    });
+    return;
+  }
+  res.json({ ok: true, companion: result.companion, state: result.state });
+});
+
+router.post('/companions/:slug/publish', async (req: AuthenticatedRequest, res) => {
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const draftInput =
+    body.draft && typeof body.draft === 'object' && !Array.isArray(body.draft)
+      ? (body.draft as Record<string, unknown>)
+      : undefined;
+  const changeNote = typeof body.changeNote === 'string' ? body.changeNote : undefined;
+  const unlockCoreIdentity = Boolean(
+    body.unlockCoreIdentity || body.confirmCoreIdentityChange
+  );
+
+  const result = await publishCompanionDraft(String(req.params.slug || ''), {
+    draftInput,
+    changeNote,
+    confirmCoreIdentityChange: unlockCoreIdentity,
+    unlockCoreIdentity,
+    adminUserId: req.appUser?.id || null,
+  });
+  if (!result.ok) {
+    res.status(result.status || 400).json({
+      error: result.error || 'Failed to publish companion',
+      ...(result.code ? { code: result.code } : {}),
+      ...(result.protectedChanges ? { protectedChanges: result.protectedChanges } : {}),
+    });
+    return;
+  }
+  res.json({ ok: true, companion: result.companion, state: result.state });
+});
+
+router.post('/companions/:slug/discard-draft', async (req: AuthenticatedRequest, res) => {
+  const result = await discardCompanionDraft(String(req.params.slug || ''));
+  if (!result.ok) {
+    res.status(result.status || 400).json({ error: result.error || 'Failed to discard draft' });
+    return;
+  }
+  res.json({ ok: true, companion: result.companion, state: result.state });
+});
+
+router.get('/companions/:slug/versions', async (req: AuthenticatedRequest, res) => {
+  const result = await listCompanionVersions(String(req.params.slug || ''));
+  if (!result.ok) {
+    res.status(404).json({ error: result.error || 'Companion not found' });
+    return;
+  }
+  res.json(result);
+});
+
+router.post('/companions/:slug/rollback', async (req: AuthenticatedRequest, res) => {
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const versionId = typeof body.versionId === 'string' ? body.versionId : undefined;
+  const versionNumber =
+    typeof body.versionNumber === 'number' && Number.isFinite(body.versionNumber)
+      ? body.versionNumber
+      : undefined;
+  if (!versionId && versionNumber === undefined) {
+    res.status(400).json({ error: 'Provide versionId or versionNumber to roll back.' });
+    return;
+  }
+  const targetStage = body.targetStage === 'publish' ? 'publish' : 'draft';
+  const unlockCoreIdentity = Boolean(
+    body.unlockCoreIdentity || body.confirmCoreIdentityChange
+  );
+  const changeNote = typeof body.changeNote === 'string' ? body.changeNote : undefined;
+
+  const result = await rollbackCompanionToVersion(
+    String(req.params.slug || ''),
+    { versionId, versionNumber },
+    {
+      targetStage,
+      confirmCoreIdentityChange: unlockCoreIdentity,
+      unlockCoreIdentity,
+      changeNote,
+      adminUserId: req.appUser?.id || null,
+    }
+  );
+  if (!result.ok) {
+    res.status(result.status || 400).json({
+      error: result.error || 'Failed to rollback companion',
+      ...(result.code ? { code: result.code } : {}),
+      ...(result.protectedChanges ? { protectedChanges: result.protectedChanges } : {}),
+    });
+    return;
+  }
+  res.json({
+    ok: true,
+    companion: result.companion,
+    state: result.state,
+    restoredVersion: result.restoredVersion,
+  });
+});
+
+router.post('/companions/:slug/capsule/compile', async (req: AuthenticatedRequest, res) => {
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const overrides =
+    body.draft && typeof body.draft === 'object' && !Array.isArray(body.draft)
+      ? (body.draft as Record<string, unknown>)
+      : body;
+  const useAi = Boolean(body.useAi);
+  const result = await compileCompanionCapsule(String(req.params.slug || ''), overrides, {
+    useAi,
+  });
+  if (!result.ok) {
+    res.status(result.status || 400).json({ error: result.error || 'Failed to compile capsule' });
+    return;
+  }
+  res.json(result);
+});
+
+router.get('/companions/:slug/export', async (req: AuthenticatedRequest, res) => {
+  const stage = req.query.stage === 'draft' ? 'draft' : 'published';
+  const result = await exportSingleCompanionBundle(String(req.params.slug || ''), stage);
+  if (!result.ok || !result.bundle) {
+    res.status(404).json({ error: result.error || 'Companion not found' });
+    return;
+  }
+  res.json(result.bundle);
+});
+
+router.post('/companions/:slug/import', async (req: AuthenticatedRequest, res) => {
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const rawBundle = body.bundle !== undefined ? body.bundle : req.body;
+  const mode = body.mode === 'publish' ? 'publish' : 'draft';
+  const dryRun = Boolean(body.dryRun);
+  const unlockCoreIdentity = Boolean(
+    body.unlockCoreIdentity || body.confirmCoreIdentityChange
+  );
+  const targetSlug = String(req.params.slug || '').trim();
+  const result = await importSingleCompanionBundle(rawBundle, {
+    mode,
+    targetId: targetSlug === '__new__' ? undefined : targetSlug,
+    dryRun,
+    confirmCoreIdentityChange: unlockCoreIdentity,
+    unlockCoreIdentity,
+    adminUserId: req.appUser?.id || null,
+  });
+  if (!result.ok) {
+    res.status(result.status || 400).json({
+      error: result.error || 'Failed to import companion JSON',
+      ...(result.code ? { code: result.code } : {}),
+      ...(result.protectedChanges ? { protectedChanges: result.protectedChanges } : {}),
+    });
+    return;
+  }
+  res.json(result);
+});
+
 router.put('/companions/:id', async (req: AuthenticatedRequest, res) => {
   const result = await upsertAdminCompanion((req.body || {}) as Record<string, unknown>, {
     isNew: false,
     targetId: String(req.params.id || ''),
   });
   if (!result.ok) {
-    res.status(result.status || 400).json({ error: result.error || 'Failed to update companion' });
+    res.status(result.status || 400).json({
+      error: result.error || 'Failed to update companion',
+      ...(result.code ? { code: result.code } : {}),
+      ...(result.protectedChanges ? { protectedChanges: result.protectedChanges } : {}),
+    });
     return;
   }
   res.json({ companion: result.companion });

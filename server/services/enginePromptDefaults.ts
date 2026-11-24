@@ -305,7 +305,7 @@ Cultural / voice feel: {{CULTURAL_FLUENCY}}.
 {{VOICE_CUE_LINE}}
 {{SOUL_LINE}}
 {{TIMING_CTX}}
-Bond stage: {{BOND_STAGE}} ({{TOTAL_TURNS}} turns shared).
+Familiarity & continuity: {{BOND_STAGE}} ({{TOTAL_TURNS}} turns shared).
 {{MEMORY_LINE}}
 {{SHARED_THREADS_LINE}}
 {{USER_NAME_LINE}}

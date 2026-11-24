@@ -45,6 +45,7 @@ import {
 import { checkRateLimit } from '../services/abuseGuard';
 import {
   COMPANION_ARCHETYPES,
+  analyzeCompanionTurnContext,
   generateContextualCompanionReturnGreeting,
   generateMatchedCompanions,
   type ChatPillar,
@@ -52,6 +53,10 @@ import {
   type CompanionPersona,
   type CompanionPromptProfileContext,
 } from '../services/companionEngine';
+import {
+  ensureCompanionV2Initialized,
+  mapCustomPersonaToV2PresetRecord,
+} from '../services/companionV2Mapper';
 import {
   getCompanionBySlug,
   getPublicCompanionsCatalogCached,
@@ -212,6 +217,9 @@ function stripSensitivePersonaFields(persona: unknown): Record<string, unknown> 
     hard_rules: _hr,
     soft_rules: _sr,
     model_id: _mi,
+    personality_v2_json: _pv2,
+    draft_payload_json: _dp,
+    core_identity_locked: _cil,
     ...safe
   } = persona as Record<string, unknown>;
   return safe;
@@ -2780,6 +2788,23 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   } | null = null;
   let scopeMemoryContext: string | null = null;
 
+  const [{ data: historyRows }, parentQuote] = await Promise.all([
+    supabaseAdmin
+      .from('messages')
+      .select('id, role, content, excluded_from_context')
+      .eq('conversation_id', conversation.id)
+      .order('created_at', { ascending: true }),
+    parentMessageId
+      ? supabaseAdmin
+          .from('messages')
+          .select('id, role, content')
+          .eq('id', parentMessageId)
+          .eq('conversation_id', conversation.id)
+          .maybeSingle()
+          .then((r) => r.data)
+      : Promise.resolve(null),
+  ]);
+
   if (activePillar === 'council' && conversation.profile_id) {
     const baseCols =
       'id, name, is_activated, chart_text_context, profile_memory_summary, birth_date, birth_time, birth_city, birth_state, birth_country, gender, relationship, latitude, longitude, timezone_offset';
@@ -2916,38 +2941,44 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     // honor the per-thread focused chart (conversation.profile_id) when set or fall back to the
     // user's default ("You") profile, and strictly isolate Council memory from Companions.
     const engineOverridesForComp = await getEnginePromptOverrides();
-    const companionCaps = resolveCompanionCapabilities(
+    const effectiveCompanionRecord =
       presetCompanion ||
-        (activeCompanionPersona
-          ? {
-              slug: activeCompanionPersona.slug || effectiveCompanionSlug || '',
-              primary_expertise: activeCompanionPersona.role_label || '',
-              skill_level: activeCompanionPersona.skill_level || 'none_emotional',
-              companion_group: activeCompanionPersona.companion_group,
-              advisory_mode: activeCompanionPersona.advisory_mode,
-              chart_access: activeCompanionPersona.chart_access,
-              formula_cartridge_slugs: activeCompanionPersona.formula_cartridge_slugs,
-              max_output_tokens: activeCompanionPersona.max_output_tokens ?? null,
-              chat_style: activeCompanionPersona.chat_style,
-            }
-          : null),
+      (activeCompanionPersona ? mapCustomPersonaToV2PresetRecord(activeCompanionPersona) : null);
+    const companionCaps = resolveCompanionCapabilities(
+      effectiveCompanionRecord,
       engineOverridesForComp
     );
-    const needsCompanionChartJson = Boolean(
-      companionCaps.chart_access.vedic ||
-        companionCaps.chart_access.western ||
-        companionCaps.chart_access.past_life
-    );
-    const needsCompanionNotes = Boolean(
-      companionCaps.chart_access.council_notes ||
+    const companionV2 = effectiveCompanionRecord
+      ? ensureCompanionV2Initialized(effectiveCompanionRecord)
+      : null;
+    const companionHistorySlice = ((historyRows || []) as Array<{
+      role: 'user' | 'assistant';
+      content: string;
+      excluded_from_context?: boolean;
+    }>)
+      .filter((r) => !r.excluded_from_context)
+      .slice(-6)
+      .map((r) => ({ role: r.role, content: String(r.content || '') }));
+
+    const preTurnAnalysis = analyzeCompanionTurnContext({
+      userPrompt: promptText,
+      historyMessages: companionHistorySlice,
+      companionChatMode: effectiveCompanionChatMode,
+      chartAccess: companionCaps.chart_access,
+      personalityV2: companionV2,
+      advisoryMode: companionCaps.advisory_mode,
+    });
+
+    const needsCompanionChartJson =
+      preTurnAnalysis.should_load_chart &&
+      Boolean(
         companionCaps.chart_access.vedic ||
-        companionCaps.chart_access.western ||
-        companionCaps.chart_access.tarot ||
-        companionCaps.chart_access.numerology ||
-        companionCaps.chart_access.past_life
-    );
-    const compBaseCols = `id, name, is_activated, chart_text_context, birth_date, birth_time, birth_city, birth_state, birth_country, gender, latitude, longitude, timezone_offset${
-      needsCompanionChartJson ? ', chart_json' : ''
+          companionCaps.chart_access.western ||
+          companionCaps.chart_access.past_life
+      );
+    const needsCompanionNotes = preTurnAnalysis.should_load_notes;
+    const compBaseCols = `id, name, is_activated, birth_date, birth_time, birth_city, birth_state, birth_country, gender, latitude, longitude, timezone_offset${
+      needsCompanionChartJson ? ', chart_text_context, chart_json' : ''
     }`;
     const compProfileColsPre018 = `${compBaseCols}, short_name, is_default, current_city, current_state, current_country, life_context_json`;
     const compProfileCols = `${compProfileColsPre018}, deep_profile_json${
@@ -3077,6 +3108,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
           (focusedCompanionProf.is_activated ||
             focusedCompanionProf.chart_text_context ||
             focusedCompanionProf.chart_json ||
+            Boolean(focusedCompanionProf.birth_city) ||
             needsCompanionChartJson)
       );
       const isSelfContextProfile =
@@ -3300,23 +3332,6 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   }
   const persistedUserContent =
     contextTags.length > 0 ? `${contextTags.join(' ')}\n${promptText}` : promptText;
-
-  const [{ data: historyRows }, parentQuote] = await Promise.all([
-    supabaseAdmin
-      .from('messages')
-      .select('id, role, content, excluded_from_context')
-      .eq('conversation_id', conversation.id)
-      .order('created_at', { ascending: true }),
-    parentMessageId
-      ? supabaseAdmin
-          .from('messages')
-          .select('id, role, content')
-          .eq('id', parentMessageId)
-          .eq('conversation_id', conversation.id)
-          .maybeSingle()
-          .then((r) => r.data)
-      : Promise.resolve(null),
-  ]);
 
   // Save User Message immediately (lightweight metadata tags only — never raw binary blobs)
   const userWordCount = countWords(persistedUserContent);

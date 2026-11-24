@@ -1501,10 +1501,11 @@ User's specific question: ${finalUserText}`;
     params.onTarotSpread?.(activeTarotSpread);
   }
 
+  const rawCompanionTokenCap =
+    params.companionPreset?.max_output_tokens ?? activeCompanionPersona?.max_output_tokens;
   const companionPresetTokens =
-    typeof params.companionPreset?.max_output_tokens === 'number' &&
-    params.companionPreset.max_output_tokens >= 300
-      ? Math.round(params.companionPreset.max_output_tokens)
+    typeof rawCompanionTokenCap === 'number' && rawCompanionTokenCap >= 300
+      ? Math.round(rawCompanionTokenCap)
       : null;
   const companionGroupTokens =
     companionCaps &&

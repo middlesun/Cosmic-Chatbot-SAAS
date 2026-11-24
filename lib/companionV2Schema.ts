@@ -1,8 +1,22 @@
+export type AstrologyEntryRule = 'never' | 'invite_only' | 'contextual_invite';
+export type AiIdentityDisclosureMode = 'natural_immersion_honest_when_asked' | 'explicit_ai';
+
+export interface CompanionContextualNuance {
+  id: string;
+  label: string;
+  trigger_topics: string[];
+  trigger_moods: string[];
+  guidance: string;
+  priority: number;
+}
+
 export interface CompanionReferenceDialogue {
   id: string;
+  scenario?: string;
   user_prompt: string;
   companion_reply: string;
   context_note?: string;
+  tags?: string[];
 }
 
 export interface CompanionInnerCompass {
@@ -15,6 +29,7 @@ export interface CompanionPersonalityV2 {
   schema_version: 2;
   /** Optional 500–700 token concise identity synthesis used at runtime for lean token efficiency. */
   core_identity_capsule: string;
+  capsule_token_estimate?: number;
   character_essence: string;
   fictional_lore: string;
   inner_compass: CompanionInnerCompass;
@@ -28,6 +43,10 @@ export interface CompanionPersonalityV2 {
   autonomy_guidance: string;
   specialist_expertise: string;
   signature_methodology: string;
+  astrology_entry_rule: AstrologyEntryRule;
+  esoteric_guardrails: string;
+  ai_identity_disclosure: AiIdentityDisclosureMode;
+  contextual_nuances: CompanionContextualNuance[];
   reference_dialogues: CompanionReferenceDialogue[];
   core_identity_locked: boolean;
 }
@@ -96,6 +115,7 @@ export interface GlobalCompanionIntelligenceBundle {
 export const DEFAULT_COMPANION_PERSONALITY_V2: CompanionPersonalityV2 = {
   schema_version: 2,
   core_identity_capsule: '',
+  capsule_token_estimate: 0,
   character_essence: '',
   fictional_lore: '',
   inner_compass: {
@@ -113,6 +133,10 @@ export const DEFAULT_COMPANION_PERSONALITY_V2: CompanionPersonalityV2 = {
   autonomy_guidance: '',
   specialist_expertise: '',
   signature_methodology: '',
+  astrology_entry_rule: 'never',
+  esoteric_guardrails: '',
+  ai_identity_disclosure: 'natural_immersion_honest_when_asked',
+  contextual_nuances: [],
   reference_dialogues: [],
   core_identity_locked: true,
 };
@@ -303,6 +327,17 @@ function cleanStringList(raw: unknown, maxItems = 12, maxLen = 180): string[] {
   return out;
 }
 
+const ALLOWED_ASTROLOGY_ENTRY_RULES: readonly AstrologyEntryRule[] = [
+  'never',
+  'invite_only',
+  'contextual_invite',
+];
+
+const ALLOWED_AI_DISCLOSURE_MODES: readonly AiIdentityDisclosureMode[] = [
+  'natural_immersion_honest_when_asked',
+  'explicit_ai',
+];
+
 export function normalizePersonalityV2(raw: unknown): CompanionPersonalityV2 {
   const obj =
     raw && typeof raw === 'object' && !Array.isArray(raw)
@@ -313,26 +348,66 @@ export function normalizePersonalityV2(raw: unknown): CompanionPersonalityV2 {
       ? (obj.inner_compass as Record<string, unknown>)
       : {};
 
+  const nuancesRaw = Array.isArray(obj.contextual_nuances) ? obj.contextual_nuances : [];
+  const contextual_nuances: CompanionContextualNuance[] = [];
+  for (let i = 0; i < nuancesRaw.length && contextual_nuances.length < 24; i++) {
+    const item = nuancesRaw[i];
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as Record<string, unknown>;
+    const label = cleanText(rec.label, 120);
+    const guidance = cleanText(rec.guidance, 1600);
+    if (!label && !guidance) continue;
+    const priorityNum = Number(rec.priority);
+    contextual_nuances.push({
+      id: cleanText(rec.id, 60) || `nuance_${i + 1}`,
+      label: label || `Contextual Nuance ${i + 1}`,
+      trigger_topics: cleanStringList(rec.trigger_topics, 12, 64),
+      trigger_moods: cleanStringList(rec.trigger_moods, 10, 48),
+      guidance,
+      priority: Number.isFinite(priorityNum) ? Math.max(0, Math.min(100, Math.round(priorityNum))) : 50,
+    });
+  }
+  contextual_nuances.sort((a, b) => b.priority - a.priority);
+
   const dialoguesRaw = Array.isArray(obj.reference_dialogues) ? obj.reference_dialogues : [];
   const reference_dialogues: CompanionReferenceDialogue[] = [];
-  for (let i = 0; i < dialoguesRaw.length && reference_dialogues.length < 8; i++) {
+  for (let i = 0; i < dialoguesRaw.length && reference_dialogues.length < 12; i++) {
     const item = dialoguesRaw[i];
     if (!item || typeof item !== 'object') continue;
     const rec = item as Record<string, unknown>;
     const user_prompt = cleanText(rec.user_prompt, 800);
     const companion_reply = cleanText(rec.companion_reply, 1600);
     if (!user_prompt && !companion_reply) continue;
+    const scenario = cleanText(rec.scenario, 180);
+    const context_note = cleanText(rec.context_note, 280);
+    const tags = cleanStringList(rec.tags, 10, 48);
     reference_dialogues.push({
       id: cleanText(rec.id, 60) || `ref_${i + 1}`,
+      ...(scenario ? { scenario } : {}),
       user_prompt,
       companion_reply,
-      ...(cleanText(rec.context_note, 280) ? { context_note: cleanText(rec.context_note, 280) } : {}),
+      ...(context_note ? { context_note } : {}),
+      ...(tags.length > 0 ? { tags } : {}),
     });
   }
 
+  const core_identity_capsule = cleanText(obj.core_identity_capsule, 4500);
+  const astrology_entry_rule: AstrologyEntryRule = ALLOWED_ASTROLOGY_ENTRY_RULES.includes(
+    obj.astrology_entry_rule as AstrologyEntryRule
+  )
+    ? (obj.astrology_entry_rule as AstrologyEntryRule)
+    : 'never';
+
+  const ai_identity_disclosure: AiIdentityDisclosureMode = ALLOWED_AI_DISCLOSURE_MODES.includes(
+    obj.ai_identity_disclosure as AiIdentityDisclosureMode
+  )
+    ? (obj.ai_identity_disclosure as AiIdentityDisclosureMode)
+    : 'natural_immersion_honest_when_asked';
+
   return {
     schema_version: 2,
-    core_identity_capsule: cleanText(obj.core_identity_capsule, 4500),
+    core_identity_capsule,
+    capsule_token_estimate: estimateTokensRough(core_identity_capsule),
     character_essence: cleanText(obj.character_essence, 2400),
     fictional_lore: cleanText(obj.fictional_lore, 4000),
     inner_compass: {
@@ -350,6 +425,10 @@ export function normalizePersonalityV2(raw: unknown): CompanionPersonalityV2 {
     autonomy_guidance: cleanText(obj.autonomy_guidance, 2000),
     specialist_expertise: cleanText(obj.specialist_expertise, 2400),
     signature_methodology: cleanText(obj.signature_methodology, 3000),
+    astrology_entry_rule,
+    esoteric_guardrails: cleanText(obj.esoteric_guardrails, 4000),
+    ai_identity_disclosure,
+    contextual_nuances,
     reference_dialogues,
     core_identity_locked:
       typeof obj.core_identity_locked === 'boolean' ? obj.core_identity_locked : true,
@@ -375,6 +454,8 @@ export function hasAuthoredV2Depth(v2: Partial<CompanionPersonalityV2> | null | 
       v2.autonomy_guidance?.trim() ||
       v2.specialist_expertise?.trim() ||
       v2.signature_methodology?.trim() ||
+      v2.esoteric_guardrails?.trim() ||
+      (v2.contextual_nuances?.length || 0) > 0 ||
       (v2.reference_dialogues?.length || 0) > 0
   );
 }
@@ -546,6 +627,7 @@ export function detectCoreIdentityChanges(
     slug?: string;
     sex?: string;
     backstory?: string;
+    core_identity_locked?: boolean;
     personality_v2_json?: Partial<CompanionPersonalityV2> | null;
   },
   incoming: {
@@ -556,7 +638,10 @@ export function detectCoreIdentityChanges(
     personality_v2_json?: Partial<CompanionPersonalityV2> | null;
   }
 ): CoreIdentityProtectedDiff[] {
-  const existingLocked = existing.personality_v2_json?.core_identity_locked !== false;
+  const existingLocked =
+    typeof existing.core_identity_locked === 'boolean'
+      ? existing.core_identity_locked
+      : existing.personality_v2_json?.core_identity_locked !== false;
   if (!existingLocked) return [];
 
   const diffs: CoreIdentityProtectedDiff[] = [];
@@ -589,6 +674,41 @@ export function detectCoreIdentityChanges(
     existing.personality_v2_json?.character_essence,
     incoming.personality_v2_json?.character_essence
   );
+  checkStr(
+    'personality_v2_json.fictional_lore',
+    'Fictional Lore',
+    existing.personality_v2_json?.fictional_lore,
+    incoming.personality_v2_json?.fictional_lore
+  );
+  checkStr(
+    'personality_v2_json.inner_compass.worldview',
+    'Inner Compass Worldview',
+    existing.personality_v2_json?.inner_compass?.worldview,
+    incoming.personality_v2_json?.inner_compass?.worldview
+  );
+  checkStr(
+    'personality_v2_json.linguistic_fingerprint',
+    'Linguistic Fingerprint',
+    existing.personality_v2_json?.linguistic_fingerprint,
+    incoming.personality_v2_json?.linguistic_fingerprint
+  );
+
+  const prevValues = (existing.personality_v2_json?.inner_compass?.values || [])
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .join(' | ');
+  const nextValues = (incoming.personality_v2_json?.inner_compass?.values || [])
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .join(' | ');
+  if (prevValues && prevValues !== nextValues) {
+    diffs.push({
+      field: 'personality_v2_json.inner_compass.values',
+      label: 'Inner Compass Values',
+      before: prevValues.slice(0, 140),
+      after: nextValues.slice(0, 140),
+    });
+  }
 
   const prevAnchors = (existing.personality_v2_json?.inner_compass?.core_anchors || [])
     .map((x) => x.trim())
@@ -661,3 +781,323 @@ export function buildCoreIdentityCapsuleDraft(input: {
   }
   return parts.join('\n\n').trim().slice(0, 3200);
 }
+
+/**
+ * Blank Companion V2 Template Factory (for Admin JSON export, authoring starters, and Phase 6 deliverables).
+ */
+export function createBlankCompanionV2Template(): CompanionExportBundle {
+  return {
+    bundle_type: 'cosmic_council_companion_v2',
+    schema_version: 2,
+    exported_at: new Date().toISOString(),
+    companion: {
+      slug: 'new_companion_slug',
+      name: 'Companion Name',
+      age: 32,
+      sex: 'F',
+      tagline: '',
+      card_subtitle: '',
+      short_bio: '',
+      full_bio: '',
+      how_conversations_feel: '',
+      primary_expertise: '',
+      secondary_expertise: [],
+      category_tag: 'friends',
+      companion_group: 'everyday_companions',
+      advisory_mode: 'friend',
+      chart_access: {
+        vedic: false,
+        western: false,
+        tarot: false,
+        numerology: false,
+        past_life: false,
+        council_notes: false,
+      },
+      formula_cartridge_slugs: [],
+      max_output_tokens: null,
+      discoverable_tags: [],
+      situation_tags: [],
+      specialization_slugs: [],
+      gender_variants: {},
+      override_group_rules: false,
+      cultural_fluency: '',
+      avatar_url: null,
+      monogram_palette: { bg: '#EAE3D7', ring: '#7E7262', ink: '#3D3830' },
+      welcome_messages: [''],
+      system_prompt: '',
+      backstory: '',
+      soul_consciousness: '',
+      hard_rules: '',
+      soft_rules: '',
+      autonomy_level: 'intuitive',
+      override_global_rules: true,
+      skill_level: 'none_emotional',
+      chat_style: 'chat_bubbles',
+      model_id: null,
+      tts_voice_profile: { rate: 1.0, pitch: 1.0 },
+      supports_listening_cue: true,
+      suggestions_enabled: true,
+      is_active: true,
+      sort_order: 200,
+      published_version: 1,
+      personality_v2_json: {
+        ...DEFAULT_COMPANION_PERSONALITY_V2,
+        inner_compass: {
+          worldview: '',
+          values: [],
+          core_anchors: [],
+        },
+        contextual_nuances: [
+          {
+            id: 'nuance_1',
+            label: 'Example nuance trigger',
+            trigger_topics: [],
+            trigger_moods: [],
+            guidance: '',
+            priority: 50,
+          },
+        ],
+        reference_dialogues: [
+          {
+            id: 'ref_1',
+            scenario: '',
+            user_prompt: '',
+            companion_reply: '',
+            context_note: '',
+            tags: [],
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
+ * Blank Global Companion Intelligence V2 Config Template Factory (for Phase 4/6 JSON export/import).
+ */
+export function createBlankGlobalConfigV2Template(): GlobalCompanionIntelligenceBundle {
+  return {
+    bundle_type: 'cosmic_council_companion_global_v2',
+    schema_version: 2,
+    exported_at: new Date().toISOString(),
+    companion_constitution: '',
+    companion_realism_baseline: '',
+    companion_listen_only_guardrail: '',
+    companion_empathy_first_guardrail: '',
+    companion_chart_presence_prompt: '',
+    companion_return_greeting_prompt: '',
+    companion_bond_extractor_prompt: '',
+    companion_matcher_instructions: '',
+    companion_skill_rules: {
+      none_emotional: '',
+      vedic: '',
+      western: '',
+      tarot: '',
+      numerology: '',
+      past_life: '',
+      council_notes: '',
+    },
+    companion_group_configs: {
+      spiritual_guides: {
+        group_system_prompt: '',
+        default_advisory_mode: 'esoteric_guide',
+        default_chart_access: {
+          vedic: false,
+          western: false,
+          tarot: false,
+          numerology: false,
+          past_life: false,
+          council_notes: true,
+        },
+        default_chat_style: 'editorial',
+        default_max_output_tokens: 1800,
+      },
+      everyday_companions: {
+        group_system_prompt: '',
+        default_advisory_mode: 'friend',
+        default_chart_access: {
+          vedic: false,
+          western: false,
+          tarot: false,
+          numerology: false,
+          past_life: false,
+          council_notes: false,
+        },
+        default_chat_style: 'chat_bubbles',
+        default_max_output_tokens: 1100,
+      },
+      life_companions: {
+        group_system_prompt: '',
+        default_advisory_mode: 'balanced_support',
+        default_chart_access: {
+          vedic: false,
+          western: false,
+          tarot: false,
+          numerology: false,
+          past_life: false,
+          council_notes: true,
+        },
+        default_chat_style: 'chat_bubbles',
+        default_max_output_tokens: 1350,
+      },
+    },
+    companion_archetypes: [],
+    companion_specializations: DEFAULT_COMPANION_SPECIALIZATIONS,
+  };
+}
+
+export interface CompanionFieldDiff {
+  field: string;
+  label: string;
+  category: 'profile' | 'core_identity' | 'nuances' | 'specialist';
+  before: string;
+  after: string;
+}
+
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function stripUnsafeJsonKeys<T = unknown>(input: T, depth = 0): T {
+  if (depth > 12 || input === null || typeof input !== 'object') {
+    return input;
+  }
+  if (Array.isArray(input)) {
+    return input.map((item) => stripUnsafeJsonKeys(item, depth + 1)) as unknown as T;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(input as Record<string, unknown>)) {
+    if (UNSAFE_OBJECT_KEYS.has(key)) continue;
+    out[key] = stripUnsafeJsonKeys(val, depth + 1);
+  }
+  return out as T;
+}
+
+function summarizeVal(v: unknown, maxLen = 140): string {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (!t) return '—';
+    return t.length > maxLen ? `${t.slice(0, maxLen)}…` : t;
+  }
+  if (Array.isArray(v)) {
+    if (v.length === 0) return '—';
+    const joined = v.map((x) => (typeof x === 'string' ? x.trim() : JSON.stringify(x))).filter(Boolean).join(', ');
+    return joined.length > maxLen ? `${joined.slice(0, maxLen)}…` : joined;
+  }
+  if (typeof v === 'object') {
+    const str = JSON.stringify(v);
+    return str.length > maxLen ? `${str.slice(0, maxLen)}…` : str;
+  }
+  return String(v);
+}
+
+/**
+ * Computes human-readable field-level differences between two companion snapshots
+ * for Draft-vs-Published inspection, Version comparisons, and JSON import dry-runs.
+ */
+export function computeCompanionFieldDiffs(
+  beforeObj: Record<string, unknown> | null | undefined,
+  afterObj: Record<string, unknown> | null | undefined
+): CompanionFieldDiff[] {
+  const before = beforeObj || {};
+  const after = afterObj || {};
+  const beforeV2 = normalizePersonalityV2(before.personality_v2_json);
+  const afterV2 = normalizePersonalityV2(after.personality_v2_json);
+
+  const diffs: CompanionFieldDiff[] = [];
+
+  const compare = (
+    field: string,
+    label: string,
+    category: CompanionFieldDiff['category'],
+    a: unknown,
+    b: unknown
+  ) => {
+    const sa = typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a ?? '').trim();
+    const sb = typeof b === 'object' && b !== null ? JSON.stringify(b) : String(b ?? '').trim();
+    if (sa !== sb) {
+      diffs.push({
+        field,
+        label,
+        category,
+        before: summarizeVal(a),
+        after: summarizeVal(b),
+      });
+    }
+  };
+
+  // Public Profile
+  compare('name', 'Display Name', 'core_identity', before.name, after.name);
+  compare('slug', 'Slug', 'core_identity', before.slug, after.slug);
+  compare('age', 'Age', 'profile', before.age, after.age);
+  compare('sex', 'Gender / Presentation', 'core_identity', before.sex, after.sex);
+  compare('tagline', 'Tagline', 'profile', before.tagline, after.tagline);
+  compare('card_subtitle', 'Card Subtitle', 'profile', before.card_subtitle, after.card_subtitle);
+  compare('short_bio', 'Short Bio', 'profile', before.short_bio, after.short_bio);
+  compare('full_bio', 'Full Bio', 'profile', before.full_bio, after.full_bio);
+  compare('how_conversations_feel', 'How Conversations Feel', 'profile', before.how_conversations_feel, after.how_conversations_feel);
+  compare('primary_expertise', 'Primary Expertise', 'profile', before.primary_expertise, after.primary_expertise);
+  compare('secondary_expertise', 'Secondary Strengths', 'profile', before.secondary_expertise, after.secondary_expertise);
+  compare('specialization_slugs', 'Specializations', 'profile', before.specialization_slugs, after.specialization_slugs);
+  compare('discoverable_tags', 'Discoverable Tags', 'profile', before.discoverable_tags || before.situation_tags, after.discoverable_tags || after.situation_tags);
+  compare('welcome_messages', 'Welcome Messages', 'profile', before.welcome_messages, after.welcome_messages);
+  compare('avatar_url', 'Avatar Portrait', 'profile', before.avatar_url, after.avatar_url);
+  compare('is_active', 'Active in Hub', 'profile', before.is_active, after.is_active);
+  compare('sort_order', 'Sort Order', 'profile', before.sort_order, after.sort_order);
+
+  // Core Identity & Voice
+  compare('core_identity_locked', 'Core Identity Lock', 'core_identity', before.core_identity_locked ?? true, after.core_identity_locked ?? true);
+  compare('backstory', 'Private Back Story', 'core_identity', before.backstory, after.backstory);
+  compare('system_prompt', 'Legacy System Prompt', 'core_identity', before.system_prompt, after.system_prompt);
+  compare('personality_v2_json.core_identity_capsule', 'Core Identity Capsule', 'core_identity', beforeV2.core_identity_capsule, afterV2.core_identity_capsule);
+  compare('personality_v2_json.character_essence', 'Character Essence', 'core_identity', beforeV2.character_essence, afterV2.character_essence);
+  compare('personality_v2_json.fictional_lore', 'Fictional Lore', 'core_identity', beforeV2.fictional_lore, afterV2.fictional_lore);
+  compare('personality_v2_json.inner_compass.worldview', 'Inner Compass Worldview', 'core_identity', beforeV2.inner_compass.worldview, afterV2.inner_compass.worldview);
+  compare('personality_v2_json.inner_compass.values', 'Inner Compass Values', 'core_identity', beforeV2.inner_compass.values, afterV2.inner_compass.values);
+  compare('personality_v2_json.inner_compass.core_anchors', 'Core Anchors', 'core_identity', beforeV2.inner_compass.core_anchors, afterV2.inner_compass.core_anchors);
+  compare('personality_v2_json.expression_spectrum', 'Expression Spectrum', 'core_identity', beforeV2.expression_spectrum, afterV2.expression_spectrum);
+  compare('personality_v2_json.subtle_contradictions', 'Subtle Contradictions', 'core_identity', beforeV2.subtle_contradictions, afterV2.subtle_contradictions);
+  compare('personality_v2_json.humour_and_interests', 'Humour & Interests', 'core_identity', beforeV2.humour_and_interests, afterV2.humour_and_interests);
+  compare('personality_v2_json.quirks_and_habits', 'Quirks & Habits', 'core_identity', beforeV2.quirks_and_habits, afterV2.quirks_and_habits);
+  compare('personality_v2_json.linguistic_fingerprint', 'Linguistic Fingerprint', 'core_identity', beforeV2.linguistic_fingerprint, afterV2.linguistic_fingerprint);
+  compare('personality_v2_json.interpersonal_dynamics', 'Interpersonal Dynamics', 'core_identity', beforeV2.interpersonal_dynamics, afterV2.interpersonal_dynamics);
+  compare('personality_v2_json.soft_instincts', 'Soft Instincts', 'core_identity', beforeV2.soft_instincts, afterV2.soft_instincts);
+  compare('personality_v2_json.autonomy_guidance', 'Autonomy Guidance', 'core_identity', beforeV2.autonomy_guidance, afterV2.autonomy_guidance);
+  compare('autonomy_level', 'Autonomy Level', 'core_identity', before.autonomy_level, after.autonomy_level);
+
+  // Nuances & Reference Dialogues
+  compare(
+    'personality_v2_json.contextual_nuances',
+    'Contextual Nuances',
+    'nuances',
+    beforeV2.contextual_nuances.map((n) => `${n.label} (p${n.priority})`),
+    afterV2.contextual_nuances.map((n) => `${n.label} (p${n.priority})`)
+  );
+  compare(
+    'personality_v2_json.reference_dialogues',
+    'Reference Dialogues',
+    'nuances',
+    beforeV2.reference_dialogues.map((d) => d.scenario || d.user_prompt.slice(0, 40)),
+    afterV2.reference_dialogues.map((d) => d.scenario || d.user_prompt.slice(0, 40))
+  );
+
+  // Specialist & Context Rules
+  compare('companion_group', 'Pillar Group', 'specialist', before.companion_group, after.companion_group);
+  compare('advisory_mode', 'Advisory Mode', 'specialist', before.advisory_mode, after.advisory_mode);
+  compare('personality_v2_json.specialist_expertise', 'Specialist Expertise', 'specialist', beforeV2.specialist_expertise, afterV2.specialist_expertise);
+  compare('personality_v2_json.signature_methodology', 'Signature Methodology', 'specialist', beforeV2.signature_methodology, afterV2.signature_methodology);
+  compare('personality_v2_json.astrology_entry_rule', 'Astrology Entry Rule', 'specialist', beforeV2.astrology_entry_rule, afterV2.astrology_entry_rule);
+  compare('personality_v2_json.ai_identity_disclosure', 'AI Identity Disclosure', 'specialist', beforeV2.ai_identity_disclosure, afterV2.ai_identity_disclosure);
+  compare('personality_v2_json.esoteric_guardrails', 'Esoteric & Hard Guardrails', 'specialist', beforeV2.esoteric_guardrails, afterV2.esoteric_guardrails);
+  compare('chart_access', 'Chart Access Flags', 'specialist', before.chart_access, after.chart_access);
+  compare('formula_cartridge_slugs', 'Formula Cartridges', 'specialist', before.formula_cartridge_slugs, after.formula_cartridge_slugs);
+  compare('chat_style', 'Chat Style', 'specialist', before.chat_style, after.chat_style);
+  compare('model_id', 'Model Override', 'specialist', before.model_id, after.model_id);
+  compare('max_output_tokens', 'Max Output Tokens', 'specialist', before.max_output_tokens, after.max_output_tokens);
+  compare('override_global_rules', 'Override Global Rules', 'specialist', before.override_global_rules, after.override_global_rules);
+  compare('override_group_rules', 'Override Group Rules', 'specialist', before.override_group_rules, after.override_group_rules);
+
+  return diffs;
+}
+
