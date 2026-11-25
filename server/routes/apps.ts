@@ -30,6 +30,7 @@ import {
 } from '../services/miniAppsRegistry';
 import { getMiniAppsConfig } from '../services/platformSettings';
 import { getPublicCompanionsCatalogCached } from '../services/companionPresets';
+import { getCompanionSpecializations } from '../services/companionV2Service';
 import { getUserLivingContextState } from '../services/memoryArchivist';
 import { mergeUserAndProfileContextForPrompt } from '../services/lifeContextGuard';
 import { countLivingContextSignals } from '../../lib/lifeContextSchema';
@@ -644,6 +645,7 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     chart_access: card.chart_access,
     discoverable_tags: card.discoverable_tags,
     situation_tags: card.situation_tags,
+    specialization_slugs: card.specialization_slugs,
     gender_variants: card.gender_variants,
     supports_gender_toggle: card.supports_gender_toggle,
     skill_level: card.skill_level,
@@ -768,10 +770,13 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
     ? countLivingContextSignals(mergedForHome.life_context_json, mergedForHome.deep_profile_json)
     : countLivingContextSignals(primaryProfile?.life_context_json || null);
 
+  const companionSpecializations = await getCompanionSpecializations().catch(() => undefined);
+
   res.json({
     recentConversations,
     recentGuides: recentGuides.slice(0, 6),
     featuredCompanions,
+    companionSpecializations,
     favoriteAppSlugs,
     recentAppRuns,
     primaryProfile,

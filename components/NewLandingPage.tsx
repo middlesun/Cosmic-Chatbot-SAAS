@@ -30,6 +30,10 @@ import {
   type CompanionDiscoveryTabId,
   type PublicCompanionCard,
 } from './app/chatTypes';
+import {
+  DEFAULT_COMPANION_SPECIALIZATIONS,
+  type CompanionSpecializationTag,
+} from '../lib/companionV2Schema';
 import { updatePendingOnboardingCompanion } from '../lib/pendingOnboarding';
 
 interface NewLandingPageProps {
@@ -237,8 +241,12 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
     shuffleFisherYates(PREVIEW_PUBLIC_COMPANIONS)
   );
   const [activeCompanionGroup, setActiveCompanionGroup] =
-    useState<CompanionDiscoveryTabId>('all');
+    useState<CompanionDiscoveryTabId>('spiritual_guides');
   const [activeSituationChip, setActiveSituationChip] = useState<string | null>(null);
+  const [activeCompanionSpecialization, setActiveCompanionSpecialization] = useState<string | null>(null);
+  const [companionSpecializations, setCompanionSpecializations] = useState<CompanionSpecializationTag[]>(
+    DEFAULT_COMPANION_SPECIALIZATIONS
+  );
   const [companionSearchQuery, setCompanionSearchQuery] = useState('');
   const [showAllCompanions, setShowAllCompanions] = useState(false);
   const [selectedCompanionForChart, setSelectedCompanionForChart] =
@@ -255,12 +263,22 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
     let cancelled = false;
     fetch('/api/public/companions')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { companions?: PublicCompanionCard[] } | null) => {
-        if (cancelled || !data || !Array.isArray(data.companions)) return;
-        if (data.companions.length > 0) {
-          setSpecialists(shuffleFisherYates(data.companions));
+      .then(
+        (
+          data: {
+            companions?: PublicCompanionCard[];
+            specializations?: CompanionSpecializationTag[];
+          } | null
+        ) => {
+          if (cancelled || !data) return;
+          if (Array.isArray(data.companions) && data.companions.length > 0) {
+            setSpecialists(shuffleFisherYates(data.companions));
+          }
+          if (Array.isArray(data.specializations) && data.specializations.length > 0) {
+            setCompanionSpecializations(data.specializations);
+          }
         }
-      })
+      )
       .catch(() => {
         // Keep randomized fallback catalog cleanly
       });
@@ -301,14 +319,21 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
         matchesCompanionDiscoveryFilter(card, {
           groupTab: activeCompanionGroup,
           situationChipId: activeSituationChip,
+          specializationSlug: activeCompanionSpecialization,
           searchQuery: companionSearchQuery,
         })
       ),
-    [specialists, activeCompanionGroup, activeSituationChip, companionSearchQuery]
+    [
+      specialists,
+      activeCompanionGroup,
+      activeSituationChip,
+      activeCompanionSpecialization,
+      companionSearchQuery,
+    ]
   );
 
   const isDefaultLandingCompanionView =
-    activeCompanionGroup === 'all' &&
+    !activeCompanionSpecialization &&
     !activeSituationChip &&
     !companionSearchQuery.trim();
 
@@ -351,14 +376,20 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
           </Link>
 
           {/* Zone 2: Clean Single-Line Nav Links */}
-          <nav className="hidden md:flex items-center gap-6">
-            <button
-              type="button"
-              onClick={() => scrollToSection('hero-birth-chart')}
-              className="text-sm font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors duration-200 whitespace-nowrap shrink-0 py-1 border-b border-transparent hover:border-[#3D3830]/40 cursor-pointer"
+          <nav className="hidden md:flex items-center gap-4 lg:gap-6">
+            <Link
+              to="/"
+              className="text-sm font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors duration-200 whitespace-nowrap shrink-0 py-1 border-b border-transparent hover:border-[#3D3830]/40"
             >
               Home
-            </button>
+            </Link>
+            <Link
+              to="/home-2"
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="text-sm font-medium text-[#3D3830] transition-colors duration-200 whitespace-nowrap shrink-0 py-1 border-b border-[#3D3830]/60"
+            >
+              Home #2
+            </Link>
             <button
               type="button"
               onClick={() => scrollToSection('specialists-section')}
@@ -421,13 +452,23 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
         {mobileMenuOpen && (
           <div className="md:hidden mx-auto max-w-7xl mt-2 rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 shadow-lg space-y-4 animate-cc-drawer-in">
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <button
-                type="button"
-                onClick={() => scrollToSection('hero-birth-chart')}
-                className="text-left font-medium text-[#3D3830] py-1.5"
+              <Link
+                to="/"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-left font-medium text-[#5C5449] hover:text-[#3D3830] py-1.5"
               >
                 Home
-              </button>
+              </Link>
+              <Link
+                to="/home-2"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="text-left font-medium text-[#3D3830] py-1.5"
+              >
+                Home #2
+              </Link>
               <button
                 type="button"
                 onClick={() => scrollToSection('specialists-section')}
@@ -676,6 +717,12 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                 setActiveSituationChip(chipId);
                 setShowAllCompanions(false);
               }}
+              specializations={companionSpecializations}
+              activeSpecialization={activeCompanionSpecialization}
+              onChangeSpecialization={(slug) => {
+                setActiveCompanionSpecialization(slug);
+                setShowAllCompanions(false);
+              }}
               searchQuery={companionSearchQuery}
               onChangeSearchQuery={setCompanionSearchQuery}
               tabSurface="cream"
@@ -685,15 +732,15 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
             {displayedSpecialists.length === 0 ? (
               <div className="rounded-3xl border border-[#3D3830]/12 bg-[#FAF7F2] p-8 text-center space-y-3">
                 <p className="font-serif text-xl text-[#3D3830]">
-                  No companions match that moment or search
+                  No companions match this filter or search
                 </p>
                 <p className="text-xs text-[#5C5449]">
-                  Try clearing your search or switching companion pillars.
+                  Try clearing your search or switching companion categories.
                 </p>
                 <button
                   type="button"
                   onClick={() => {
-                    setActiveCompanionGroup('all');
+                    setActiveCompanionSpecialization(null);
                     setActiveSituationChip(null);
                     setCompanionSearchQuery('');
                   }}

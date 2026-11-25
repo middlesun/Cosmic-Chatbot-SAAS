@@ -141,155 +141,450 @@ export const DEFAULT_COMPANION_PERSONALITY_V2: CompanionPersonalityV2 = {
   core_identity_locked: true,
 };
 
+export const COMPANION_SUBFILTER_HEADING_BY_GROUP: Record<
+  'spiritual_guides' | 'everyday_companions' | 'life_companions',
+  string
+> = {
+  spiritual_guides: 'Explore by specialization',
+  everyday_companions: 'Explore by companionship style',
+  life_companions: 'Explore by area of life',
+};
+
 export const DEFAULT_COMPANION_SPECIALIZATIONS: CompanionSpecializationTag[] = [
-  // Spiritual Guides
+  // Spiritual Guides — Explore by specialization
   {
-    slug: 'vedic_jyotish',
-    label: 'Vedic Jyotish',
+    slug: 'vedic_astrology',
+    label: 'Vedic Astrology',
     group: 'spiritual_guides',
     description: 'Parashari, Dashas, Nakshatras, Navamsa & practical Jyotish counsel.',
     sort_order: 10,
     is_active: true,
   },
   {
-    slug: 'western_tropical',
+    slug: 'western_astrology',
     label: 'Western Astrology',
     group: 'spiritual_guides',
-    description: 'Tropical signs, houses, planetary transits & evolutionary cycles.',
+    description: 'Tropical birth charts, planetary transits, compatibility & life turning points.',
     sort_order: 20,
     is_active: true,
   },
   {
-    slug: 'tarot_archetypes',
-    label: 'Tarot & Symbolism',
+    slug: 'evolutionary_astrology',
+    label: 'Evolutionary Astrology',
     group: 'spiritual_guides',
-    description: 'Reflective Tarot spreads, archetypal imagery & decision clarity.',
+    description: 'Soul evolution, nodal patterns, identity shifts & personal growth.',
     sort_order: 30,
     is_active: true,
   },
   {
-    slug: 'numerology_cycles',
-    label: 'Numerology',
+    slug: 'modern_astrology',
+    label: 'Modern Astrology',
     group: 'spiritual_guides',
-    description: 'Life Path, Destiny & Personal Year rhythm insights.',
+    description: 'Everyday planetary cycles, daily rhythms & conversational cosmic reflection.',
     sort_order: 40,
     is_active: true,
   },
   {
-    slug: 'karmic_past_life',
-    label: 'Karmic & Past-Life',
+    slug: 'tarot',
+    label: 'Tarot',
     group: 'spiritual_guides',
-    description: 'Samskara, Nodal axis (Rahu/Ketu) & contemplative soul patterns.',
+    description: 'Reflective Tarot spreads, archetypal imagery & decision clarity.',
     sort_order: 50,
     is_active: true,
   },
   {
-    slug: 'contemplative_faith',
-    label: 'Spiritual & Faith',
+    slug: 'numerology',
+    label: 'Numerology',
     group: 'spiritual_guides',
-    description: 'Prayer, doubt, devotion, mindfulness & multi-tradition spiritual grounding.',
+    description: 'Life Path, Personal Year cycles & symbolic life chapters.',
     sort_order: 60,
     is_active: true,
   },
   {
-    slug: 'dharma_purpose',
-    label: 'Dharma & Purpose',
+    slug: 'karma_past_lives',
+    label: 'Karma & Past Lives',
     group: 'spiritual_guides',
-    description: 'Meaning, calling, inner alignment & philosophical crossroads.',
+    description: 'Samskara, Nodal axis (Rahu/Ketu) & contemplative soul patterns.',
     sort_order: 70,
     is_active: true,
   },
-  // Everyday Companions
   {
-    slug: 'deep_listening',
-    label: 'Deep Listening & Venting',
-    group: 'everyday_companions',
-    description: 'Unhurried, judgment-free emotional space with zero unsolicited lecturing.',
+    slug: 'spirituality',
+    label: 'Spirituality',
+    group: 'spiritual_guides',
+    description: 'Inner peace, faith, doubt, forgiveness & grounded spiritual reflection.',
     sort_order: 80,
     is_active: true,
   },
+
+  // Everyday Companions — Explore by companionship style
   {
-    slug: 'warm_friendship',
-    label: 'Everyday Friendship & Banter',
+    slug: 'listening',
+    label: 'Listening',
     group: 'everyday_companions',
-    description: 'Natural coffee-table warmth, wit, humor, and relaxed daily company.',
+    description: 'Unhurried, judgment-free presence when you just need to be heard.',
     sort_order: 90,
     is_active: true,
   },
   {
-    slug: 'overthinking_calm',
-    label: 'Overthinking & Anxiety Calm',
+    slug: 'comfort_healing',
+    label: 'Comfort & Healing',
     group: 'everyday_companions',
-    description: 'Grounding racing thoughts, spiraling worries, and decision fatigue.',
+    description: 'Gentle reassurance, emotional tenderness & steady warmth on heavy days.',
     sort_order: 100,
     is_active: true,
   },
   {
-    slug: 'late_night_company',
-    label: 'Late-Night & Loneliness',
+    slug: 'encouragement',
+    label: 'Encouragement',
     group: 'everyday_companions',
-    description: 'Quiet company for insomnia, new cities, homesickness, and late nights.',
+    description: 'Self-belief, steady momentum, bouncing back & celebrating wins.',
     sort_order: 110,
     is_active: true,
   },
   {
-    slug: 'gentle_accountability',
-    label: 'Momentum & Habits',
+    slug: 'fun_friendship',
+    label: 'Fun & Friendship',
     group: 'everyday_companions',
-    description: 'Honest encouragement, restarting after slips, and getting unstuck.',
+    description: 'Playful banter, witty company, laughter & relaxed everyday chats.',
     sort_order: 120,
     is_active: true,
   },
-  // Life Companions
   {
-    slug: 'love_heartbreak',
-    label: 'Love, Dating & Heartbreak',
-    group: 'life_companions',
-    description: 'Breakups, mixed signals, closure, boundaries & emotional recovery.',
+    slug: 'candid_conversations',
+    label: 'Candid Conversations',
+    group: 'everyday_companions',
+    description: 'Honest opinions, blind-spot checks & grounded straight talk.',
     sort_order: 130,
     is_active: true,
   },
   {
-    slug: 'marriage_family',
-    label: 'Marriage, Family & Parenting',
-    group: 'life_companions',
-    description: 'Partnership harmony, ageing parents, fertility/IVF, and family dynamics.',
+    slug: 'calm_mindfulness',
+    label: 'Calm & Mindfulness',
+    group: 'everyday_companions',
+    description: 'Quieting racing thoughts, mindfulness & grounding restless evenings.',
     sort_order: 140,
     is_active: true,
   },
   {
-    slug: 'grief_loss',
-    label: 'Grief, Loss & Recovery',
-    group: 'life_companions',
-    description: 'Bereavement, anniversaries, chronic health strain & tender resilience.',
+    slug: 'deep_conversations',
+    label: 'Deep Conversations',
+    group: 'everyday_companions',
+    description: 'Philosophy, meaning, unspoken truths & reflective curiosity.',
     sort_order: 150,
     is_active: true,
   },
   {
-    slug: 'career_founders',
-    label: 'Career, Founders & Work',
-    group: 'life_companions',
-    description: 'Job transitions, startup pressure, burnout, exams & leadership.',
+    slug: 'mentorship',
+    label: 'Mentorship',
+    group: 'everyday_companions',
+    description: 'Mature perspective, life wisdom & balanced guidance at crossroads.',
     sort_order: 160,
     is_active: true,
   },
   {
-    slug: 'money_transitions',
-    label: 'Money, Debt & Transitions',
-    group: 'life_companions',
-    description: 'Financial pressure, relocation, major pivots & rebuilding steadiness.',
+    slug: 'family_like_connection',
+    label: 'Family-like Connection',
+    group: 'everyday_companions',
+    description: 'Brotherly and sisterly warmth, loyal care & heart-to-heart familiarity.',
     sort_order: 170,
     is_active: true,
   },
   {
-    slug: 'identity_creativity',
-    label: 'Identity & Self-Discovery',
-    group: 'cross_cutting',
-    description: 'Creative voice, authenticity, belonging & personal evolution.',
+    slug: 'venting',
+    label: 'Venting',
+    group: 'everyday_companions',
+    description: 'Unfiltered space to let out frustration without polite sugarcoating.',
     sort_order: 180,
     is_active: true,
   },
+  {
+    slug: 'clarity_decisions',
+    label: 'Clarity & Decisions',
+    group: 'everyday_companions',
+    description: 'Thinking out loud, untangling choices & resolving indecision.',
+    sort_order: 190,
+    is_active: true,
+  },
+  {
+    slug: 'daily_companionship',
+    label: 'Daily Companionship',
+    group: 'everyday_companions',
+    description: 'Daily check-ins, winding down at bedtime & steady everyday company.',
+    sort_order: 200,
+    is_active: true,
+  },
+  {
+    slug: 'warmth_affection',
+    label: 'Warmth & Affection',
+    group: 'everyday_companions',
+    description: 'Kindness, feeling appreciated, gentle tenderness & comforting closeness.',
+    sort_order: 210,
+    is_active: true,
+  },
+
+  // Life Companions — Explore by area of life
+  {
+    slug: 'love_relationships',
+    label: 'Love & Relationships',
+    group: 'life_companions',
+    description: 'Dating, romantic uncertainty, mixed signals & healthy connection.',
+    sort_order: 220,
+    is_active: true,
+  },
+  {
+    slug: 'heartbreak',
+    label: 'Heartbreak',
+    group: 'life_companions',
+    description: 'Breakups, missing an ex, rejection, closure & letting go.',
+    sort_order: 230,
+    is_active: true,
+  },
+  {
+    slug: 'marriage_divorce',
+    label: 'Marriage & Divorce',
+    group: 'life_companions',
+    description: 'Marital communication, separation, divorce recovery & second chances.',
+    sort_order: 240,
+    is_active: true,
+  },
+  {
+    slug: 'grief_loss',
+    label: 'Grief & Loss',
+    group: 'life_companions',
+    description: 'Bereavement, remembering loved ones & carrying difficult anniversaries.',
+    sort_order: 250,
+    is_active: true,
+  },
+  {
+    slug: 'family_parenthood',
+    label: 'Family & Parenthood',
+    group: 'life_companions',
+    description: 'Parenthood, ageing parents, family expectations & matters of home.',
+    sort_order: 260,
+    is_active: true,
+  },
+  {
+    slug: 'fertility_pregnancy',
+    label: 'Fertility & Pregnancy',
+    group: 'life_companions',
+    description: 'Fertility journeys, IVF waiting, pregnancy worries & quiet hope.',
+    sort_order: 270,
+    is_active: true,
+  },
+  {
+    slug: 'health_recovery',
+    label: 'Health & Recovery',
+    group: 'life_companions',
+    description: 'Chronic illness, surgery recovery, caregiving & physical strain.',
+    sort_order: 280,
+    is_active: true,
+  },
+  {
+    slug: 'emotional_wellness',
+    label: 'Emotional Wellness',
+    group: 'life_companions',
+    description: 'Burnout, low moods, anxiety, emotional exhaustion & steadiness.',
+    sort_order: 290,
+    is_active: true,
+  },
+  {
+    slug: 'career_business',
+    label: 'Career & Business',
+    group: 'life_companions',
+    description: 'Career choices, job switches, workplace dynamics & founder stress.',
+    sort_order: 300,
+    is_active: true,
+  },
+  {
+    slug: 'money_finances',
+    label: 'Money & Finances',
+    group: 'life_companions',
+    description: 'Financial pressure, debt worries, setbacks & rebuilding stability.',
+    sort_order: 310,
+    is_active: true,
+  },
+  {
+    slug: 'legal_challenges',
+    label: 'Legal Challenges',
+    group: 'life_companions',
+    description: 'Legal dispute stress, property/family conflicts & tough negotiations.',
+    sort_order: 320,
+    is_active: true,
+  },
+  {
+    slug: 'life_direction',
+    label: 'Life Direction',
+    group: 'life_companions',
+    description: 'Relocation, major life transitions, feeling stuck & finding direction.',
+    sort_order: 330,
+    is_active: true,
+  },
+  {
+    slug: 'trauma_healing',
+    label: 'Trauma & Healing',
+    group: 'life_companions',
+    description: 'Emotional recovery, childhood wounds, boundaries & rebuilding trust.',
+    sort_order: 340,
+    is_active: true,
+  },
+  {
+    slug: 'intimacy',
+    label: 'Intimacy',
+    group: 'life_companions',
+    description: 'Emotional and physical intimacy, vulnerability & closeness.',
+    sort_order: 350,
+    is_active: true,
+  },
+  {
+    slug: 'identity_self_discovery',
+    label: 'Identity & Self-Discovery',
+    group: 'life_companions',
+    description: 'Self-acceptance, personal identity, belonging & individuality.',
+    sort_order: 360,
+    is_active: true,
+  },
+  {
+    slug: 'student_life',
+    label: 'Student Life',
+    group: 'life_companions',
+    description: 'Exam pressure, academic setbacks, study focus & family expectations.',
+    sort_order: 370,
+    is_active: true,
+  },
 ];
+
+export const LEGACY_SPECIALIZATION_SLUG_MAP: Record<string, string> = {
+  vedic_jyotish: 'vedic_astrology',
+  western_tropical: 'western_astrology',
+  tarot_archetypes: 'tarot',
+  numerology_cycles: 'numerology',
+  karmic_past_life: 'karma_past_lives',
+  contemplative_faith: 'spirituality',
+  dharma_purpose: 'spirituality',
+  deep_listening: 'listening',
+  warm_friendship: 'fun_friendship',
+  overthinking_calm: 'calm_mindfulness',
+  late_night_company: 'daily_companionship',
+  gentle_accountability: 'encouragement',
+  love_heartbreak: 'heartbreak',
+  marriage_family: 'marriage_divorce',
+  grief_loss: 'grief_loss',
+  career_founders: 'career_business',
+  money_transitions: 'money_finances',
+  identity_creativity: 'identity_self_discovery',
+};
+
+const NEW_CANONICAL_SPEC_SLUGS = new Set(DEFAULT_COMPANION_SPECIALIZATIONS.map((s) => s.slug));
+const LEGACY_ONLY_SPEC_SLUGS = new Set(
+  Object.keys(LEGACY_SPECIALIZATION_SLUG_MAP).filter((k) => !NEW_CANONICAL_SPEC_SLUGS.has(k))
+);
+
+export function isLegacySeedSpecializationTaxonomy(
+  tags: CompanionSpecializationTag[] | null | undefined
+): boolean {
+  if (!Array.isArray(tags) || tags.length === 0) return false;
+  const slugs = tags.map((t) => String(t.slug || '').trim().toLowerCase());
+  const hasNew = slugs.some((s) => NEW_CANONICAL_SPEC_SLUGS.has(s) && s !== 'grief_loss');
+  const hasLegacy = slugs.some((s) => LEGACY_ONLY_SPEC_SLUGS.has(s));
+  return hasLegacy && !hasNew;
+}
+
+export function hasOnlyLegacySpecializationSlugs(rawSlugs: unknown): boolean {
+  if (!Array.isArray(rawSlugs) || rawSlugs.length === 0) return false;
+  const cleaned = rawSlugs.map((s) => String(s || '').trim().toLowerCase()).filter(Boolean);
+  if (cleaned.length === 0) return false;
+  const hasLegacyOnly = cleaned.some((s) => LEGACY_ONLY_SPEC_SLUGS.has(s));
+  const hasAnyNewOnly = cleaned.some((s) => NEW_CANONICAL_SPEC_SLUGS.has(s) && s !== 'grief_loss');
+  return hasLegacyOnly && !hasAnyNewOnly;
+}
+
+export function normalizeSpecializationSlugsWithMigration(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const mapped = raw.map((item) => {
+    const slug = String(item || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 48);
+    return LEGACY_SPECIALIZATION_SLUG_MAP[slug] || slug;
+  });
+  return sanitizeSpecializationSlugs(mapped);
+}
+
+export const BUILTIN_COMPANION_SPECIALIZATIONS: Record<string, string[]> = {
+  // Spiritual Guides (14)
+  dev: ['vedic_astrology', 'spirituality'],
+  nandini: ['vedic_astrology', 'spirituality'],
+  marc: ['western_astrology'],
+  luna: ['western_astrology'],
+  sofia: ['evolutionary_astrology'],
+  tara: ['modern_astrology'],
+  bella: ['tarot'],
+  julian: ['tarot'],
+  ines: ['numerology'],
+  kai: ['numerology'],
+  anya: ['karma_past_lives', 'spirituality'],
+  vikram: ['karma_past_lives', 'spirituality'],
+  shanti: ['spirituality'],
+  omar: ['spirituality'],
+
+  // Everyday Companions (29)
+  mira: ['listening', 'comfort_healing'],
+  samir: ['listening', 'venting'],
+  hannah: ['comfort_healing', 'warmth_affection', 'listening'],
+  noah: ['comfort_healing', 'listening', 'warmth_affection'],
+  kira: ['fun_friendship', 'encouragement', 'comfort_healing'],
+  aira: ['fun_friendship', 'encouragement', 'comfort_healing'],
+  elia: ['comfort_healing', 'deep_conversations'],
+  priya: ['encouragement'],
+  max: ['encouragement', 'daily_companionship'],
+  ethan: ['candid_conversations', 'clarity_decisions'],
+  valeria: ['candid_conversations', 'clarity_decisions'],
+  zoya: ['fun_friendship'],
+  leo: ['fun_friendship'],
+  nora: ['calm_mindfulness', 'comfort_healing'],
+  kabir: ['daily_companionship', 'fun_friendship', 'venting'],
+  naomi: ['deep_conversations', 'candid_conversations', 'listening'],
+  elias: ['deep_conversations'],
+  maya: ['mentorship', 'deep_conversations', 'clarity_decisions'],
+  mateo: ['family_like_connection', 'encouragement', 'candid_conversations'],
+  nina: ['family_like_connection', 'warmth_affection'],
+  alex: ['venting', 'listening'],
+  zara: ['venting', 'candid_conversations'],
+  ari: ['clarity_decisions', 'deep_conversations'],
+  elena: ['clarity_decisions', 'mentorship'],
+  jamie: ['daily_companionship', 'listening'],
+  camila: ['warmth_affection', 'comfort_healing'],
+  luca: ['encouragement', 'fun_friendship', 'daily_companionship'],
+  theo: ['calm_mindfulness', 'daily_companionship', 'comfort_healing'],
+  serena: ['calm_mindfulness'],
+
+  // Life Companions (22)
+  isla: ['love_relationships'],
+  ryan: ['love_relationships'],
+  sienna: ['heartbreak'],
+  adrian: ['heartbreak'],
+  kavita: ['marriage_divorce', 'love_relationships'],
+  daniel: ['marriage_divorce', 'life_direction'],
+  grace: ['grief_loss'],
+  rohan: ['grief_loss'],
+  anjali: ['family_parenthood'],
+  eva: ['fertility_pregnancy', 'family_parenthood'],
+  adam: ['health_recovery'],
+  clara: ['emotional_wellness'],
+  neha: ['career_business'],
+  nikhil: ['career_business'],
+  rachel: ['money_finances'],
+  victor: ['legal_challenges', 'money_finances'],
+  kenji: ['life_direction', 'identity_self_discovery'],
+  lucas: ['life_direction', 'identity_self_discovery'],
+  iris: ['trauma_healing', 'emotional_wellness'],
+  mila: ['intimacy', 'love_relationships'],
+  robin: ['identity_self_discovery'],
+  riya: ['student_life', 'career_business'],
+};
 
 export function estimateTokensRough(text: string | null | undefined): number {
   const cleaned = (text || '').trim();
@@ -535,9 +830,14 @@ export function inferSpecializationsForCompanion(input: {
   situation_tags?: string[];
   tagline?: string;
 }): string[] {
+  const cleanSlug = String(input.slug || '').trim().toLowerCase();
+  if (cleanSlug && BUILTIN_COMPANION_SPECIALIZATIONS[cleanSlug]) {
+    return [...BUILTIN_COMPANION_SPECIALIZATIONS[cleanSlug]];
+  }
+
   const tags = new Set<string>();
   const haystack = [
-    input.slug || '',
+    cleanSlug,
     input.primary_expertise || '',
     ...(input.secondary_expertise || []),
     ...(input.discoverable_tags || []),
@@ -547,65 +847,125 @@ export function inferSpecializationsForCompanion(input: {
     .join(' ')
     .toLowerCase();
 
+  // Spiritual Guides
   if (input.skill_level === 'vedic_soft' || /\b(vedic|jyotish|dasha|nakshatra|parashari|navamsa)\b/.test(haystack)) {
-    tags.add('vedic_jyotish');
+    tags.add('vedic_astrology');
   }
-  if (input.skill_level === 'astrology_soft' || /\b(western|tropical|evolutionary|synastry|transit)\b/.test(haystack)) {
-    tags.add('western_tropical');
+  if (/\bevolutionary astrology\b/.test(haystack)) {
+    tags.add('evolutionary_astrology');
+  } else if (/\bmodern astrology\b/.test(haystack)) {
+    tags.add('modern_astrology');
+  } else if (input.skill_level === 'astrology_soft' || /\b(western|tropical|synastry|transit)\b/.test(haystack)) {
+    tags.add('western_astrology');
   }
   if (input.skill_level === 'tarot' || /\btarot\b/.test(haystack)) {
-    tags.add('tarot_archetypes');
+    tags.add('tarot');
   }
   if (input.skill_level === 'numerology' || /\bnumerolog/.test(haystack)) {
-    tags.add('numerology_cycles');
+    tags.add('numerology');
   }
   if (input.skill_level === 'past_life' || input.category_tag === 'past_life' || /\b(past life|past-life|karma|karmic|samskara)\b/.test(haystack)) {
-    tags.add('karmic_past_life');
+    tags.add('karma_past_lives');
   }
-  if (/\b(faith|prayer|devotion|gita|sufism|zen|buddhist|advaita|interfaith|spiritual)\b/.test(haystack)) {
-    tags.add('contemplative_faith');
+  if (/\b(faith|prayer|devotion|gita|sufism|zen|buddhist|advaita|interfaith|spiritual|spirituality|forgiveness|dharma)\b/.test(haystack)) {
+    tags.add('spirituality');
   }
-  if (/\b(dharma|purpose|meaning|direction|philosophy|wisdom)\b/.test(haystack)) {
-    tags.add('dharma_purpose');
+
+  // Everyday Companions
+  if (/\b(listen|listening|heard|unspoken)\b/.test(haystack)) {
+    tags.add('listening');
   }
-  if (/\b(listen|vent|unfiltered|silence|heard)\b/.test(haystack)) {
-    tags.add('deep_listening');
+  if (/\b(comfort|reassurance|healing companion|mood lifter|low mood)\b/.test(haystack)) {
+    tags.add('comfort_healing');
   }
-  if (/\b(friend|banter|coffee|casual|humor|wit|companion)\b/.test(haystack)) {
-    tags.add('warm_friendship');
+  if (/\b(cheerleader|encourag|confidence|motivation|momentum|celebration|little wins|self-belief)\b/.test(haystack)) {
+    tags.add('encouragement');
   }
-  if (/\b(overthink|anxiety|calm|worry|spiral|mindful|stress)\b/.test(haystack)) {
-    tags.add('overthinking_calm');
+  if (/\b(fun friend|playful|banter|humor|humour|witty|laughter|casual friend)\b/.test(haystack)) {
+    tags.add('fun_friendship');
   }
-  if (/\b(bedtime|insomnia|late-night|late night|sleep|lonely|loneliness|relocation|new city|homesick)\b/.test(haystack)) {
-    tags.add('late_night_company');
+  if (/\b(candid|honest opinion|reality check|blind spot|straight talk)\b/.test(haystack)) {
+    tags.add('candid_conversations');
   }
-  if (/\b(habit|accountability|stuck|procrastinat|discipline|motivat|restart|momentum)\b/.test(haystack)) {
-    tags.add('gentle_accountability');
+  if (/\b(calm|mindful|mindfulness|meditation|overthinking|peace of mind|restlessness|bedtime)\b/.test(haystack)) {
+    tags.add('calm_mindfulness');
   }
-  if (/\b(heartbreak|breakup|dating|ex|romance|love|closure|rejection|red-flags|mixed-signals)\b/.test(haystack)) {
-    tags.add('love_heartbreak');
+  if (/\b(deep conversation|philosophy|existential|meaning|confidant|intellectual curiosity)\b/.test(haystack)) {
+    tags.add('deep_conversations');
   }
-  if (/\b(marriage|family|parent|fertility|ivf|pregnancy|children|mother|father)\b/.test(haystack)) {
-    tags.add('marriage_family');
+  if (/\b(mentor|wise mentor|life wisdom|mature perspective)\b/.test(haystack)) {
+    tags.add('mentorship');
   }
-  if (/\b(grief|loss|bereavement|mourning|illness|health|recovery)\b/.test(haystack)) {
+  if (/\b(brotherly|sisterly|family-like)\b/.test(haystack)) {
+    tags.add('family_like_connection');
+  }
+  if (/\b(vent|venting|rant|unfiltered|frustration)\b/.test(haystack)) {
+    tags.add('venting');
+  }
+  if (/\b(decision|thought partner|clarity|brainstorm|indecision|untangling)\b/.test(haystack)) {
+    tags.add('clarity_decisions');
+  }
+  if (/\b(daily check-in|check-in|bedtime|daily routine|casual companion|little joys)\b/.test(haystack)) {
+    tags.add('daily_companionship');
+  }
+  if (/\b(affection|affectionate|warmth|compliment|appreciated)\b/.test(haystack)) {
+    tags.add('warmth_affection');
+  }
+
+  // Life Companions
+  if (/\b(relationship|dating|love|romantic|mixed signals)\b/.test(haystack)) {
+    tags.add('love_relationships');
+  }
+  if (/\b(heartbreak|breakup|missing an ex|ex|rejection|letting go)\b/.test(haystack)) {
+    tags.add('heartbreak');
+  }
+  if (/\b(marriage|marital|divorce|separation|remarriage)\b/.test(haystack)) {
+    tags.add('marriage_divorce');
+  }
+  if (/\b(grief|bereavement|mourning|anniversaries)\b/.test(haystack)) {
     tags.add('grief_loss');
   }
-  if (/\b(career|founder|startup|work|burnout|job|exam|student|business|leadership)\b/.test(haystack)) {
-    tags.add('career_founders');
+  if (/\b(family|parenthood|ageing parents|matters of home)\b/.test(haystack)) {
+    tags.add('family_parenthood');
   }
-  if (/\b(money|debt|finance|financial|legal|dispute|relocat|transition)\b/.test(haystack)) {
-    tags.add('money_transitions');
+  if (/\b(fertility|ivf|pregnancy|progeny)\b/.test(haystack)) {
+    tags.add('fertility_pregnancy');
   }
-  if (/\b(identity|creative|creativity|self-discovery|authentic)\b/.test(haystack)) {
-    tags.add('identity_creativity');
+  if (/\b(health|chronic illness|surgery|caregiving|recovery companion)\b/.test(haystack)) {
+    tags.add('health_recovery');
+  }
+  if (/\b(emotional wellness|emotional wellbeing|burnout|emotional exhaustion|anxiety)\b/.test(haystack)) {
+    tags.add('emotional_wellness');
+  }
+  if (/\b(career|business|founder|entrepreneur|startup|workplace|job)\b/.test(haystack)) {
+    tags.add('career_business');
+  }
+  if (/\b(money|finance|financial|debt)\b/.test(haystack)) {
+    tags.add('money_finances');
+  }
+  if (/\b(legal|dispute|litigation|negotiation|property conflict)\b/.test(haystack)) {
+    tags.add('legal_challenges');
+  }
+  if (/\b(life direction|life transition|relocation|homesickness|finding purpose|feeling stuck)\b/.test(haystack)) {
+    tags.add('life_direction');
+  }
+  if (/\b(trauma|abuse recovery|childhood|emotional recovery|rebuilding trust)\b/.test(haystack)) {
+    tags.add('trauma_healing');
+  }
+  if (/\b(intimacy|vulnerability|distance)\b/.test(haystack)) {
+    tags.add('intimacy');
+  }
+  if (/\b(identity|self-discovery|self-acceptance|self-worth|belonging)\b/.test(haystack)) {
+    tags.add('identity_self_discovery');
+  }
+  if (/\b(student|exam|academic|study)\b/.test(haystack)) {
+    tags.add('student_life');
   }
 
   if (tags.size === 0) {
-    if (input.companion_group === 'spiritual_guides') tags.add('dharma_purpose');
-    else if (input.companion_group === 'life_companions') tags.add('identity_creativity');
-    else tags.add('warm_friendship');
+    if (input.companion_group === 'spiritual_guides') tags.add('spirituality');
+    else if (input.companion_group === 'life_companions') tags.add('life_direction');
+    else tags.add('fun_friendship');
   }
 
   return Array.from(tags).slice(0, 6);

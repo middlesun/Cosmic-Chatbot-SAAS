@@ -140,12 +140,18 @@ const BlogPage: React.FC<BlogPageProps> = ({ sanityPosts, sanityLoaded }) => {
           >
             Cosmic Council
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <Link
               to="/"
-              className="text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors"
+              className="text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors whitespace-nowrap"
             >
               Home
+            </Link>
+            <Link
+              to="/home-2"
+              className="text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors whitespace-nowrap"
+            >
+              Home #2
             </Link>
             <Link
               to="/app/login"

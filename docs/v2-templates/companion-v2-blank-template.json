@@ -1,0 +1,111 @@
+{
+  "bundle_type": "cosmic_council_companion_v2",
+  "schema_version": 2,
+  "exported_at": "2026-11-24T15:23:12.609Z",
+  "companion": {
+    "slug": "new_companion_slug",
+    "name": "Companion Name",
+    "age": 32,
+    "sex": "F",
+    "tagline": "",
+    "card_subtitle": "",
+    "short_bio": "",
+    "full_bio": "",
+    "how_conversations_feel": "",
+    "primary_expertise": "",
+    "secondary_expertise": [],
+    "category_tag": "friends",
+    "companion_group": "everyday_companions",
+    "advisory_mode": "friend",
+    "chart_access": {
+      "vedic": false,
+      "western": false,
+      "tarot": false,
+      "numerology": false,
+      "past_life": false,
+      "council_notes": false
+    },
+    "formula_cartridge_slugs": [],
+    "max_output_tokens": null,
+    "discoverable_tags": [],
+    "situation_tags": [],
+    "specialization_slugs": [],
+    "gender_variants": {},
+    "override_group_rules": false,
+    "cultural_fluency": "",
+    "avatar_url": null,
+    "monogram_palette": {
+      "bg": "#EAE3D7",
+      "ring": "#7E7262",
+      "ink": "#3D3830"
+    },
+    "welcome_messages": [
+      ""
+    ],
+    "system_prompt": "",
+    "backstory": "",
+    "soul_consciousness": "",
+    "hard_rules": "",
+    "soft_rules": "",
+    "autonomy_level": "intuitive",
+    "override_global_rules": true,
+    "skill_level": "none_emotional",
+    "chat_style": "chat_bubbles",
+    "model_id": null,
+    "tts_voice_profile": {
+      "rate": 1,
+      "pitch": 1
+    },
+    "supports_listening_cue": true,
+    "suggestions_enabled": true,
+    "is_active": true,
+    "sort_order": 200,
+    "published_version": 1,
+    "personality_v2_json": {
+      "schema_version": 2,
+      "core_identity_capsule": "",
+      "capsule_token_estimate": 0,
+      "character_essence": "",
+      "fictional_lore": "",
+      "inner_compass": {
+        "worldview": "",
+        "values": [],
+        "core_anchors": []
+      },
+      "expression_spectrum": "",
+      "subtle_contradictions": "",
+      "humour_and_interests": "",
+      "quirks_and_habits": "",
+      "linguistic_fingerprint": "",
+      "interpersonal_dynamics": "",
+      "soft_instincts": "",
+      "autonomy_guidance": "",
+      "specialist_expertise": "",
+      "signature_methodology": "",
+      "astrology_entry_rule": "never",
+      "esoteric_guardrails": "",
+      "ai_identity_disclosure": "natural_immersion_honest_when_asked",
+      "contextual_nuances": [
+        {
+          "id": "nuance_1",
+          "label": "Example nuance trigger",
+          "trigger_topics": [],
+          "trigger_moods": [],
+          "guidance": "",
+          "priority": 50
+        }
+      ],
+      "reference_dialogues": [
+        {
+          "id": "ref_1",
+          "scenario": "",
+          "user_prompt": "",
+          "companion_reply": "",
+          "context_note": "",
+          "tags": []
+        }
+      ],
+      "core_identity_locked": true
+    }
+  }
+}

@@ -552,7 +552,7 @@ export function createBlankCompanion(nextSortOrder: number): AdminCompanionRecor
     max_output_tokens: null,
     discoverable_tags: [],
     situation_tags: [],
-    specialization_slugs: ['warm_friendship'],
+    specialization_slugs: ['fun_friendship'],
     override_group_rules: false,
     cultural_fluency: 'English · Warm Everyday',
     avatar_url: null,

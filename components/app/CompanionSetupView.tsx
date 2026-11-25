@@ -20,6 +20,10 @@ import CompanionDiscoveryControls from './CompanionDiscoveryControls';
 import CompanionProfileSheet from './CompanionProfileSheet';
 import { PREVIEW_PUBLIC_COMPANIONS } from './previewFixtures';
 import {
+  DEFAULT_COMPANION_SPECIALIZATIONS,
+  type CompanionSpecializationTag,
+} from '../../lib/companionV2Schema';
+import {
   matchesCompanionDiscoveryFilter,
   type CompanionArchetypeConfigItem,
   type CompanionArchetypeSlug,
@@ -256,8 +260,12 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
   const [loadingHub, setLoadingHub] = useState<boolean>(
     !isPreviewMode && (!companionCatalog || companionCatalog.length === 0)
   );
-  const [activeGroup, setActiveGroup] = useState<CompanionDiscoveryTabId>('all');
+  const [activeGroup, setActiveGroup] = useState<CompanionDiscoveryTabId>('spiritual_guides');
   const [activeSituationChip, setActiveSituationChip] = useState<string | null>(null);
+  const [activeSpecialization, setActiveSpecialization] = useState<string | null>(null);
+  const [specializations, setSpecializations] = useState<CompanionSpecializationTag[]>(
+    DEFAULT_COMPANION_SPECIALIZATIONS
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [sheetCompanion, setSheetCompanion] = useState<PublicCompanionCard | null>(null);
 
@@ -317,6 +325,9 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
           : [];
         if (loadedCards.length > 0) {
           setPresets(loadedCards);
+        }
+        if (Array.isArray(data.specializations) && data.specializations.length > 0) {
+          setSpecializations(data.specializations as CompanionSpecializationTag[]);
         }
         setCustomCompanions(loadedCustom);
         onCatalogLoaded?.(loadedCards, loadedCustom);
@@ -383,14 +394,15 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
         matchesCompanionDiscoveryFilter(c, {
           groupTab: activeGroup,
           situationChipId: activeSituationChip,
+          specializationSlug: activeSpecialization,
           searchQuery,
         })
       ),
-    [enrichedPresets, activeGroup, activeSituationChip, searchQuery]
+    [enrichedPresets, activeGroup, activeSituationChip, activeSpecialization, searchQuery]
   );
 
   const isDefaultDirectoryView =
-    activeGroup === 'all' && !activeSituationChip && !searchQuery.trim();
+    !activeSpecialization && !activeSituationChip && !searchQuery.trim();
 
   const handleChooseArchetype = (slug: CompanionArchetypeSlug) => {
     setSelectedType(slug);
@@ -605,13 +617,16 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
               </div>
             )}
 
-            {/* Pillar Tabs, Situation Search & Quick Chips */}
+            {/* Category Tabs, Contextual Sub-Filters & Search */}
             <CompanionDiscoveryControls
               cards={enrichedPresets}
               activeGroup={activeGroup}
               onChangeGroup={setActiveGroup}
               activeSituationChip={activeSituationChip}
               onChangeSituationChip={setActiveSituationChip}
+              specializations={specializations}
+              activeSpecialization={activeSpecialization}
+              onChangeSpecialization={setActiveSpecialization}
               searchQuery={searchQuery}
               onChangeSearchQuery={setSearchQuery}
               tabSurface="white"
@@ -774,7 +789,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                 {filteredPresets.length === 0 ? (
                   <div className="md:col-span-2 rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-7 text-center space-y-2.5">
                     <p className="font-['Cormorant_Garamond',serif] text-xl font-medium text-[#3D3830]">
-                      No companions match that moment or search
+                      No companions match that filter or search
                     </p>
                     <p className="text-xs text-[#5C5449]">
                       Reset your filters or match a custom companion below.
@@ -782,7 +797,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setActiveGroup('all');
+                        setActiveSpecialization(null);
                         setActiveSituationChip(null);
                         setSearchQuery('');
                       }}

@@ -61,9 +61,11 @@ import {
   resetAdminCompanionToDefault,
   upsertAdminCompanion,
 } from '../services/companionPresets';
+import { ASTRA_MOON_BENCHMARK_SLUG } from '../services/astraMoonBenchmark';
 import {
   compileCompanionCapsule,
   discardCompanionDraft,
+  executeAdminCompanionTestTurn,
   exportBulkCompanionsBundle,
   exportGlobalCompanionBundle,
   exportSingleCompanionBundle,
@@ -82,6 +84,7 @@ import {
   saveCompanionSpecializations,
   toAdminCompanionRosterSummary,
 } from '../services/companionV2Service';
+import { stripUnsafeJsonKeys } from '../../lib/companionV2Schema';
 import {
   BUILTIN_MODEL_SUGGESTIONS,
   DEFAULT_CONVERSATIONAL_RULES,
@@ -4963,6 +4966,11 @@ router.get('/companions', async (_req: AuthenticatedRequest, res) => {
       defaultSlugs: DEFAULT_COMPANION_PRESETS.map((p) => p.slug),
       availablePortraits: COMPANION_PORTRAIT_GALLERY,
       monogramPalettes: COMPANION_MONOGRAM_PALETTES,
+      benchmarkCompanion: {
+        slug: ASTRA_MOON_BENCHMARK_SLUG,
+        name: 'Astra Moon (Benchmark)',
+        primary_expertise: 'Modern Astrologer',
+      },
     });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to load companions' });
@@ -5052,6 +5060,76 @@ router.post('/companions/import/global', async (req: AuthenticatedRequest, res) 
     return;
   }
   res.json(result);
+});
+
+router.post('/companions/test-turn', async (req: AuthenticatedRequest, res) => {
+  try {
+    const rawBody =
+      req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+        ? stripUnsafeJsonKeys(req.body as Record<string, unknown>)
+        : {};
+
+    const slug = typeof rawBody.slug === 'string' ? rawBody.slug.trim() : '';
+    if (!slug) {
+      res.status(400).json({ error: 'Select a companion slug to test.' });
+      return;
+    }
+
+    const targetStage = rawBody.targetStage === 'published' ? 'published' : 'draft';
+    const messages = Array.isArray(rawBody.messages)
+      ? (rawBody.messages as Array<{ role: 'user' | 'assistant'; content: string }>)
+      : [];
+
+    const draftOverride =
+      rawBody.draftOverride &&
+      typeof rawBody.draftOverride === 'object' &&
+      !Array.isArray(rawBody.draftOverride)
+        ? stripUnsafeJsonKeys(rawBody.draftOverride as Record<string, unknown>)
+        : null;
+
+    const simulation =
+      rawBody.simulation &&
+      typeof rawBody.simulation === 'object' &&
+      !Array.isArray(rawBody.simulation)
+        ? stripUnsafeJsonKeys(rawBody.simulation as Record<string, unknown>)
+        : undefined;
+
+    const compareWithStageOrSlug =
+      typeof rawBody.compareWithStageOrSlug === 'string'
+        ? rawBody.compareWithStageOrSlug.trim()
+        : rawBody.compareWithStageOrSlug &&
+          typeof rawBody.compareWithStageOrSlug === 'object' &&
+          !Array.isArray(rawBody.compareWithStageOrSlug)
+        ? stripUnsafeJsonKeys(rawBody.compareWithStageOrSlug as Record<string, unknown>)
+        : null;
+
+    const runLiveModel = rawBody.runLiveModel !== false;
+
+    const result = await executeAdminCompanionTestTurn({
+      slug,
+      targetStage,
+      draftOverride,
+      messages,
+      simulation: simulation as Parameters<typeof executeAdminCompanionTestTurn>[0]['simulation'],
+      compareWithStageOrSlug: compareWithStageOrSlug as Parameters<
+        typeof executeAdminCompanionTestTurn
+      >[0]['compareWithStageOrSlug'],
+      runLiveModel,
+    });
+
+    if (!result.ok) {
+      res.status('status' in result ? result.status : 400).json({
+        error: 'error' in result ? result.error : 'Test turn failed',
+      });
+      return;
+    }
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Companion test turn failed',
+    });
+  }
 });
 
 router.post('/companions', async (req: AuthenticatedRequest, res) => {

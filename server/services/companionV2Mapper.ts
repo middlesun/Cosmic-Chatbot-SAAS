@@ -1,11 +1,14 @@
 import {
+  BUILTIN_COMPANION_SPECIALIZATIONS,
   buildCoreIdentityCapsuleDraft,
   DEFAULT_COMPANION_PERSONALITY_V2,
   detectCoreIdentityChanges,
   estimateTokensRough,
   hasAuthoredV2Depth,
+  hasOnlyLegacySpecializationSlugs,
   inferSpecializationsForCompanion,
   normalizePersonalityV2,
+  normalizeSpecializationSlugsWithMigration,
   type AstrologyEntryRule,
   type CompanionPersonalityV2,
   type CoreIdentityProtectedDiff,
@@ -221,7 +224,10 @@ export function compileV2ToLegacySummary(
 
   const specialization_slugs =
     Array.isArray(record.specialization_slugs) && record.specialization_slugs.length > 0
-      ? record.specialization_slugs
+      ? hasOnlyLegacySpecializationSlugs(record.specialization_slugs)
+        ? BUILTIN_COMPANION_SPECIALIZATIONS[String(record.slug || '').trim().toLowerCase()] ||
+          normalizeSpecializationSlugsWithMigration(record.specialization_slugs)
+        : normalizeSpecializationSlugsWithMigration(record.specialization_slugs)
       : inferSpecializationsForCompanion({
           slug: record.slug,
           companion_group: record.companion_group,

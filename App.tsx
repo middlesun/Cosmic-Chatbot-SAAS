@@ -11,6 +11,7 @@ import { Category, Currency, Product } from './types';
 import MetaTags from './components/MetaTags';
 import type { SanityArticleItem } from './lib/sanity';
 import AppRoutes from './components/app/AppRoutes';
+import HomeLandingPage from './components/landing/HomeLandingPage';
 import NewLandingPage from './components/NewLandingPage';
 import BlogPage from './components/BlogPage';
 import ComingSoonPage from './components/ComingSoonPage';
@@ -124,8 +125,8 @@ const App: React.FC = () => {
   }
 
   const scrollToLandingSection = (id: string) => {
-    if (location.pathname !== '/') {
-      navigate('/');
+    if (location.pathname !== '/home-2') {
+      navigate('/home-2');
       window.setTimeout(() => {
         document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
       }, 250);
@@ -175,6 +176,15 @@ const App: React.FC = () => {
     <Routes>
       <Route
         path="/"
+        element={
+          <>
+            {homeMetaTags}
+            <HomeLandingPage />
+          </>
+        }
+      />
+      <Route
+        path="/home-2"
         element={
           <>
             {homeMetaTags}

@@ -953,22 +953,42 @@ export interface CompanionTurnAnalysis {
   has_profile_chart: boolean;
 }
 
+export interface CompanionAssemblySectionInfo {
+  key: string;
+  label: string;
+  estimatedTokens: number;
+  charCount: number;
+  content: string;
+}
+
 export interface CompanionAssemblyManifest {
   layersLoaded: string[];
+  orderedSections: CompanionAssemblySectionInfo[];
   nuancesTriggered: Array<{ id: string; title: string; priority: number }>;
   dialoguesTriggered: Array<{ id: string; scenario: string }>;
+  capsuleApplied: boolean;
+  capsuleTokens: number;
   chartInjected: boolean;
   transitsInjected: boolean;
   analystNotesInjected: boolean;
   tarotDrawn: boolean;
   esotericRelevance: CompanionEsotericRelevance;
   astrologyEntryRule: AstrologyEntryRule;
+  astrologyGateDecision: {
+    loaded: boolean;
+    reason: string;
+    hasAnyEsoteric: boolean;
+    hasProfileChart: boolean;
+    astrologyEntryRule: AstrologyEntryRule;
+    esotericRelevance: CompanionEsotericRelevance;
+  };
   emotionalWeight: CompanionEmotionalWeight;
   conversationIntent: CompanionConversationIntent;
   aiIdentityQuestion: boolean;
   estimatedTokensBySection: Record<string, number>;
   totalEstimatedTokens: number;
   assembledPromptPreview: string;
+  fullAssembledPrompt?: string;
 }
 
 const TOPIC_KEYWORD_BUCKETS: Array<{ topic: string; pattern: RegExp }> = [
@@ -1667,6 +1687,7 @@ export function buildPresetCompanionSystemPrompt(params: {
   userPrompt?: string;
   historyMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
   companionChatMode?: CompanionChatCue | null;
+  chatStyleOverride?: ChatStyle | null;
   referrableCompanions?: ReferrableCompanionSummary[];
   clientLocalHour?: number | null;
   constitutionOverride?: string | null;
@@ -1712,7 +1733,10 @@ export function buildPresetCompanionSystemPrompt(params: {
     resolveCompanionCapabilities(effectivePreset, params.engineOverrides || null);
 
   const chatStyle = normalizeChatStyle(
-    effectivePreset?.chat_style || persona?.chat_style || capabilities.chat_style,
+    params.chatStyleOverride ||
+      effectivePreset?.chat_style ||
+      persona?.chat_style ||
+      capabilities.chat_style,
     'chat_bubbles'
   );
 
@@ -1753,14 +1777,23 @@ export function buildPresetCompanionSystemPrompt(params: {
     });
 
   const layersLoaded: string[] = [];
+  const orderedSections: CompanionAssemblySectionInfo[] = [];
   const estimatedTokensBySection: Record<string, number> = {};
   const sections: string[] = [];
 
-  const pushLayer = (key: string, bodyParts: string[]) => {
+  const pushLayer = (key: string, label: string, bodyParts: string[]) => {
     const joined = bodyParts.map((p) => p.trim()).filter(Boolean).join('\n\n');
     if (!joined) return;
+    const est = estimateTokensRough(joined);
     layersLoaded.push(key);
-    estimatedTokensBySection[key] = estimateTokensRough(joined);
+    estimatedTokensBySection[key] = est;
+    orderedSections.push({
+      key,
+      label,
+      estimatedTokens: est,
+      charCount: joined.length,
+      content: joined,
+    });
     sections.push(joined);
   };
 
@@ -1805,7 +1838,7 @@ export function buildPresetCompanionSystemPrompt(params: {
       'IMMERSION BOUNDARY: Stay inside your warm character presence naturally — NEVER volunteer robotic disclaimers like "As an AI..." unprompted.'
     );
   }
-  pushLayer('layer1_hard_rules', layer1Parts);
+  pushLayer('layer1_hard_rules', 'Layer 1 · Non-Negotiables & Guardrails', layer1Parts);
 
   // ── LAYER 2: GLOBAL SOFT GUIDANCE + GROUP POSTURE (OVERRIDABLE) + CHARACTER SOFT INSTINCTS ─
   const layer2Parts: string[] = [activeRealismBaseline];
@@ -1831,7 +1864,7 @@ export function buildPresetCompanionSystemPrompt(params: {
   layer2Parts.push(`DEFAULT INSTINCTS (Overrideable whenever human judgment calls for it):
 ${softRulesText || 'Match the emotional temperature of the moment rather than sticking to a robotic template.'}
 Autonomy guidance: ${autonomyNote}`);
-  pushLayer('layer2_soft_guidance', layer2Parts);
+  pushLayer('layer2_soft_guidance', 'Layer 2 · Soft Realism & Instincts', layer2Parts);
 
   // ── LAYER 3: PERMANENT CHARACTER IDENTITY + CONDITIONALLY LOADED NUANCES & DIALOGUES ─
   const layer3Parts: string[] = [];
@@ -1951,7 +1984,7 @@ Autonomy guidance: ${autonomyNote}`);
       'WHO YOU ARE: You are a warm, grounded, human-like companion in Cosmic Council. Listen closely, keep replies natural, and offer genuine human presence.'
     );
   }
-  pushLayer('layer3_character_identity', layer3Parts);
+  pushLayer('layer3_character_identity', 'Layer 3 · Core Identity, Nuances & Voice', layer3Parts);
 
   // ── LAYER 4: LIVING USER CONTEXT & ORGANIC RELATIONSHIP CONTINUITY ────────
   const layer4Parts: string[] = [];
@@ -2004,7 +2037,7 @@ Autonomy guidance: ${autonomyNote}`);
       `RECENT MOMENTS FROM EARLIER THREADS WITH YOU (Recall naturally as shared memory only if relevant):\n${params.crossThreadSnippets.trim()}`
     );
   }
-  pushLayer('layer4_user_context_and_bond', layer4Parts);
+  pushLayer('layer4_user_context_and_bond', 'Layer 4 · Living Context & Bond Continuity', layer4Parts);
 
   // ── LAYER 5: SPECIALIST INTELLIGENCE & STRICTLY GATED CHART / NOTES DATA ──
   const skillProfileResult = buildCompanionSkillAndProfileBlock({
@@ -2060,7 +2093,7 @@ HOW TO USE THESE SHARED NOTES:
 - Stay present with the emotional and practical meaning of what they shared without inventing chart placements yourself.`
     );
   }
-  pushLayer('layer5_specialist_and_chart', layer5Parts);
+  pushLayer('layer5_specialist_and_chart', 'Layer 5 · Specialist Gate & Chart Data', layer5Parts);
 
   // ── LAYER 6: CURRENT CONVERSATION CONTROLS & RUNTIME CUES ─────────────────
   const layer6Parts: string[] = [];
@@ -2124,11 +2157,34 @@ If the user explicitly asks for a discipline outside yours (e.g., asking an emot
       `THREAD CONTINUITY (Message #${params.turnCount + 1} in this chat): Continue right inside the flow naturally. Do NOT say hello again or re-introduce yourself.`
     );
   }
-  pushLayer('layer6_turn_controls', layer6Parts);
+  pushLayer('layer6_turn_controls', 'Layer 6 · Turn Controls, Timing & Language', layer6Parts);
 
   const systemInstruction = sections.join('\n\n---\n\n');
+  const capsuleText = v2?.core_identity_capsule?.trim() || '';
+  const capsuleApplied = Boolean(capsuleText);
+  const capsuleTokens = capsuleText ? estimateTokensRough(capsuleText) : 0;
+
+  let gateReason = '';
+  if (!hasAnyEsoteric) {
+    gateReason = 'Human-only companion — esoteric chart, transit, and methodology loading disabled.';
+  } else if (turnAnalysis.astrology_entry_rule === 'never') {
+    gateReason = 'Astrology entry rule is set to never; staying strictly conversational.';
+  } else if (!turnAnalysis.should_load_chart) {
+    gateReason = hasBirthChart
+      ? 'Strict Relevance Gate active — user has a chart, but this everyday turn did not invite astrology, so chart/transits/notes were skipped.'
+      : 'Strict Relevance Gate active — everyday turn without explicit esoteric invite; staying purely grounded.';
+  } else if (turnAnalysis.esoteric_relevance === 'explicit_invite') {
+    gateReason = hasBirthChart
+      ? 'Explicit esoteric invite detected — verified chart, transits, specialist methodology, and relevant notes loaded.'
+      : 'Explicit esoteric invite detected without birth chart — global transits / non-chart reading tools loaded cleanly.';
+  } else {
+    gateReason =
+      'Contextual existential crossroads detected under contextual_invite rule — chart & gentle symbolic context loaded.';
+  }
+
   const assemblyManifest: CompanionAssemblyManifest = {
     layersLoaded,
+    orderedSections,
     nuancesTriggered: turnAnalysis.matched_nuances.map((n) => ({
       id: n.id,
       title: n.label,
@@ -2138,12 +2194,22 @@ If the user explicitly asks for a discipline outside yours (e.g., asking an emot
       id: d.id,
       scenario: d.scenario || d.context_note || d.user_prompt.slice(0, 60),
     })),
+    capsuleApplied,
+    capsuleTokens,
     chartInjected: skillProfileResult.chartInjected,
     transitsInjected: skillProfileResult.transitsInjected,
     analystNotesInjected,
     tarotDrawn: skillProfileResult.tarotDrawn,
     esotericRelevance: turnAnalysis.esoteric_relevance,
     astrologyEntryRule: turnAnalysis.astrology_entry_rule,
+    astrologyGateDecision: {
+      loaded: turnAnalysis.should_load_chart || skillProfileResult.chartInjected || skillProfileResult.tarotDrawn,
+      reason: gateReason,
+      hasAnyEsoteric,
+      hasProfileChart: hasBirthChart,
+      astrologyEntryRule: turnAnalysis.astrology_entry_rule,
+      esotericRelevance: turnAnalysis.esoteric_relevance,
+    },
     emotionalWeight: turnAnalysis.emotional_weight,
     conversationIntent: turnAnalysis.conversation_intent,
     aiIdentityQuestion: turnAnalysis.ai_identity_question,
@@ -2203,6 +2269,7 @@ export async function buildCompanionSystemPromptAsync(params: {
   userPrompt?: string;
   historyMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
   companionChatMode?: CompanionChatCue | null;
+  chatStyleOverride?: ChatStyle | null;
   referrableCompanions?: ReferrableCompanionSummary[];
   clientLocalHour?: number | null;
 }): Promise<{
@@ -2277,6 +2344,7 @@ export async function buildCompanionSystemPromptAsync(params: {
     userPrompt: params.userPrompt || '',
     historyMessages: params.historyMessages,
     companionChatMode: params.companionChatMode || null,
+    chatStyleOverride: params.chatStyleOverride || null,
     referrableCompanions: params.referrableCompanions,
     clientLocalHour: params.clientLocalHour,
     constitutionOverride: engineOverrides.companion_constitution || null,
@@ -2484,7 +2552,8 @@ export async function generateContextualCompanionReturnGreeting(params: {
 // ---------------- Admin V2 Testing Sandbox & Prompt Diagnostics ----------------
 
 const SANDBOX_SAMPLE_CHART_PROFILE: CompanionPromptProfileContext = {
-  name: 'Aarav (Sample Sandbox Chart)',
+  name: 'Aarav',
+  short_name: 'Aarav',
   has_birth_chart: true,
   birth_date: '1993-08-19',
   birth_time: '06:42',
@@ -2521,13 +2590,140 @@ KEY HOUSES: 10th Lord Venus in 11th Gemini; 7th Lord Saturn in 7th Aquarius (own
   ],
 };
 
+const SANDBOX_WESTERN_SAMPLE_PROFILE: CompanionPromptProfileContext = {
+  name: 'Maya',
+  short_name: 'Maya',
+  has_birth_chart: true,
+  birth_date: '1995-11-04',
+  birth_time: '14:15',
+  birth_city: 'London',
+  birth_country: 'United Kingdom',
+  current_city: 'London',
+  current_country: 'United Kingdom',
+  chart_text_context: `TROPICAL SUN: Scorpio 12°04' (9th House)
+TROPICAL MOON: Aries 24°19' (2nd House)
+RISING / ASCENDANT: Aquarius 27°51'
+SATURN: Pisces 18°22' (1st House) · VENUS: Sagittarius 02°11' (10th House)`,
+  life_context_json: {
+    career_mode: 'freelancer_consultant',
+    career_role: 'Independent Brand Strategist',
+    relationship_status: 'single',
+    core_stress_areas: ['Creative burnout', 'Boundary setting with clients'],
+  },
+  deep_profile_json: {
+    practical_reality: [
+      'Independent brand strategist weighing a move abroad while recovering from client burnout.',
+    ],
+  },
+  analyst_notes_json: [
+    {
+      id: 'sandbox_note_western_1',
+      summary:
+        'Saturn crossing the 1st-house threshold asks for clearer energy boundaries rather than faster creative output.',
+      system_label: 'Modern Astrologer',
+      system_slug: 'modern_astrologer',
+      conversation_id: null,
+      captured_at: new Date().toISOString(),
+    },
+  ],
+};
+
+export interface CompanionParsedReferralPreview {
+  slug: string;
+  name: string;
+  reason: string;
+}
+
+export interface CompanionParsedReplyPreview {
+  bubbles: string[];
+  referral: CompanionParsedReferralPreview | null;
+  cleanedText: string;
+}
+
+export function parseCompanionReplyPreview(rawText: string): CompanionParsedReplyPreview {
+  const raw = String(rawText || '');
+  let referral: CompanionParsedReferralPreview | null = null;
+  const referralMatch = raw.match(/<<<REFERRAL:([\s\S]*?)>>>/i);
+  if (referralMatch?.[1]) {
+    try {
+      const parsed = JSON.parse(referralMatch[1].trim()) as Record<string, unknown>;
+      if (parsed && typeof parsed.slug === 'string' && typeof parsed.name === 'string') {
+        referral = {
+          slug: parsed.slug.trim(),
+          name: parsed.name.trim(),
+          reason: typeof parsed.reason === 'string' ? parsed.reason.trim() : '',
+        };
+      }
+    } catch {
+      // Ignore malformed referral block in preview
+    }
+  }
+
+  const codeBlocks: string[] = [];
+  let working = raw.replace(/```[\s\S]*?```/g, (match) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(match);
+    return `__CC_STUDIO_CODE_${idx}__`;
+  });
+
+  working = working
+    .replace(/<<<REFERRAL:[\s\S]*?(?:>>>|$)/gi, '')
+    .replace(/<<<REFERRAL[^\n]*$/i, '')
+    .replace(/\[\[BUBB?L?E?\]?$/i, '');
+
+  const bubbles = working
+    .split(/\s*\[\[BUBBLE\]\]\s*/gi)
+    .map((part) => {
+      const restored =
+        codeBlocks.length > 0
+          ? part.replace(/__CC_STUDIO_CODE_(\d+)__/g, (_, i) => codeBlocks[Number(i)] || '')
+          : part;
+      return restored.trim();
+    })
+    .filter(Boolean);
+
+  return {
+    bubbles,
+    referral,
+    cleanedText: bubbles.join('\n\n'),
+  };
+}
+
+export interface CompanionStudioSimulationConfig {
+  hasBirthChart?: boolean;
+  sampleChartKey?: 'aarav_vedic' | 'maya_western';
+  livingContext?: {
+    career_mode?: string;
+    career_role?: string;
+    relationship_status?: string;
+    core_stress_areas?: string[];
+    active_goals?: string[];
+    habits_and_routines?: string[];
+    practical_notes?: string;
+  };
+  bond?: {
+    total_turns?: number;
+    memory_summary?: string | null;
+    inside_references?: string[];
+    tone_preferences?: string[];
+  };
+  companionChatMode?: CompanionChatCue | null;
+  chatStyleOverride?: ChatStyle | null;
+  languageSlug?: string;
+  clientLocalHour?: number | null;
+  preferredCallName?: string | null;
+}
+
 export interface CompanionSandboxResult {
+  companionSlug: string;
+  companionName: string;
   assembledSystemPrompt: string;
   chatStyle: ChatStyle;
   modelUsed: string;
   invitedEsoteric: boolean;
   openrouterConfigured: boolean;
   assemblyManifest: CompanionAssemblyManifest;
+  tarotSpread?: DrawnTarotSpread | null;
   tokenBreakdown: {
     totalEstimatedTokens: number;
     capsuleEstimatedTokens: number;
@@ -2535,49 +2731,193 @@ export interface CompanionSandboxResult {
     sectionsCount: number;
   };
   replyText?: string;
+  parsedReply?: CompanionParsedReplyPreview;
   latencyMs?: number;
   usage?: {
     promptTokens: number;
     completionTokens: number;
   };
+  liveModelError?: string;
+}
+
+function buildSimulatedProfileAndBond(
+  simulation?: CompanionStudioSimulationConfig,
+  contextMode?: 'chartless' | 'sample_chart',
+  preferredCallName?: string | null,
+  companionSlug?: string
+): {
+  userDefaultProfile: CompanionPromptProfileContext;
+  bond: CompanionBondState | null;
+} {
+  const useChart =
+    simulation?.hasBirthChart !== undefined
+      ? Boolean(simulation.hasBirthChart)
+      : contextMode === 'sample_chart';
+
+  const baseProfile: CompanionPromptProfileContext = useChart
+    ? {
+        ...(simulation?.sampleChartKey === 'maya_western'
+          ? SANDBOX_WESTERN_SAMPLE_PROFILE
+          : SANDBOX_SAMPLE_CHART_PROFILE),
+      }
+    : {
+        name:
+          simulation?.preferredCallName?.trim() ||
+          preferredCallName?.trim() ||
+          'Alex',
+        short_name:
+          simulation?.preferredCallName?.trim() ||
+          preferredCallName?.trim() ||
+          'Alex',
+        has_birth_chart: false,
+        birth_date: '',
+        birth_city: '',
+        birth_country: '',
+        life_context_json: {
+          career_mode: 'job_salaried',
+          career_role: 'Operations Lead',
+          relationship_status: 'single',
+          core_stress_areas: ['Work-life balance', 'Evening overthinking'],
+        },
+        deep_profile_json: {
+          practical_reality: [
+            'Testing natural human companionship without any attached birth chart.',
+          ],
+        },
+      };
+
+  const displayName =
+    simulation?.preferredCallName?.trim() ||
+    preferredCallName?.trim() ||
+    baseProfile.name;
+  baseProfile.name = displayName;
+  baseProfile.short_name = displayName;
+
+  if (simulation?.livingContext) {
+    const slc = simulation.livingContext;
+    const prevLc = (baseProfile.life_context_json || {}) as LifeContextData;
+    const stressAreas = Array.isArray(slc.core_stress_areas)
+      ? slc.core_stress_areas.map((s) => String(s).trim()).filter(Boolean).slice(0, 6)
+      : prevLc.core_stress_areas;
+
+    baseProfile.life_context_json = {
+      ...prevLc,
+      ...(slc.career_mode ? { career_mode: slc.career_mode as LifeContextData['career_mode'] } : {}),
+      ...(slc.career_role !== undefined ? { career_role: slc.career_role.trim() } : {}),
+      ...(slc.relationship_status
+        ? { relationship_status: slc.relationship_status as LifeContextData['relationship_status'] }
+        : {}),
+      ...(stressAreas ? { core_stress_areas: stressAreas } : {}),
+    };
+
+    const deepNext: DeepProfileData = {
+      ...(baseProfile.deep_profile_json || {}),
+    };
+    if (Array.isArray(slc.active_goals) && slc.active_goals.length > 0) {
+      deepNext.desires_and_goals = slc.active_goals.map((g) => String(g).trim()).filter(Boolean);
+    }
+    if (Array.isArray(slc.habits_and_routines) && slc.habits_and_routines.length > 0) {
+      deepNext.habits_and_routines = slc.habits_and_routines
+        .map((h) => String(h).trim())
+        .filter(Boolean);
+    }
+    if (slc.practical_notes?.trim()) {
+      deepNext.practical_reality = [slc.practical_notes.trim()];
+    }
+    baseProfile.deep_profile_json = deepNext;
+  }
+
+  let bond: CompanionBondState | null = null;
+  if (simulation?.bond) {
+    const turns = Math.max(0, Math.min(500, Math.round(Number(simulation.bond.total_turns) || 0)));
+    const mem = simulation.bond.memory_summary?.trim() || null;
+    const refs = Array.isArray(simulation.bond.inside_references)
+      ? simulation.bond.inside_references.map((r) => String(r).trim()).filter(Boolean)
+      : [];
+    const prefs = Array.isArray(simulation.bond.tone_preferences)
+      ? simulation.bond.tone_preferences.map((p) => String(p).trim()).filter(Boolean)
+      : [];
+    if (turns > 0 || mem || refs.length > 0 || prefs.length > 0) {
+      bond = {
+        companion_slug: companionSlug || 'companion',
+        memory_summary: mem,
+        last_interaction_at: turns > 0 ? new Date(Date.now() - 1000 * 60 * 60 * 14).toISOString() : null,
+        relationship_state: {
+          familiarity_stage: turns <= 5 ? 'just_met' : turns <= 20 ? 'warming_up' : 'close_confidant',
+          total_turns: turns,
+          user_slang_cues: [],
+          tone_preferences: prefs,
+          inside_references: refs,
+          hearted_excerpts: [],
+        },
+      };
+    }
+  }
+
+  return { userDefaultProfile: baseProfile, bond };
 }
 
 export async function runCompanionSandboxTest(params: {
   preset: CompanionPresetRecord;
-  userPrompt: string;
+  userPrompt?: string;
   historyMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  messages?: Array<{ role: 'user' | 'assistant'; content: string }>;
   contextMode?: 'chartless' | 'sample_chart';
   companionChatMode?: CompanionChatCue | null;
+  chatStyleOverride?: ChatStyle | null;
   languageSlug?: string;
   preferredCallName?: string | null;
+  simulation?: CompanionStudioSimulationConfig;
+  referrableCompanions?: ReferrableCompanionSummary[];
   runLiveModel?: boolean;
+  gracefulMissingKey?: boolean;
 }): Promise<CompanionSandboxResult> {
-  const userDefaultProfile: CompanionPromptProfileContext | null =
-    params.contextMode === 'sample_chart'
-      ? SANDBOX_SAMPLE_CHART_PROFILE
-      : {
-          name: params.preferredCallName?.trim() || 'Alex (Chartless Sandbox User)',
-          has_birth_chart: false,
-          birth_date: '',
-          birth_city: '',
-          birth_country: '',
-          deep_profile_json: {
-            practical_reality: [
-              'Testing pure conversational companionship without attached birth chart data.',
-            ],
-          },
-        };
+  const sim = params.simulation;
+  const resolvedHistory = [...(params.historyMessages || [])];
+  let resolvedPrompt = (params.userPrompt || '').trim();
+
+  if (Array.isArray(params.messages) && params.messages.length > 0) {
+    const cleaned = params.messages
+      .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      .map((m) => ({ role: m.role, content: m.content.trim() }))
+      .filter((m) => m.content.length > 0);
+    if (cleaned.length > 0 && cleaned[cleaned.length - 1].role === 'user') {
+      resolvedPrompt = cleaned[cleaned.length - 1].content;
+      resolvedHistory.splice(0, resolvedHistory.length, ...cleaned.slice(0, -1));
+    } else if (cleaned.length > 0) {
+      resolvedHistory.splice(0, resolvedHistory.length, ...cleaned);
+    }
+  }
+
+  const effectiveLanguage = sim?.languageSlug || params.languageSlug || 'English';
+  const effectiveCallName =
+    sim?.preferredCallName !== undefined ? sim.preferredCallName : params.preferredCallName || null;
+  const effectiveCue =
+    sim?.companionChatMode !== undefined ? sim.companionChatMode : params.companionChatMode || 'natural';
+  const effectiveStyleOverride =
+    sim?.chatStyleOverride !== undefined ? sim.chatStyleOverride : params.chatStyleOverride || null;
+
+  const { userDefaultProfile, bond } = buildSimulatedProfileAndBond(
+    sim,
+    params.contextMode,
+    effectiveCallName,
+    params.preset.slug
+  );
 
   const built = await buildCompanionSystemPromptAsync({
     preset: params.preset,
     persona: null,
-    languageSlug: params.languageSlug || 'English',
-    preferredCallName: params.preferredCallName || null,
-    turnCount: Array.isArray(params.historyMessages) ? params.historyMessages.length : 0,
+    languageSlug: effectiveLanguage,
+    preferredCallName: effectiveCallName,
+    turnCount: resolvedHistory.length,
+    bond,
     userDefaultProfile,
-    userPrompt: params.userPrompt,
-    historyMessages: params.historyMessages,
-    companionChatMode: params.companionChatMode || 'natural',
+    userPrompt: resolvedPrompt,
+    historyMessages: resolvedHistory,
+    companionChatMode: effectiveCue,
+    chatStyleOverride: effectiveStyleOverride,
+    referrableCompanions: params.referrableCompanions,
+    clientLocalHour: sim?.clientLocalHour ?? null,
   });
 
   const v2 = ensureCompanionV2Initialized(params.preset);
@@ -2586,13 +2926,21 @@ export async function runCompanionSandboxTest(params: {
     built.modelOverride || runtime?.consultationModel || 'google/gemini-2.5-flash';
   const openrouterConfigured = await isOpenRouterConfiguredAsync().catch(() => false);
 
+  const manifestWithFull: CompanionAssemblyManifest = {
+    ...built.assemblyManifest,
+    fullAssembledPrompt: built.systemInstruction,
+  };
+
   const result: CompanionSandboxResult = {
+    companionSlug: params.preset.slug,
+    companionName: params.preset.name,
     assembledSystemPrompt: built.systemInstruction,
     chatStyle: built.chatStyle,
     modelUsed,
     invitedEsoteric: built.invitedEsoteric,
     openrouterConfigured,
-    assemblyManifest: built.assemblyManifest,
+    assemblyManifest: manifestWithFull,
+    tarotSpread: built.tarotSpread || null,
     tokenBreakdown: {
       totalEstimatedTokens: built.assemblyManifest.totalEstimatedTokens,
       capsuleEstimatedTokens: estimateTokensRough(v2.core_identity_capsule || ''),
@@ -2601,8 +2949,13 @@ export async function runCompanionSandboxTest(params: {
     },
   };
 
-  if (params.runLiveModel && params.userPrompt.trim()) {
+  if (params.runLiveModel && resolvedPrompt) {
     if (!openrouterConfigured) {
+      if (params.gracefulMissingKey) {
+        result.liveModelError =
+          'OpenRouter API key is not configured in this environment. Prompt assembly & gating inspection succeeded — add OPENROUTER_API_KEY to run live model replies.';
+        return result;
+      }
       throw new Error('OpenRouter API key is not configured yet for live test completions.');
     }
     const startedAt = Date.now();
@@ -2610,13 +2963,14 @@ export async function runCompanionSandboxTest(params: {
       model: modelUsed,
       system: built.systemInstruction,
       messages: [
-        ...(params.historyMessages || []).slice(-12),
-        { role: 'user', content: params.userPrompt.trim() },
+        ...resolvedHistory.slice(-12),
+        { role: 'user', content: resolvedPrompt },
       ],
       maxTokens: Math.min(1800, built.capabilities.max_output_tokens || 1200),
       temperature: 0.78,
     });
     result.replyText = completion.text;
+    result.parsedReply = parseCompanionReplyPreview(completion.text);
     result.latencyMs = Date.now() - startedAt;
     result.usage = {
       promptTokens: completion.tokensIn,
@@ -2626,4 +2980,7 @@ export async function runCompanionSandboxTest(params: {
 
   return result;
 }
+
+export const runCompanionStudioTestTurn = runCompanionSandboxTest;
+
 

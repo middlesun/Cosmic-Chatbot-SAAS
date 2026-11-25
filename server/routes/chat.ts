@@ -57,6 +57,7 @@ import {
   ensureCompanionV2Initialized,
   mapCustomPersonaToV2PresetRecord,
 } from '../services/companionV2Mapper';
+import { getCompanionSpecializations } from '../services/companionV2Service';
 import {
   getCompanionBySlug,
   getPublicCompanionsCatalogCached,
@@ -849,7 +850,10 @@ router.get('/companions', requireAuth, async (req: AuthenticatedRequest, res) =>
     return;
   }
 
-  const catalog = await getPublicCompanionsCatalogCached();
+  const [catalog, specializations] = await Promise.all([
+    getPublicCompanionsCatalogCached(),
+    getCompanionSpecializations(),
+  ]);
 
   type CompanionThreadMeta = {
     last_conversation_id: string | null;
@@ -971,6 +975,7 @@ router.get('/companions', requireAuth, async (req: AuthenticatedRequest, res) =>
   res.json({
     companions: enrichedCompanions,
     customCompanions,
+    specializations,
   });
 });
 

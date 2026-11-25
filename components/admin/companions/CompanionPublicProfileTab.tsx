@@ -354,7 +354,7 @@ const CompanionPublicProfileTab: React.FC<CompanionPublicProfileTabProps> = ({
       </div>
 
       {/* Specializations Multi-Select */}
-      <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-2.5">
+      <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Tag className="h-3.5 w-3.5 text-[#8B7355]" />
@@ -366,23 +366,43 @@ const CompanionPublicProfileTab: React.FC<CompanionPublicProfileTabProps> = ({
             Used for Companion Hub filtering &amp; Matcher routing
           </span>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {specializations.map((spec) => {
-            const active = selectedSpecs.includes(spec.slug);
+        <div className="space-y-3">
+          {(
+            [
+              { key: 'spiritual_guides', heading: 'Spiritual Guides · Specialization' },
+              { key: 'everyday_companions', heading: 'Everyday Companions · Companionship Style' },
+              { key: 'life_companions', heading: 'Life Companions · Area of Life' },
+              { key: 'cross_cutting', heading: 'Cross-Cutting' },
+            ] as const
+          ).map((section) => {
+            const groupSpecs = specializations.filter((s) => s.group === section.key);
+            if (groupSpecs.length === 0) return null;
             return (
-              <button
-                key={spec.slug}
-                type="button"
-                onClick={() => toggleSpecialization(spec.slug)}
-                title={spec.description}
-                className={`rounded-xl border px-2.5 py-1.5 text-[11px] font-medium transition-colors cursor-pointer ${
-                  active
-                    ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2]'
-                    : 'border-[#3D3830]/14 bg-[#FDFBF7] text-[#5C5449] hover:border-[#3D3830]/30 hover:text-[#3D3830]'
-                } ${!spec.is_active ? 'opacity-60' : ''}`}
-              >
-                {spec.label}
-              </button>
+              <div key={section.key} className="space-y-1.5">
+                <p className="text-[11px] font-medium text-[#8B8275]">
+                  {section.heading}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {groupSpecs.map((spec) => {
+                    const active = selectedSpecs.includes(spec.slug);
+                    return (
+                      <button
+                        key={spec.slug}
+                        type="button"
+                        onClick={() => toggleSpecialization(spec.slug)}
+                        title={spec.description}
+                        className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                          active
+                            ? 'border-[#4A453D] bg-[#4A453D] text-[#FAF7F2]'
+                            : 'border-[#3D3830]/14 bg-[#FDFBF7] text-[#5C5449] hover:border-[#3D3830]/30 hover:text-[#3D3830]'
+                        } ${!spec.is_active ? 'opacity-60' : ''}`}
+                      >
+                        {spec.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </div>

@@ -8,6 +8,7 @@ import {
   detectCoreIdentityChanges,
   estimateTokensRough,
   hasAuthoredV2Depth,
+  isLegacySeedSpecializationTaxonomy,
   normalizePersonalityV2,
   sanitizeSpecializationSlugs,
   sanitizeSpecializationTags,
@@ -35,6 +36,16 @@ import {
 } from './companionPresets';
 import { FORMULA_CARTRIDGES_SEED } from './formulaCartridgesSeed';
 import { WESTERN_FORMULA_CARTRIDGES_SEED } from './westernFormulaSeed';
+import {
+  ASTRA_MOON_BENCHMARK_SLUG,
+  getAstraMoonBenchmarkPreset,
+} from './astraMoonBenchmark';
+import {
+  runCompanionStudioTestTurn,
+  type CompanionSandboxResult,
+  type CompanionStudioSimulationConfig,
+  type ReferrableCompanionSummary,
+} from './companionEngine';
 import {
   createOpenRouterCompletion,
   getUtilityModelAsync,
@@ -83,7 +94,10 @@ export async function getMigration022Status(): Promise<Migration022Status> {
 export async function getCompanionSpecializations(): Promise<CompanionSpecializationTag[]> {
   const overrides = await getEnginePromptOverrides();
   if (Array.isArray(overrides.companion_specializations) && overrides.companion_specializations.length > 0) {
-    return sanitizeSpecializationTags(overrides.companion_specializations);
+    const sanitized = sanitizeSpecializationTags(overrides.companion_specializations);
+    if (sanitized.length > 0 && !isLegacySeedSpecializationTaxonomy(sanitized)) {
+      return sanitized;
+    }
   }
   return DEFAULT_COMPANION_SPECIALIZATIONS;
 }
@@ -1853,3 +1867,327 @@ export async function importGlobalCompanionBundle(
     bundle: await exportGlobalCompanionBundle(),
   };
 }
+
+// ---------------- Admin Companion Testing Studio (Zero DB Side-Effects) ----------------
+
+function snapshotToPresetRecord(
+  base: CompanionPresetRecord,
+  snapshot: Record<string, unknown>
+): CompanionPresetRecord {
+  const merged: CompanionPresetRecord = {
+    ...base,
+    name: typeof snapshot.name === 'string' && snapshot.name ? snapshot.name : base.name,
+    slug: typeof snapshot.slug === 'string' && snapshot.slug ? snapshot.slug : base.slug,
+    age: typeof snapshot.age === 'number' ? snapshot.age : base.age,
+    sex: (snapshot.sex as CompanionPresetRecord['sex']) || base.sex,
+    tagline: typeof snapshot.tagline === 'string' ? snapshot.tagline : base.tagline,
+    card_subtitle:
+      typeof snapshot.card_subtitle === 'string' ? snapshot.card_subtitle : base.card_subtitle,
+    short_bio: typeof snapshot.short_bio === 'string' ? snapshot.short_bio : base.short_bio,
+    full_bio: typeof snapshot.full_bio === 'string' ? snapshot.full_bio : base.full_bio,
+    how_conversations_feel:
+      typeof snapshot.how_conversations_feel === 'string'
+        ? snapshot.how_conversations_feel
+        : base.how_conversations_feel,
+    primary_expertise:
+      typeof snapshot.primary_expertise === 'string'
+        ? snapshot.primary_expertise
+        : base.primary_expertise,
+    secondary_expertise: Array.isArray(snapshot.secondary_expertise)
+      ? (snapshot.secondary_expertise as string[])
+      : base.secondary_expertise,
+    category_tag:
+      (snapshot.category_tag as CompanionPresetRecord['category_tag']) || base.category_tag,
+    companion_group:
+      (snapshot.companion_group as CompanionPresetRecord['companion_group']) ||
+      base.companion_group,
+    advisory_mode:
+      (snapshot.advisory_mode as CompanionPresetRecord['advisory_mode']) || base.advisory_mode,
+    chart_access:
+      snapshot.chart_access && typeof snapshot.chart_access === 'object'
+        ? (snapshot.chart_access as CompanionPresetRecord['chart_access'])
+        : base.chart_access,
+    formula_cartridge_slugs: Array.isArray(snapshot.formula_cartridge_slugs)
+      ? (snapshot.formula_cartridge_slugs as string[])
+      : base.formula_cartridge_slugs,
+    max_output_tokens:
+      snapshot.max_output_tokens === null
+        ? null
+        : typeof snapshot.max_output_tokens === 'number'
+        ? snapshot.max_output_tokens
+        : base.max_output_tokens,
+    discoverable_tags: Array.isArray(snapshot.discoverable_tags)
+      ? (snapshot.discoverable_tags as string[])
+      : base.discoverable_tags,
+    situation_tags: Array.isArray(snapshot.situation_tags)
+      ? (snapshot.situation_tags as string[])
+      : base.situation_tags,
+    specialization_slugs: Array.isArray(snapshot.specialization_slugs)
+      ? (snapshot.specialization_slugs as string[])
+      : base.specialization_slugs,
+    override_group_rules:
+      typeof snapshot.override_group_rules === 'boolean'
+        ? snapshot.override_group_rules
+        : base.override_group_rules,
+    cultural_fluency:
+      typeof snapshot.cultural_fluency === 'string'
+        ? snapshot.cultural_fluency
+        : base.cultural_fluency,
+    avatar_url:
+      snapshot.avatar_url === null
+        ? null
+        : typeof snapshot.avatar_url === 'string'
+        ? snapshot.avatar_url
+        : base.avatar_url,
+    monogram_palette:
+      snapshot.monogram_palette && typeof snapshot.monogram_palette === 'object'
+        ? (snapshot.monogram_palette as CompanionPresetRecord['monogram_palette'])
+        : base.monogram_palette,
+    welcome_messages: Array.isArray(snapshot.welcome_messages)
+      ? (snapshot.welcome_messages as string[])
+      : base.welcome_messages,
+    system_prompt:
+      typeof snapshot.system_prompt === 'string' ? snapshot.system_prompt : base.system_prompt,
+    backstory: typeof snapshot.backstory === 'string' ? snapshot.backstory : base.backstory,
+    soul_consciousness:
+      typeof snapshot.soul_consciousness === 'string'
+        ? snapshot.soul_consciousness
+        : base.soul_consciousness,
+    hard_rules: typeof snapshot.hard_rules === 'string' ? snapshot.hard_rules : base.hard_rules,
+    soft_rules: typeof snapshot.soft_rules === 'string' ? snapshot.soft_rules : base.soft_rules,
+    autonomy_level:
+      (snapshot.autonomy_level as CompanionPresetRecord['autonomy_level']) ||
+      base.autonomy_level,
+    override_global_rules:
+      typeof snapshot.override_global_rules === 'boolean'
+        ? snapshot.override_global_rules
+        : base.override_global_rules,
+    skill_level:
+      (snapshot.skill_level as CompanionPresetRecord['skill_level']) || base.skill_level,
+    chat_style: (snapshot.chat_style as CompanionPresetRecord['chat_style']) || base.chat_style,
+    model_id:
+      snapshot.model_id === null
+        ? null
+        : typeof snapshot.model_id === 'string'
+        ? snapshot.model_id
+        : base.model_id,
+    tts_voice_profile:
+      snapshot.tts_voice_profile && typeof snapshot.tts_voice_profile === 'object'
+        ? (snapshot.tts_voice_profile as CompanionPresetRecord['tts_voice_profile'])
+        : base.tts_voice_profile,
+    supports_listening_cue:
+      typeof snapshot.supports_listening_cue === 'boolean'
+        ? snapshot.supports_listening_cue
+        : base.supports_listening_cue,
+    suggestions_enabled:
+      typeof snapshot.suggestions_enabled === 'boolean'
+        ? snapshot.suggestions_enabled
+        : base.suggestions_enabled,
+    is_active: typeof snapshot.is_active === 'boolean' ? snapshot.is_active : base.is_active,
+    sort_order: typeof snapshot.sort_order === 'number' ? snapshot.sort_order : base.sort_order,
+    core_identity_locked:
+      typeof snapshot.core_identity_locked === 'boolean'
+        ? snapshot.core_identity_locked
+        : base.core_identity_locked,
+    personality_v2_json:
+      snapshot.personality_v2_json !== undefined
+        ? normalizePersonalityV2(snapshot.personality_v2_json)
+        : base.personality_v2_json,
+  };
+  merged.personality_v2_json = ensureCompanionV2Initialized(merged);
+  return merged;
+}
+
+export async function resolveCompanionPresetForTesting(params: {
+  slug: string;
+  targetStage?: 'draft' | 'published';
+  draftOverride?: Record<string, unknown> | null;
+}): Promise<{
+  preset: CompanionPresetRecord;
+  resolvedStage: 'draft' | 'published' | 'benchmark';
+  hasStagedDraft: boolean;
+} | null> {
+  const cleanSlug = String(params.slug || '').trim();
+  if (!cleanSlug) return null;
+
+  if (cleanSlug === ASTRA_MOON_BENCHMARK_SLUG || cleanSlug.toLowerCase() === 'astra_moon_benchmark') {
+    return {
+      preset: getAstraMoonBenchmarkPreset(),
+      resolvedStage: 'benchmark',
+      hasStagedDraft: false,
+    };
+  }
+
+  const existing = await findAdminCompanionByIdOrSlug(cleanSlug);
+  if (!existing) return null;
+
+  const hasStagedDraft = Boolean(existing.has_unpublished_draft || existing.draft_payload_json);
+  const wantDraft = params.targetStage !== 'published';
+
+  if (!wantDraft) {
+    return {
+      preset: {
+        ...existing,
+        personality_v2_json: ensureCompanionV2Initialized(existing),
+      },
+      resolvedStage: 'published',
+      hasStagedDraft,
+    };
+  }
+
+  let working = { ...existing };
+  if (existing.draft_payload_json && typeof existing.draft_payload_json === 'object') {
+    const draftSnap = sanitizeDraftPayload(working, existing.draft_payload_json);
+    working = snapshotToPresetRecord(working, draftSnap);
+  }
+  if (params.draftOverride && typeof params.draftOverride === 'object' && !Array.isArray(params.draftOverride)) {
+    const overrideSnap = sanitizeDraftPayload(working, params.draftOverride);
+    working = snapshotToPresetRecord(working, overrideSnap);
+  }
+
+  return {
+    preset: working,
+    resolvedStage: 'draft',
+    hasStagedDraft,
+  };
+}
+
+export interface AdminTestTurnInput {
+  slug: string;
+  targetStage?: 'draft' | 'published';
+  draftOverride?: Record<string, unknown> | null;
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  simulation?: CompanionStudioSimulationConfig;
+  compareWithStageOrSlug?:
+    | string
+    | {
+        slug?: string;
+        targetStage?: 'draft' | 'published';
+      }
+    | null;
+  runLiveModel?: boolean;
+}
+
+export interface AdminTestTurnResponse {
+  ok: true;
+  zeroDbSideEffects: true;
+  primaryStage: 'draft' | 'published' | 'benchmark';
+  primaryHasStagedDraft: boolean;
+  primary: CompanionSandboxResult;
+  comparison?: {
+    stage: 'draft' | 'published' | 'benchmark';
+    result: CompanionSandboxResult;
+  } | null;
+}
+
+export async function executeAdminCompanionTestTurn(
+  input: AdminTestTurnInput
+): Promise<
+  | AdminTestTurnResponse
+  | {
+      ok: false;
+      status: number;
+      error: string;
+    }
+> {
+  const cleanedMessages = Array.isArray(input.messages)
+    ? input.messages
+        .filter(
+          (m) =>
+            m &&
+            (m.role === 'user' || m.role === 'assistant') &&
+            typeof m.content === 'string' &&
+            m.content.trim().length > 0
+        )
+        .slice(-24)
+        .map((m) => ({ role: m.role, content: m.content.trim().slice(0, 6000) }))
+    : [];
+
+  if (cleanedMessages.length === 0) {
+    return { ok: false, status: 400, error: 'Provide at least one user message to test.' };
+  }
+
+  const primaryResolved = await resolveCompanionPresetForTesting({
+    slug: input.slug,
+    targetStage: input.targetStage === 'published' ? 'published' : 'draft',
+    draftOverride: input.draftOverride || null,
+  });
+  if (!primaryResolved) {
+    return { ok: false, status: 404, error: `Companion "${input.slug}" not found.` };
+  }
+
+  let comparisonResolved: Awaited<ReturnType<typeof resolveCompanionPresetForTesting>> = null;
+  if (input.compareWithStageOrSlug) {
+    if (typeof input.compareWithStageOrSlug === 'string') {
+      const targetStr = input.compareWithStageOrSlug.trim();
+      if (targetStr === 'draft' || targetStr === 'published') {
+        comparisonResolved = await resolveCompanionPresetForTesting({
+          slug: input.slug,
+          targetStage: targetStr,
+          draftOverride: targetStr === 'draft' ? input.draftOverride || null : null,
+        });
+      } else if (targetStr) {
+        comparisonResolved = await resolveCompanionPresetForTesting({
+          slug: targetStr,
+          targetStage: 'published',
+        });
+      }
+    } else if (typeof input.compareWithStageOrSlug === 'object') {
+      const cmpSlug = String(input.compareWithStageOrSlug.slug || input.slug).trim();
+      const cmpStage =
+        input.compareWithStageOrSlug.targetStage === 'draft' ? 'draft' : 'published';
+      comparisonResolved = await resolveCompanionPresetForTesting({
+        slug: cmpSlug,
+        targetStage: cmpStage,
+      });
+    }
+  }
+
+  const allCompanions = await getAllCompanionsServerCached();
+  const referrableCompanions: ReferrableCompanionSummary[] = allCompanions
+    .filter((c) => c.is_active)
+    .map((c) => ({
+      slug: c.slug,
+      name: c.name,
+      primary_expertise: c.primary_expertise,
+    }));
+
+  const runLiveModel = input.runLiveModel !== false;
+
+  const [primaryResult, comparisonResult] = await Promise.all([
+    runCompanionStudioTestTurn({
+      preset: primaryResolved.preset,
+      messages: cleanedMessages,
+      simulation: input.simulation,
+      referrableCompanions,
+      runLiveModel,
+      gracefulMissingKey: true,
+    }),
+    comparisonResolved
+      ? runCompanionStudioTestTurn({
+          preset: comparisonResolved.preset,
+          messages: cleanedMessages,
+          simulation: input.simulation,
+          referrableCompanions,
+          runLiveModel,
+          gracefulMissingKey: true,
+        })
+      : Promise.resolve(null),
+  ]);
+
+  return {
+    ok: true,
+    zeroDbSideEffects: true,
+    primaryStage: primaryResolved.resolvedStage,
+    primaryHasStagedDraft: primaryResolved.hasStagedDraft,
+    primary: primaryResult,
+    comparison:
+      comparisonResolved && comparisonResult
+        ? {
+            stage: comparisonResolved.resolvedStage,
+            result: comparisonResult,
+          }
+        : null,
+  };
+}
+

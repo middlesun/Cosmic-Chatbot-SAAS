@@ -19,8 +19,17 @@ import {
   type VedicSynthesisMeta,
 } from '../../lib/vedicTypes';
 import type { DrawnTarotCard, DrawnTarotSpread } from '../../lib/tarotDeck';
+import {
+  BUILTIN_COMPANION_SPECIALIZATIONS,
+  COMPANION_SUBFILTER_HEADING_BY_GROUP,
+  DEFAULT_COMPANION_SPECIALIZATIONS,
+  hasOnlyLegacySpecializationSlugs,
+  inferSpecializationsForCompanion,
+  normalizeSpecializationSlugsWithMigration,
+} from '../../lib/companionV2Schema';
 
 export {
+  COMPANION_SUBFILTER_HEADING_BY_GROUP,
   DEFAULT_COUNCIL_EXPERT_SLUG,
   normalizeCouncilSlug,
 };
@@ -311,6 +320,15 @@ export const COMPANION_GROUP_OPTIONS: Array<{
 
 export type CompanionDiscoveryTabId = 'all' | CompanionGroup;
 
+export const COMPANION_CATEGORY_TABS: Array<{
+  id: CompanionGroup;
+  label: string;
+}> = [
+  { id: 'spiritual_guides', label: 'Spiritual Guides' },
+  { id: 'everyday_companions', label: 'Everyday Companions' },
+  { id: 'life_companions', label: 'Life Companions' },
+];
+
 export const COMPANION_DISCOVERY_TABS: Array<{
   id: CompanionDiscoveryTabId;
   label: string;
@@ -426,6 +444,7 @@ export type CompanionDiscoveryFilterableCard = Omit<
   Partial<
     Pick<
       PublicCompanionCard,
+      | 'slug'
       | 'name'
       | 'card_subtitle'
       | 'tagline'
@@ -544,6 +563,37 @@ export function matchesCompanionSituationChip(
   return chip.fallbackKeywords.some((kw) => haystack.includes(kw));
 }
 
+const SPECIALIZATION_LABEL_BY_SLUG = new Map(
+  DEFAULT_COMPANION_SPECIALIZATIONS.map((spec) => [spec.slug, spec.label.toLowerCase()])
+);
+
+export function resolveCompanionSpecializationSlugs(
+  card: CompanionDiscoveryFilterableCard
+): string[] {
+  const rawSlugs = Array.isArray(card.specialization_slugs) ? card.specialization_slugs : [];
+  if (rawSlugs.length > 0) {
+    if (hasOnlyLegacySpecializationSlugs(rawSlugs)) {
+      const slugLower = String(card.slug || '').trim().toLowerCase();
+      if (slugLower && BUILTIN_COMPANION_SPECIALIZATIONS[slugLower]) {
+        return [...BUILTIN_COMPANION_SPECIALIZATIONS[slugLower]];
+      }
+      return normalizeSpecializationSlugsWithMigration(rawSlugs);
+    }
+    return normalizeSpecializationSlugsWithMigration(rawSlugs);
+  }
+  return inferSpecializationsForCompanion({
+    slug: card.slug,
+    companion_group: card.companion_group ? normalizeCompanionGroup(card.companion_group) : undefined,
+    category_tag: card.category_tag,
+    skill_level: card.skill_level,
+    primary_expertise: card.primary_expertise,
+    secondary_expertise: card.secondary_expertise,
+    discoverable_tags: card.discoverable_tags,
+    situation_tags: card.situation_tags,
+    tagline: card.tagline,
+  });
+}
+
 export function matchesCompanionDiscoveryFilter(
   card: CompanionDiscoveryFilterableCard,
   options: {
@@ -564,9 +614,10 @@ export function matchesCompanionDiscoveryFilter(
     return false;
   }
 
+  const cardSpecs = resolveCompanionSpecializationSlugs(card);
+
   if (options.specializationSlug) {
     const targetSpec = options.specializationSlug.trim().toLowerCase();
-    const cardSpecs = (card.specialization_slugs || []).map((s) => s.trim().toLowerCase());
     if (!cardSpecs.includes(targetSpec)) {
       return false;
     }
@@ -580,6 +631,9 @@ export function matchesCompanionDiscoveryFilter(
       card.gender_variants?.M?.name || '',
       card.gender_variants?.NB?.name || '',
     ];
+    const specLabels = cardSpecs.map(
+      (slug) => SPECIALIZATION_LABEL_BY_SLUG.get(slug) || slug.replace(/_/g, ' ')
+    );
     const haystack = [
       card.name || '',
       ...variantNames,
@@ -588,7 +642,8 @@ export function matchesCompanionDiscoveryFilter(
       ...(card.secondary_expertise || []),
       ...(card.discoverable_tags || []),
       ...(card.situation_tags || []),
-      ...(card.specialization_slugs || []),
+      ...cardSpecs,
+      ...specLabels,
       card.tagline || '',
       card.short_bio || '',
       card.cultural_fluency || '',

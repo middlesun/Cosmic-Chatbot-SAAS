@@ -16,6 +16,7 @@ import {
   searchBirthPlaces,
 } from './services/astrologyApi';
 import { getPublicCompanionsCatalogCached } from './services/companionPresets';
+import { getCompanionSpecializations } from './services/companionV2Service';
 import { checkRateLimit, getClientIpHash } from './services/abuseGuard';
 import { fetchSanityBlogPosts, isSanityConfigured } from '../lib/sanity';
 import { normalizeCouncilSlug } from '../lib/vedicTypes';
@@ -64,9 +65,12 @@ export function createExpressApp(): Express {
   // Public companions for landing showcase (never returns system prompts or private layers)
   app.get('/api/public/companions', async (_req, res) => {
     try {
-      const companions = await getPublicCompanionsCatalogCached();
+      const [companions, specializations] = await Promise.all([
+        getPublicCompanionsCatalogCached(),
+        getCompanionSpecializations(),
+      ]);
       res.setHeader('Cache-Control', 'public, max-age=120');
-      res.json({ companions });
+      res.json({ companions, specializations });
     } catch {
       res.status(500).json({ error: 'Unable to load specialist companions right now.' });
     }

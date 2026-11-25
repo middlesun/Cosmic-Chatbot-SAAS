@@ -1,4 +1,5 @@
 import type { LifeContextData } from '../../lib/lifeContextSchema';
+import type { CompanionSpecializationTag } from '../../lib/companionV2Schema';
 import type {
   AnyCompanionGroup,
   CompanionAdvisoryMode,
@@ -148,6 +149,7 @@ export interface HomeSummaryResponse {
     chart_access?: CompanionChartAccess;
     discoverable_tags?: string[];
     situation_tags?: string[];
+    specialization_slugs?: string[];
     gender_variants?: CompanionGenderVariants;
     supports_gender_toggle?: boolean;
     skill_level?: 'none_emotional' | 'astrology_soft' | 'tarot' | 'numerology' | 'past_life' | 'vedic_soft';
@@ -158,6 +160,7 @@ export interface HomeSummaryResponse {
     monogram_palette: { bg: string; ring: string; ink: string };
     last_conversation_id?: string | null;
   }>;
+  companionSpecializations?: CompanionSpecializationTag[];
   favoriteAppSlugs: string[];
   recentAppRuns: Array<{
     app_slug: string;

@@ -11,6 +11,7 @@ import {
   GripVertical,
   History,
   Lock,
+  MessageSquare,
   MessageSquareQuote,
   Plus,
   RotateCcw,
@@ -60,6 +61,7 @@ import CompanionSpecialistRulesTab from './companions/CompanionSpecialistRulesTa
 import CompanionVersionsTab from './companions/CompanionVersionsTab';
 import GlobalIntelligencePanel from './companions/GlobalIntelligencePanel';
 import CompanionImportExportModal from './companions/CompanionImportExportModal';
+import CompanionTestingStudio from './companions/CompanionTestingStudio';
 
 export type { AdminCompanionRecord };
 
@@ -103,7 +105,8 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [lockAlert, setLockAlert] = useState<ProtectedLockAlert | null>(null);
 
-  const [managerView, setManagerView] = useState<'roster' | 'global'>('roster');
+  const [managerView, setManagerView] = useState<'roster' | 'global' | 'testing'>('roster');
+  const [testingTargetSlug, setTestingTargetSlug] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState<string>('all');
   const [specializationFilter, setSpecializationFilter] = useState<string>('all');
@@ -936,6 +939,22 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
             >
               Global Intelligence &amp; Taxonomy
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (draft?.slug && !isCreating) {
+                  setTestingTargetSlug(draft.slug);
+                }
+                setManagerView('testing');
+              }}
+              className={`rounded-xl px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                managerView === 'testing'
+                  ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                  : 'text-[#5C5449] hover:text-[#3D3830]'
+              }`}
+            >
+              Testing Studio
+            </button>
           </div>
         </div>
 
@@ -1079,6 +1098,13 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
             handleSelectCompanion(item);
             setManagerView('roster');
           }}
+        />
+      ) : managerView === 'testing' ? (
+        <CompanionTestingStudio
+          companions={companions}
+          initialSlug={testingTargetSlug || (!isCreating ? draft?.slug : null)}
+          activeEditorDraft={!isCreating ? draft : null}
+          getAccessToken={getAccessToken}
         />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -1451,6 +1477,19 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    {!isCreating && draft.slug && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTestingTargetSlug(draft.slug);
+                          setManagerView('testing');
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#B8965A]/40 bg-[#FAF7F2] px-3 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5 text-[#8B7355]" />
+                        <span>Test in Studio</span>
+                      </button>
+                    )}
                     {isBuiltinDefault && (
                       <button
                         type="button"

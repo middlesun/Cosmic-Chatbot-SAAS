@@ -16,6 +16,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { countLivingContextSignals } from '../../lib/lifeContextSchema';
+import { DEFAULT_COMPANION_SPECIALIZATIONS } from '../../lib/companionV2Schema';
 import { useAuth } from './AuthContext';
 import AstrologyModeToggle from './AstrologyModeToggle';
 import CompanionAvatar from './CompanionAvatar';
@@ -70,8 +71,9 @@ const AppDashboardHome: React.FC = () => {
   const [calibrationOpen, setCalibrationOpen] = useState(false);
   const [calibrationTab, setCalibrationTab] = useState<'context' | 'memory'>('context');
   const [activeCompanionGroup, setActiveCompanionGroup] =
-    useState<CompanionDiscoveryTabId>('all');
+    useState<CompanionDiscoveryTabId>('spiritual_guides');
   const [activeCompanionChip, setActiveCompanionChip] = useState<string | null>(null);
+  const [activeCompanionSpecialization, setActiveCompanionSpecialization] = useState<string | null>(null);
   const [companionSearchQuery, setCompanionSearchQuery] = useState('');
   const [showAllDashboardCompanions, setShowAllDashboardCompanions] = useState(false);
   const [activeAppCategory, setActiveAppCategory] = useState<
@@ -543,6 +545,7 @@ const AppDashboardHome: React.FC = () => {
               how_conversations_feel: item.how_conversations_feel || full?.how_conversations_feel,
               companion_group: item.companion_group || full?.companion_group,
               situation_tags: item.situation_tags || full?.situation_tags,
+              specialization_slugs: item.specialization_slugs || full?.specialization_slugs,
               secondary_expertise: item.secondary_expertise || full?.secondary_expertise,
               skill_level: item.skill_level || full?.skill_level,
               category_tag: item.category_tag || full?.category_tag,
@@ -564,12 +567,13 @@ const AppDashboardHome: React.FC = () => {
           matchesCompanionDiscoveryFilter(comp, {
             groupTab: activeCompanionGroup,
             situationChipId: activeCompanionChip,
+            specializationSlug: activeCompanionSpecialization,
             searchQuery: companionSearchQuery,
           })
         );
 
         const isDefaultView =
-          activeCompanionGroup === 'all' &&
+          !activeCompanionSpecialization &&
           !activeCompanionChip &&
           !companionSearchQuery.trim();
 
@@ -605,6 +609,16 @@ const AppDashboardHome: React.FC = () => {
                 setActiveCompanionChip(chipId);
                 setShowAllDashboardCompanions(false);
               }}
+              specializations={
+                summary?.companionSpecializations && summary.companionSpecializations.length > 0
+                  ? summary.companionSpecializations
+                  : DEFAULT_COMPANION_SPECIALIZATIONS
+              }
+              activeSpecialization={activeCompanionSpecialization}
+              onChangeSpecialization={(slug) => {
+                setActiveCompanionSpecialization(slug);
+                setShowAllDashboardCompanions(false);
+              }}
               searchQuery={companionSearchQuery}
               onChangeSearchQuery={setCompanionSearchQuery}
               tabSurface="white"
@@ -614,12 +628,12 @@ const AppDashboardHome: React.FC = () => {
             {displayedCompanions.length === 0 ? (
               <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-6 text-center space-y-2.5">
                 <p className="font-serif text-lg text-[#3D3830]">
-                  No companions match this moment or search
+                  No companions match this filter or search
                 </p>
                 <button
                   type="button"
                   onClick={() => {
-                    setActiveCompanionGroup('all');
+                    setActiveCompanionSpecialization(null);
                     setActiveCompanionChip(null);
                     setCompanionSearchQuery('');
                   }}

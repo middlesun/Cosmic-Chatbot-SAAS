@@ -1,0 +1,365 @@
+{
+  "bundle_type": "cosmic_council_companion_global_v2",
+  "schema_version": 2,
+  "exported_at": "2026-11-24T23:16:49.847Z",
+  "companion_constitution": "",
+  "companion_realism_baseline": "",
+  "companion_listen_only_guardrail": "",
+  "companion_empathy_first_guardrail": "",
+  "companion_chart_presence_prompt": "",
+  "companion_return_greeting_prompt": "",
+  "companion_bond_extractor_prompt": "",
+  "companion_matcher_instructions": "",
+  "companion_skill_rules": {
+    "none_emotional": "",
+    "vedic": "",
+    "western": "",
+    "tarot": "",
+    "numerology": "",
+    "past_life": "",
+    "council_notes": ""
+  },
+  "companion_group_configs": {
+    "spiritual_guides": {
+      "group_system_prompt": "",
+      "default_advisory_mode": "esoteric_guide",
+      "default_chart_access": {
+        "vedic": false,
+        "western": false,
+        "tarot": false,
+        "numerology": false,
+        "past_life": false,
+        "council_notes": true
+      },
+      "default_chat_style": "editorial",
+      "default_max_output_tokens": 1800
+    },
+    "everyday_companions": {
+      "group_system_prompt": "",
+      "default_advisory_mode": "friend",
+      "default_chart_access": {
+        "vedic": false,
+        "western": false,
+        "tarot": false,
+        "numerology": false,
+        "past_life": false,
+        "council_notes": false
+      },
+      "default_chat_style": "chat_bubbles",
+      "default_max_output_tokens": 1100
+    },
+    "life_companions": {
+      "group_system_prompt": "",
+      "default_advisory_mode": "balanced_support",
+      "default_chart_access": {
+        "vedic": false,
+        "western": false,
+        "tarot": false,
+        "numerology": false,
+        "past_life": false,
+        "council_notes": true
+      },
+      "default_chat_style": "chat_bubbles",
+      "default_max_output_tokens": 1350
+    }
+  },
+  "companion_archetypes": [],
+  "companion_specializations": [
+    {
+      "slug": "vedic_astrology",
+      "label": "Vedic Astrology",
+      "group": "spiritual_guides",
+      "description": "Parashari, Dashas, Nakshatras, Navamsa & practical Jyotish counsel.",
+      "sort_order": 10,
+      "is_active": true
+    },
+    {
+      "slug": "western_astrology",
+      "label": "Western Astrology",
+      "group": "spiritual_guides",
+      "description": "Tropical birth charts, planetary transits, compatibility & life turning points.",
+      "sort_order": 20,
+      "is_active": true
+    },
+    {
+      "slug": "evolutionary_astrology",
+      "label": "Evolutionary Astrology",
+      "group": "spiritual_guides",
+      "description": "Soul evolution, nodal patterns, identity shifts & personal growth.",
+      "sort_order": 30,
+      "is_active": true
+    },
+    {
+      "slug": "modern_astrology",
+      "label": "Modern Astrology",
+      "group": "spiritual_guides",
+      "description": "Everyday planetary cycles, daily rhythms & conversational cosmic reflection.",
+      "sort_order": 40,
+      "is_active": true
+    },
+    {
+      "slug": "tarot",
+      "label": "Tarot",
+      "group": "spiritual_guides",
+      "description": "Reflective Tarot spreads, archetypal imagery & decision clarity.",
+      "sort_order": 50,
+      "is_active": true
+    },
+    {
+      "slug": "numerology",
+      "label": "Numerology",
+      "group": "spiritual_guides",
+      "description": "Life Path, Personal Year cycles & symbolic life chapters.",
+      "sort_order": 60,
+      "is_active": true
+    },
+    {
+      "slug": "karma_past_lives",
+      "label": "Karma & Past Lives",
+      "group": "spiritual_guides",
+      "description": "Samskara, Nodal axis (Rahu/Ketu) & contemplative soul patterns.",
+      "sort_order": 70,
+      "is_active": true
+    },
+    {
+      "slug": "spirituality",
+      "label": "Spirituality",
+      "group": "spiritual_guides",
+      "description": "Inner peace, faith, doubt, forgiveness & grounded spiritual reflection.",
+      "sort_order": 80,
+      "is_active": true
+    },
+    {
+      "slug": "listening",
+      "label": "Listening",
+      "group": "everyday_companions",
+      "description": "Unhurried, judgment-free presence when you just need to be heard.",
+      "sort_order": 90,
+      "is_active": true
+    },
+    {
+      "slug": "comfort_healing",
+      "label": "Comfort & Healing",
+      "group": "everyday_companions",
+      "description": "Gentle reassurance, emotional tenderness & steady warmth on heavy days.",
+      "sort_order": 100,
+      "is_active": true
+    },
+    {
+      "slug": "encouragement",
+      "label": "Encouragement",
+      "group": "everyday_companions",
+      "description": "Self-belief, steady momentum, bouncing back & celebrating wins.",
+      "sort_order": 110,
+      "is_active": true
+    },
+    {
+      "slug": "fun_friendship",
+      "label": "Fun & Friendship",
+      "group": "everyday_companions",
+      "description": "Playful banter, witty company, laughter & relaxed everyday chats.",
+      "sort_order": 120,
+      "is_active": true
+    },
+    {
+      "slug": "candid_conversations",
+      "label": "Candid Conversations",
+      "group": "everyday_companions",
+      "description": "Honest opinions, blind-spot checks & grounded straight talk.",
+      "sort_order": 130,
+      "is_active": true
+    },
+    {
+      "slug": "calm_mindfulness",
+      "label": "Calm & Mindfulness",
+      "group": "everyday_companions",
+      "description": "Quieting racing thoughts, mindfulness & grounding restless evenings.",
+      "sort_order": 140,
+      "is_active": true
+    },
+    {
+      "slug": "deep_conversations",
+      "label": "Deep Conversations",
+      "group": "everyday_companions",
+      "description": "Philosophy, meaning, unspoken truths & reflective curiosity.",
+      "sort_order": 150,
+      "is_active": true
+    },
+    {
+      "slug": "mentorship",
+      "label": "Mentorship",
+      "group": "everyday_companions",
+      "description": "Mature perspective, life wisdom & balanced guidance at crossroads.",
+      "sort_order": 160,
+      "is_active": true
+    },
+    {
+      "slug": "family_like_connection",
+      "label": "Family-like Connection",
+      "group": "everyday_companions",
+      "description": "Brotherly and sisterly warmth, loyal care & heart-to-heart familiarity.",
+      "sort_order": 170,
+      "is_active": true
+    },
+    {
+      "slug": "venting",
+      "label": "Venting",
+      "group": "everyday_companions",
+      "description": "Unfiltered space to let out frustration without polite sugarcoating.",
+      "sort_order": 180,
+      "is_active": true
+    },
+    {
+      "slug": "clarity_decisions",
+      "label": "Clarity & Decisions",
+      "group": "everyday_companions",
+      "description": "Thinking out loud, untangling choices & resolving indecision.",
+      "sort_order": 190,
+      "is_active": true
+    },
+    {
+      "slug": "daily_companionship",
+      "label": "Daily Companionship",
+      "group": "everyday_companions",
+      "description": "Daily check-ins, winding down at bedtime & steady everyday company.",
+      "sort_order": 200,
+      "is_active": true
+    },
+    {
+      "slug": "warmth_affection",
+      "label": "Warmth & Affection",
+      "group": "everyday_companions",
+      "description": "Kindness, feeling appreciated, gentle tenderness & comforting closeness.",
+      "sort_order": 210,
+      "is_active": true
+    },
+    {
+      "slug": "love_relationships",
+      "label": "Love & Relationships",
+      "group": "life_companions",
+      "description": "Dating, romantic uncertainty, mixed signals & healthy connection.",
+      "sort_order": 220,
+      "is_active": true
+    },
+    {
+      "slug": "heartbreak",
+      "label": "Heartbreak",
+      "group": "life_companions",
+      "description": "Breakups, missing an ex, rejection, closure & letting go.",
+      "sort_order": 230,
+      "is_active": true
+    },
+    {
+      "slug": "marriage_divorce",
+      "label": "Marriage & Divorce",
+      "group": "life_companions",
+      "description": "Marital communication, separation, divorce recovery & second chances.",
+      "sort_order": 240,
+      "is_active": true
+    },
+    {
+      "slug": "grief_loss",
+      "label": "Grief & Loss",
+      "group": "life_companions",
+      "description": "Bereavement, remembering loved ones & carrying difficult anniversaries.",
+      "sort_order": 250,
+      "is_active": true
+    },
+    {
+      "slug": "family_parenthood",
+      "label": "Family & Parenthood",
+      "group": "life_companions",
+      "description": "Parenthood, ageing parents, family expectations & matters of home.",
+      "sort_order": 260,
+      "is_active": true
+    },
+    {
+      "slug": "fertility_pregnancy",
+      "label": "Fertility & Pregnancy",
+      "group": "life_companions",
+      "description": "Fertility journeys, IVF waiting, pregnancy worries & quiet hope.",
+      "sort_order": 270,
+      "is_active": true
+    },
+    {
+      "slug": "health_recovery",
+      "label": "Health & Recovery",
+      "group": "life_companions",
+      "description": "Chronic illness, surgery recovery, caregiving & physical strain.",
+      "sort_order": 280,
+      "is_active": true
+    },
+    {
+      "slug": "emotional_wellness",
+      "label": "Emotional Wellness",
+      "group": "life_companions",
+      "description": "Burnout, low moods, anxiety, emotional exhaustion & steadiness.",
+      "sort_order": 290,
+      "is_active": true
+    },
+    {
+      "slug": "career_business",
+      "label": "Career & Business",
+      "group": "life_companions",
+      "description": "Career choices, job switches, workplace dynamics & founder stress.",
+      "sort_order": 300,
+      "is_active": true
+    },
+    {
+      "slug": "money_finances",
+      "label": "Money & Finances",
+      "group": "life_companions",
+      "description": "Financial pressure, debt worries, setbacks & rebuilding stability.",
+      "sort_order": 310,
+      "is_active": true
+    },
+    {
+      "slug": "legal_challenges",
+      "label": "Legal Challenges",
+      "group": "life_companions",
+      "description": "Legal dispute stress, property/family conflicts & tough negotiations.",
+      "sort_order": 320,
+      "is_active": true
+    },
+    {
+      "slug": "life_direction",
+      "label": "Life Direction",
+      "group": "life_companions",
+      "description": "Relocation, major life transitions, feeling stuck & finding direction.",
+      "sort_order": 330,
+      "is_active": true
+    },
+    {
+      "slug": "trauma_healing",
+      "label": "Trauma & Healing",
+      "group": "life_companions",
+      "description": "Emotional recovery, childhood wounds, boundaries & rebuilding trust.",
+      "sort_order": 340,
+      "is_active": true
+    },
+    {
+      "slug": "intimacy",
+      "label": "Intimacy",
+      "group": "life_companions",
+      "description": "Emotional and physical intimacy, vulnerability & closeness.",
+      "sort_order": 350,
+      "is_active": true
+    },
+    {
+      "slug": "identity_self_discovery",
+      "label": "Identity & Self-Discovery",
+      "group": "life_companions",
+      "description": "Self-acceptance, personal identity, belonging & individuality.",
+      "sort_order": 360,
+      "is_active": true
+    },
+    {
+      "slug": "student_life",
+      "label": "Student Life",
+      "group": "life_companions",
+      "description": "Exam pressure, academic setbacks, study focus & family expectations.",
+      "sort_order": 370,
+      "is_active": true
+    }
+  ]
+}

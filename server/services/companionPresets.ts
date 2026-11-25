@@ -19,10 +19,13 @@ import {
 } from '../../components/app/chatTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import {
+  BUILTIN_COMPANION_SPECIALIZATIONS,
   DEFAULT_COMPANION_PERSONALITY_V2,
   detectCoreIdentityChanges,
+  hasOnlyLegacySpecializationSlugs,
   inferSpecializationsForCompanion,
   normalizePersonalityV2,
+  normalizeSpecializationSlugsWithMigration,
   sanitizeSpecializationSlugs,
   type CompanionPersonalityV2,
   type CoreIdentityProtectedDiff,
@@ -126,6 +129,10 @@ export const COMPANION_PORTRAIT_GALLERY: Array<{
   { slug: 'leo', label: 'Leo', url: '/assets/companions/leo.jpg' },
   { slug: 'valeria', label: 'Valeria', url: '/assets/companions/valeria.jpg' },
   { slug: 'rohan', label: 'Rohan', url: '/assets/companions/rohan.jpg' },
+  { slug: 'nandini', label: 'Nandini (Realistic)', url: '/assets/companions/nandini.jpg' },
+  { slug: 'julian', label: 'Julian (Realistic)', url: '/assets/companions/julian.jpg' },
+  { slug: 'maya', label: 'Maya (Realistic)', url: '/assets/companions/maya.jpg' },
+  { slug: 'samir', label: 'Samir (Realistic)', url: '/assets/companions/samir.jpg' },
 ];
 
 const BASE_HUMAN_HARD_RULES = `NON-NEGOTIABLE GUARDRAILS:
@@ -204,7 +211,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     discoverable_tags: ["astrology","vedic","love","relationships","family","spiritual"],
     situation_tags: ["astrology","vedic","love","relationships","family","spiritual"],
     cultural_fluency: "English · Hindi · Gentle, intuitive & reassuring",
-    avatar_url: null,
+    avatar_url: "/assets/companions/nandini.jpg",
     monogram_palette: {"bg":"#E4ECE5","ring":"#5C8266","ink":"#29402F"},
     welcome_messages: ["Hey — I’m Nandini. There is room for both what your heart wants and what life asks of you.","Hi, I’m Nandini. No rush to explain everything neatly — what’s been on your mind lately?","Hey there, Nandini here. Take a breath — where should we start today?"],
     system_prompt: "You are Nandini (36, she/her), a Spiritual Guide — Vedic Astrology · Life & Relationships.\n\nCORE PERSONALITY & PRESENCE:\nNandini is affectionate in her manner, thoughtful with her words and deeply interested in the relationships that shape our lives. She appreciates tradition without believing that everyone must follow the same path. Her interest in Vedic astrology sits alongside a genuine curiosity about love, family, responsibilities and the dreams we sometimes put aside for others.\n\nHOW CONVERSATIONS FEEL WITH YOU:\nWarm and familiar, like speaking with someone who understands that life is rarely black and white. Nandini explores your feelings gently, offers different perspectives and draws on traditional wisdom without imposing beliefs or expectations.\n\nKEY AREAS WHERE YOU SHINE:\nVedic Astrology, Relationships, Family Harmony, Personal Choices, Life Transitions\n\nCONVERSATIONAL CALIBRATION:\n- Fluency & Tone: English · Hindi · Gentle, intuitive & reassuring\n- Anchor quote that reflects your outlook: \"There is room for both what your heart wants and what life asks of you.\"\n- When the user invites insight connected to Spiritual Guide, weave it in warmly, conversationally, and without fatalism—leaving full room for their own judgment and lived choices.\n- Never lecture, sound clinical, or overwhelm the user with bulleted checklists unless they ask for structured steps.",
@@ -450,7 +457,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     discoverable_tags: ["tarot","crossroads","decisions","beginnings","reflection"],
     situation_tags: ["tarot","crossroads","decisions","beginnings","reflection"],
     cultural_fluency: "English · Thoughtful, composed & quietly curious",
-    avatar_url: null,
+    avatar_url: "/assets/companions/julian.jpg",
     monogram_palette: {"bg":"#E3E8EC","ring":"#5A7080","ink":"#24323C"},
     welcome_messages: ["Hey — I’m Julian. The cards don't have to decide for you. They might simply help you see something you hadn't considered.","Hi, I’m Julian. No rush to explain everything neatly — what’s been on your mind lately?","Hey there, Julian here. Take a breath — where should we start today?"],
     system_prompt: "You are Julian (36, he/him), a Tarot Guide — Tarot · Life's Crossroads.\n\nCORE PERSONALITY & PRESENCE:\nJulian has a contemplative personality and a fondness for symbolism, storytelling and life's unanswered questions. He's intrigued by the different meanings people find in the same experience and enjoys using Tarot as a way to explore those perspectives. Beneath his slightly mysterious manner is a practical, quietly humorous personality who appreciates honest conversations more than dramatic predictions.\n\nHOW CONVERSATIONS FEEL WITH YOU:\nConsidered, intimate in tone and pleasantly unhurried. Julian gives you time to explore a question from different angles, occasionally introduces a symbolic card reading and encourages you to notice your own reactions rather than treating the cards as instructions.\n\nKEY AREAS WHERE YOU SHINE:\nTarot, Difficult Decisions, Life Crossroads, Personal Reflection, New Beginnings\n\nCONVERSATIONAL CALIBRATION:\n- Fluency & Tone: English · Thoughtful, composed & quietly curious\n- Anchor quote that reflects your outlook: \"The cards don't have to decide for you. They might simply help you see something you hadn't considered.\"\n- When the user invites insight connected to Tarot Guide, weave it in warmly, conversationally, and without fatalism—leaving full room for their own judgment and lived choices.\n- Never lecture, sound clinical, or overwhelm the user with bulleted checklists unless they ask for structured steps.",
@@ -778,7 +785,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     discoverable_tags: ["vent","listen","overwhelmed","heavy-day","unfiltered"],
     situation_tags: ["vent","listen","overwhelmed","heavy-day","unfiltered"],
     cultural_fluency: "English · Hindi · Relaxed, attentive & down-to-earth",
-    avatar_url: null,
+    avatar_url: "/assets/companions/samir.jpg",
     monogram_palette: {"bg":"#E3E8EC","ring":"#5A7080","ink":"#24323C"},
     welcome_messages: ["Hey — I’m Samir. Start from the beginning if you like. I'm not in a hurry.","Hi, I’m Samir. No rush to explain everything neatly — what’s been on your mind lately?","Hey there, Samir here. Take a breath — where should we start today?"],
     system_prompt: "You are Samir (32, he/him), a Listener — Listener · Open Conversations.\n\nCORE PERSONALITY & PRESENCE:\nSamir has an easygoing personality and a genuine interest in how other people see the world. He enjoys hearing the long version of a story, including the seemingly irrelevant details and occasional tangents. He's patient without being overly delicate, thoughtful without overanalysing, and has a subtle sense of humour that makes even difficult conversations feel a little less formal.\n\nHOW CONVERSATIONS FEEL WITH YOU:\nRelaxed and familiar, like talking to someone on a long evening walk. Samir lets you get everything out before asking what you think or offering his own perspective. He's equally comfortable with serious conversations, ordinary complaints and stories that don't really have a point.\n\nKEY AREAS WHERE YOU SHINE:\nListening, Venting, Everyday Frustrations, Personal Conversations, Emotional Support\n\nCONVERSATIONAL CALIBRATION:\n- Fluency & Tone: English · Hindi · Relaxed, attentive & down-to-earth\n- Anchor quote that reflects your outlook: \"Start from the beginning if you like. I'm not in a hurry.\"\n- Stay grounded as a real, empathetic human companion (Listener)—never give unsolicited astrology, tarot, or spiritual diagnostics.\n- Never lecture, sound clinical, or overwhelm the user with bulleted checklists unless they ask for structured steps.",
@@ -1434,7 +1441,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     discoverable_tags: ["perspective","wisdom","overthinking","calm","decisions"],
     situation_tags: ["perspective","wisdom","overthinking","calm","decisions"],
     cultural_fluency: "English · Mature, thoughtful & gently humorous",
-    avatar_url: null,
+    avatar_url: "/assets/companions/maya.jpg",
     monogram_palette: {"bg":"#E3E8EC","ring":"#5A7080","ink":"#24323C"},
     welcome_messages: ["Hey — I’m Maya. Life rarely follows the plan. That doesn't mean the story can't turn out beautifully.","Hi, I’m Maya. No rush to explain everything neatly — what’s been on your mind lately?","Hey there, Maya here. Take a breath — where should we start today?"],
     system_prompt: "You are Maya (52, she/her), a Wise Mentor — Wise Mentor · Life & Perspective.\n\nCORE PERSONALITY & PRESENCE:\nMaya has a mature outlook, a gentle sense of humour and a deep appreciation for the imperfect nature of life. She's interested in the choices people make, the expectations they carry and the things they eventually learn to let go of. She values kindness, perspective and practical wisdom far more than impressive words. There's a comforting simplicity to the way she approaches complicated subjects.\n\nHOW CONVERSATIONS FEEL WITH YOU:\nLike sitting across from someone who gives your questions careful consideration. Maya offers thoughtful observations, occasionally challenges your assumptions and brings a little humour to life's contradictions. She shares perspectives without making you feel that there's only one right way to live.\n\nKEY AREAS WHERE YOU SHINE:\nLife Wisdom, Personal Growth, Mature Perspective, Difficult Choices, Finding Balance\n\nCONVERSATIONAL CALIBRATION:\n- Fluency & Tone: English · Mature, thoughtful & gently humorous\n- Anchor quote that reflects your outlook: \"Life rarely follows the plan. That doesn't mean the story can't turn out beautifully.\"\n- Stay grounded as a real, empathetic human companion (Wise Mentor)—never give unsolicited astrology, tarot, or spiritual diagnostics.\n- Never lecture, sound clinical, or overwhelm the user with bulleted checklists unless they ask for structured steps.",
@@ -3240,19 +3247,16 @@ export function toPublicCompanionCard(record: CompanionPresetRecord): PublicComp
     max_output_tokens: record.max_output_tokens ?? caps.max_output_tokens,
     discoverable_tags: meta.situation_tags,
     situation_tags: meta.situation_tags,
-    specialization_slugs:
-      Array.isArray(record.specialization_slugs) && record.specialization_slugs.length > 0
-        ? record.specialization_slugs
-        : inferSpecializationsForCompanion({
-            slug: record.slug,
-            companion_group: meta.companion_group,
-            category_tag: record.category_tag,
-            skill_level: record.skill_level,
-            primary_expertise: record.primary_expertise,
-            secondary_expertise: record.secondary_expertise,
-            discoverable_tags: meta.situation_tags,
-            tagline: record.tagline,
-          }),
+    specialization_slugs: resolveEffectiveSpecializations(record.specialization_slugs, {
+      slug: record.slug,
+      companion_group: meta.companion_group,
+      category_tag: record.category_tag,
+      skill_level: record.skill_level,
+      primary_expertise: record.primary_expertise,
+      secondary_expertise: record.secondary_expertise,
+      discoverable_tags: meta.situation_tags,
+      tagline: record.tagline,
+    }),
     gender_variants: record.gender_variants || undefined,
     supports_gender_toggle: hasFemaleVariant && hasMaleVariant,
     cultural_fluency: record.cultural_fluency,
@@ -3265,6 +3269,24 @@ export function toPublicCompanionCard(record: CompanionPresetRecord): PublicComp
     suggestions_enabled: record.suggestions_enabled !== false,
     sort_order: record.sort_order ?? 0,
   };
+}
+
+function resolveEffectiveSpecializations(
+  rawSlugs: unknown,
+  fallbackInput: Parameters<typeof inferSpecializationsForCompanion>[0]
+): string[] {
+  const cleaned = sanitizeSpecializationSlugs(rawSlugs);
+  if (cleaned.length === 0) {
+    return inferSpecializationsForCompanion(fallbackInput);
+  }
+  if (hasOnlyLegacySpecializationSlugs(cleaned)) {
+    const slugLower = String(fallbackInput.slug || '').trim().toLowerCase();
+    if (slugLower && BUILTIN_COMPANION_SPECIALIZATIONS[slugLower]) {
+      return [...BUILTIN_COMPANION_SPECIALIZATIONS[slugLower]];
+    }
+    return normalizeSpecializationSlugsWithMigration(cleaned);
+  }
+  return normalizeSpecializationSlugsWithMigration(cleaned);
 }
 
 // ---------------- In-Memory Caching + Idempotent DB Seeding ----------------
@@ -3750,23 +3772,20 @@ function mapDbRowToCompanionPreset(
   const overlaySpecializations = Array.isArray(v2Entry?.specialization_slugs)
     ? sanitizeSpecializationSlugs(v2Entry.specialization_slugs)
     : [];
-  const resolvedSpecializations =
-    dbSpecializations.length > 0
-      ? dbSpecializations
-      : overlaySpecializations.length > 0
-      ? overlaySpecializations
-      : inferSpecializationsForCompanion({
-          slug: slugLower,
-          companion_group: resolvedGroup,
-          category_tag: categoryTag,
-          skill_level: syncedSkillLevel,
-          primary_expertise: primaryExpertise,
-          secondary_expertise: Array.isArray(row.secondary_expertise)
-            ? row.secondary_expertise.map(String)
-            : [],
-          discoverable_tags: resolvedTags,
-          tagline: String(row.tagline || ''),
-        });
+  const specSource =
+    dbSpecializations.length > 0 ? dbSpecializations : overlaySpecializations;
+  const resolvedSpecializations = resolveEffectiveSpecializations(specSource, {
+    slug: slugLower,
+    companion_group: resolvedGroup,
+    category_tag: categoryTag,
+    skill_level: syncedSkillLevel,
+    primary_expertise: primaryExpertise,
+    secondary_expertise: Array.isArray(row.secondary_expertise)
+      ? row.secondary_expertise.map(String)
+      : [],
+    discoverable_tags: resolvedTags,
+    tagline: String(row.tagline || ''),
+  });
 
   const resolvedDraftPayload =
     row.draft_payload_json && typeof row.draft_payload_json === 'object' && !Array.isArray(row.draft_payload_json)
@@ -4139,6 +4158,52 @@ export async function ensureCompanionsSeeded(force = false): Promise<void> {
         invalidateCompanionsCache();
       }
     }
+
+    // Backfill newly added realistic sample portraits only when untouched (created_at === updated_at and avatar_url IS NULL)
+    const sampleRealisticPortraits: Record<string, string> = {
+      nandini: '/assets/companions/nandini.jpg',
+      julian: '/assets/companions/julian.jpg',
+      maya: '/assets/companions/maya.jpg',
+      samir: '/assets/companions/samir.jpg',
+    };
+    const { data: avatarCheckRows, error: avatarCheckErr } = await supabaseAdmin
+      .from('companions')
+      .select('slug, avatar_url, created_at, updated_at')
+      .in('slug', Object.keys(sampleRealisticPortraits));
+
+    if (!avatarCheckErr && Array.isArray(avatarCheckRows)) {
+      const avatarUpdates: Array<Promise<unknown>> = [];
+      for (const row of avatarCheckRows as Array<{
+        slug?: string;
+        avatar_url?: string | null;
+        created_at?: string | null;
+        updated_at?: string | null;
+      }>) {
+        const slugLower = String(row.slug || '').toLowerCase();
+        const nextUrl = sampleRealisticPortraits[slugLower];
+        if (!nextUrl) continue;
+        const isUntouched =
+          !row.avatar_url &&
+          Boolean(row.created_at) &&
+          Boolean(row.updated_at) &&
+          row.created_at === row.updated_at;
+        if (isUntouched) {
+          avatarUpdates.push(
+            Promise.resolve(
+              supabaseAdmin
+                .from('companions')
+                .update({ avatar_url: nextUrl })
+                .eq('slug', row.slug)
+                .is('avatar_url', null)
+            )
+          );
+        }
+      }
+      if (avatarUpdates.length > 0) {
+        await Promise.all(avatarUpdates);
+        invalidateCompanionsCache();
+      }
+    }
   } catch {
     // Non-fatal fallback to code presets
   }
@@ -4155,19 +4220,16 @@ function getEnrichedDefaultCompanions(): CompanionPresetRecord[] {
   return DEFAULT_COMPANION_PRESETS.map((p) => {
     const meta = resolveDefaultMetaForRecord(p);
     const caps = resolveCompanionCapabilities(p, null);
-    const specializations =
-      p.specialization_slugs && p.specialization_slugs.length > 0
-        ? p.specialization_slugs
-        : inferSpecializationsForCompanion({
-            slug: p.slug,
-            companion_group: meta.companion_group,
-            category_tag: p.category_tag,
-            skill_level: p.skill_level,
-            primary_expertise: p.primary_expertise,
-            secondary_expertise: p.secondary_expertise,
-            discoverable_tags: meta.situation_tags,
-            tagline: p.tagline,
-          });
+    const specializations = resolveEffectiveSpecializations(p.specialization_slugs, {
+      slug: p.slug,
+      companion_group: meta.companion_group,
+      category_tag: p.category_tag,
+      skill_level: p.skill_level,
+      primary_expertise: p.primary_expertise,
+      secondary_expertise: p.secondary_expertise,
+      discoverable_tags: meta.situation_tags,
+      tagline: p.tagline,
+    });
     const coreLocked = p.core_identity_locked !== false;
     const enriched: CompanionPresetRecord = {
       ...p,
