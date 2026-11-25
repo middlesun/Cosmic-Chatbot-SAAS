@@ -13,9 +13,6 @@ import {
   Orbit,
   RefreshCw,
   Grid3X3,
-  Download,
-  FileText,
-  Loader2,
 } from 'lucide-react';
 import AstrologyModeToggle from './AstrologyModeToggle';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
@@ -27,11 +24,6 @@ import {
   computeTraditionalBirthMeta,
   resolveCompleteVargas,
 } from '../../lib/chartMetaAndVarga';
-import {
-  downloadChartJson,
-  downloadChartPdf,
-  downloadChartText,
-} from '../../lib/chartExport';
 
 export interface PlanetPosition {
   name: string;
@@ -82,6 +74,11 @@ export interface WesternPlanetPosition {
   dignity: string;
   element: 'Fire' | 'Earth' | 'Air' | 'Water';
   modality: 'Cardinal' | 'Fixed' | 'Mutable';
+  essentialScore?: number;
+  accidentalScore?: number;
+  houseClass?: 'Angular' | 'Succedent' | 'Cadent';
+  solarCondition?: 'Cazimi' | 'Combust' | 'Under Beams' | 'Free';
+  sectAlignment?: 'In Sect' | 'Neutral' | 'Contrary to Sect';
 }
 
 export interface DailyTransitsPayload {
@@ -114,7 +111,10 @@ export interface CompiledChartJson {
   kp: {
     cusps: Array<{
       house: number;
+      longitude?: number;
+      signIndex?: number;
       sign: string;
+      degreeInSign?: number;
       dms: string;
       signLord: string;
       nakshatra: string;
@@ -126,6 +126,8 @@ export interface CompiledChartJson {
       occupiesHouse: number;
       ownsHouses: number[];
       starLord: string;
+      starLordOccupies?: number;
+      starLordOwns?: number[];
       subLord: string;
       signifiesHouses: number[];
     }>;
@@ -145,6 +147,7 @@ export interface CompiledChartJson {
       code: string;
       title: string;
       planet: string;
+      degreeInSign?: number;
       dms: string;
       sign: string;
     }>;
@@ -192,14 +195,17 @@ export interface CompiledChartJson {
       lord: string;
       startDate: string;
       endDate: string;
+      level?: 'mahadasha' | 'antardasha' | 'pratyantardasha';
       children?: Array<{
         lord: string;
         startDate: string;
         endDate: string;
+        level?: 'mahadasha' | 'antardasha' | 'pratyantardasha';
         children?: Array<{
           lord: string;
           startDate: string;
           endDate: string;
+          level?: 'mahadasha' | 'antardasha' | 'pratyantardasha';
         }>;
       }>;
     }>;
@@ -207,9 +213,16 @@ export interface CompiledChartJson {
       mahadasha: string;
       antardasha: string;
       pratyantardasha: string;
+      mdStart?: string;
       mdEnd: string;
+      adStart?: string;
       adEnd: string;
+      pdStart?: string;
       pdEnd: string;
+      mdProgressPct?: number;
+      adProgressPct?: number;
+      mdSandhiWarning?: boolean;
+      adSandhiWarning?: boolean;
     } | null;
   };
   shadbala?: {
@@ -308,12 +321,20 @@ export interface CompiledChartJson {
       angle: number;
       orb: number;
       exactness: string;
+      orbTier?: 'core_structural' | 'active' | 'background';
+      weightScore?: number;
     }>;
     elements: Record<'Fire' | 'Earth' | 'Air' | 'Water', number>;
     modalities: Record<'Cardinal' | 'Fixed' | 'Mutable', number>;
     polarities: { Yang: number; Yin: number };
     dominantElement: string;
     dominantModality: string;
+    sect?: unknown;
+    chartRuler?: unknown;
+    mutualReceptions?: unknown[];
+    dispositorTree?: unknown;
+    configurations?: unknown[];
+    hellenistic?: unknown;
   };
   shadBalaSummary?: unknown;
 }
@@ -433,8 +454,8 @@ interface ChartViewerProps {
   onDossierRefreshed?: (nextDossier: NatalTruthDossierClient) => void;
 }
 
-export type VedicTabId = 'overview' | 'vargas' | 'planets' | 'kp' | 'dasha' | 'jaimini' | 'shadbala' | 'lalkitab';
-type WesternTabId = 'overview' | 'planets' | 'aspects';
+export type VedicTabId = 'chart' | 'overview' | 'vargas' | 'planets' | 'kp' | 'dasha' | 'jaimini' | 'shadbala' | 'lalkitab';
+type WesternTabId = 'chart' | 'overview' | 'planets' | 'aspects';
 
 function polarToXY(cx: number, cy: number, r: number, angleDeg: number): { x: number; y: number } {
   const rad = (angleDeg * Math.PI) / 180;
@@ -519,7 +540,7 @@ const KundliSvg: React.FC<KundliSvgProps> = ({
       {chartStyle === 'north' ? (
         <svg
           viewBox="0 0 400 400"
-          className={`w-full h-auto select-none ${compact ? 'max-w-[290px]' : 'max-w-[350px]'}`}
+          className={`w-full h-auto select-none ${compact ? 'max-w-[290px]' : 'max-w-[320px]'}`}
           role="img"
           aria-label={`North Indian ${title}`}
         >
@@ -598,7 +619,7 @@ const KundliSvg: React.FC<KundliSvgProps> = ({
       ) : (
         <svg
           viewBox="0 0 400 400"
-          className={`w-full h-auto select-none ${compact ? 'max-w-[290px]' : 'max-w-[350px]'}`}
+          className={`w-full h-auto select-none ${compact ? 'max-w-[290px]' : 'max-w-[320px]'}`}
           role="img"
           aria-label={`South Indian ${title}`}
         >
@@ -744,7 +765,6 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
   const isPreviewMode = auth?.isPreviewMode ?? true;
   const [viewMode, setViewMode] = useState<AstrologyMode>(initialMode || sessionMode || 'vedic');
   const [refreshingDossier, setRefreshingDossier] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     if (!initialMode && auth?.astrologyMode) {
@@ -754,8 +774,8 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
 
   const [chartStyle, setChartStyle] = useState<'north' | 'south'>('north');
   const [selectedVargaCode, setSelectedVargaCode] = useState<string>('D9');
-  const [vedicTab, setVedicTab] = useState<VedicTabId>(initialVedicTab || 'overview');
-  const [westernTab, setWesternTab] = useState<WesternTabId>('overview');
+  const [vedicTab, setVedicTab] = useState<VedicTabId>(initialVedicTab || 'chart');
+  const [westernTab, setWesternTab] = useState<WesternTabId>('chart');
   const [aspectFilter, setAspectFilter] = useState<'all' | 'Major' | 'Minor'>('all');
   const vedicTabsRef = useRef<HTMLDivElement | null>(null);
 
@@ -846,16 +866,6 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
   const birthMeta = useMemo(() => computeTraditionalBirthMeta(chart, gender), [chart, gender]);
   const jaiminiCharts = useMemo(() => buildJaiminiChartPair(chart), [chart]);
 
-  const handleDownloadPdf = async () => {
-    if (exportingPdf) return;
-    setExportingPdf(true);
-    try {
-      await downloadChartPdf(chart, birthMeta, allVargas, chartStyle);
-    } finally {
-      setExportingPdf(false);
-    }
-  };
-
   const d1Asc = chart.planets.find((p) => p.name === 'Ascendant');
   const d1Moon = chart.planets.find((p) => p.name === 'Moon');
   const d1Sun = chart.planets.find((p) => p.name === 'Sun');
@@ -919,145 +929,221 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
   }, [chart.western, aspectFilter]);
 
   return (
-    <div className="space-y-6">
-      {/* Light Observatory Chart Hero Section */}
-      <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-5 sm:p-6 md:p-8 text-[#3D3830]">
-        {/* Row 1: Title + Fixed Top-Right Exports & Vedic/Western Mode Toggle */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#3D3830]/10 pb-4 mb-4">
-          <div className="min-w-0">
-            <p className="text-xs text-[#8B8275] mb-1 truncate">
-              {viewMode === 'vedic'
-                ? `${chart.meta.ayanamsha} · ${chart.meta.location.locationLabel}`
-                : `${chart.western?.system || 'Tropical (Placidus)'} · ${chart.meta.location.locationLabel}`}
-            </p>
-            <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
-              {chart.meta.name} — {viewMode === 'vedic' ? `Vedic Kundli (D1 & ${activeVargaDef.code})` : 'Tropical Natal Wheel'}
-            </h2>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <div
-              role="group"
-              aria-label="Download chart data"
-              className="inline-flex items-center rounded-xl bg-[#FAF7F2] border border-[#3D3830]/12 p-1 gap-0.5 text-xs"
-            >
-              <button
-                type="button"
-                disabled={exportingPdf}
-                onClick={() => void handleDownloadPdf()}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium text-[#3D3830] hover:bg-[#EAE3D7]/80 transition-colors cursor-pointer disabled:opacity-50"
-                title="Download full chart dossier as PDF"
-              >
-                {exportingPdf ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[#8B7355]" />
-                ) : (
-                  <Download className="h-3.5 w-3.5 text-[#8B7355]" />
-                )}
-                <span>PDF</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => downloadChartText(chart, birthMeta, allVargas)}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EAE3D7]/80 transition-colors cursor-pointer"
-                title="Download complete chart data as plain text"
-              >
-                <FileText className="h-3.5 w-3.5 text-[#8B7355]" />
-                <span>Text</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => downloadChartJson(chart, birthMeta, allVargas)}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EAE3D7]/80 transition-colors cursor-pointer"
-                title="Download raw structured chart data as JSON"
-              >
-                <span>JSON</span>
-              </button>
-            </div>
-
-            <AstrologyModeToggle
-              value={viewMode}
-              onChange={setViewMode}
-              variant="light"
-              size="sm"
-            />
-          </div>
-        </div>
-
-        {/* Row 2: Fixed Left-Aligned North/South Toggle (No Jumping When Switching Modes) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 min-h-[38px]">
+    <div className="space-y-5">
+      {/* TOP NAVIGATION ROW + RIGHT VEDIC/WESTERN TOGGLE */}
+      <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-3">
+        {viewMode === 'vedic' ? (
           <div
-            role="group"
-            aria-label="Chart layout style"
-            aria-disabled={viewMode !== 'vedic'}
-            className={`inline-flex items-center rounded-xl bg-[#EAE3D7]/80 border border-[#3D3830]/12 p-1 text-xs transition-opacity ${
-              viewMode === 'vedic' ? 'opacity-100' : 'opacity-40 pointer-events-none'
-            }`}
+            ref={vedicTabsRef}
+            className="flex flex-nowrap items-center gap-0.5 sm:gap-1 rounded-2xl bg-[#F1ECE3] p-1.5 w-fit max-w-full overflow-x-auto no-scrollbar scroll-mt-4"
           >
             <button
               type="button"
-              onClick={() => setChartStyle('north')}
-              className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
-                chartStyle === 'north'
-                  ? 'bg-[#4A453D] text-[#FAF7F2] font-medium shadow-xs'
+              onClick={() => setVedicTab('chart')}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                vedicTab === 'chart'
+                  ? 'bg-[#FDFBF7] text-[#3D3830] shadow-sm'
                   : 'text-[#5C5449] hover:text-[#3D3830]'
               }`}
             >
-              North Indian
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-3.5 w-3.5"
+                aria-hidden="true"
+              >
+                <rect x="3.5" y="3.5" width="17" height="17" rx="2" />
+                <polygon points="12 3.5 20.5 12 12 20.5 3.5 12" />
+              </svg>
+              <span>Chart</span>
             </button>
+
             <button
               type="button"
-              onClick={() => setChartStyle('south')}
-              className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
-                chartStyle === 'south'
-                  ? 'bg-[#4A453D] text-[#FAF7F2] font-medium shadow-xs'
+              onClick={() => setVedicTab('overview')}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                vedicTab === 'overview'
+                  ? 'bg-[#FDFBF7] text-[#3D3830] shadow-sm'
                   : 'text-[#5C5449] hover:text-[#3D3830]'
               }`}
             >
-              South Indian
+              <Sun className="h-3.5 w-3.5" />
+              <span>Overview</span>
             </button>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-xs font-['JetBrains_Mono',monospace] tabular-nums text-[#8B8275]">
-              {viewMode === 'vedic'
-                ? `D1 Lagna: ${d1Asc?.sign || '—'} · ${activeVargaDef.code} Lagna: ${
-                    activeVargaData ? VEDIC_SIGNS_SHORT[activeVargaData.ascendantSignIndex] : '—'
-                  }`
-                : `AC: ${chart.western?.angles.ascendant.sign || '—'} · MC: ${
-                    chart.western?.angles.midheaven.sign || '—'
+            <span className="h-4 w-px bg-[#3D3830]/15 mx-0.5 shrink-0" aria-hidden="true" />
+
+            <div role="group" aria-label="Chart layout style" className="inline-flex items-center gap-0.5 sm:gap-1 shrink-0">
+              <button
+                type="button"
+                aria-pressed={chartStyle === 'south'}
+                onClick={() => {
+                  setChartStyle('south');
+                  if (vedicTab !== 'chart' && vedicTab !== 'vargas' && vedicTab !== 'jaimini') {
+                    setVedicTab('chart');
+                  }
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  chartStyle === 'south'
+                    ? 'bg-[#4A453D] text-[#FAF7F2] shadow-xs'
+                    : 'text-[#5C5449] hover:text-[#3D3830]'
+                }`}
+              >
+                <span>South</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={chartStyle === 'north'}
+                onClick={() => {
+                  setChartStyle('north');
+                  if (vedicTab !== 'chart' && vedicTab !== 'vargas' && vedicTab !== 'jaimini') {
+                    setVedicTab('chart');
+                  }
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  chartStyle === 'north'
+                    ? 'bg-[#4A453D] text-[#FAF7F2] shadow-xs'
+                    : 'text-[#5C5449] hover:text-[#3D3830]'
+                }`}
+              >
+                <span>North</span>
+              </button>
+            </div>
+
+            <span className="h-4 w-px bg-[#3D3830]/15 mx-0.5 shrink-0" aria-hidden="true" />
+
+            {[
+              { id: 'vargas', label: 'Divisional', icon: Grid3X3 },
+              { id: 'planets', label: 'Planets', icon: Compass },
+              { id: 'kp', label: 'KP', icon: Layers },
+              { id: 'dasha', label: 'Dashas', icon: Clock },
+              { id: 'jaimini', label: 'Jaimini', icon: Sparkles },
+              { id: 'shadbala', label: 'Shadbala', icon: BarChart3 },
+              { id: 'lalkitab', label: 'Lal Kitab', icon: Flame },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const active = vedicTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setVedicTab(tab.id as VedicTabId)}
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    active ? 'bg-[#FDFBF7] text-[#3D3830] shadow-sm' : 'text-[#5C5449] hover:text-[#3D3830]'
                   }`}
-            </p>
-            {viewMode === 'vedic' && (
-              <div className="w-56 sm:w-64">
-                <CustomSelect
-                  value={selectedVargaCode}
-                  onChange={(val) => {
-                    if (val === 'ALL') {
-                      setVedicTab('vargas');
-                      window.setTimeout(() => {
-                        vedicTabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }, 40);
-                      return;
-                    }
-                    setSelectedVargaCode(val);
-                  }}
-                  options={vargaDropdownOptions}
-                  ariaLabel="Select divisional chart"
-                  size="xs"
-                  surface="canvas"
-                  align="right"
-                  minMenuWidth={280}
-                  icon={<Grid3X3 className="h-3.5 w-3.5 text-[#8B7355]" />}
-                  triggerClassName="rounded-full"
-                />
-              </div>
-            )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-nowrap items-center gap-1 rounded-2xl bg-[#F1ECE3] p-1.5 w-fit max-w-full overflow-x-auto no-scrollbar">
+            <button
+              type="button"
+              onClick={() => setWesternTab('chart')}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 sm:py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                westernTab === 'chart'
+                  ? 'bg-[#FDFBF7] text-[#3D3830] shadow-sm'
+                  : 'text-[#5C5449] hover:text-[#3D3830]'
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-3.5 w-3.5"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="8.5" />
+                <circle cx="12" cy="12" r="3.5" />
+              </svg>
+              <span>Chart</span>
+            </button>
+            {[
+              { id: 'overview', label: 'Overview', icon: Sun },
+              { id: 'planets', label: 'Planets & Houses', icon: Orbit },
+              { id: 'aspects', label: 'Aspects & Orbs', icon: Sparkles },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const active = westernTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setWesternTab(tab.id as WesternTabId)}
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 sm:py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    active ? 'bg-[#FDFBF7] text-[#3D3830] shadow-sm' : 'text-[#5C5449] hover:text-[#3D3830]'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        {/* HERO VISUAL + TELEMETRY */}
-        {viewMode === 'vedic' ? (
-          <div className="space-y-6">
+        <div className="shrink-0">
+          <AstrologyModeToggle
+            value={viewMode}
+            onChange={setViewMode}
+            variant="light"
+            size="sm"
+          />
+        </div>
+      </div>
+
+      {/* INTERACTIVE CONTENT VIEWS */}
+      {viewMode === 'vedic' ? (
+        <>
+          {/* VEDIC: CHART */}
+          {vedicTab === 'chart' && (
+            <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-4 sm:p-5 md:p-6 text-[#3D3830]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#3D3830]/10 pb-3.5 mb-4">
+                <div className="min-w-0">
+                  <p className="text-xs text-[#8B8275] mb-0.5 truncate">
+                    {chart.meta.ayanamsha} · {chart.meta.location.locationLabel}
+                  </p>
+                  <h2 className="font-serif text-xl sm:text-2xl font-medium text-[#3D3830]">
+                    {chart.meta.name} — Vedic Kundli (D1 &amp; {activeVargaDef.code})
+                  </h2>
+                </div>
+
+                <div className="w-48 sm:w-56 shrink-0">
+                  <CustomSelect
+                    value={selectedVargaCode}
+                    onChange={(val) => {
+                      if (val === 'ALL') {
+                        setVedicTab('vargas');
+                        window.setTimeout(() => {
+                          vedicTabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 40);
+                        return;
+                      }
+                      setSelectedVargaCode(val);
+                    }}
+                    options={vargaDropdownOptions}
+                    ariaLabel="Select divisional chart"
+                    size="xs"
+                    surface="canvas"
+                    align="right"
+                    minMenuWidth={280}
+                    icon={<Grid3X3 className="h-3.5 w-3.5 text-[#8B7355]" />}
+                    triggerClassName="rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-5">
             {/* Side-by-Side Lagna (D1) and Selected Divisional Chart (Default D9) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {allVargas.D1 && (
@@ -1158,235 +1244,9 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                 </div>
               </div>
             </div>
-          </div>
-        ) : westernWheelData ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            {/* Circular Western Natal Wheel SVG (Warm Ivory Light Theme) */}
-            <div className="lg:col-span-6 flex justify-center">
-              <svg
-                viewBox="0 0 420 420"
-                className="w-full max-w-[380px] h-auto select-none"
-                role="img"
-                aria-label="Western Tropical Natal Wheel"
-              >
-                {/* Outer Zodiac Ring */}
-                <circle cx="210" cy="210" r="196" fill="#FAF7F2" stroke="rgba(61,56,48,0.32)" strokeWidth="1.3" />
-                <circle cx="210" cy="210" r="162" fill="none" stroke="rgba(61,56,48,0.22)" strokeWidth="1" />
-                <circle cx="210" cy="210" r="106" fill="#F1ECE3" stroke="rgba(61,56,48,0.2)" strokeWidth="1" />
-
-                {/* Zodiac 12 Sign Sectors */}
-                {Array.from({ length: 12 }, (_, signIdx) => {
-                  const startLon = signIdx * 30;
-                  const midLon = startLon + 15;
-                  const a1 = westernWheelData.toScreenDeg(startLon);
-                  const aMid = westernWheelData.toScreenDeg(midLon);
-                  const pOuter = polarToXY(210, 210, 196, a1);
-                  const pInner = polarToXY(210, 210, 162, a1);
-                  const pText = polarToXY(210, 210, 179, aMid);
-                  return (
-                    <g key={`z-${signIdx}`}>
-                      <line x1={pOuter.x} y1={pOuter.y} x2={pInner.x} y2={pInner.y} stroke="rgba(61,56,48,0.18)" strokeWidth="1" />
-                      <text
-                        x={pText.x}
-                        y={pText.y}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fill="#8B7355"
-                        fontSize="12"
-                        fontWeight="600"
-                      >
-                        {ZODIAC_GLYPHS[signIdx]}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {/* Placidus House Cusps */}
-                {westernWheelData.w.cusps.map((cusp) => {
-                  const angle = westernWheelData.toScreenDeg(cusp.longitude);
-                  const pOut = polarToXY(210, 210, 162, angle);
-                  const pIn = polarToXY(210, 210, 106, angle);
-                  const isAngle = cusp.house === 1 || cusp.house === 4 || cusp.house === 7 || cusp.house === 10;
-                  const labelPos = polarToXY(
-                    210,
-                    210,
-                    118,
-                    westernWheelData.toScreenDeg(cusp.longitude + 10)
-                  );
-                  return (
-                    <g key={`c-${cusp.house}`}>
-                      <line
-                        x1={pOut.x}
-                        y1={pOut.y}
-                        x2={pIn.x}
-                        y2={pIn.y}
-                        stroke={isAngle ? '#8B7355' : 'rgba(61,56,48,0.18)'}
-                        strokeWidth={isAngle ? '1.5' : '0.8'}
-                        strokeDasharray={isAngle ? undefined : '2,2'}
-                      />
-                      <text
-                        x={labelPos.x}
-                        y={labelPos.y}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fill="#8B8275"
-                        fontSize="9"
-                        fontFamily="JetBrains Mono, monospace"
-                      >
-                        {cusp.house}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {/* Central Aspect Chords */}
-                {westernWheelData.majorAspectLines.map((line, idx) => (
-                  <line
-                    key={`asp-${idx}`}
-                    x1={line.p1.x}
-                    y1={line.p1.y}
-                    x2={line.p2.x}
-                    y2={line.p2.y}
-                    stroke={line.stroke}
-                    strokeWidth="1"
-                  />
-                ))}
-
-                {/* Planet Glyphs */}
-                {westernWheelData.drawableBodies.map((b) => {
-                  const tickOuter = polarToXY(210, 210, 162, b.screenAngle);
-                  const tickInner = polarToXY(210, 210, 155, b.screenAngle);
-                  const glyphPos = polarToXY(210, 210, 140, b.displayAngle);
-                  return (
-                    <g key={`wp-${b.name}`}>
-                      <line x1={tickOuter.x} y1={tickOuter.y} x2={tickInner.x} y2={tickInner.y} stroke="#8B7355" strokeWidth="1.2" />
-                      <circle cx={glyphPos.x} cy={glyphPos.y} r="10.5" fill="#FDFBF7" stroke="rgba(61,56,48,0.28)" strokeWidth="0.9" />
-                      <text
-                        x={glyphPos.x}
-                        y={glyphPos.y + 0.5}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fill="#3D3830"
-                        fontSize="11.5"
-                      >
-                        {b.symbol}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {/* Horizon AC/DC Labels */}
-                <text x="16" y="210" textAnchor="middle" dominantBaseline="middle" fill="#8B7355" fontSize="10" fontWeight="600">
-                  AC
-                </text>
-                <text x="404" y="210" textAnchor="middle" dominantBaseline="middle" fill="#8B7355" fontSize="10" fontWeight="600">
-                  DC
-                </text>
-                <text x="210" y="24" textAnchor="middle" dominantBaseline="middle" fill="#8B7355" fontSize="10" fontWeight="600">
-                  MC
-                </text>
-              </svg>
-            </div>
-
-            {/* Right Summary Telemetry (Western - Light Theme) */}
-            <div className="lg:col-span-6 space-y-4">
-              <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-5">
-                <p className="text-xs text-[#8B8275] mb-3">Tropical Big Three &amp; Midheaven</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-xs text-[#8B8275]">Sun</p>
-                    <p className="font-serif text-lg text-[#3D3830]">
-                      {westernWheelData.w.planets.find((p) => p.name === 'Sun')?.sign || '—'}
-                    </p>
-                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
-                      {westernWheelData.w.planets.find((p) => p.name === 'Sun')?.dms || ''}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-[#8B8275]">Moon</p>
-                    <p className="font-serif text-lg text-[#3D3830]">
-                      {westernWheelData.w.planets.find((p) => p.name === 'Moon')?.sign || '—'}
-                    </p>
-                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
-                      {westernWheelData.w.planets.find((p) => p.name === 'Moon')?.dms || ''}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-[#8B8275]">Rising (AC)</p>
-                    <p className="font-serif text-lg text-[#3D3830]">{westernWheelData.w.angles.ascendant.sign}</p>
-                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
-                      {westernWheelData.w.angles.ascendant.dms}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-[#8B8275]">Midheaven (MC)</p>
-                    <p className="font-serif text-lg text-[#3D3830]">{westernWheelData.w.angles.midheaven.sign}</p>
-                    <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
-                      {westernWheelData.w.angles.midheaven.dms}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4">
-                  <p className="text-[#8B8275] mb-2">Elemental Signature</p>
-                  <p className="font-serif text-lg text-[#3D3830] mb-2">{westernWheelData.w.dominantElement} Dominant</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 font-['JetBrains_Mono',monospace] text-[11px] text-[#5C5449]">
-                    <span>Fire {westernWheelData.w.elements.Fire}</span>
-                    <span>Earth {westernWheelData.w.elements.Earth}</span>
-                    <span>Air {westernWheelData.w.elements.Air}</span>
-                    <span>Water {westernWheelData.w.elements.Water}</span>
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4">
-                  <p className="text-[#8B8275] mb-2">Modality &amp; Polarity</p>
-                  <p className="font-serif text-lg text-[#3D3830] mb-2">{westernWheelData.w.dominantModality} Mode</p>
-                  <p className="font-['JetBrains_Mono',monospace] text-[11px] text-[#5C5449]">
-                    Yang {westernWheelData.w.polarities.Yang} · Yin {westernWheelData.w.polarities.Yin}
-                  </p>
-                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-6 text-sm text-[#5C5449]">
-            Waiting for Tropical coordinates to finish compiling for this profile.
-          </div>
-        )}
-      </div>
-
-      {/* INTERACTIVE FILTER TABS */}
-      {viewMode === 'vedic' ? (
-        <>
-          <div ref={vedicTabsRef} className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-[#F1ECE3] p-1.5 w-fit scroll-mt-4">
-            {[
-              { id: 'overview', label: 'Overview', icon: Sun },
-              { id: 'vargas', label: 'Divisional Charts', icon: Grid3X3 },
-              { id: 'planets', label: 'Planetary Positions', icon: Compass },
-              { id: 'kp', label: 'KP Cusps & Sub-Lords', icon: Layers },
-              { id: 'dasha', label: 'Dashas', icon: Clock },
-              { id: 'jaimini', label: 'Jaimini & Ashtakavarga', icon: Sparkles },
-              { id: 'shadbala', label: 'Shadbala', icon: BarChart3 },
-              { id: 'lalkitab', label: 'Lal Kitab', icon: Flame },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const active = vedicTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setVedicTab(tab.id as VedicTabId)}
-                  className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                    active ? 'bg-[#FDFBF7] text-[#3D3830] shadow-sm' : 'text-[#5C5449] hover:text-[#3D3830]'
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          )}
 
           {/* VEDIC: OVERVIEW */}
           {vedicTab === 'overview' && (
@@ -1587,6 +1447,39 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                 </div>
               )}
 
+              {/* Classical Planetary Yogas & Structural Combinations */}
+              {chart.yogas && chart.yogas.length > 0 && (
+                <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 sm:p-6">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+                    <h3 className="font-serif text-xl font-medium text-[#3D3830]">
+                      Detected Planetary Yogas &amp; Combinations
+                    </h3>
+                    <span className="font-['JetBrains_Mono',monospace] tabular-nums text-xs text-[#8B8275]">
+                      {chart.yogas.length} active
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                    {chart.yogas.map((y, idx) => (
+                      <div
+                        key={`${y.name}-${idx}`}
+                        className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/8 p-4 space-y-1.5"
+                      >
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="font-medium text-[#3D3830]">{y.name}</span>
+                          <span className="text-[10px] text-[#8B7355] shrink-0">{y.category}</span>
+                        </div>
+                        <p className="text-[#5C5449] leading-relaxed">{y.summary}</p>
+                        {y.planets && y.planets.length > 0 && (
+                          <p className="font-['JetBrains_Mono',monospace] text-[10px] text-[#8B8275] pt-1">
+                            {y.planets.join(' · ')}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Live Current Transits (Gochar) */}
               <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 overflow-hidden">
                 <div className="px-5 sm:px-6 py-4 border-b border-[#3D3830]/10 flex items-center justify-between">
@@ -1721,7 +1614,7 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                       All 16 Divisional Charts ({chartStyle === 'north' ? 'North Indian' : 'South Indian'})
                     </h3>
                     <p className="text-xs text-[#8B8275]">
-                      Synchronized with the {chartStyle === 'north' ? 'North Indian' : 'South Indian'} chart toggle above
+                      Synchronized with the {chartStyle === 'north' ? 'North' : 'South'} chart style selector
                     </p>
                   </div>
                 </div>
@@ -2144,6 +2037,75 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
                 </div>
               )}
 
+              {/* Jaimini Argala & Virodha-Argala */}
+              {chart.jaimini.argala && chart.jaimini.argala.length > 0 && (
+                <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 sm:p-6">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+                    <h3 className="font-serif text-xl font-medium text-[#3D3830]">
+                      Argala &amp; Virodha-Argala (Planetary Interventions)
+                    </h3>
+                    <span className="text-xs text-[#8B8275]">
+                      Houses 1 (Self), 7 (Partnership) &amp; 10 (Career)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs">
+                    {chart.jaimini.argala.map((arg) => (
+                      <div
+                        key={arg.targetHouse}
+                        className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/8 p-4 space-y-2.5"
+                      >
+                        <div className="flex items-center justify-between gap-2 border-b border-[#3D3830]/8 pb-2">
+                          <span className="font-serif text-base font-medium text-[#3D3830]">
+                            House {arg.targetHouse} · {arg.targetSign}
+                          </span>
+                          <span
+                            className={`text-[11px] font-medium ${
+                              arg.netSupport === 'Strong'
+                                ? 'text-[#2D6A4F]'
+                                : arg.netSupport === 'Obstructed'
+                                ? 'text-[#7A3E36]'
+                                : 'text-[#8B7355]'
+                            }`}
+                          >
+                            {arg.netSupport}
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-[#8B8275]">Supporting Argala (2, 4, 11, 5)</p>
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[#3D3830]">
+                            {arg.supportingHouses
+                              .filter((h) => h.planets.length > 0)
+                              .map((h) => (
+                                <span key={h.house} className="font-['JetBrains_Mono',monospace] text-[11px]">
+                                  H{h.house}: {h.planets.join(', ')}
+                                </span>
+                              ))}
+                            {arg.supportingHouses.every((h) => h.planets.length === 0) && (
+                              <span className="text-[#8B8275]">None occupied</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-[#8B8275]">Obstructing Virodha (12, 10, 3, 9)</p>
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[#5C5449]">
+                            {arg.obstructingHouses
+                              .filter((h) => h.planets.length > 0)
+                              .map((h) => (
+                                <span key={h.house} className="font-['JetBrains_Mono',monospace] text-[11px]">
+                                  H{h.house}: {h.planets.join(', ')}
+                                </span>
+                              ))}
+                            {arg.obstructingHouses.every((h) => h.planets.length === 0) && (
+                              <span className="text-[#8B8275]">None occupied</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Bhinnashtakavarga Matrix */}
               {chart.ashtakavarga.bhinna && (
                 <div className="overflow-x-auto rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10">
@@ -2398,32 +2360,211 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
       ) : (
         /* WESTERN MODE */
         <>
-          <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-[#F1ECE3] p-1.5 w-fit">
-            {[
-              { id: 'overview', label: 'Overview', icon: Sun },
-              { id: 'planets', label: 'Planets & Houses', icon: Orbit },
-              { id: 'aspects', label: 'Aspects & Orbs', icon: Sparkles },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const active = westernTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setWesternTab(tab.id as WesternTabId)}
-                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
-                    active ? 'bg-[#FDFBF7] text-[#3D3830] shadow-sm' : 'text-[#5C5449] hover:text-[#3D3830]'
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
           {chart.western ? (
             <>
+              {westernTab === 'chart' && (
+                <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-4 sm:p-5 md:p-6 text-[#3D3830]">
+                  <div className="border-b border-[#3D3830]/10 pb-3.5 mb-5">
+                    <p className="text-xs text-[#8B8275] mb-0.5 truncate">
+                      {chart.western?.system || 'Tropical (Placidus)'} · {chart.meta.location.locationLabel}
+                    </p>
+                    <h2 className="font-serif text-xl sm:text-2xl font-medium text-[#3D3830]">
+                      {chart.meta.name} — Tropical Natal Wheel
+                    </h2>
+                  </div>
+
+                  {westernWheelData ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                      {/* Circular Western Natal Wheel SVG (Warm Ivory Light Theme) */}
+                      <div className="lg:col-span-6 flex justify-center">
+                        <svg
+                          viewBox="0 0 420 420"
+                          className="w-full max-w-[380px] h-auto select-none"
+                          role="img"
+                          aria-label="Western Tropical Natal Wheel"
+                        >
+                          <circle cx="210" cy="210" r="196" fill="#FAF7F2" stroke="rgba(61,56,48,0.32)" strokeWidth="1.3" />
+                          <circle cx="210" cy="210" r="162" fill="none" stroke="rgba(61,56,48,0.22)" strokeWidth="1" />
+                          <circle cx="210" cy="210" r="106" fill="#F1ECE3" stroke="rgba(61,56,48,0.2)" strokeWidth="1" />
+
+                          {Array.from({ length: 12 }, (_, signIdx) => {
+                            const startLon = signIdx * 30;
+                            const midLon = startLon + 15;
+                            const a1 = westernWheelData.toScreenDeg(startLon);
+                            const aMid = westernWheelData.toScreenDeg(midLon);
+                            const pOuter = polarToXY(210, 210, 196, a1);
+                            const pInner = polarToXY(210, 210, 162, a1);
+                            const pText = polarToXY(210, 210, 179, aMid);
+                            return (
+                              <g key={`z-${signIdx}`}>
+                                <line x1={pOuter.x} y1={pOuter.y} x2={pInner.x} y2={pInner.y} stroke="rgba(61,56,48,0.18)" strokeWidth="1" />
+                                <text
+                                  x={pText.x}
+                                  y={pText.y}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  fill="#8B7355"
+                                  fontSize="12"
+                                  fontWeight="600"
+                                >
+                                  {ZODIAC_GLYPHS[signIdx]}
+                                </text>
+                              </g>
+                            );
+                          })}
+
+                          {westernWheelData.w.cusps.map((cusp) => {
+                            const angle = westernWheelData.toScreenDeg(cusp.longitude);
+                            const pOut = polarToXY(210, 210, 162, angle);
+                            const pIn = polarToXY(210, 210, 106, angle);
+                            const isAngle = cusp.house === 1 || cusp.house === 4 || cusp.house === 7 || cusp.house === 10;
+                            const labelPos = polarToXY(
+                              210,
+                              210,
+                              118,
+                              westernWheelData.toScreenDeg(cusp.longitude + 10)
+                            );
+                            return (
+                              <g key={`c-${cusp.house}`}>
+                                <line
+                                  x1={pOut.x}
+                                  y1={pOut.y}
+                                  x2={pIn.x}
+                                  y2={pIn.y}
+                                  stroke={isAngle ? '#8B7355' : 'rgba(61,56,48,0.18)'}
+                                  strokeWidth={isAngle ? '1.5' : '0.8'}
+                                  strokeDasharray={isAngle ? undefined : '2,2'}
+                                />
+                                <text
+                                  x={labelPos.x}
+                                  y={labelPos.y}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  fill="#8B8275"
+                                  fontSize="9"
+                                  fontFamily="JetBrains Mono, monospace"
+                                >
+                                  {cusp.house}
+                                </text>
+                              </g>
+                            );
+                          })}
+
+                          {westernWheelData.majorAspectLines.map((line, idx) => (
+                            <line
+                              key={`asp-${idx}`}
+                              x1={line.p1.x}
+                              y1={line.p1.y}
+                              x2={line.p2.x}
+                              y2={line.p2.y}
+                              stroke={line.stroke}
+                              strokeWidth="1"
+                            />
+                          ))}
+
+                          {westernWheelData.drawableBodies.map((b) => {
+                            const tickOuter = polarToXY(210, 210, 162, b.screenAngle);
+                            const tickInner = polarToXY(210, 210, 155, b.screenAngle);
+                            const glyphPos = polarToXY(210, 210, 140, b.displayAngle);
+                            return (
+                              <g key={`wp-${b.name}`}>
+                                <line x1={tickOuter.x} y1={tickOuter.y} x2={tickInner.x} y2={tickInner.y} stroke="#8B7355" strokeWidth="1.2" />
+                                <circle cx={glyphPos.x} cy={glyphPos.y} r="10.5" fill="#FDFBF7" stroke="rgba(61,56,48,0.28)" strokeWidth="0.9" />
+                                <text
+                                  x={glyphPos.x}
+                                  y={glyphPos.y + 0.5}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  fill="#3D3830"
+                                  fontSize="11.5"
+                                >
+                                  {b.symbol}
+                                </text>
+                              </g>
+                            );
+                          })}
+
+                          <text x="16" y="210" textAnchor="middle" dominantBaseline="middle" fill="#8B7355" fontSize="10" fontWeight="600">
+                            AC
+                          </text>
+                          <text x="404" y="210" textAnchor="middle" dominantBaseline="middle" fill="#8B7355" fontSize="10" fontWeight="600">
+                            DC
+                          </text>
+                          <text x="210" y="24" textAnchor="middle" dominantBaseline="middle" fill="#8B7355" fontSize="10" fontWeight="600">
+                            MC
+                          </text>
+                        </svg>
+                      </div>
+
+                      {/* Right Summary Telemetry (Western - Light Theme) */}
+                      <div className="lg:col-span-6 space-y-4">
+                        <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-5">
+                          <p className="text-xs text-[#8B8275] mb-3">Tropical Big Three &amp; Midheaven</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                            <div>
+                              <p className="text-xs text-[#8B8275]">Sun</p>
+                              <p className="font-serif text-lg text-[#3D3830]">
+                                {westernWheelData.w.planets.find((p) => p.name === 'Sun')?.sign || '—'}
+                              </p>
+                              <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
+                                {westernWheelData.w.planets.find((p) => p.name === 'Sun')?.dms || ''}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-[#8B8275]">Moon</p>
+                              <p className="font-serif text-lg text-[#3D3830]">
+                                {westernWheelData.w.planets.find((p) => p.name === 'Moon')?.sign || '—'}
+                              </p>
+                              <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
+                                {westernWheelData.w.planets.find((p) => p.name === 'Moon')?.dms || ''}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-[#8B8275]">Rising (AC)</p>
+                              <p className="font-serif text-lg text-[#3D3830]">{westernWheelData.w.angles.ascendant.sign}</p>
+                              <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
+                                {westernWheelData.w.angles.ascendant.dms}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-[#8B8275]">Midheaven (MC)</p>
+                              <p className="font-serif text-lg text-[#3D3830]">{westernWheelData.w.angles.midheaven.sign}</p>
+                              <p className="text-[11px] font-['JetBrains_Mono',monospace] text-[#8B7355]">
+                                {westernWheelData.w.angles.midheaven.dms}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 text-xs">
+                          <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4">
+                            <p className="text-[#8B8275] mb-2">Elemental Signature</p>
+                            <p className="font-serif text-lg text-[#3D3830] mb-2">{westernWheelData.w.dominantElement} Dominant</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 font-['JetBrains_Mono',monospace] text-[11px] text-[#5C5449]">
+                              <span>Fire {westernWheelData.w.elements.Fire}</span>
+                              <span>Earth {westernWheelData.w.elements.Earth}</span>
+                              <span>Air {westernWheelData.w.elements.Air}</span>
+                              <span>Water {westernWheelData.w.elements.Water}</span>
+                            </div>
+                          </div>
+                          <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-4">
+                            <p className="text-[#8B8275] mb-2">Modality &amp; Polarity</p>
+                            <p className="font-serif text-lg text-[#3D3830] mb-2">{westernWheelData.w.dominantModality} Mode</p>
+                            <p className="font-['JetBrains_Mono',monospace] text-[11px] text-[#5C5449]">
+                              Yang {westernWheelData.w.polarities.Yang} · Yin {westernWheelData.w.polarities.Yin}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl bg-[#FAF7F2] border border-[#3D3830]/10 p-6 text-sm text-[#5C5449]">
+                      Waiting for Tropical coordinates to finish compiling for this profile.
+                    </div>
+                  )}
+                </div>
+              )}
+
               {westernTab === 'overview' && (
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

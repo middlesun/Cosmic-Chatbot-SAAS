@@ -5,12 +5,14 @@ import type { CompanionCarouselItem, ConversationLine } from './landingData';
 interface EditorialRevealProps {
   children: React.ReactNode;
   delay?: number;
+  direction?: 'up' | 'left' | 'right';
   className?: string;
 }
 
 export const EditorialReveal: React.FC<EditorialRevealProps> = ({
   children,
   delay = 0,
+  direction = 'up',
   className = '',
 }) => {
   const ref = useRef<HTMLDivElement>(null);
@@ -37,19 +39,26 @@ export const EditorialReveal: React.FC<EditorialRevealProps> = ({
           }
         }
       },
-      { threshold: 0.08, rootMargin: '0px 0px -24px 0px' }
+      { threshold: 0.12, rootMargin: '0px 0px -56px 0px' }
     );
 
     observer.observe(node);
     return () => observer.disconnect();
   }, [visible]);
 
+  const hiddenTransform =
+    direction === 'left'
+      ? '-translate-x-8 opacity-0'
+      : direction === 'right'
+      ? 'translate-x-8 opacity-0'
+      : 'translate-y-10 scale-[0.985] opacity-0';
+
   return (
     <div
       ref={ref}
       style={delay ? { transitionDelay: `${delay}ms` } : undefined}
-      className={`transition-[transform,opacity] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
-        visible ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'
+      className={`transition-[transform,opacity] duration-[850ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:transition-none motion-reduce:transform-none motion-reduce:opacity-100 ${
+        visible ? 'translate-x-0 translate-y-0 scale-100 opacity-100' : hiddenTransform
       } ${className}`}
     >
       {children}
@@ -170,7 +179,7 @@ interface DialogueShowcaseProps {
     avatarUrl: string;
   };
   lines: ConversationLine[];
-  footnote: string;
+  footnote?: string;
   userBubbleClassName?: string;
   companionBubbleClassName?: string;
   surfaceClassName?: string;
@@ -297,7 +306,9 @@ export const DialogueShowcase: React.FC<DialogueShowcaseProps> = ({
         })}
       </div>
 
-      <p className="pt-2 text-xs text-[#8B8275]">{footnote}</p>
+      {footnote?.trim() && (
+        <p className="pt-2 text-xs text-[#8B8275]">{footnote}</p>
+      )}
     </div>
   );
 };
@@ -366,7 +377,7 @@ export const CompanionCarousel: React.FC<CompanionCarouselProps> = ({
                 src={item.imageUrl}
                 alt={item.alt}
                 className="h-full w-full"
-                imgClassName="object-top transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03]"
+                imgClassName={`${item.imgClassName || 'object-top'} transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03]`}
                 fallbackLabel={item.name}
               />
             </div>

@@ -11,6 +11,7 @@ import { Category, Currency, Product } from './types';
 import MetaTags from './components/MetaTags';
 import type { SanityArticleItem } from './lib/sanity';
 import AppRoutes from './components/app/AppRoutes';
+import FlagshipHomePage from './components/landing/FlagshipHomePage';
 import HomeLandingPage from './components/landing/HomeLandingPage';
 import NewLandingPage from './components/NewLandingPage';
 import BlogPage from './components/BlogPage';
@@ -125,8 +126,8 @@ const App: React.FC = () => {
   }
 
   const scrollToLandingSection = (id: string) => {
-    if (location.pathname !== '/home-2') {
-      navigate('/home-2');
+    if (location.pathname !== '/') {
+      navigate('/');
       window.setTimeout(() => {
         document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
       }, 250);
@@ -179,15 +180,6 @@ const App: React.FC = () => {
         element={
           <>
             {homeMetaTags}
-            <HomeLandingPage />
-          </>
-        }
-      />
-      <Route
-        path="/home-2"
-        element={
-          <>
-            {homeMetaTags}
             <NewLandingPage
               currency={currency}
               setCurrency={setCurrency}
@@ -208,6 +200,26 @@ const App: React.FC = () => {
               onContact={() => scrollToLandingSection('contact-section')}
               onPay={() => navigate('/app/login')}
             />
+          </>
+        }
+      />
+      <Route path="/home-3" element={<Navigate to="/" replace />} />
+      <Route path="/home-2" element={<Navigate to="/archive/home-2" replace />} />
+      <Route
+        path="/archive/home-1"
+        element={
+          <>
+            {homeMetaTags}
+            <FlagshipHomePage />
+          </>
+        }
+      />
+      <Route
+        path="/archive/home-2"
+        element={
+          <>
+            {homeMetaTags}
+            <HomeLandingPage />
           </>
         }
       />

@@ -100,7 +100,7 @@ const ProfileManager: React.FC = () => {
   const [inspectingId, setInspectingId] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<ProfileSummary | null>(null);
   const [selectedDailyTransits, setSelectedDailyTransits] = useState<DailyTransitsPayload | null>(null);
-  const [initialChartTab, setInitialChartTab] = useState<VedicTabId>('overview');
+  const [initialChartTab, setInitialChartTab] = useState<VedicTabId>('chart');
 
   // Edit Modal state
   const [editingProfile, setEditingProfile] = useState<ProfileSummary | null>(null);
@@ -454,7 +454,7 @@ const ProfileManager: React.FC = () => {
     }
   };
 
-  const handleInspectChart = async (profileId: string, initialTab: VedicTabId = 'overview') => {
+  const handleInspectChart = async (profileId: string, initialTab: VedicTabId = 'chart') => {
     setInitialChartTab(initialTab);
     if (isPreviewMode) {
       const target = profiles.find((p) => p.id === profileId) || profiles[0];

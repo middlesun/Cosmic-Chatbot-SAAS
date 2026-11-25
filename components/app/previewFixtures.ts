@@ -2810,218 +2810,6947 @@ export const PREVIEW_CHART_JSON: CompiledChartJson = {
     { name: 'Ketu', longitude: 64.7, signIndex: 2, sign: 'Gemini', degreeInSign: 4.7, dms: '04°42′', nakshatra: 'Mrigashira', nakshatraLord: 'Mars', pada: 4, subLord: 'Venus', subSubLord: 'Jupiter', isRetrograde: true, house: 10, dignity: 'Neutral' },
   ]),
   kp: {
-    cusps: [
-      { house: 1, sign: 'Virgo', dms: '12°24′', signLord: 'Mercury', nakshatra: 'Hasta', starLord: 'Moon', subLord: 'Mercury' },
-      { house: 2, sign: 'Libra', dms: '11°50′', signLord: 'Venus', nakshatra: 'Swati', starLord: 'Rahu', subLord: 'Saturn' },
-      { house: 3, sign: 'Scorpio', dms: '12°32′', signLord: 'Mars', nakshatra: 'Anuradha', starLord: 'Saturn', subLord: 'Venus' },
-      { house: 4, sign: 'Sagittarius', dms: '14°08′', signLord: 'Jupiter', nakshatra: 'Purva Ashadha', starLord: 'Venus', subLord: 'Mercury' },
-      { house: 5, sign: 'Capricorn', dms: '15°15′', signLord: 'Saturn', nakshatra: 'Shravana', starLord: 'Moon', subLord: 'Rahu' },
-      { house: 6, sign: 'Aquarius', dms: '14°44′', signLord: 'Saturn', nakshatra: 'Shatabhisha', starLord: 'Rahu', subLord: 'Jupiter' },
-      { house: 7, sign: 'Pisces', dms: '12°24′', signLord: 'Jupiter', nakshatra: 'Uttara Bhadrapada', starLord: 'Saturn', subLord: 'Mercury' },
-      { house: 8, sign: 'Aries', dms: '11°50′', signLord: 'Mars', nakshatra: 'Ashwini', starLord: 'Ketu', subLord: 'Saturn' },
-      { house: 9, sign: 'Taurus', dms: '12°32′', signLord: 'Venus', nakshatra: 'Rohini', starLord: 'Moon', subLord: 'Venus' },
-      { house: 10, sign: 'Gemini', dms: '14°08′', signLord: 'Mercury', nakshatra: 'Ardra', starLord: 'Rahu', subLord: 'Jupiter' },
-      { house: 11, sign: 'Cancer', dms: '15°15′', signLord: 'Moon', nakshatra: 'Pushya', starLord: 'Saturn', subLord: 'Mercury' },
-      { house: 12, sign: 'Leo', dms: '14°44′', signLord: 'Sun', nakshatra: 'Purva Phalguni', starLord: 'Venus', subLord: 'Jupiter' },
+    "cusps": [
+      {
+        "house": 1,
+        "longitude": 162.4984,
+        "signIndex": 5,
+        "sign": "Virgo",
+        "degreeInSign": 12.4984,
+        "dms": "12°29'54\"",
+        "signLord": "Mercury",
+        "nakshatra": "Hasta",
+        "starLord": "Moon",
+        "subLord": "Rahu"
+      },
+      {
+        "house": 2,
+        "longitude": 193.973,
+        "signIndex": 6,
+        "sign": "Libra",
+        "degreeInSign": 13.973,
+        "dms": "13°58'23\"",
+        "signLord": "Venus",
+        "nakshatra": "Swati",
+        "starLord": "Rahu",
+        "subLord": "Mercury"
+      },
+      {
+        "house": 3,
+        "longitude": 222.746,
+        "signIndex": 7,
+        "sign": "Scorpio",
+        "degreeInSign": 12.746,
+        "dms": "12°44'46\"",
+        "signLord": "Mars",
+        "nakshatra": "Anuradha",
+        "starLord": "Saturn",
+        "subLord": "Mars"
+      },
+      {
+        "house": 4,
+        "longitude": 248.1284,
+        "signIndex": 8,
+        "sign": "Sagittarius",
+        "degreeInSign": 8.1284,
+        "dms": "08°07'42\"",
+        "signLord": "Jupiter",
+        "nakshatra": "Mula",
+        "starLord": "Ketu",
+        "subLord": "Jupiter"
+      },
+      {
+        "house": 5,
+        "longitude": 273.7223,
+        "signIndex": 9,
+        "sign": "Capricorn",
+        "degreeInSign": 3.7223,
+        "dms": "03°43'20\"",
+        "signLord": "Saturn",
+        "nakshatra": "Uttara Ashadha",
+        "starLord": "Sun",
+        "subLord": "Saturn"
+      },
+      {
+        "house": 6,
+        "longitude": 303.0955,
+        "signIndex": 10,
+        "sign": "Aquarius",
+        "degreeInSign": 3.0955,
+        "dms": "03°05'44\"",
+        "signLord": "Saturn",
+        "nakshatra": "Dhanishta",
+        "starLord": "Mars",
+        "subLord": "Venus"
+      },
+      {
+        "house": 7,
+        "longitude": 342.4984,
+        "signIndex": 11,
+        "sign": "Pisces",
+        "degreeInSign": 12.4984,
+        "dms": "12°29'54\"",
+        "signLord": "Jupiter",
+        "nakshatra": "Uttara Bhadrapada",
+        "starLord": "Saturn",
+        "subLord": "Mars"
+      },
+      {
+        "house": 8,
+        "longitude": 13.973,
+        "signIndex": 0,
+        "sign": "Aries",
+        "degreeInSign": 13.973,
+        "dms": "13°58'23\"",
+        "signLord": "Mars",
+        "nakshatra": "Bharani",
+        "starLord": "Venus",
+        "subLord": "Venus"
+      },
+      {
+        "house": 9,
+        "longitude": 42.746,
+        "signIndex": 1,
+        "sign": "Taurus",
+        "degreeInSign": 12.746,
+        "dms": "12°44'46\"",
+        "signLord": "Venus",
+        "nakshatra": "Rohini",
+        "starLord": "Moon",
+        "subLord": "Rahu"
+      },
+      {
+        "house": 10,
+        "longitude": 68.1284,
+        "signIndex": 2,
+        "sign": "Gemini",
+        "degreeInSign": 8.1284,
+        "dms": "08°07'42\"",
+        "signLord": "Mercury",
+        "nakshatra": "Ardra",
+        "starLord": "Rahu",
+        "subLord": "Rahu"
+      },
+      {
+        "house": 11,
+        "longitude": 93.7223,
+        "signIndex": 3,
+        "sign": "Cancer",
+        "degreeInSign": 3.7223,
+        "dms": "03°43'20\"",
+        "signLord": "Moon",
+        "nakshatra": "Pushya",
+        "starLord": "Saturn",
+        "subLord": "Saturn"
+      },
+      {
+        "house": 12,
+        "longitude": 123.0955,
+        "signIndex": 4,
+        "sign": "Leo",
+        "degreeInSign": 3.0955,
+        "dms": "03°05'44\"",
+        "signLord": "Sun",
+        "nakshatra": "Magha",
+        "starLord": "Ketu",
+        "subLord": "Sun"
+      }
     ],
-    significators: [
-      { planet: 'Sun', occupiesHouse: 11, ownsHouses: [12], starLord: 'Mercury', subLord: 'Venus', signifiesHouses: [1, 10, 11, 12] },
-      { planet: 'Moon', occupiesHouse: 1, ownsHouses: [11], starLord: 'Moon', subLord: 'Saturn', signifiesHouses: [1, 5, 6, 11] },
-      { planet: 'Mars', occupiesHouse: 9, ownsHouses: [3, 8], starLord: 'Mars', subLord: 'Moon', signifiesHouses: [1, 3, 8, 9] },
-      { planet: 'Mercury', occupiesHouse: 12, ownsHouses: [1, 10], starLord: 'Ketu', subLord: 'Jupiter', signifiesHouses: [1, 4, 7, 10, 12] },
-      { planet: 'Jupiter', occupiesHouse: 12, ownsHouses: [4, 7], starLord: 'Venus', subLord: 'Mercury', signifiesHouses: [2, 4, 7, 9, 10, 12] },
-      { planet: 'Venus', occupiesHouse: 12, ownsHouses: [2, 9], starLord: 'Venus', subLord: 'Venus', signifiesHouses: [2, 9, 12] },
-      { planet: 'Saturn', occupiesHouse: 5, ownsHouses: [5, 6], starLord: 'Moon', subLord: 'Saturn', signifiesHouses: [1, 5, 6, 11] },
-      { planet: 'Rahu', occupiesHouse: 4, ownsHouses: [], starLord: 'Ketu', subLord: 'Venus', signifiesHouses: [4, 10, 12] },
-      { planet: 'Ketu', occupiesHouse: 10, ownsHouses: [], starLord: 'Mars', subLord: 'Venus', signifiesHouses: [3, 8, 9, 10] },
+    "significators": [
+      {
+        "planet": "Sun",
+        "occupiesHouse": 11,
+        "ownsHouses": [
+          12
+        ],
+        "starLord": "Mercury",
+        "starLordOccupies": 12,
+        "starLordOwns": [
+          1,
+          10
+        ],
+        "subLord": "Venus",
+        "signifiesHouses": [
+          1,
+          10,
+          11,
+          12
+        ]
+      },
+      {
+        "planet": "Moon",
+        "occupiesHouse": 1,
+        "ownsHouses": [
+          11
+        ],
+        "starLord": "Moon",
+        "starLordOccupies": 1,
+        "starLordOwns": [
+          11
+        ],
+        "subLord": "Saturn",
+        "signifiesHouses": [
+          1,
+          11
+        ]
+      },
+      {
+        "planet": "Mars",
+        "occupiesHouse": 9,
+        "ownsHouses": [
+          3,
+          8
+        ],
+        "starLord": "Mars",
+        "starLordOccupies": 9,
+        "starLordOwns": [
+          3,
+          8
+        ],
+        "subLord": "Moon",
+        "signifiesHouses": [
+          3,
+          8,
+          9
+        ]
+      },
+      {
+        "planet": "Mercury",
+        "occupiesHouse": 12,
+        "ownsHouses": [
+          1,
+          10
+        ],
+        "starLord": "Ketu",
+        "starLordOccupies": 9,
+        "starLordOwns": [],
+        "subLord": "Jupiter",
+        "signifiesHouses": [
+          1,
+          9,
+          10,
+          12
+        ]
+      },
+      {
+        "planet": "Jupiter",
+        "occupiesHouse": 12,
+        "ownsHouses": [
+          4,
+          7
+        ],
+        "starLord": "Venus",
+        "starLordOccupies": 12,
+        "starLordOwns": [
+          2,
+          9
+        ],
+        "subLord": "Mercury",
+        "signifiesHouses": [
+          2,
+          4,
+          7,
+          9,
+          12
+        ]
+      },
+      {
+        "planet": "Venus",
+        "occupiesHouse": 12,
+        "ownsHouses": [
+          2,
+          9
+        ],
+        "starLord": "Venus",
+        "starLordOccupies": 12,
+        "starLordOwns": [
+          2,
+          9
+        ],
+        "subLord": "Venus",
+        "signifiesHouses": [
+          2,
+          9,
+          12
+        ]
+      },
+      {
+        "planet": "Saturn",
+        "occupiesHouse": 5,
+        "ownsHouses": [
+          5,
+          6
+        ],
+        "starLord": "Moon",
+        "starLordOccupies": 1,
+        "starLordOwns": [
+          11
+        ],
+        "subLord": "Saturn",
+        "signifiesHouses": [
+          1,
+          5,
+          6,
+          11
+        ]
+      },
+      {
+        "planet": "Rahu",
+        "occupiesHouse": 3,
+        "ownsHouses": [],
+        "starLord": "Ketu",
+        "starLordOccupies": 9,
+        "starLordOwns": [],
+        "subLord": "Venus",
+        "signifiesHouses": [
+          3,
+          9
+        ]
+      },
+      {
+        "planet": "Ketu",
+        "occupiesHouse": 9,
+        "ownsHouses": [],
+        "starLord": "Mars",
+        "starLordOccupies": 9,
+        "starLordOwns": [
+          3,
+          8
+        ],
+        "subLord": "Venus",
+        "signifiesHouses": [
+          3,
+          8,
+          9
+        ]
+      }
     ],
-    rulingPlanets: {
-      dayLord: 'Venus',
-      lagnaSignLord: 'Mercury',
-      lagnaStarLord: 'Moon',
-      lagnaSubLord: 'Mercury',
-      moonSignLord: 'Mercury',
-      moonStarLord: 'Moon',
-      moonSubLord: 'Saturn',
-      uniqueRulingPlanets: ['Mercury', 'Moon', 'Saturn', 'Venus'],
-    },
+    "rulingPlanets": {
+      "dayLord": "Venus",
+      "lagnaSignLord": "Mercury",
+      "lagnaStarLord": "Moon",
+      "lagnaSubLord": "Mercury",
+      "moonSignLord": "Mercury",
+      "moonStarLord": "Moon",
+      "moonSubLord": "Saturn",
+      "uniqueRulingPlanets": [
+        "Mercury",
+        "Moon",
+        "Saturn",
+        "Venus"
+      ]
+    }
   },
   jaimini: {
-    karakas: [
-      { code: 'AK', title: 'Atmakaraka', planet: 'Sun', dms: '27°48′', sign: 'Cancer' },
-      { code: 'AmK', title: 'Amatyakaraka', planet: 'Jupiter', dms: '25°18′', sign: 'Leo' },
-      { code: 'BK', title: 'Bhratrikaraka', planet: 'Mars', dms: '24°12′', sign: 'Taurus' },
-      { code: 'MK', title: 'Matrikaraka', planet: 'Saturn', dms: '20°06′', sign: 'Capricorn' },
-      { code: 'PK', title: 'Putrakaraka', planet: 'Moon', dms: '18°54′', sign: 'Virgo' },
-      { code: 'GK', title: 'Gnatikaraka', planet: 'Venus', dms: '16°30′', sign: 'Leo' },
-      { code: 'DK', title: 'Darakaraka', planet: 'Mercury', dms: '10°36′', sign: 'Leo' },
+    "karakas": [
+      {
+        "code": "AK",
+        "title": "Atmakaraka (Soul)",
+        "planet": "Sun",
+        "degreeInSign": 27.8,
+        "dms": "27°48′",
+        "sign": "Cancer"
+      },
+      {
+        "code": "AmK",
+        "title": "Amatyakaraka (Career)",
+        "planet": "Jupiter",
+        "degreeInSign": 25.3,
+        "dms": "25°18′",
+        "sign": "Leo"
+      },
+      {
+        "code": "BK",
+        "title": "Bhratrukaraka (Siblings/Mentor)",
+        "planet": "Mars",
+        "degreeInSign": 24.2,
+        "dms": "24°12′",
+        "sign": "Taurus"
+      },
+      {
+        "code": "MK",
+        "title": "Matrukaraka (Mother/Home)",
+        "planet": "Saturn",
+        "degreeInSign": 20.1,
+        "dms": "20°06′",
+        "sign": "Capricorn"
+      },
+      {
+        "code": "PK",
+        "title": "Putrakaraka (Children/Intellect)",
+        "planet": "Moon",
+        "degreeInSign": 18.9,
+        "dms": "18°54′",
+        "sign": "Virgo"
+      },
+      {
+        "code": "GK",
+        "title": "Gnatikaraka (Obstacles/Strife)",
+        "planet": "Venus",
+        "degreeInSign": 16.5,
+        "dms": "16°30′",
+        "sign": "Leo"
+      },
+      {
+        "code": "DK",
+        "title": "Darakaraka (Spouse/Partnership)",
+        "planet": "Mercury",
+        "degreeInSign": 10.6,
+        "dms": "10°36′",
+        "sign": "Leo"
+      }
     ],
-    karakamshaSign: 'Pisces',
-    arudhaPadas: [
-      { code: 'AL', house: 1, houseLord: 'Mercury', lordSign: 'Leo', padaSignIndex: 10, padaSign: 'Aquarius', padaHouseFromLagna: 6 },
-      { code: 'A7', house: 7, houseLord: 'Jupiter', lordSign: 'Leo', padaSignIndex: 9, padaSign: 'Capricorn', padaHouseFromLagna: 5 },
-      { code: 'A10', house: 10, houseLord: 'Mercury', lordSign: 'Leo', padaSignIndex: 6, padaSign: 'Libra', padaHouseFromLagna: 2 },
-      { code: 'UL', house: 12, houseLord: 'Sun', lordSign: 'Cancer', padaSignIndex: 2, padaSign: 'Gemini', padaHouseFromLagna: 10 },
+    "karakamshaSign": "Pisces",
+    "arudhaPadas": [
+      {
+        "code": "AL",
+        "house": 1,
+        "houseLord": "Mercury",
+        "lordSign": "Leo",
+        "padaSignIndex": 3,
+        "padaSign": "Cancer",
+        "padaHouseFromLagna": 11
+      },
+      {
+        "code": "A2",
+        "house": 2,
+        "houseLord": "Venus",
+        "lordSign": "Leo",
+        "padaSignIndex": 2,
+        "padaSign": "Gemini",
+        "padaHouseFromLagna": 10
+      },
+      {
+        "code": "A3",
+        "house": 3,
+        "houseLord": "Mars",
+        "lordSign": "Taurus",
+        "padaSignIndex": 4,
+        "padaSign": "Leo",
+        "padaHouseFromLagna": 12
+      },
+      {
+        "code": "A4",
+        "house": 4,
+        "houseLord": "Jupiter",
+        "lordSign": "Leo",
+        "padaSignIndex": 0,
+        "padaSign": "Aries",
+        "padaHouseFromLagna": 8
+      },
+      {
+        "code": "A5",
+        "house": 5,
+        "houseLord": "Saturn",
+        "lordSign": "Capricorn",
+        "padaSignIndex": 6,
+        "padaSign": "Libra",
+        "padaHouseFromLagna": 2
+      },
+      {
+        "code": "A6",
+        "house": 6,
+        "houseLord": "Saturn",
+        "lordSign": "Capricorn",
+        "padaSignIndex": 8,
+        "padaSign": "Sagittarius",
+        "padaHouseFromLagna": 4
+      },
+      {
+        "code": "A7",
+        "house": 7,
+        "houseLord": "Jupiter",
+        "lordSign": "Leo",
+        "padaSignIndex": 9,
+        "padaSign": "Capricorn",
+        "padaHouseFromLagna": 5
+      },
+      {
+        "code": "A8",
+        "house": 8,
+        "houseLord": "Mars",
+        "lordSign": "Taurus",
+        "padaSignIndex": 2,
+        "padaSign": "Gemini",
+        "padaHouseFromLagna": 10
+      },
+      {
+        "code": "A9",
+        "house": 9,
+        "houseLord": "Venus",
+        "lordSign": "Leo",
+        "padaSignIndex": 4,
+        "padaSign": "Leo",
+        "padaHouseFromLagna": 12
+      },
+      {
+        "code": "A10",
+        "house": 10,
+        "houseLord": "Mercury",
+        "lordSign": "Leo",
+        "padaSignIndex": 6,
+        "padaSign": "Libra",
+        "padaHouseFromLagna": 2
+      },
+      {
+        "code": "A11",
+        "house": 11,
+        "houseLord": "Moon",
+        "lordSign": "Virgo",
+        "padaSignIndex": 7,
+        "padaSign": "Scorpio",
+        "padaHouseFromLagna": 3
+      },
+      {
+        "code": "UL",
+        "house": 12,
+        "houseLord": "Sun",
+        "lordSign": "Cancer",
+        "padaSignIndex": 2,
+        "padaSign": "Gemini",
+        "padaHouseFromLagna": 10
+      }
     ],
-    charaDasha: {
-      periods: [
-        { signIndex: 5, sign: 'Virgo', years: 11, startDate: '1992-08-14', endDate: '2003-08-14' },
-        { signIndex: 4, sign: 'Leo', years: 1, startDate: '2003-08-14', endDate: '2004-08-14' },
-        { signIndex: 3, sign: 'Cancer', years: 12, startDate: '2004-08-14', endDate: '2016-08-14' },
-        { signIndex: 2, sign: 'Gemini', years: 10, startDate: '2016-08-14', endDate: '2026-08-14' },
-        { signIndex: 1, sign: 'Taurus', years: 5, startDate: '2026-08-14', endDate: '2031-08-14' },
-        { signIndex: 0, sign: 'Aries', years: 4, startDate: '2031-08-14', endDate: '2035-08-14' },
+    "charaDasha": {
+      "periods": [
+        {
+          "signIndex": 5,
+          "sign": "Virgo",
+          "years": 1,
+          "startDate": "1992-08-14",
+          "endDate": "1993-08-14"
+        },
+        {
+          "signIndex": 6,
+          "sign": "Libra",
+          "years": 10,
+          "startDate": "1993-08-14",
+          "endDate": "2003-08-14"
+        },
+        {
+          "signIndex": 7,
+          "sign": "Scorpio",
+          "years": 6,
+          "startDate": "2003-08-14",
+          "endDate": "2009-08-14"
+        },
+        {
+          "signIndex": 8,
+          "sign": "Sagittarius",
+          "years": 8,
+          "startDate": "2009-08-14",
+          "endDate": "2017-08-14"
+        },
+        {
+          "signIndex": 9,
+          "sign": "Capricorn",
+          "years": 12,
+          "startDate": "2017-08-14",
+          "endDate": "2029-08-13"
+        },
+        {
+          "signIndex": 10,
+          "sign": "Aquarius",
+          "years": 1,
+          "startDate": "2029-08-13",
+          "endDate": "2030-08-14"
+        },
+        {
+          "signIndex": 11,
+          "sign": "Pisces",
+          "years": 7,
+          "startDate": "2030-08-14",
+          "endDate": "2037-08-13"
+        },
+        {
+          "signIndex": 0,
+          "sign": "Aries",
+          "years": 1,
+          "startDate": "2037-08-13",
+          "endDate": "2038-08-14"
+        },
+        {
+          "signIndex": 1,
+          "sign": "Taurus",
+          "years": 3,
+          "startDate": "2038-08-14",
+          "endDate": "2041-08-13"
+        },
+        {
+          "signIndex": 2,
+          "sign": "Gemini",
+          "years": 2,
+          "startDate": "2041-08-13",
+          "endDate": "2043-08-14"
+        },
+        {
+          "signIndex": 3,
+          "sign": "Cancer",
+          "years": 10,
+          "startDate": "2043-08-14",
+          "endDate": "2053-08-13"
+        },
+        {
+          "signIndex": 4,
+          "sign": "Leo",
+          "years": 1,
+          "startDate": "2053-08-13",
+          "endDate": "2054-08-14"
+        }
       ],
-      currentPeriod: { signIndex: 1, sign: 'Taurus', years: 5, startDate: '2026-08-14', endDate: '2031-08-14' },
+      "currentPeriod": {
+        "signIndex": 9,
+        "sign": "Capricorn",
+        "years": 12,
+        "startDate": "2017-08-14",
+        "endDate": "2029-08-13"
+      }
     },
+    "argala": [
+      {
+        "targetHouse": 1,
+        "targetSign": "Virgo",
+        "supportingHouses": [
+          {
+            "house": 2,
+            "label": "2nd (Sustenance)",
+            "planets": []
+          },
+          {
+            "house": 4,
+            "label": "4th (Home/Base)",
+            "planets": [
+              "Rahu"
+            ]
+          },
+          {
+            "house": 11,
+            "label": "11th (Gains)",
+            "planets": [
+              "Sun"
+            ]
+          },
+          {
+            "house": 5,
+            "label": "5th (Creative/Followers)",
+            "planets": [
+              "Saturn"
+            ]
+          }
+        ],
+        "obstructingHouses": [
+          {
+            "house": 12,
+            "label": "12th",
+            "planets": [
+              "Mercury",
+              "Jupiter",
+              "Venus"
+            ]
+          },
+          {
+            "house": 10,
+            "label": "10th",
+            "planets": [
+              "Ketu"
+            ]
+          },
+          {
+            "house": 3,
+            "label": "3rd",
+            "planets": []
+          },
+          {
+            "house": 9,
+            "label": "9th",
+            "planets": [
+              "Mars"
+            ]
+          }
+        ],
+        "netSupport": "Obstructed"
+      },
+      {
+        "targetHouse": 7,
+        "targetSign": "Pisces",
+        "supportingHouses": [
+          {
+            "house": 8,
+            "label": "2nd (Sustenance)",
+            "planets": []
+          },
+          {
+            "house": 10,
+            "label": "4th (Home/Base)",
+            "planets": [
+              "Ketu"
+            ]
+          },
+          {
+            "house": 5,
+            "label": "11th (Gains)",
+            "planets": [
+              "Saturn"
+            ]
+          },
+          {
+            "house": 11,
+            "label": "5th (Creative/Followers)",
+            "planets": [
+              "Sun"
+            ]
+          }
+        ],
+        "obstructingHouses": [
+          {
+            "house": 6,
+            "label": "12th",
+            "planets": []
+          },
+          {
+            "house": 4,
+            "label": "10th",
+            "planets": [
+              "Rahu"
+            ]
+          },
+          {
+            "house": 9,
+            "label": "3rd",
+            "planets": [
+              "Mars"
+            ]
+          },
+          {
+            "house": 3,
+            "label": "9th",
+            "planets": []
+          }
+        ],
+        "netSupport": "Strong"
+      },
+      {
+        "targetHouse": 10,
+        "targetSign": "Gemini",
+        "supportingHouses": [
+          {
+            "house": 11,
+            "label": "2nd (Sustenance)",
+            "planets": [
+              "Sun"
+            ]
+          },
+          {
+            "house": 1,
+            "label": "4th (Home/Base)",
+            "planets": [
+              "Moon"
+            ]
+          },
+          {
+            "house": 8,
+            "label": "11th (Gains)",
+            "planets": []
+          },
+          {
+            "house": 2,
+            "label": "5th (Creative/Followers)",
+            "planets": []
+          }
+        ],
+        "obstructingHouses": [
+          {
+            "house": 9,
+            "label": "12th",
+            "planets": [
+              "Mars"
+            ]
+          },
+          {
+            "house": 7,
+            "label": "10th",
+            "planets": []
+          },
+          {
+            "house": 12,
+            "label": "3rd",
+            "planets": [
+              "Mercury",
+              "Jupiter",
+              "Venus"
+            ]
+          },
+          {
+            "house": 6,
+            "label": "9th",
+            "planets": []
+          }
+        ],
+        "netSupport": "Obstructed"
+      }
+    ]
   },
   ashtakavarga: {
-    bhinna: {
-      Sun: [4, 5, 3, 4, 4, 5, 3, 4, 5, 3, 4, 4],
-      Moon: [4, 5, 4, 3, 4, 5, 3, 4, 5, 4, 4, 4],
-      Mars: [3, 4, 3, 3, 3, 4, 2, 4, 3, 3, 4, 3],
-      Mercury: [4, 5, 5, 4, 4, 6, 4, 4, 4, 5, 4, 5],
-      Jupiter: [5, 5, 6, 4, 5, 4, 4, 5, 5, 4, 5, 4],
-      Venus: [4, 5, 4, 5, 4, 4, 4, 5, 4, 4, 5, 4],
-      Saturn: [3, 3, 4, 3, 3, 3, 3, 4, 3, 4, 3, 3],
+    "bhinna": {
+      "Sun": [
+        4,
+        3,
+        5,
+        6,
+        4,
+        1,
+        3,
+        4,
+        4,
+        6,
+        6,
+        2
+      ],
+      "Moon": [
+        2,
+        5,
+        7,
+        4,
+        2,
+        3,
+        3,
+        6,
+        3,
+        2,
+        7,
+        5
+      ],
+      "Mars": [
+        2,
+        3,
+        5,
+        5,
+        2,
+        3,
+        2,
+        5,
+        3,
+        4,
+        3,
+        2
+      ],
+      "Mercury": [
+        5,
+        3,
+        7,
+        5,
+        4,
+        3,
+        5,
+        4,
+        6,
+        4,
+        4,
+        4
+      ],
+      "Jupiter": [
+        3,
+        8,
+        6,
+        3,
+        4,
+        5,
+        4,
+        3,
+        5,
+        5,
+        4,
+        6
+      ],
+      "Venus": [
+        7,
+        6,
+        4,
+        3,
+        3,
+        5,
+        6,
+        4,
+        5,
+        4,
+        1,
+        4
+      ],
+      "Saturn": [
+        3,
+        3,
+        5,
+        7,
+        1,
+        2,
+        2,
+        3,
+        2,
+        4,
+        4,
+        3
+      ]
     },
-    sarva: [27, 32, 29, 26, 27, 31, 23, 30, 29, 27, 29, 27],
-    totalBindus: 337,
+    "sarva": [
+      26,
+      31,
+      39,
+      33,
+      20,
+      22,
+      25,
+      29,
+      28,
+      29,
+      29,
+      26
+    ],
+    "totalBindus": 337
   },
   vimshottari: {
-    timeline: [
+    "timeline": [
       {
-        lord: 'Saturn',
-        startDate: '2018-04-10',
-        endDate: '2037-04-10',
-        children: [
+        "lord": "Moon",
+        "startDate": "1992-08-14",
+        "endDate": "1995-12-11",
+        "level": "mahadasha",
+        "children": [
           {
-            lord: 'Jupiter',
-            startDate: '2025-11-04',
-            endDate: '2028-05-17',
-            children: [
-              { lord: 'Jupiter', startDate: '2025-11-04', endDate: '2026-03-08' },
-              { lord: 'Saturn', startDate: '2026-03-08', endDate: '2026-09-20' },
-              { lord: 'Mercury', startDate: '2026-09-20', endDate: '2027-01-28' },
-              { lord: 'Ketu', startDate: '2027-01-28', endDate: '2027-03-22' },
-            ],
+            "lord": "Mercury",
+            "startDate": "1992-08-14",
+            "endDate": "1993-03-12",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Rahu",
+                "startDate": "1992-08-14",
+                "endDate": "1992-10-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "1992-10-12",
+                "endDate": "1992-12-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "1992-12-20",
+                "endDate": "1993-03-12",
+                "level": "pratyantardasha"
+              }
+            ]
           },
-          { lord: 'Mercury', startDate: '2028-05-17', endDate: '2031-01-25' },
-        ],
+          {
+            "lord": "Ketu",
+            "startDate": "1993-03-12",
+            "endDate": "1993-10-11",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Ketu",
+                "startDate": "1993-03-12",
+                "endDate": "1993-03-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "1993-03-24",
+                "endDate": "1993-04-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "1993-04-29",
+                "endDate": "1993-05-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "1993-05-09",
+                "endDate": "1993-05-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "1993-05-27",
+                "endDate": "1993-06-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "1993-06-08",
+                "endDate": "1993-07-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "1993-07-10",
+                "endDate": "1993-08-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "1993-08-08",
+                "endDate": "1993-09-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "1993-09-11",
+                "endDate": "1993-10-11",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Venus",
+            "startDate": "1993-10-11",
+            "endDate": "1995-06-11",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Venus",
+                "startDate": "1993-10-11",
+                "endDate": "1994-01-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "1994-01-20",
+                "endDate": "1994-02-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "1994-02-20",
+                "endDate": "1994-04-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "1994-04-11",
+                "endDate": "1994-05-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "1994-05-17",
+                "endDate": "1994-08-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "1994-08-16",
+                "endDate": "1994-11-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "1994-11-05",
+                "endDate": "1995-02-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "1995-02-10",
+                "endDate": "1995-05-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "1995-05-07",
+                "endDate": "1995-06-11",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Sun",
+            "startDate": "1995-06-11",
+            "endDate": "1995-12-11",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Sun",
+                "startDate": "1995-06-11",
+                "endDate": "1995-06-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "1995-06-21",
+                "endDate": "1995-07-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "1995-07-06",
+                "endDate": "1995-07-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "1995-07-16",
+                "endDate": "1995-08-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "1995-08-13",
+                "endDate": "1995-09-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "1995-09-06",
+                "endDate": "1995-10-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "1995-10-05",
+                "endDate": "1995-10-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "1995-10-31",
+                "endDate": "1995-11-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "1995-11-11",
+                "endDate": "1995-12-11",
+                "level": "pratyantardasha"
+              }
+            ]
+          }
+        ]
       },
       {
-        lord: 'Mercury',
-        startDate: '2037-04-10',
-        endDate: '2054-04-10',
+        "lord": "Mars",
+        "startDate": "1995-12-11",
+        "endDate": "2002-12-11",
+        "level": "mahadasha",
+        "children": [
+          {
+            "lord": "Mars",
+            "startDate": "1995-12-11",
+            "endDate": "1996-05-08",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mars",
+                "startDate": "1995-12-11",
+                "endDate": "1995-12-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "1995-12-20",
+                "endDate": "1996-01-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "1996-01-11",
+                "endDate": "1996-01-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "1996-01-31",
+                "endDate": "1996-02-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "1996-02-24",
+                "endDate": "1996-03-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "1996-03-16",
+                "endDate": "1996-03-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "1996-03-24",
+                "endDate": "1996-04-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "1996-04-18",
+                "endDate": "1996-04-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "1996-04-26",
+                "endDate": "1996-05-08",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Rahu",
+            "startDate": "1996-05-08",
+            "endDate": "1997-05-27",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Rahu",
+                "startDate": "1996-05-08",
+                "endDate": "1996-07-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "1996-07-05",
+                "endDate": "1996-08-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "1996-08-25",
+                "endDate": "1996-10-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "1996-10-25",
+                "endDate": "1996-12-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "1996-12-18",
+                "endDate": "1997-01-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "1997-01-09",
+                "endDate": "1997-03-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "1997-03-14",
+                "endDate": "1997-04-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "1997-04-02",
+                "endDate": "1997-05-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "1997-05-04",
+                "endDate": "1997-05-27",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Jupiter",
+            "startDate": "1997-05-27",
+            "endDate": "1998-05-03",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Jupiter",
+                "startDate": "1997-05-27",
+                "endDate": "1997-07-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "1997-07-11",
+                "endDate": "1997-09-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "1997-09-03",
+                "endDate": "1997-10-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "1997-10-21",
+                "endDate": "1997-11-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "1997-11-10",
+                "endDate": "1998-01-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "1998-01-06",
+                "endDate": "1998-01-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "1998-01-23",
+                "endDate": "1998-02-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "1998-02-21",
+                "endDate": "1998-03-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "1998-03-12",
+                "endDate": "1998-05-03",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Saturn",
+            "startDate": "1998-05-03",
+            "endDate": "1999-06-11",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Saturn",
+                "startDate": "1998-05-03",
+                "endDate": "1998-07-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "1998-07-06",
+                "endDate": "1998-09-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "1998-09-01",
+                "endDate": "1998-09-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "1998-09-25",
+                "endDate": "1998-12-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "1998-12-01",
+                "endDate": "1998-12-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "1998-12-21",
+                "endDate": "1999-01-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "1999-01-24",
+                "endDate": "1999-02-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "1999-02-17",
+                "endDate": "1999-04-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "1999-04-18",
+                "endDate": "1999-06-11",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mercury",
+            "startDate": "1999-06-11",
+            "endDate": "2000-06-08",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mercury",
+                "startDate": "1999-06-11",
+                "endDate": "1999-08-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "1999-08-02",
+                "endDate": "1999-08-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "1999-08-23",
+                "endDate": "1999-10-22",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "1999-10-22",
+                "endDate": "1999-11-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "1999-11-09",
+                "endDate": "1999-12-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "1999-12-10",
+                "endDate": "1999-12-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "1999-12-31",
+                "endDate": "2000-02-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2000-02-23",
+                "endDate": "2000-04-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2000-04-11",
+                "endDate": "2000-06-08",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Ketu",
+            "startDate": "2000-06-08",
+            "endDate": "2000-11-04",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Ketu",
+                "startDate": "2000-06-08",
+                "endDate": "2000-06-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2000-06-16",
+                "endDate": "2000-07-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2000-07-11",
+                "endDate": "2000-07-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2000-07-19",
+                "endDate": "2000-07-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2000-07-31",
+                "endDate": "2000-08-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2000-08-09",
+                "endDate": "2000-08-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2000-08-31",
+                "endDate": "2000-09-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2000-09-20",
+                "endDate": "2000-10-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2000-10-14",
+                "endDate": "2000-11-04",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Venus",
+            "startDate": "2000-11-04",
+            "endDate": "2002-01-04",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Venus",
+                "startDate": "2000-11-04",
+                "endDate": "2001-01-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2001-01-14",
+                "endDate": "2001-02-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2001-02-04",
+                "endDate": "2001-03-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2001-03-12",
+                "endDate": "2001-04-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2001-04-05",
+                "endDate": "2001-06-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2001-06-08",
+                "endDate": "2001-08-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2001-08-04",
+                "endDate": "2001-10-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2001-10-11",
+                "endDate": "2001-12-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2001-12-10",
+                "endDate": "2002-01-04",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Sun",
+            "startDate": "2002-01-04",
+            "endDate": "2002-05-12",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Sun",
+                "startDate": "2002-01-04",
+                "endDate": "2002-01-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2002-01-10",
+                "endDate": "2002-01-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2002-01-21",
+                "endDate": "2002-01-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2002-01-28",
+                "endDate": "2002-02-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2002-02-17",
+                "endDate": "2002-03-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2002-03-06",
+                "endDate": "2002-03-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2002-03-26",
+                "endDate": "2002-04-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2002-04-13",
+                "endDate": "2002-04-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2002-04-20",
+                "endDate": "2002-05-12",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Moon",
+            "startDate": "2002-05-12",
+            "endDate": "2002-12-11",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Moon",
+                "startDate": "2002-05-12",
+                "endDate": "2002-05-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2002-05-29",
+                "endDate": "2002-06-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2002-06-11",
+                "endDate": "2002-07-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2002-07-13",
+                "endDate": "2002-08-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2002-08-10",
+                "endDate": "2002-09-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2002-09-13",
+                "endDate": "2002-10-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2002-10-13",
+                "endDate": "2002-10-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2002-10-26",
+                "endDate": "2002-11-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2002-11-30",
+                "endDate": "2002-12-11",
+                "level": "pratyantardasha"
+              }
+            ]
+          }
+        ]
       },
+      {
+        "lord": "Rahu",
+        "startDate": "2002-12-11",
+        "endDate": "2020-12-10",
+        "level": "mahadasha",
+        "children": [
+          {
+            "lord": "Rahu",
+            "startDate": "2002-12-11",
+            "endDate": "2005-08-23",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Rahu",
+                "startDate": "2002-12-11",
+                "endDate": "2003-05-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2003-05-08",
+                "endDate": "2003-09-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2003-09-16",
+                "endDate": "2004-02-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2004-02-19",
+                "endDate": "2004-07-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2004-07-08",
+                "endDate": "2004-09-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2004-09-04",
+                "endDate": "2005-02-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2005-02-15",
+                "endDate": "2005-04-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2005-04-05",
+                "endDate": "2005-06-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2005-06-26",
+                "endDate": "2005-08-23",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Jupiter",
+            "startDate": "2005-08-23",
+            "endDate": "2008-01-17",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Jupiter",
+                "startDate": "2005-08-23",
+                "endDate": "2005-12-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2005-12-18",
+                "endDate": "2006-05-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2006-05-06",
+                "endDate": "2006-09-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2006-09-07",
+                "endDate": "2006-10-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2006-10-28",
+                "endDate": "2007-03-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2007-03-23",
+                "endDate": "2007-05-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2007-05-06",
+                "endDate": "2007-07-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2007-07-18",
+                "endDate": "2007-09-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2007-09-07",
+                "endDate": "2008-01-17",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Saturn",
+            "startDate": "2008-01-17",
+            "endDate": "2010-11-22",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Saturn",
+                "startDate": "2008-01-17",
+                "endDate": "2008-06-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2008-06-29",
+                "endDate": "2008-11-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2008-11-24",
+                "endDate": "2009-01-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2009-01-24",
+                "endDate": "2009-07-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2009-07-16",
+                "endDate": "2009-09-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2009-09-06",
+                "endDate": "2009-12-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2009-12-02",
+                "endDate": "2010-02-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2010-02-01",
+                "endDate": "2010-07-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2010-07-07",
+                "endDate": "2010-11-22",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mercury",
+            "startDate": "2010-11-22",
+            "endDate": "2013-06-11",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mercury",
+                "startDate": "2010-11-22",
+                "endDate": "2011-04-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2011-04-03",
+                "endDate": "2011-05-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2011-05-28",
+                "endDate": "2011-10-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2011-10-30",
+                "endDate": "2011-12-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2011-12-16",
+                "endDate": "2012-03-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2012-03-02",
+                "endDate": "2012-04-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2012-04-25",
+                "endDate": "2012-09-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2012-09-12",
+                "endDate": "2013-01-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2013-01-14",
+                "endDate": "2013-06-11",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Ketu",
+            "startDate": "2013-06-11",
+            "endDate": "2014-06-29",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Ketu",
+                "startDate": "2013-06-11",
+                "endDate": "2013-07-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2013-07-03",
+                "endDate": "2013-09-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2013-09-05",
+                "endDate": "2013-09-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2013-09-24",
+                "endDate": "2013-10-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2013-10-26",
+                "endDate": "2013-11-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2013-11-18",
+                "endDate": "2014-01-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2014-01-14",
+                "endDate": "2014-03-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2014-03-06",
+                "endDate": "2014-05-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2014-05-06",
+                "endDate": "2014-06-29",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Venus",
+            "startDate": "2014-06-29",
+            "endDate": "2017-06-29",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Venus",
+                "startDate": "2014-06-29",
+                "endDate": "2014-12-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2014-12-29",
+                "endDate": "2015-02-22",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2015-02-22",
+                "endDate": "2015-05-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2015-05-24",
+                "endDate": "2015-07-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2015-07-27",
+                "endDate": "2016-01-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2016-01-07",
+                "endDate": "2016-06-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2016-06-01",
+                "endDate": "2016-11-22",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2016-11-22",
+                "endDate": "2017-04-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2017-04-26",
+                "endDate": "2017-06-29",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Sun",
+            "startDate": "2017-06-29",
+            "endDate": "2018-05-24",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Sun",
+                "startDate": "2017-06-29",
+                "endDate": "2017-07-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2017-07-15",
+                "endDate": "2017-08-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2017-08-12",
+                "endDate": "2017-08-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2017-08-31",
+                "endDate": "2017-10-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2017-10-19",
+                "endDate": "2017-12-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2017-12-02",
+                "endDate": "2018-01-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2018-01-23",
+                "endDate": "2018-03-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2018-03-11",
+                "endDate": "2018-03-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2018-03-30",
+                "endDate": "2018-05-24",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Moon",
+            "startDate": "2018-05-24",
+            "endDate": "2019-11-23",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Moon",
+                "startDate": "2018-05-24",
+                "endDate": "2018-07-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2018-07-08",
+                "endDate": "2018-08-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2018-08-09",
+                "endDate": "2018-10-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2018-10-31",
+                "endDate": "2019-01-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2019-01-12",
+                "endDate": "2019-04-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2019-04-08",
+                "endDate": "2019-06-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2019-06-25",
+                "endDate": "2019-07-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2019-07-27",
+                "endDate": "2019-10-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2019-10-26",
+                "endDate": "2019-11-23",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mars",
+            "startDate": "2019-11-23",
+            "endDate": "2020-12-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mars",
+                "startDate": "2019-11-23",
+                "endDate": "2019-12-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2019-12-15",
+                "endDate": "2020-02-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2020-02-11",
+                "endDate": "2020-04-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2020-04-02",
+                "endDate": "2020-06-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2020-06-01",
+                "endDate": "2020-07-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2020-07-26",
+                "endDate": "2020-08-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2020-08-17",
+                "endDate": "2020-10-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2020-10-20",
+                "endDate": "2020-11-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2020-11-08",
+                "endDate": "2020-12-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "lord": "Jupiter",
+        "startDate": "2020-12-10",
+        "endDate": "2036-12-10",
+        "level": "mahadasha",
+        "children": [
+          {
+            "lord": "Jupiter",
+            "startDate": "2020-12-10",
+            "endDate": "2023-01-28",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Jupiter",
+                "startDate": "2020-12-10",
+                "endDate": "2021-03-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2021-03-24",
+                "endDate": "2021-07-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2021-07-25",
+                "endDate": "2021-11-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2021-11-13",
+                "endDate": "2021-12-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2021-12-28",
+                "endDate": "2022-05-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2022-05-07",
+                "endDate": "2022-06-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2022-06-15",
+                "endDate": "2022-08-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2022-08-19",
+                "endDate": "2022-10-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2022-10-03",
+                "endDate": "2023-01-28",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Saturn",
+            "startDate": "2023-01-28",
+            "endDate": "2025-08-11",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Saturn",
+                "startDate": "2023-01-28",
+                "endDate": "2023-06-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2023-06-24",
+                "endDate": "2023-11-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2023-11-02",
+                "endDate": "2023-12-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2023-12-26",
+                "endDate": "2024-05-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2024-05-28",
+                "endDate": "2024-07-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2024-07-13",
+                "endDate": "2024-09-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2024-09-28",
+                "endDate": "2024-11-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2024-11-21",
+                "endDate": "2025-04-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2025-04-09",
+                "endDate": "2025-08-11",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mercury",
+            "startDate": "2025-08-11",
+            "endDate": "2027-11-16",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mercury",
+                "startDate": "2025-08-11",
+                "endDate": "2025-12-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2025-12-06",
+                "endDate": "2026-01-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2026-01-23",
+                "endDate": "2026-06-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2026-06-10",
+                "endDate": "2026-07-22",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2026-07-22",
+                "endDate": "2026-09-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2026-09-29",
+                "endDate": "2026-11-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2026-11-16",
+                "endDate": "2027-03-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2027-03-20",
+                "endDate": "2027-07-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2027-07-08",
+                "endDate": "2027-11-16",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Ketu",
+            "startDate": "2027-11-16",
+            "endDate": "2028-10-22",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Ketu",
+                "startDate": "2027-11-16",
+                "endDate": "2027-12-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2027-12-06",
+                "endDate": "2028-02-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2028-02-01",
+                "endDate": "2028-02-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2028-02-18",
+                "endDate": "2028-03-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2028-03-18",
+                "endDate": "2028-04-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2028-04-07",
+                "endDate": "2028-05-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2028-05-28",
+                "endDate": "2028-07-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2028-07-12",
+                "endDate": "2028-09-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2028-09-04",
+                "endDate": "2028-10-22",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Venus",
+            "startDate": "2028-10-22",
+            "endDate": "2031-06-23",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Venus",
+                "startDate": "2028-10-22",
+                "endDate": "2029-04-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2029-04-03",
+                "endDate": "2029-05-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2029-05-21",
+                "endDate": "2029-08-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2029-08-11",
+                "endDate": "2029-10-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2029-10-06",
+                "endDate": "2030-03-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2030-03-01",
+                "endDate": "2030-07-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2030-07-09",
+                "endDate": "2030-12-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2030-12-11",
+                "endDate": "2031-04-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2031-04-28",
+                "endDate": "2031-06-23",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Sun",
+            "startDate": "2031-06-23",
+            "endDate": "2032-04-11",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Sun",
+                "startDate": "2031-06-23",
+                "endDate": "2031-07-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2031-07-08",
+                "endDate": "2031-08-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2031-08-01",
+                "endDate": "2031-08-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2031-08-18",
+                "endDate": "2031-10-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2031-10-01",
+                "endDate": "2031-11-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2031-11-09",
+                "endDate": "2031-12-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2031-12-25",
+                "endDate": "2032-02-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2032-02-05",
+                "endDate": "2032-02-22",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2032-02-22",
+                "endDate": "2032-04-11",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Moon",
+            "startDate": "2032-04-11",
+            "endDate": "2033-08-11",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Moon",
+                "startDate": "2032-04-11",
+                "endDate": "2032-05-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2032-05-21",
+                "endDate": "2032-06-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2032-06-19",
+                "endDate": "2032-08-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2032-08-31",
+                "endDate": "2032-11-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2032-11-04",
+                "endDate": "2033-01-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2033-01-20",
+                "endDate": "2033-03-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2033-03-30",
+                "endDate": "2033-04-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2033-04-27",
+                "endDate": "2033-07-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2033-07-17",
+                "endDate": "2033-08-11",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mars",
+            "startDate": "2033-08-11",
+            "endDate": "2034-07-17",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mars",
+                "startDate": "2033-08-11",
+                "endDate": "2033-08-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2033-08-30",
+                "endDate": "2033-10-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2033-10-21",
+                "endDate": "2033-12-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2033-12-05",
+                "endDate": "2034-01-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2034-01-28",
+                "endDate": "2034-03-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2034-03-17",
+                "endDate": "2034-04-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2034-04-06",
+                "endDate": "2034-06-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2034-06-02",
+                "endDate": "2034-06-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2034-06-19",
+                "endDate": "2034-07-17",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Rahu",
+            "startDate": "2034-07-17",
+            "endDate": "2036-12-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Rahu",
+                "startDate": "2034-07-17",
+                "endDate": "2034-11-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2034-11-26",
+                "endDate": "2035-03-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2035-03-23",
+                "endDate": "2035-08-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2035-08-09",
+                "endDate": "2035-12-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2035-12-11",
+                "endDate": "2036-01-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2036-01-31",
+                "endDate": "2036-06-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2036-06-25",
+                "endDate": "2036-08-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2036-08-08",
+                "endDate": "2036-10-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2036-10-20",
+                "endDate": "2036-12-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "lord": "Saturn",
+        "startDate": "2036-12-10",
+        "endDate": "2055-12-11",
+        "level": "mahadasha",
+        "children": [
+          {
+            "lord": "Saturn",
+            "startDate": "2036-12-10",
+            "endDate": "2039-12-14",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Saturn",
+                "startDate": "2036-12-10",
+                "endDate": "2037-06-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2037-06-02",
+                "endDate": "2037-11-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2037-11-05",
+                "endDate": "2038-01-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2038-01-08",
+                "endDate": "2038-07-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2038-07-10",
+                "endDate": "2038-09-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2038-09-03",
+                "endDate": "2038-12-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2038-12-03",
+                "endDate": "2039-02-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2039-02-05",
+                "endDate": "2039-07-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2039-07-20",
+                "endDate": "2039-12-14",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mercury",
+            "startDate": "2039-12-14",
+            "endDate": "2042-08-23",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mercury",
+                "startDate": "2039-12-14",
+                "endDate": "2040-05-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2040-05-01",
+                "endDate": "2040-06-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2040-06-27",
+                "endDate": "2040-12-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2040-12-08",
+                "endDate": "2041-01-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2041-01-26",
+                "endDate": "2041-04-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2041-04-18",
+                "endDate": "2041-06-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2041-06-15",
+                "endDate": "2041-11-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2041-11-09",
+                "endDate": "2042-03-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2042-03-20",
+                "endDate": "2042-08-23",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Ketu",
+            "startDate": "2042-08-23",
+            "endDate": "2043-10-02",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Ketu",
+                "startDate": "2042-08-23",
+                "endDate": "2042-09-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2042-09-16",
+                "endDate": "2042-11-22",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2042-11-22",
+                "endDate": "2042-12-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2042-12-12",
+                "endDate": "2043-01-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2043-01-15",
+                "endDate": "2043-02-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2043-02-08",
+                "endDate": "2043-04-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2043-04-09",
+                "endDate": "2043-06-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2043-06-02",
+                "endDate": "2043-08-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2043-08-05",
+                "endDate": "2043-10-02",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Venus",
+            "startDate": "2043-10-02",
+            "endDate": "2046-12-01",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Venus",
+                "startDate": "2043-10-02",
+                "endDate": "2044-04-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2044-04-11",
+                "endDate": "2044-06-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2044-06-08",
+                "endDate": "2044-09-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2044-09-13",
+                "endDate": "2044-11-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2044-11-19",
+                "endDate": "2045-05-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2045-05-12",
+                "endDate": "2045-10-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2045-10-13",
+                "endDate": "2046-04-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2046-04-14",
+                "endDate": "2046-09-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2046-09-25",
+                "endDate": "2046-12-01",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Sun",
+            "startDate": "2046-12-01",
+            "endDate": "2047-11-13",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Sun",
+                "startDate": "2046-12-01",
+                "endDate": "2046-12-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2046-12-19",
+                "endDate": "2047-01-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2047-01-17",
+                "endDate": "2047-02-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2047-02-06",
+                "endDate": "2047-03-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2047-03-30",
+                "endDate": "2047-05-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2047-05-15",
+                "endDate": "2047-07-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2047-07-09",
+                "endDate": "2047-08-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2047-08-27",
+                "endDate": "2047-09-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2047-09-16",
+                "endDate": "2047-11-13",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Moon",
+            "startDate": "2047-11-13",
+            "endDate": "2049-06-14",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Moon",
+                "startDate": "2047-11-13",
+                "endDate": "2047-12-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2047-12-31",
+                "endDate": "2048-02-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2048-02-03",
+                "endDate": "2048-04-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2048-04-30",
+                "endDate": "2048-07-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2048-07-16",
+                "endDate": "2048-10-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2048-10-16",
+                "endDate": "2049-01-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2049-01-06",
+                "endDate": "2049-02-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2049-02-08",
+                "endDate": "2049-05-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2049-05-16",
+                "endDate": "2049-06-14",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mars",
+            "startDate": "2049-06-14",
+            "endDate": "2050-07-23",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mars",
+                "startDate": "2049-06-14",
+                "endDate": "2049-07-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2049-07-07",
+                "endDate": "2049-09-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2049-09-06",
+                "endDate": "2049-10-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2049-10-30",
+                "endDate": "2050-01-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2050-01-02",
+                "endDate": "2050-02-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2050-02-28",
+                "endDate": "2050-03-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2050-03-24",
+                "endDate": "2050-05-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2050-05-30",
+                "endDate": "2050-06-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2050-06-20",
+                "endDate": "2050-07-23",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Rahu",
+            "startDate": "2050-07-23",
+            "endDate": "2053-05-29",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Rahu",
+                "startDate": "2050-07-23",
+                "endDate": "2050-12-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2050-12-27",
+                "endDate": "2051-05-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2051-05-14",
+                "endDate": "2051-10-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2051-10-26",
+                "endDate": "2052-03-22",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2052-03-22",
+                "endDate": "2052-05-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2052-05-21",
+                "endDate": "2052-11-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2052-11-11",
+                "endDate": "2053-01-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2053-01-02",
+                "endDate": "2053-03-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2053-03-30",
+                "endDate": "2053-05-29",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Jupiter",
+            "startDate": "2053-05-29",
+            "endDate": "2055-12-11",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Jupiter",
+                "startDate": "2053-05-29",
+                "endDate": "2053-09-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2053-09-30",
+                "endDate": "2054-02-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2054-02-23",
+                "endDate": "2054-07-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2054-07-04",
+                "endDate": "2054-08-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2054-08-27",
+                "endDate": "2055-01-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2055-01-28",
+                "endDate": "2055-03-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2055-03-16",
+                "endDate": "2055-06-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2055-06-01",
+                "endDate": "2055-07-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2055-07-25",
+                "endDate": "2055-12-11",
+                "level": "pratyantardasha"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "lord": "Mercury",
+        "startDate": "2055-12-11",
+        "endDate": "2072-12-10",
+        "level": "mahadasha",
+        "children": [
+          {
+            "lord": "Mercury",
+            "startDate": "2055-12-11",
+            "endDate": "2058-05-08",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mercury",
+                "startDate": "2055-12-11",
+                "endDate": "2056-04-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2056-04-13",
+                "endDate": "2056-06-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2056-06-04",
+                "endDate": "2056-10-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2056-10-28",
+                "endDate": "2056-12-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2056-12-11",
+                "endDate": "2057-02-22",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2057-02-22",
+                "endDate": "2057-04-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2057-04-15",
+                "endDate": "2057-08-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2057-08-25",
+                "endDate": "2057-12-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2057-12-20",
+                "endDate": "2058-05-08",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Ketu",
+            "startDate": "2058-05-08",
+            "endDate": "2059-05-05",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Ketu",
+                "startDate": "2058-05-08",
+                "endDate": "2058-05-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2058-05-29",
+                "endDate": "2058-07-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2058-07-29",
+                "endDate": "2058-08-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2058-08-16",
+                "endDate": "2058-09-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2058-09-15",
+                "endDate": "2058-10-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2058-10-06",
+                "endDate": "2058-11-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2058-11-30",
+                "endDate": "2059-01-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2059-01-17",
+                "endDate": "2059-03-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2059-03-15",
+                "endDate": "2059-05-05",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Venus",
+            "startDate": "2059-05-05",
+            "endDate": "2062-03-05",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Venus",
+                "startDate": "2059-05-05",
+                "endDate": "2059-10-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2059-10-25",
+                "endDate": "2059-12-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2059-12-16",
+                "endDate": "2060-03-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2060-03-11",
+                "endDate": "2060-05-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2060-05-10",
+                "endDate": "2060-10-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2060-10-13",
+                "endDate": "2061-02-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2061-02-27",
+                "endDate": "2061-08-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2061-08-10",
+                "endDate": "2062-01-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2062-01-04",
+                "endDate": "2062-03-05",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Sun",
+            "startDate": "2062-03-05",
+            "endDate": "2063-01-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Sun",
+                "startDate": "2062-03-05",
+                "endDate": "2062-03-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2062-03-21",
+                "endDate": "2062-04-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2062-04-16",
+                "endDate": "2062-05-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2062-05-04",
+                "endDate": "2062-06-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2062-06-19",
+                "endDate": "2062-07-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2062-07-31",
+                "endDate": "2062-09-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2062-09-18",
+                "endDate": "2062-11-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2062-11-01",
+                "endDate": "2062-11-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2062-11-19",
+                "endDate": "2063-01-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Moon",
+            "startDate": "2063-01-10",
+            "endDate": "2064-06-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Moon",
+                "startDate": "2063-01-10",
+                "endDate": "2063-02-22",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2063-02-22",
+                "endDate": "2063-03-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2063-03-24",
+                "endDate": "2063-06-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2063-06-10",
+                "endDate": "2063-08-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2063-08-18",
+                "endDate": "2063-11-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2063-11-08",
+                "endDate": "2064-01-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2064-01-20",
+                "endDate": "2064-02-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2064-02-19",
+                "endDate": "2064-05-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2064-05-15",
+                "endDate": "2064-06-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mars",
+            "startDate": "2064-06-10",
+            "endDate": "2065-06-07",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mars",
+                "startDate": "2064-06-10",
+                "endDate": "2064-07-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2064-07-01",
+                "endDate": "2064-08-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2064-08-25",
+                "endDate": "2064-10-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2064-10-12",
+                "endDate": "2064-12-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2064-12-08",
+                "endDate": "2065-01-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2065-01-29",
+                "endDate": "2065-02-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2065-02-19",
+                "endDate": "2065-04-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2065-04-20",
+                "endDate": "2065-05-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2065-05-08",
+                "endDate": "2065-06-07",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Rahu",
+            "startDate": "2065-06-07",
+            "endDate": "2067-12-26",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Rahu",
+                "startDate": "2065-06-07",
+                "endDate": "2065-10-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2065-10-25",
+                "endDate": "2066-02-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2066-02-26",
+                "endDate": "2066-07-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2066-07-24",
+                "endDate": "2066-12-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2066-12-03",
+                "endDate": "2067-01-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2067-01-26",
+                "endDate": "2067-06-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2067-06-30",
+                "endDate": "2067-08-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2067-08-16",
+                "endDate": "2067-11-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2067-11-01",
+                "endDate": "2067-12-26",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Jupiter",
+            "startDate": "2067-12-26",
+            "endDate": "2070-04-02",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Jupiter",
+                "startDate": "2067-12-26",
+                "endDate": "2068-04-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2068-04-14",
+                "endDate": "2068-08-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2068-08-23",
+                "endDate": "2068-12-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2068-12-19",
+                "endDate": "2069-02-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2069-02-05",
+                "endDate": "2069-06-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2069-06-23",
+                "endDate": "2069-08-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2069-08-03",
+                "endDate": "2069-10-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2069-10-11",
+                "endDate": "2069-11-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2069-11-28",
+                "endDate": "2070-04-02",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Saturn",
+            "startDate": "2070-04-02",
+            "endDate": "2072-12-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Saturn",
+                "startDate": "2070-04-02",
+                "endDate": "2070-09-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2070-09-04",
+                "endDate": "2071-01-22",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2071-01-22",
+                "endDate": "2071-03-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2071-03-20",
+                "endDate": "2071-08-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2071-08-31",
+                "endDate": "2071-10-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2071-10-19",
+                "endDate": "2072-01-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2072-01-09",
+                "endDate": "2072-03-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2072-03-06",
+                "endDate": "2072-08-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2072-08-01",
+                "endDate": "2072-12-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "lord": "Ketu",
+        "startDate": "2072-12-10",
+        "endDate": "2079-12-10",
+        "level": "mahadasha",
+        "children": [
+          {
+            "lord": "Ketu",
+            "startDate": "2072-12-10",
+            "endDate": "2073-05-08",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Ketu",
+                "startDate": "2072-12-10",
+                "endDate": "2072-12-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2072-12-18",
+                "endDate": "2073-01-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2073-01-12",
+                "endDate": "2073-01-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2073-01-20",
+                "endDate": "2073-02-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2073-02-01",
+                "endDate": "2073-02-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2073-02-10",
+                "endDate": "2073-03-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2073-03-04",
+                "endDate": "2073-03-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2073-03-24",
+                "endDate": "2073-04-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2073-04-17",
+                "endDate": "2073-05-08",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Venus",
+            "startDate": "2073-05-08",
+            "endDate": "2074-07-08",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Venus",
+                "startDate": "2073-05-08",
+                "endDate": "2073-07-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2073-07-18",
+                "endDate": "2073-08-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2073-08-08",
+                "endDate": "2073-09-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2073-09-13",
+                "endDate": "2073-10-08",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2073-10-08",
+                "endDate": "2073-12-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2073-12-11",
+                "endDate": "2074-02-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2074-02-05",
+                "endDate": "2074-04-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2074-04-14",
+                "endDate": "2074-06-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2074-06-13",
+                "endDate": "2074-07-08",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Sun",
+            "startDate": "2074-07-08",
+            "endDate": "2074-11-13",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Sun",
+                "startDate": "2074-07-08",
+                "endDate": "2074-07-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2074-07-14",
+                "endDate": "2074-07-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2074-07-25",
+                "endDate": "2074-08-02",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2074-08-02",
+                "endDate": "2074-08-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2074-08-21",
+                "endDate": "2074-09-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2074-09-07",
+                "endDate": "2074-09-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2074-09-27",
+                "endDate": "2074-10-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2074-10-15",
+                "endDate": "2074-10-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2074-10-23",
+                "endDate": "2074-11-13",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Moon",
+            "startDate": "2074-11-13",
+            "endDate": "2075-06-14",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Moon",
+                "startDate": "2074-11-13",
+                "endDate": "2074-12-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2074-12-01",
+                "endDate": "2074-12-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2074-12-13",
+                "endDate": "2075-01-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2075-01-14",
+                "endDate": "2075-02-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2075-02-11",
+                "endDate": "2075-03-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2075-03-17",
+                "endDate": "2075-04-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2075-04-16",
+                "endDate": "2075-04-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2075-04-29",
+                "endDate": "2075-06-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2075-06-03",
+                "endDate": "2075-06-14",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mars",
+            "startDate": "2075-06-14",
+            "endDate": "2075-11-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mars",
+                "startDate": "2075-06-14",
+                "endDate": "2075-06-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2075-06-23",
+                "endDate": "2075-07-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2075-07-15",
+                "endDate": "2075-08-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2075-08-04",
+                "endDate": "2075-08-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2075-08-27",
+                "endDate": "2075-09-18",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2075-09-18",
+                "endDate": "2075-09-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2075-09-26",
+                "endDate": "2075-10-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2075-10-21",
+                "endDate": "2075-10-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2075-10-29",
+                "endDate": "2075-11-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Rahu",
+            "startDate": "2075-11-10",
+            "endDate": "2076-11-28",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Rahu",
+                "startDate": "2075-11-10",
+                "endDate": "2076-01-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2076-01-07",
+                "endDate": "2076-02-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2076-02-27",
+                "endDate": "2076-04-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2076-04-27",
+                "endDate": "2076-06-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2076-06-21",
+                "endDate": "2076-07-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2076-07-13",
+                "endDate": "2076-09-15",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2076-09-15",
+                "endDate": "2076-10-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2076-10-04",
+                "endDate": "2076-11-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2076-11-05",
+                "endDate": "2076-11-28",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Jupiter",
+            "startDate": "2076-11-28",
+            "endDate": "2077-11-03",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Jupiter",
+                "startDate": "2076-11-28",
+                "endDate": "2077-01-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2077-01-12",
+                "endDate": "2077-03-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2077-03-07",
+                "endDate": "2077-04-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2077-04-24",
+                "endDate": "2077-05-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2077-05-14",
+                "endDate": "2077-07-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2077-07-10",
+                "endDate": "2077-07-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2077-07-27",
+                "endDate": "2077-08-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2077-08-24",
+                "endDate": "2077-09-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2077-09-13",
+                "endDate": "2077-11-03",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Saturn",
+            "startDate": "2077-11-03",
+            "endDate": "2078-12-13",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Saturn",
+                "startDate": "2077-11-03",
+                "endDate": "2078-01-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2078-01-07",
+                "endDate": "2078-03-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2078-03-05",
+                "endDate": "2078-03-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2078-03-29",
+                "endDate": "2078-06-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2078-06-04",
+                "endDate": "2078-06-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2078-06-24",
+                "endDate": "2078-07-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2078-07-28",
+                "endDate": "2078-08-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2078-08-21",
+                "endDate": "2078-10-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2078-10-20",
+                "endDate": "2078-12-13",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mercury",
+            "startDate": "2078-12-13",
+            "endDate": "2079-12-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mercury",
+                "startDate": "2078-12-13",
+                "endDate": "2079-02-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2079-02-03",
+                "endDate": "2079-02-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2079-02-24",
+                "endDate": "2079-04-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2079-04-25",
+                "endDate": "2079-05-13",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2079-05-13",
+                "endDate": "2079-06-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2079-06-12",
+                "endDate": "2079-07-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2079-07-03",
+                "endDate": "2079-08-27",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2079-08-27",
+                "endDate": "2079-10-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2079-10-14",
+                "endDate": "2079-12-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "lord": "Venus",
+        "startDate": "2079-12-10",
+        "endDate": "2099-12-10",
+        "level": "mahadasha",
+        "children": [
+          {
+            "lord": "Venus",
+            "startDate": "2079-12-10",
+            "endDate": "2083-04-11",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Venus",
+                "startDate": "2079-12-10",
+                "endDate": "2080-06-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2080-06-30",
+                "endDate": "2080-08-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2080-08-30",
+                "endDate": "2080-12-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2080-12-10",
+                "endDate": "2081-02-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2081-02-19",
+                "endDate": "2081-08-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2081-08-20",
+                "endDate": "2082-01-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2082-01-30",
+                "endDate": "2082-08-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2082-08-10",
+                "endDate": "2083-01-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2083-01-30",
+                "endDate": "2083-04-11",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Sun",
+            "startDate": "2083-04-11",
+            "endDate": "2084-04-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Sun",
+                "startDate": "2083-04-11",
+                "endDate": "2083-04-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2083-04-29",
+                "endDate": "2083-05-30",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2083-05-30",
+                "endDate": "2083-06-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2083-06-20",
+                "endDate": "2083-08-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2083-08-14",
+                "endDate": "2083-10-01",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2083-10-01",
+                "endDate": "2083-11-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2083-11-28",
+                "endDate": "2084-01-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2084-01-19",
+                "endDate": "2084-02-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2084-02-09",
+                "endDate": "2084-04-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Moon",
+            "startDate": "2084-04-10",
+            "endDate": "2085-12-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Moon",
+                "startDate": "2084-04-10",
+                "endDate": "2084-05-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2084-05-31",
+                "endDate": "2084-07-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2084-07-05",
+                "endDate": "2084-10-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2084-10-05",
+                "endDate": "2084-12-25",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2084-12-25",
+                "endDate": "2085-03-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2085-03-31",
+                "endDate": "2085-06-26",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2085-06-26",
+                "endDate": "2085-07-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2085-07-31",
+                "endDate": "2085-11-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2085-11-09",
+                "endDate": "2085-12-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mars",
+            "startDate": "2085-12-10",
+            "endDate": "2087-02-09",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mars",
+                "startDate": "2085-12-10",
+                "endDate": "2086-01-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2086-01-04",
+                "endDate": "2086-03-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2086-03-09",
+                "endDate": "2086-05-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2086-05-05",
+                "endDate": "2086-07-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2086-07-11",
+                "endDate": "2086-09-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2086-09-09",
+                "endDate": "2086-10-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2086-10-04",
+                "endDate": "2086-12-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2086-12-14",
+                "endDate": "2087-01-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2087-01-05",
+                "endDate": "2087-02-09",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Rahu",
+            "startDate": "2087-02-09",
+            "endDate": "2090-02-09",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Rahu",
+                "startDate": "2087-02-09",
+                "endDate": "2087-07-23",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2087-07-23",
+                "endDate": "2087-12-16",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2087-12-16",
+                "endDate": "2088-06-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2088-06-07",
+                "endDate": "2088-11-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2088-11-09",
+                "endDate": "2089-01-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2089-01-12",
+                "endDate": "2089-07-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2089-07-14",
+                "endDate": "2089-09-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2089-09-07",
+                "endDate": "2089-12-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2089-12-07",
+                "endDate": "2090-02-09",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Jupiter",
+            "startDate": "2090-02-09",
+            "endDate": "2092-10-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Jupiter",
+                "startDate": "2090-02-09",
+                "endDate": "2090-06-19",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2090-06-19",
+                "endDate": "2090-11-20",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2090-11-20",
+                "endDate": "2091-04-07",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2091-04-07",
+                "endDate": "2091-06-03",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2091-06-03",
+                "endDate": "2091-11-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2091-11-12",
+                "endDate": "2091-12-31",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2091-12-31",
+                "endDate": "2092-03-21",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2092-03-21",
+                "endDate": "2092-05-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2092-05-17",
+                "endDate": "2092-10-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Saturn",
+            "startDate": "2092-10-10",
+            "endDate": "2095-12-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Saturn",
+                "startDate": "2092-10-10",
+                "endDate": "2093-04-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2093-04-11",
+                "endDate": "2093-09-22",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2093-09-22",
+                "endDate": "2093-11-28",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2093-11-28",
+                "endDate": "2094-06-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2094-06-09",
+                "endDate": "2094-08-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2094-08-06",
+                "endDate": "2094-11-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2094-11-10",
+                "endDate": "2095-01-17",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2095-01-17",
+                "endDate": "2095-07-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2095-07-09",
+                "endDate": "2095-12-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Mercury",
+            "startDate": "2095-12-10",
+            "endDate": "2098-10-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Mercury",
+                "startDate": "2095-12-10",
+                "endDate": "2096-05-05",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Ketu",
+                "startDate": "2096-05-05",
+                "endDate": "2096-07-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2096-07-04",
+                "endDate": "2096-12-24",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2096-12-24",
+                "endDate": "2097-02-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2097-02-14",
+                "endDate": "2097-05-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2097-05-11",
+                "endDate": "2097-07-10",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2097-07-10",
+                "endDate": "2097-12-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2097-12-12",
+                "endDate": "2098-04-29",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2098-04-29",
+                "endDate": "2098-10-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          },
+          {
+            "lord": "Ketu",
+            "startDate": "2098-10-10",
+            "endDate": "2099-12-10",
+            "level": "antardasha",
+            "children": [
+              {
+                "lord": "Ketu",
+                "startDate": "2098-10-10",
+                "endDate": "2098-11-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Venus",
+                "startDate": "2098-11-04",
+                "endDate": "2099-01-14",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Sun",
+                "startDate": "2099-01-14",
+                "endDate": "2099-02-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Moon",
+                "startDate": "2099-02-04",
+                "endDate": "2099-03-12",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mars",
+                "startDate": "2099-03-12",
+                "endDate": "2099-04-06",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Rahu",
+                "startDate": "2099-04-06",
+                "endDate": "2099-06-09",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Jupiter",
+                "startDate": "2099-06-09",
+                "endDate": "2099-08-04",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Saturn",
+                "startDate": "2099-08-04",
+                "endDate": "2099-10-11",
+                "level": "pratyantardasha"
+              },
+              {
+                "lord": "Mercury",
+                "startDate": "2099-10-11",
+                "endDate": "2099-12-10",
+                "level": "pratyantardasha"
+              }
+            ]
+          }
+        ]
+      }
     ],
-    currentStack: {
-      mahadasha: 'Saturn',
-      antardasha: 'Jupiter',
-      pratyantardasha: 'Mercury',
-      mdEnd: '2037-04-10',
-      adEnd: '2028-05-17',
-      pdEnd: '2027-01-28',
-    },
+    "currentStack": {
+      "mahadasha": "Jupiter",
+      "antardasha": "Mercury",
+      "pratyantardasha": "Rahu",
+      "mdStart": "2020-12-10",
+      "mdEnd": "2036-12-10",
+      "adStart": "2025-08-11",
+      "adEnd": "2027-11-16",
+      "pdStart": "2026-11-16",
+      "pdEnd": "2027-03-20",
+      "mdProgressPct": 37.2,
+      "adProgressPct": 57,
+      "mdSandhiWarning": false,
+      "adSandhiWarning": false
+    }
   },
   shadbala: {
-    planets: [
-      { planet: 'Saturn', sthanaBala: 148, digBala: 36, kalaBala: 112, chestaBala: 48, naisargikaBala: 8.6, drikBala: 14, totalVirupas: 366.6, totalRupas: 6.11, requiredRupas: 5.0, ratio: 1.22, isStrong: true, ishtaPhala: 38, kashtaPhala: 16, strengthRank: 1 },
-      { planet: 'Jupiter', sthanaBala: 132, digBala: 28, kalaBala: 104, chestaBala: 35, naisargikaBala: 34.3, drikBala: 18, totalVirupas: 351.3, totalRupas: 5.86, requiredRupas: 6.5, ratio: 0.9, isStrong: false, ishtaPhala: 34, kashtaPhala: 20, strengthRank: 3 },
-      { planet: 'Mercury', sthanaBala: 128, digBala: 32, kalaBala: 118, chestaBala: 42, naisargikaBala: 25.7, drikBala: 12, totalVirupas: 357.7, totalRupas: 5.96, requiredRupas: 7.0, ratio: 0.85, isStrong: false, ishtaPhala: 31, kashtaPhala: 22, strengthRank: 4 },
-      { planet: 'Sun', sthanaBala: 142, digBala: 41, kalaBala: 96, chestaBala: 39, naisargikaBala: 60.0, drikBala: -4, totalVirupas: 374.0, totalRupas: 6.23, requiredRupas: 5.0, ratio: 1.25, isStrong: true, ishtaPhala: 40, kashtaPhala: 15, strengthRank: 2 },
+    "planets": [
+      {
+        "planet": "Sun",
+        "sthanaBala": 226.6,
+        "digBala": 44.9,
+        "kalaBala": 119.2,
+        "chestaBala": 56.5,
+        "naisargikaBala": 60,
+        "drikBala": -15,
+        "totalVirupas": 492.2,
+        "totalRupas": 8.2,
+        "requiredRupas": 5,
+        "ratio": 1.64,
+        "isStrong": true,
+        "ishtaPhala": 36.9,
+        "kashtaPhala": 11.2,
+        "strengthRank": 1
+      },
+      {
+        "planet": "Moon",
+        "sthanaBala": 232.2,
+        "digBala": 32.2,
+        "kalaBala": 47.8,
+        "chestaBala": 17,
+        "naisargikaBala": 51.4,
+        "drikBala": 0,
+        "totalVirupas": 380.6,
+        "totalRupas": 6.34,
+        "requiredRupas": 6,
+        "ratio": 1.06,
+        "isStrong": true,
+        "ishtaPhala": 15.8,
+        "kashtaPhala": 44.1,
+        "strengthRank": 4
+      },
+      {
+        "planet": "Mars",
+        "sthanaBala": 231.3,
+        "digBala": 53.9,
+        "kalaBala": 56.7,
+        "chestaBala": 27.4,
+        "naisargikaBala": 17.1,
+        "drikBala": 0,
+        "totalVirupas": 386.4,
+        "totalRupas": 6.44,
+        "requiredRupas": 5,
+        "ratio": 1.29,
+        "isStrong": true,
+        "ishtaPhala": 24.1,
+        "kashtaPhala": 35.6,
+        "strengthRank": 2
+      },
+      {
+        "planet": "Mercury",
+        "sthanaBala": 213.5,
+        "digBala": 49.4,
+        "kalaBala": 107,
+        "chestaBala": 17.5,
+        "naisargikaBala": 25.7,
+        "drikBala": 0,
+        "totalVirupas": 413.2,
+        "totalRupas": 6.89,
+        "requiredRupas": 7,
+        "ratio": 0.98,
+        "isStrong": false,
+        "ishtaPhala": 29.1,
+        "kashtaPhala": 22.1,
+        "strengthRank": 6
+      },
+      {
+        "planet": "Jupiter",
+        "sthanaBala": 200.7,
+        "digBala": 54.3,
+        "kalaBala": 93.3,
+        "chestaBala": 20.3,
+        "naisargikaBala": 34.3,
+        "drikBala": -11.3,
+        "totalVirupas": 391.7,
+        "totalRupas": 6.53,
+        "requiredRupas": 6.5,
+        "ratio": 1,
+        "isStrong": true,
+        "ishtaPhala": 29.7,
+        "kashtaPhala": 25.8,
+        "strengthRank": 5
+      },
+      {
+        "planet": "Venus",
+        "sthanaBala": 118.5,
+        "digBala": 21.4,
+        "kalaBala": 108.3,
+        "chestaBala": 18.6,
+        "naisargikaBala": 42.9,
+        "drikBala": -11.3,
+        "totalVirupas": 298.4,
+        "totalRupas": 4.97,
+        "requiredRupas": 5.5,
+        "ratio": 0.9,
+        "isStrong": false,
+        "ishtaPhala": 15.9,
+        "kashtaPhala": 43.9,
+        "strengthRank": 7
+      },
+      {
+        "planet": "Saturn",
+        "sthanaBala": 187.5,
+        "digBala": 42.6,
+        "kalaBala": 86.7,
+        "chestaBala": 60,
+        "naisargikaBala": 8.6,
+        "drikBala": -15,
+        "totalVirupas": 370.3,
+        "totalRupas": 6.17,
+        "requiredRupas": 5,
+        "ratio": 1.23,
+        "isStrong": true,
+        "ishtaPhala": 42.4,
+        "kashtaPhala": 0,
+        "strengthRank": 3
+      }
     ],
-    strongestPlanet: 'Sun',
-    weakestPlanet: 'Mercury',
+    "strongestPlanet": "Sun",
+    "weakestPlanet": "Venus"
   },
   panchang: {
-    vara: 'Friday (Shukravara)',
-    tithi: { number: 16, name: 'Krishna Pratipada', paksha: 'Krishna' },
-    yoga: { number: 7, name: 'Shobhana' },
-    karana: 'Balava',
-    moonSign: 'Virgo',
-    sunSign: 'Cancer',
-    nakshatra: 'Hasta',
-    pada: 3,
-    avakhada: {
-      varna: 'Vaishya',
-      vashya: 'Nara',
-      yoni: 'Mahisha',
-      gana: 'Deva',
-      nadi: 'Adi',
-      tatva: 'Prithvi',
-      paya: 'Gold',
-      yunja: 'Antya',
-      hansak: 'Bhumi',
-      namakshar: 'Na',
+    "vara": "Friday (Shukravara)",
+    "tithi": {
+      "number": 5,
+      "name": "Shukla Panchami",
+      "paksha": "Shukla"
     },
+    "yoga": {
+      "number": 22,
+      "name": "Sadhya"
+    },
+    "karana": "Bava",
+    "moonSign": "Virgo",
+    "sunSign": "Cancer",
+    "nakshatra": "Hasta",
+    "pada": 3,
+    "avakhada": {
+      "varna": "Vaishya",
+      "vashya": "Dwipada (Human)",
+      "yoni": "Horse",
+      "gana": "Deva",
+      "nadi": "Adi (Vata)",
+      "tatva": "Earth (Prithvi)",
+      "paya": "Gold",
+      "yunja": "Madhya",
+      "hansak": "Bhoomi",
+      "namakshar": "Cho"
+    }
   },
+  conditions: [
+    {
+      "planet": "Sun",
+      "sign": "Cancer",
+      "house": 11,
+      "dignity": "Friendly",
+      "isRetrograde": false,
+      "isCombust": false,
+      "isVargottama": false,
+      "baladiAvastha": "Bala (Infant)",
+      "jagradadiAvastha": "Swapna (Dreaming)",
+      "aspectsHouses": [
+        5
+      ],
+      "conjunctWith": []
+    },
+    {
+      "planet": "Moon",
+      "sign": "Virgo",
+      "house": 1,
+      "dignity": "Friendly",
+      "isRetrograde": false,
+      "isCombust": false,
+      "isVargottama": false,
+      "baladiAvastha": "Kumara (Youth)",
+      "jagradadiAvastha": "Swapna (Dreaming)",
+      "aspectsHouses": [
+        7
+      ],
+      "conjunctWith": []
+    },
+    {
+      "planet": "Mars",
+      "sign": "Taurus",
+      "house": 9,
+      "dignity": "Neutral",
+      "isRetrograde": false,
+      "isCombust": false,
+      "isVargottama": false,
+      "baladiAvastha": "Bala (Infant)",
+      "jagradadiAvastha": "Swapna (Dreaming)",
+      "aspectsHouses": [
+        3,
+        4,
+        12
+      ],
+      "conjunctWith": []
+    },
+    {
+      "planet": "Mercury",
+      "sign": "Leo",
+      "house": 12,
+      "dignity": "Friendly",
+      "isRetrograde": false,
+      "isCombust": true,
+      "isVargottama": false,
+      "baladiAvastha": "Kumara (Youth)",
+      "jagradadiAvastha": "Swapna (Dreaming)",
+      "aspectsHouses": [
+        6
+      ],
+      "conjunctWith": [
+        "Jupiter",
+        "Venus"
+      ]
+    },
+    {
+      "planet": "Jupiter",
+      "sign": "Leo",
+      "house": 12,
+      "dignity": "Friendly",
+      "isRetrograde": false,
+      "isCombust": false,
+      "isVargottama": false,
+      "baladiAvastha": "Mrita (Dormant)",
+      "jagradadiAvastha": "Swapna (Dreaming)",
+      "aspectsHouses": [
+        4,
+        6,
+        8
+      ],
+      "conjunctWith": [
+        "Mercury",
+        "Venus"
+      ]
+    },
+    {
+      "planet": "Venus",
+      "sign": "Leo",
+      "house": 12,
+      "dignity": "Enemy",
+      "isRetrograde": false,
+      "isCombust": false,
+      "isVargottama": true,
+      "baladiAvastha": "Yuva (Adult)",
+      "jagradadiAvastha": "Swapna (Dreaming)",
+      "aspectsHouses": [
+        6
+      ],
+      "conjunctWith": [
+        "Mercury",
+        "Jupiter"
+      ]
+    },
+    {
+      "planet": "Saturn",
+      "sign": "Capricorn",
+      "house": 5,
+      "dignity": "Own Sign",
+      "isRetrograde": true,
+      "isCombust": false,
+      "isVargottama": false,
+      "baladiAvastha": "Kumara (Youth)",
+      "jagradadiAvastha": "Jagrat (Awake)",
+      "aspectsHouses": [
+        2,
+        7,
+        11
+      ],
+      "conjunctWith": []
+    },
+    {
+      "planet": "Rahu",
+      "sign": "Sagittarius",
+      "house": 4,
+      "dignity": "Neutral",
+      "isRetrograde": true,
+      "isCombust": false,
+      "isVargottama": false,
+      "baladiAvastha": "Bala (Infant)",
+      "jagradadiAvastha": "Swapna (Dreaming)",
+      "aspectsHouses": [
+        8,
+        10,
+        12
+      ],
+      "conjunctWith": []
+    },
+    {
+      "planet": "Ketu",
+      "sign": "Gemini",
+      "house": 10,
+      "dignity": "Neutral",
+      "isRetrograde": true,
+      "isCombust": false,
+      "isVargottama": false,
+      "baladiAvastha": "Bala (Infant)",
+      "jagradadiAvastha": "Swapna (Dreaming)",
+      "aspectsHouses": [
+        2,
+        4,
+        6
+      ],
+      "conjunctWith": []
+    }
+  ],
   yogas: [
-    { name: 'Budhaditya / Knowledge Cluster', category: 'Intellect & Counsel', planets: ['Mercury', 'Jupiter'], summary: 'Jupiter and Mercury together strengthen analytical depth and advisory clarity.' },
-    { name: 'Swakshetra Saturn in 5th', category: 'Strategic Discipline', planets: ['Saturn'], summary: 'Saturn in own sign Capricorn in the 5th house grants patience, structure, and durable mastery.' },
+    {
+      "name": "Raja Yoga (Mercury + Venus)",
+      "category": "Raja Yoga",
+      "planets": [
+        "Mercury",
+        "Venus"
+      ],
+      "summary": "Conjunction of Kendra & Trikona lords in Leo (House 12), conferring leadership momentum."
+    },
+    {
+      "name": "Raja Yoga (Jupiter + Mercury)",
+      "category": "Raja Yoga",
+      "planets": [
+        "Jupiter",
+        "Mercury"
+      ],
+      "summary": "Conjunction of Kendra & Trikona lords in Leo (House 12), conferring leadership momentum."
+    },
+    {
+      "name": "Raja Yoga (Jupiter + Venus)",
+      "category": "Raja Yoga",
+      "planets": [
+        "Jupiter",
+        "Venus"
+      ],
+      "summary": "Conjunction of Kendra & Trikona lords in Leo (House 12), conferring leadership momentum."
+    }
   ],
   lalKitab: {
-    planets: [
-      { planet: 'Sun', house: 11, sign: 'Cancer', pakkaGhar: [1], karakaOf: 'Authority & Income', exaltedHouses: [1], debilitatedHouses: [7], status: 'Supportive', isSleeping: false, notes: '11th house placement supports steady earned recognition.' },
-      { planet: 'Saturn', house: 5, sign: 'Capricorn', pakkaGhar: [8, 10], karakaOf: 'Discipline & Craft', exaltedHouses: [7], debilitatedHouses: [1], status: 'Grounded', isSleeping: false, notes: 'Rewards methodical effort and quiet consistency.' },
+    "planets": [
+      {
+        "planet": "Sun",
+        "house": 11,
+        "sign": "Cancer",
+        "pakkaGhar": [
+          1
+        ],
+        "karakaOf": "Father, Soul, Authority",
+        "exaltedHouses": [
+          1
+        ],
+        "debilitatedHouses": [
+          7
+        ],
+        "status": "Mixed",
+        "isSleeping": false,
+        "notes": "Acts according to planetary companions in H11"
+      },
+      {
+        "planet": "Moon",
+        "house": 1,
+        "sign": "Virgo",
+        "pakkaGhar": [
+          4
+        ],
+        "karakaOf": "Mother, Mind, Wealth",
+        "exaltedHouses": [
+          2
+        ],
+        "debilitatedHouses": [
+          8
+        ],
+        "status": "Dormant (Soya)",
+        "isSleeping": true,
+        "notes": "Requires activation via 7th house (7)"
+      },
+      {
+        "planet": "Mars",
+        "house": 9,
+        "sign": "Taurus",
+        "pakkaGhar": [
+          3,
+          8
+        ],
+        "karakaOf": "Courage, Siblings, Land",
+        "exaltedHouses": [
+          10
+        ],
+        "debilitatedHouses": [
+          4
+        ],
+        "status": "Dormant (Soya)",
+        "isSleeping": true,
+        "notes": "Requires activation via 7th house (3)"
+      },
+      {
+        "planet": "Mercury",
+        "house": 12,
+        "sign": "Leo",
+        "pakkaGhar": [
+          7
+        ],
+        "karakaOf": "Intellect, Speech, Trade",
+        "exaltedHouses": [
+          6
+        ],
+        "debilitatedHouses": [
+          12
+        ],
+        "status": "Dormant (Soya)",
+        "isSleeping": true,
+        "notes": "Lal Kitab Debilitated House · Requires activation via 7th house (6)"
+      },
+      {
+        "planet": "Jupiter",
+        "house": 12,
+        "sign": "Leo",
+        "pakkaGhar": [
+          2,
+          5,
+          9,
+          11,
+          12
+        ],
+        "karakaOf": "Wisdom, Dharma, Children",
+        "exaltedHouses": [
+          4
+        ],
+        "debilitatedHouses": [
+          10
+        ],
+        "status": "Benefic",
+        "isSleeping": false,
+        "notes": "In Pakka Ghar (H12)"
+      },
+      {
+        "planet": "Venus",
+        "house": 12,
+        "sign": "Leo",
+        "pakkaGhar": [
+          7
+        ],
+        "karakaOf": "Spouse, Luxury, Beauty",
+        "exaltedHouses": [
+          12
+        ],
+        "debilitatedHouses": [
+          6
+        ],
+        "status": "Dormant (Soya)",
+        "isSleeping": true,
+        "notes": "Lal Kitab Exalted House · Requires activation via 7th house (6)"
+      },
+      {
+        "planet": "Saturn",
+        "house": 5,
+        "sign": "Capricorn",
+        "pakkaGhar": [
+          8,
+          10
+        ],
+        "karakaOf": "Justice, Career, Endurance",
+        "exaltedHouses": [
+          7
+        ],
+        "debilitatedHouses": [
+          1
+        ],
+        "status": "Malefic",
+        "isSleeping": false,
+        "notes": "Acts according to planetary companions in H5"
+      },
+      {
+        "planet": "Rahu",
+        "house": 4,
+        "sign": "Sagittarius",
+        "pakkaGhar": [
+          12
+        ],
+        "karakaOf": "Diplomacy, In-laws, Ambition",
+        "exaltedHouses": [
+          3,
+          6
+        ],
+        "debilitatedHouses": [
+          8,
+          9,
+          12
+        ],
+        "status": "Mixed",
+        "isSleeping": false,
+        "notes": "Acts according to planetary companions in H4"
+      },
+      {
+        "planet": "Ketu",
+        "house": 10,
+        "sign": "Gemini",
+        "pakkaGhar": [
+          6
+        ],
+        "karakaOf": "Son, Intuition, Liberation",
+        "exaltedHouses": [
+          9,
+          12
+        ],
+        "debilitatedHouses": [
+          3,
+          6
+        ],
+        "status": "Mixed",
+        "isSleeping": false,
+        "notes": "Acts according to planetary companions in H10"
+      }
     ],
-    isAndhiKundli: false,
-    isDharmiTewa: true,
-    sleepingHouses: [],
-    karmicDebts: [],
-    varshaphal: {
-      runningAge: 34,
-      cycleYear: 2026,
-      placements: [
-        { natalHouse: 1, annualHouse: 10, planets: ['Moon'] },
-        { natalHouse: 5, annualHouse: 2, planets: ['Saturn'] },
-      ],
-    },
+    "isAndhiKundli": false,
+    "isDharmiTewa": false,
+    "sleepingHouses": [
+      2,
+      3,
+      6,
+      7,
+      8
+    ],
+    "karmicDebts": [
+      {
+        "name": "Pitr Rina (Ancestral Debt)",
+        "indicator": "Venus, Mercury, or Rahu in Houses 2, 5, 9, or 12 afflicting Jupiter/9th",
+        "active": true
+      },
+      {
+        "name": "Matr Rina (Mother Debt)",
+        "indicator": "Ketu in House 4 or afflicting Moon",
+        "active": false
+      },
+      {
+        "name": "Self / Swarup Rina",
+        "indicator": "Venus, Saturn, Rahu, or Ketu in House 5 or Sun in 12",
+        "active": true
+      },
+      {
+        "name": "Stri / Partner Debt",
+        "indicator": "Sun, Moon, or Rahu in Houses 2 or 7",
+        "active": false
+      },
+      {
+        "name": "Daiva / Guru Debt",
+        "indicator": "Mercury, Venus, or Rahu in Houses 2, 5, 9, 12 with Jupiter in 6/10",
+        "active": false
+      }
+    ],
+    "varshaphal": {
+      "runningAge": 35,
+      "cycleYear": 11,
+      "placements": [
+        {
+          "natalHouse": 1,
+          "annualHouse": 7,
+          "planets": [
+            "Moon"
+          ]
+        },
+        {
+          "natalHouse": 2,
+          "annualHouse": 9,
+          "planets": []
+        },
+        {
+          "natalHouse": 3,
+          "annualHouse": 11,
+          "planets": []
+        },
+        {
+          "natalHouse": 4,
+          "annualHouse": 1,
+          "planets": [
+            "Rahu"
+          ]
+        },
+        {
+          "natalHouse": 5,
+          "annualHouse": 9,
+          "planets": [
+            "Saturn"
+          ]
+        },
+        {
+          "natalHouse": 6,
+          "annualHouse": 4,
+          "planets": []
+        },
+        {
+          "natalHouse": 7,
+          "annualHouse": 6,
+          "planets": []
+        },
+        {
+          "natalHouse": 8,
+          "annualHouse": 10,
+          "planets": []
+        },
+        {
+          "natalHouse": 9,
+          "annualHouse": 12,
+          "planets": [
+            "Mars"
+          ]
+        },
+        {
+          "natalHouse": 10,
+          "annualHouse": 2,
+          "planets": [
+            "Ketu"
+          ]
+        },
+        {
+          "natalHouse": 11,
+          "annualHouse": 3,
+          "planets": [
+            "Sun"
+          ]
+        },
+        {
+          "natalHouse": 12,
+          "annualHouse": 5,
+          "planets": [
+            "Mercury",
+            "Jupiter",
+            "Venus"
+          ]
+        }
+      ]
+    }
   },
   western: {
-    system: 'Tropical (Placidus)',
-    ayanamshaUsedForConversion: 23.75,
-    planets: [
-      { name: 'Sun', symbol: '☉', longitude: 141.55, signIndex: 4, sign: 'Leo', degreeInSign: 21.55, dms: '21°33′', house: 11, wholeSignHouse: 11, isRetrograde: false, dignity: 'Domicile', element: 'Fire', modality: 'Fixed' },
-      { name: 'Moon', symbol: '☽', longitude: 192.65, signIndex: 6, sign: 'Libra', degreeInSign: 12.65, dms: '12°39′', house: 1, wholeSignHouse: 2, isRetrograde: false, dignity: 'Neutral', element: 'Air', modality: 'Cardinal' },
-      { name: 'Mars', symbol: '♂', longitude: 77.95, signIndex: 2, sign: 'Gemini', degreeInSign: 17.95, dms: '17°57′', house: 9, wholeSignHouse: 10, isRetrograde: false, dignity: 'Neutral', element: 'Air', modality: 'Mutable' },
-      { name: 'Mercury', symbol: '☿', longitude: 154.35, signIndex: 5, sign: 'Virgo', degreeInSign: 4.35, dms: '04°21′', house: 12, wholeSignHouse: 1, isRetrograde: false, dignity: 'Domicile', element: 'Earth', modality: 'Mutable' },
-      { name: 'Jupiter', symbol: '♃', longitude: 169.05, signIndex: 5, sign: 'Virgo', degreeInSign: 19.05, dms: '19°03′', house: 12, wholeSignHouse: 1, isRetrograde: false, dignity: 'Detriment', element: 'Earth', modality: 'Mutable' },
-      { name: 'Venus', symbol: '♀', longitude: 160.25, signIndex: 5, sign: 'Virgo', degreeInSign: 10.25, dms: '10°15′', house: 12, wholeSignHouse: 1, isRetrograde: false, dignity: 'Fall', element: 'Earth', modality: 'Mutable' },
-      { name: 'Saturn', symbol: '♄', longitude: 313.85, signIndex: 10, sign: 'Aquarius', degreeInSign: 13.85, dms: '13°51′', house: 5, wholeSignHouse: 6, isRetrograde: true, dignity: 'Domicile', element: 'Air', modality: 'Fixed' },
+    "system": "Tropical (Placidus)",
+    "ayanamshaUsedForConversion": 23.754,
+    "planets": [
+      {
+        "name": "Sun",
+        "symbol": "☉",
+        "longitude": 141.554,
+        "signIndex": 4,
+        "sign": "Leo",
+        "degreeInSign": 21.554,
+        "dms": "21°33'14\"",
+        "house": 11,
+        "wholeSignHouse": 11,
+        "isRetrograde": false,
+        "dignity": "Domicile",
+        "element": "Fire",
+        "modality": "Fixed",
+        "essentialScore": 5,
+        "accidentalScore": 1,
+        "houseClass": "Succedent",
+        "solarCondition": "Free",
+        "sectAlignment": "In Sect"
+      },
+      {
+        "name": "Moon",
+        "symbol": "☽",
+        "longitude": 192.654,
+        "signIndex": 6,
+        "sign": "Libra",
+        "degreeInSign": 12.654,
+        "dms": "12°39'14\"",
+        "house": 1,
+        "wholeSignHouse": 1,
+        "isRetrograde": false,
+        "dignity": "Peregrine",
+        "element": "Air",
+        "modality": "Cardinal",
+        "essentialScore": 0,
+        "accidentalScore": 3,
+        "houseClass": "Angular",
+        "solarCondition": "Free",
+        "sectAlignment": "Contrary to Sect"
+      },
+      {
+        "name": "Mars",
+        "symbol": "♂",
+        "longitude": 77.954,
+        "signIndex": 2,
+        "sign": "Gemini",
+        "degreeInSign": 17.954,
+        "dms": "17°57'14\"",
+        "house": 9,
+        "wholeSignHouse": 9,
+        "isRetrograde": false,
+        "dignity": "Peregrine",
+        "element": "Air",
+        "modality": "Mutable",
+        "essentialScore": 0,
+        "accidentalScore": -1,
+        "houseClass": "Cadent",
+        "solarCondition": "Free",
+        "sectAlignment": "Contrary to Sect"
+      },
+      {
+        "name": "Mercury",
+        "symbol": "☿",
+        "longitude": 154.354,
+        "signIndex": 5,
+        "sign": "Virgo",
+        "degreeInSign": 4.354,
+        "dms": "04°21'14\"",
+        "house": 12,
+        "wholeSignHouse": 12,
+        "isRetrograde": false,
+        "dignity": "Domicile",
+        "element": "Earth",
+        "modality": "Mutable",
+        "essentialScore": 5,
+        "accidentalScore": -1,
+        "houseClass": "Cadent",
+        "solarCondition": "Under Beams",
+        "sectAlignment": "Neutral"
+      },
+      {
+        "name": "Jupiter",
+        "symbol": "♃",
+        "longitude": 169.054,
+        "signIndex": 5,
+        "sign": "Virgo",
+        "degreeInSign": 19.054,
+        "dms": "19°03'14\"",
+        "house": 12,
+        "wholeSignHouse": 12,
+        "isRetrograde": false,
+        "dignity": "Detriment",
+        "element": "Earth",
+        "modality": "Mutable",
+        "essentialScore": -5,
+        "accidentalScore": -1,
+        "houseClass": "Cadent",
+        "solarCondition": "Free",
+        "sectAlignment": "In Sect"
+      },
+      {
+        "name": "Venus",
+        "symbol": "♀",
+        "longitude": 160.254,
+        "signIndex": 5,
+        "sign": "Virgo",
+        "degreeInSign": 10.254,
+        "dms": "10°15'14\"",
+        "house": 12,
+        "wholeSignHouse": 12,
+        "isRetrograde": false,
+        "dignity": "Fall",
+        "element": "Earth",
+        "modality": "Mutable",
+        "essentialScore": -4,
+        "accidentalScore": -1,
+        "houseClass": "Cadent",
+        "solarCondition": "Free",
+        "sectAlignment": "Contrary to Sect"
+      },
+      {
+        "name": "Saturn",
+        "symbol": "♄",
+        "longitude": 313.854,
+        "signIndex": 10,
+        "sign": "Aquarius",
+        "degreeInSign": 13.854,
+        "dms": "13°51'14\"",
+        "house": 5,
+        "wholeSignHouse": 5,
+        "isRetrograde": true,
+        "dignity": "Domicile",
+        "element": "Air",
+        "modality": "Fixed",
+        "essentialScore": 5,
+        "accidentalScore": 0,
+        "houseClass": "Succedent",
+        "solarCondition": "Free",
+        "sectAlignment": "In Sect"
+      },
+      {
+        "name": "North Node",
+        "symbol": "☊",
+        "longitude": 268.454,
+        "signIndex": 8,
+        "sign": "Sagittarius",
+        "degreeInSign": 28.454,
+        "dms": "28°27'14\"",
+        "house": 3,
+        "wholeSignHouse": 3,
+        "isRetrograde": true,
+        "dignity": "Peregrine",
+        "element": "Fire",
+        "modality": "Mutable",
+        "essentialScore": 0,
+        "accidentalScore": -1,
+        "houseClass": "Cadent",
+        "solarCondition": "Free",
+        "sectAlignment": "Neutral"
+      },
+      {
+        "name": "South Node",
+        "symbol": "☋",
+        "longitude": 88.454,
+        "signIndex": 2,
+        "sign": "Gemini",
+        "degreeInSign": 28.454,
+        "dms": "28°27'14\"",
+        "house": 9,
+        "wholeSignHouse": 9,
+        "isRetrograde": true,
+        "dignity": "Peregrine",
+        "element": "Air",
+        "modality": "Mutable",
+        "essentialScore": 0,
+        "accidentalScore": -1,
+        "houseClass": "Cadent",
+        "solarCondition": "Free",
+        "sectAlignment": "Neutral"
+      },
+      {
+        "name": "Uranus",
+        "symbol": "♅",
+        "longitude": 284.5926,
+        "signIndex": 9,
+        "sign": "Capricorn",
+        "degreeInSign": 14.5926,
+        "dms": "14°35'33\"",
+        "house": 4,
+        "wholeSignHouse": 4,
+        "isRetrograde": true,
+        "dignity": "Peregrine",
+        "element": "Earth",
+        "modality": "Cardinal",
+        "essentialScore": 0,
+        "accidentalScore": 2,
+        "houseClass": "Angular",
+        "solarCondition": "Free",
+        "sectAlignment": "Neutral"
+      },
+      {
+        "name": "Neptune",
+        "symbol": "♆",
+        "longitude": 286.576,
+        "signIndex": 9,
+        "sign": "Capricorn",
+        "degreeInSign": 16.576,
+        "dms": "16°34'34\"",
+        "house": 4,
+        "wholeSignHouse": 4,
+        "isRetrograde": true,
+        "dignity": "Peregrine",
+        "element": "Earth",
+        "modality": "Cardinal",
+        "essentialScore": 0,
+        "accidentalScore": 2,
+        "houseClass": "Angular",
+        "solarCondition": "Free",
+        "sectAlignment": "Neutral"
+      },
+      {
+        "name": "Pluto",
+        "symbol": "♇",
+        "longitude": 230.0712,
+        "signIndex": 7,
+        "sign": "Scorpio",
+        "degreeInSign": 20.0712,
+        "dms": "20°04'16\"",
+        "house": 2,
+        "wholeSignHouse": 2,
+        "isRetrograde": false,
+        "dignity": "Domicile",
+        "element": "Water",
+        "modality": "Fixed",
+        "essentialScore": 5,
+        "accidentalScore": 1,
+        "houseClass": "Succedent",
+        "solarCondition": "Free",
+        "sectAlignment": "Neutral"
+      },
+      {
+        "name": "Chiron",
+        "symbol": "⚷",
+        "longitude": 128.5713,
+        "signIndex": 4,
+        "sign": "Leo",
+        "degreeInSign": 8.5713,
+        "dms": "08°34'17\"",
+        "house": 11,
+        "wholeSignHouse": 11,
+        "isRetrograde": false,
+        "dignity": "Peregrine",
+        "element": "Fire",
+        "modality": "Fixed",
+        "essentialScore": 0,
+        "accidentalScore": 1,
+        "houseClass": "Succedent",
+        "solarCondition": "Under Beams",
+        "sectAlignment": "Neutral"
+      },
+      {
+        "name": "Lilith",
+        "symbol": "⚸",
+        "longitude": 142.971,
+        "signIndex": 4,
+        "sign": "Leo",
+        "degreeInSign": 22.971,
+        "dms": "22°58'16\"",
+        "house": 11,
+        "wholeSignHouse": 11,
+        "isRetrograde": false,
+        "dignity": "Peregrine",
+        "element": "Fire",
+        "modality": "Fixed",
+        "essentialScore": 0,
+        "accidentalScore": -1,
+        "houseClass": "Succedent",
+        "solarCondition": "Combust",
+        "sectAlignment": "Neutral"
+      },
+      {
+        "name": "Ascendant",
+        "symbol": "AC",
+        "longitude": 186.1539,
+        "signIndex": 6,
+        "sign": "Libra",
+        "degreeInSign": 6.1539,
+        "dms": "06°09'14\"",
+        "house": 1,
+        "wholeSignHouse": 1,
+        "isRetrograde": false,
+        "dignity": "Angle",
+        "element": "Air",
+        "modality": "Cardinal",
+        "essentialScore": 3,
+        "accidentalScore": 3,
+        "houseClass": "Angular",
+        "solarCondition": "Free",
+        "sectAlignment": "Neutral"
+      },
+      {
+        "name": "Midheaven",
+        "symbol": "MC",
+        "longitude": 91.7839,
+        "signIndex": 3,
+        "sign": "Cancer",
+        "degreeInSign": 1.7839,
+        "dms": "01°47'02\"",
+        "house": 10,
+        "wholeSignHouse": 10,
+        "isRetrograde": false,
+        "dignity": "Angle",
+        "element": "Water",
+        "modality": "Cardinal",
+        "essentialScore": 3,
+        "accidentalScore": 3,
+        "houseClass": "Angular",
+        "solarCondition": "Free",
+        "sectAlignment": "Neutral"
+      }
     ],
-    cusps: [
-      { house: 1, label: 'AC', longitude: 186.15, signIndex: 6, sign: 'Libra', degreeInSign: 6.15, dms: '06°09′' },
-      { house: 2, label: 'H2', longitude: 215.5, signIndex: 7, sign: 'Scorpio', degreeInSign: 5.5, dms: '05°30′' },
-      { house: 3, label: 'H3', longitude: 246.2, signIndex: 8, sign: 'Sagittarius', degreeInSign: 6.2, dms: '06°12′' },
-      { house: 4, label: 'IC', longitude: 277.8, signIndex: 9, sign: 'Capricorn', degreeInSign: 7.8, dms: '07°48′' },
-      { house: 5, label: 'H5', longitude: 308.9, signIndex: 10, sign: 'Aquarius', degreeInSign: 8.9, dms: '08°54′' },
-      { house: 6, label: 'H6', longitude: 338.4, signIndex: 11, sign: 'Pisces', degreeInSign: 8.4, dms: '08°24′' },
-      { house: 7, label: 'DC', longitude: 6.15, signIndex: 0, sign: 'Aries', degreeInSign: 6.15, dms: '06°09′' },
-      { house: 8, label: 'H8', longitude: 35.5, signIndex: 1, sign: 'Taurus', degreeInSign: 5.5, dms: '05°30′' },
-      { house: 9, label: 'H9', longitude: 66.2, signIndex: 2, sign: 'Gemini', degreeInSign: 6.2, dms: '06°12′' },
-      { house: 10, label: 'MC', longitude: 97.8, signIndex: 3, sign: 'Cancer', degreeInSign: 7.8, dms: '07°48′' },
-      { house: 11, label: 'H11', longitude: 128.9, signIndex: 4, sign: 'Leo', degreeInSign: 8.9, dms: '08°54′' },
-      { house: 12, label: 'H12', longitude: 158.4, signIndex: 5, sign: 'Virgo', degreeInSign: 8.4, dms: '08°24′' },
+    "cusps": [
+      {
+        "house": 1,
+        "label": "Ascendant (AC)",
+        "longitude": 186.1539,
+        "signIndex": 6,
+        "sign": "Libra",
+        "degreeInSign": 6.1539,
+        "dms": "06°09'14\""
+      },
+      {
+        "house": 2,
+        "label": "House 2",
+        "longitude": 217.6285,
+        "signIndex": 7,
+        "sign": "Scorpio",
+        "degreeInSign": 7.6285,
+        "dms": "07°37'43\""
+      },
+      {
+        "house": 3,
+        "label": "House 3",
+        "longitude": 246.4015,
+        "signIndex": 8,
+        "sign": "Sagittarius",
+        "degreeInSign": 6.4015,
+        "dms": "06°24'05\""
+      },
+      {
+        "house": 4,
+        "label": "Imum Coeli (IC)",
+        "longitude": 271.7839,
+        "signIndex": 9,
+        "sign": "Capricorn",
+        "degreeInSign": 1.7839,
+        "dms": "01°47'02\""
+      },
+      {
+        "house": 5,
+        "label": "House 5",
+        "longitude": 297.3778,
+        "signIndex": 9,
+        "sign": "Capricorn",
+        "degreeInSign": 27.3778,
+        "dms": "27°22'40\""
+      },
+      {
+        "house": 6,
+        "label": "House 6",
+        "longitude": 326.751,
+        "signIndex": 10,
+        "sign": "Aquarius",
+        "degreeInSign": 26.751,
+        "dms": "26°45'04\""
+      },
+      {
+        "house": 7,
+        "label": "Descendant (DC)",
+        "longitude": 6.1539,
+        "signIndex": 0,
+        "sign": "Aries",
+        "degreeInSign": 6.1539,
+        "dms": "06°09'14\""
+      },
+      {
+        "house": 8,
+        "label": "House 8",
+        "longitude": 37.6285,
+        "signIndex": 1,
+        "sign": "Taurus",
+        "degreeInSign": 7.6285,
+        "dms": "07°37'43\""
+      },
+      {
+        "house": 9,
+        "label": "House 9",
+        "longitude": 66.4015,
+        "signIndex": 2,
+        "sign": "Gemini",
+        "degreeInSign": 6.4015,
+        "dms": "06°24'05\""
+      },
+      {
+        "house": 10,
+        "label": "Midheaven (MC)",
+        "longitude": 91.7839,
+        "signIndex": 3,
+        "sign": "Cancer",
+        "degreeInSign": 1.7839,
+        "dms": "01°47'02\""
+      },
+      {
+        "house": 11,
+        "label": "House 11",
+        "longitude": 117.3778,
+        "signIndex": 3,
+        "sign": "Cancer",
+        "degreeInSign": 27.3778,
+        "dms": "27°22'40\""
+      },
+      {
+        "house": 12,
+        "label": "House 12",
+        "longitude": 146.751,
+        "signIndex": 4,
+        "sign": "Leo",
+        "degreeInSign": 26.751,
+        "dms": "26°45'04\""
+      }
     ],
-    angles: {
-      ascendant: { sign: 'Libra', dms: '06°09′', longitude: 186.15 },
-      midheaven: { sign: 'Cancer', dms: '07°48′', longitude: 97.8 },
-      descendant: { sign: 'Aries', dms: '06°09′', longitude: 6.15 },
-      ic: { sign: 'Capricorn', dms: '07°48′', longitude: 277.8 },
+    "angles": {
+      "ascendant": {
+        "sign": "Libra",
+        "dms": "06°09'14\"",
+        "longitude": 186.1539
+      },
+      "midheaven": {
+        "sign": "Cancer",
+        "dms": "01°47'02\"",
+        "longitude": 91.7839
+      },
+      "descendant": {
+        "sign": "Aries",
+        "dms": "06°09'14\"",
+        "longitude": 6.1539
+      },
+      "ic": {
+        "sign": "Capricorn",
+        "dms": "01°47'02\"",
+        "longitude": 271.7839
+      }
     },
-    aspects: [
-      { bodyA: 'Sun', bodyB: 'Saturn', aspect: 'Opposition', category: 'Major', angle: 180, orb: 7.7, exactness: 'Applying' },
-      { bodyA: 'Moon', bodyB: 'Saturn', aspect: 'Trine', category: 'Major', angle: 120, orb: 1.2, exactness: 'Applying' },
-      { bodyA: 'Moon', bodyB: 'Mars', aspect: 'Trine', category: 'Major', angle: 120, orb: 5.3, exactness: 'Separating' },
-      { bodyA: 'Venus', bodyB: 'Mercury', aspect: 'Conjunction', category: 'Major', angle: 0, orb: 5.9, exactness: 'Separating' },
-      { bodyA: 'Jupiter', bodyB: 'Venus', aspect: 'Conjunction', category: 'Major', angle: 0, orb: 8.8, exactness: 'Separating' },
+    "aspects": [
+      {
+        "bodyA": "Sun",
+        "bodyB": "Ascendant",
+        "aspect": "Semi-square",
+        "category": "Minor",
+        "angle": 45,
+        "orb": 0.4,
+        "exactness": "Exact",
+        "orbTier": "core_structural",
+        "weightScore": 84
+      },
+      {
+        "bodyA": "Saturn",
+        "bodyB": "North Node",
+        "aspect": "Semi-square",
+        "category": "Minor",
+        "angle": 45,
+        "orb": 0.4,
+        "exactness": "Exact",
+        "orbTier": "core_structural",
+        "weightScore": 74
+      },
+      {
+        "bodyA": "Saturn",
+        "bodyB": "South Node",
+        "aspect": "Sesquiquadrate",
+        "category": "Minor",
+        "angle": 135,
+        "orb": 0.4,
+        "exactness": "Exact",
+        "orbTier": "core_structural",
+        "weightScore": 74
+      },
+      {
+        "bodyA": "Saturn",
+        "bodyB": "Uranus",
+        "aspect": "Semi-sextile",
+        "category": "Minor",
+        "angle": 30,
+        "orb": 0.74,
+        "exactness": "Exact",
+        "orbTier": "core_structural",
+        "weightScore": 67
+      },
+      {
+        "bodyA": "Jupiter",
+        "bodyB": "Pluto",
+        "aspect": "Sextile",
+        "category": "Major",
+        "angle": 60,
+        "orb": 1.02,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 80
+      },
+      {
+        "bodyA": "Pluto",
+        "bodyB": "Ascendant",
+        "aspect": "Semi-square",
+        "category": "Minor",
+        "angle": 45,
+        "orb": 1.08,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 71
+      },
+      {
+        "bodyA": "Mars",
+        "bodyB": "Jupiter",
+        "aspect": "Square",
+        "category": "Major",
+        "angle": 90,
+        "orb": 1.1,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 86
+      },
+      {
+        "bodyA": "Moon",
+        "bodyB": "Saturn",
+        "aspect": "Trine",
+        "category": "Major",
+        "angle": 120,
+        "orb": 1.2,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 96
+      },
+      {
+        "bodyA": "Mars",
+        "bodyB": "Neptune",
+        "aspect": "Quincunx",
+        "category": "Minor",
+        "angle": 150,
+        "orb": 1.38,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 56
+      },
+      {
+        "bodyA": "Sun",
+        "bodyB": "Lilith",
+        "aspect": "Conjunction",
+        "category": "Major",
+        "angle": 0,
+        "orb": 1.42,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 95
+      },
+      {
+        "bodyA": "Sun",
+        "bodyB": "Pluto",
+        "aspect": "Square",
+        "category": "Major",
+        "angle": 90,
+        "orb": 1.48,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 93
+      },
+      {
+        "bodyA": "Venus",
+        "bodyB": "Chiron",
+        "aspect": "Semi-sextile",
+        "category": "Minor",
+        "angle": 30,
+        "orb": 1.68,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 50
+      },
+      {
+        "bodyA": "Mercury",
+        "bodyB": "Ascendant",
+        "aspect": "Semi-sextile",
+        "category": "Minor",
+        "angle": 30,
+        "orb": 1.8,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 58
+      },
+      {
+        "bodyA": "Lilith",
+        "bodyB": "Ascendant",
+        "aspect": "Semi-square",
+        "category": "Minor",
+        "angle": 45,
+        "orb": 1.82,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 58
+      },
+      {
+        "bodyA": "Moon",
+        "bodyB": "Uranus",
+        "aspect": "Square",
+        "category": "Major",
+        "angle": 90,
+        "orb": 1.94,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 90
+      },
+      {
+        "bodyA": "Uranus",
+        "bodyB": "Neptune",
+        "aspect": "Conjunction",
+        "category": "Major",
+        "angle": 0,
+        "orb": 1.98,
+        "exactness": "Tight",
+        "orbTier": "core_structural",
+        "weightScore": 81
+      },
+      {
+        "bodyA": "Mars",
+        "bodyB": "Pluto",
+        "aspect": "Quincunx",
+        "category": "Minor",
+        "angle": 150,
+        "orb": 2.12,
+        "exactness": "Tight",
+        "orbTier": "active",
+        "weightScore": 28
+      },
+      {
+        "bodyA": "Chiron",
+        "bodyB": "Ascendant",
+        "aspect": "Sextile",
+        "category": "Major",
+        "angle": 60,
+        "orb": 2.42,
+        "exactness": "Tight",
+        "orbTier": "active",
+        "weightScore": 63
+      },
+      {
+        "bodyA": "Jupiter",
+        "bodyB": "Neptune",
+        "aspect": "Trine",
+        "category": "Major",
+        "angle": 120,
+        "orb": 2.48,
+        "exactness": "Tight",
+        "orbTier": "active",
+        "weightScore": 62
+      },
+      {
+        "bodyA": "Mercury",
+        "bodyB": "Midheaven",
+        "aspect": "Sextile",
+        "category": "Major",
+        "angle": 60,
+        "orb": 2.57,
+        "exactness": "Tight",
+        "orbTier": "active",
+        "weightScore": 61
+      },
+      {
+        "bodyA": "Pluto",
+        "bodyB": "Lilith",
+        "aspect": "Square",
+        "category": "Major",
+        "angle": 90,
+        "orb": 2.9,
+        "exactness": "Tight",
+        "orbTier": "active",
+        "weightScore": 58
+      },
+      {
+        "bodyA": "North Node",
+        "bodyB": "Midheaven",
+        "aspect": "Opposition",
+        "category": "Major",
+        "angle": 180,
+        "orb": 3.33,
+        "exactness": "Moderate",
+        "orbTier": "active",
+        "weightScore": 68
+      },
+      {
+        "bodyA": "South Node",
+        "bodyB": "Midheaven",
+        "aspect": "Conjunction",
+        "category": "Major",
+        "angle": 0,
+        "orb": 3.33,
+        "exactness": "Moderate",
+        "orbTier": "active",
+        "weightScore": 68
+      },
+      {
+        "bodyA": "Neptune",
+        "bodyB": "Pluto",
+        "aspect": "Sextile",
+        "category": "Major",
+        "angle": 60,
+        "orb": 3.5,
+        "exactness": "Moderate",
+        "orbTier": "active",
+        "weightScore": 43
+      },
+      {
+        "bodyA": "Sun",
+        "bodyB": "Mars",
+        "aspect": "Sextile",
+        "category": "Major",
+        "angle": 60,
+        "orb": 3.6,
+        "exactness": "Moderate",
+        "orbTier": "active",
+        "weightScore": 52
+      },
+      {
+        "bodyA": "Moon",
+        "bodyB": "Neptune",
+        "aspect": "Square",
+        "category": "Major",
+        "angle": 90,
+        "orb": 3.92,
+        "exactness": "Moderate",
+        "orbTier": "active",
+        "weightScore": 60
+      },
+      {
+        "bodyA": "Mars",
+        "bodyB": "Saturn",
+        "aspect": "Trine",
+        "category": "Major",
+        "angle": 120,
+        "orb": 4.1,
+        "exactness": "Moderate",
+        "orbTier": "active",
+        "weightScore": 49
+      },
+      {
+        "bodyA": "Venus",
+        "bodyB": "Uranus",
+        "aspect": "Trine",
+        "category": "Major",
+        "angle": 120,
+        "orb": 4.34,
+        "exactness": "Moderate",
+        "orbTier": "active",
+        "weightScore": 47
+      },
+      {
+        "bodyA": "Ascendant",
+        "bodyB": "Midheaven",
+        "aspect": "Square",
+        "category": "Major",
+        "angle": 90,
+        "orb": 4.37,
+        "exactness": "Moderate",
+        "orbTier": "active",
+        "weightScore": 57
+      },
+      {
+        "bodyA": "Jupiter",
+        "bodyB": "Uranus",
+        "aspect": "Trine",
+        "category": "Major",
+        "angle": 120,
+        "orb": 4.46,
+        "exactness": "Moderate",
+        "orbTier": "active",
+        "weightScore": 46
+      },
+      {
+        "bodyA": "Moon",
+        "bodyB": "Mars",
+        "aspect": "Trine",
+        "category": "Major",
+        "angle": 120,
+        "orb": 5.3,
+        "exactness": "Moderate",
+        "orbTier": "background",
+        "weightScore": 31
+      },
+      {
+        "bodyA": "Uranus",
+        "bodyB": "Pluto",
+        "aspect": "Sextile",
+        "category": "Major",
+        "angle": 60,
+        "orb": 5.48,
+        "exactness": "Moderate",
+        "orbTier": "background",
+        "weightScore": 7
+      },
+      {
+        "bodyA": "Mercury",
+        "bodyB": "Venus",
+        "aspect": "Conjunction",
+        "category": "Major",
+        "angle": 0,
+        "orb": 5.9,
+        "exactness": "Wide",
+        "orbTier": "background",
+        "weightScore": 22
+      },
+      {
+        "bodyA": "Saturn",
+        "bodyB": "Pluto",
+        "aspect": "Square",
+        "category": "Major",
+        "angle": 90,
+        "orb": 6.22,
+        "exactness": "Wide",
+        "orbTier": "background",
+        "weightScore": 14
+      },
+      {
+        "bodyA": "Venus",
+        "bodyB": "Neptune",
+        "aspect": "Trine",
+        "category": "Major",
+        "angle": 120,
+        "orb": 6.32,
+        "exactness": "Wide",
+        "orbTier": "background",
+        "weightScore": 13
+      },
+      {
+        "bodyA": "Moon",
+        "bodyB": "Ascendant",
+        "aspect": "Conjunction",
+        "category": "Major",
+        "angle": 0,
+        "orb": 6.5,
+        "exactness": "Wide",
+        "orbTier": "background",
+        "weightScore": 28
+      },
+      {
+        "bodyA": "Sun",
+        "bodyB": "Saturn",
+        "aspect": "Opposition",
+        "category": "Major",
+        "angle": 180,
+        "orb": 7.7,
+        "exactness": "Wide",
+        "orbTier": "background",
+        "weightScore": 20
+      }
     ],
-    elements: { Fire: 1, Earth: 3, Air: 3, Water: 0 },
-    modalities: { Cardinal: 1, Fixed: 2, Mutable: 4 },
-    polarities: { Yang: 4, Yin: 3 },
-    dominantElement: 'Earth',
-    dominantModality: 'Mutable',
+    "elements": {
+      "Fire": 1,
+      "Earth": 5,
+      "Air": 4,
+      "Water": 1
+    },
+    "modalities": {
+      "Cardinal": 4,
+      "Fixed": 3,
+      "Mutable": 4
+    },
+    "polarities": {
+      "Yang": 5,
+      "Yin": 6
+    },
+    "dominantElement": "Earth",
+    "dominantModality": "Cardinal",
+    "sect": {
+      "chartType": "Diurnal",
+      "sunHouse": 11,
+      "sectLight": "Sun",
+      "beneficOfSect": "Jupiter",
+      "beneficContrary": "Venus",
+      "maleficOfSect": "Saturn",
+      "maleficContrary": "Mars",
+      "summary": "Diurnal (Day) Chart (Sun in H11): Jupiter acts as Benefic of Sect (most constructive ease) and Saturn is Malefic of Sect (disciplined structure); Mars and Venus operate contrary to sect."
+    },
+    "chartRuler": {
+      "ascSign": "Libra",
+      "traditional": "Venus",
+      "modern": "Venus",
+      "traditionalHouse": 12,
+      "traditionalDignity": "Fall",
+      "modernHouse": 12,
+      "modernDignity": "Fall"
+    },
+    "mutualReceptions": [
+      {
+        "planetA": "Saturn",
+        "planetB": "Uranus",
+        "type": "Domicile",
+        "summary": "Saturn (Aquarius) and Uranus (Capricorn) share Domicile Mutual Reception — cooperating across houses H5 & H4."
+      }
+    ],
+    "dispositorTree": {
+      "traditional": {
+        "chains": {
+          "Sun": [
+            "Sun"
+          ],
+          "Moon": [
+            "Moon",
+            "Venus",
+            "Mercury"
+          ],
+          "Mars": [
+            "Mars",
+            "Mercury"
+          ],
+          "Mercury": [
+            "Mercury"
+          ],
+          "Jupiter": [
+            "Jupiter",
+            "Mercury"
+          ],
+          "Venus": [
+            "Venus",
+            "Mercury"
+          ],
+          "Saturn": [
+            "Saturn"
+          ],
+          "Uranus": [
+            "Uranus",
+            "Saturn"
+          ],
+          "Neptune": [
+            "Neptune",
+            "Saturn"
+          ],
+          "Pluto": [
+            "Pluto",
+            "Mars",
+            "Mercury"
+          ]
+        },
+        "finalDispositors": [
+          "Sun",
+          "Mercury",
+          "Saturn"
+        ],
+        "loops": []
+      },
+      "modern": {
+        "chains": {
+          "Sun": [
+            "Sun"
+          ],
+          "Moon": [
+            "Moon",
+            "Venus",
+            "Mercury"
+          ],
+          "Mars": [
+            "Mars",
+            "Mercury"
+          ],
+          "Mercury": [
+            "Mercury"
+          ],
+          "Jupiter": [
+            "Jupiter",
+            "Mercury"
+          ],
+          "Venus": [
+            "Venus",
+            "Mercury"
+          ],
+          "Saturn": [
+            "Saturn",
+            "Uranus",
+            "Saturn"
+          ],
+          "Uranus": [
+            "Uranus",
+            "Saturn",
+            "Uranus"
+          ],
+          "Neptune": [
+            "Neptune",
+            "Saturn",
+            "Uranus",
+            "Saturn"
+          ],
+          "Pluto": [
+            "Pluto"
+          ]
+        },
+        "finalDispositors": [
+          "Sun",
+          "Mercury",
+          "Pluto"
+        ],
+        "loops": [
+          [
+            "Saturn",
+            "Uranus"
+          ]
+        ]
+      }
+    },
+    "configurations": [
+      {
+        "type": "Yod",
+        "planets": [
+          "Neptune",
+          "Pluto",
+          "Mars"
+        ],
+        "apex": "Mars",
+        "houseOrSign": "Gemini H9",
+        "maxOrb": 3.5,
+        "summary": "Yod (Finger of God): Neptune sextile Pluto pointing via quincunx to apex Mars (Gemini H9, max orb 3.5°)."
+      },
+      {
+        "type": "Grand Trine",
+        "planets": [
+          "Moon",
+          "Saturn",
+          "Mars"
+        ],
+        "elementOrModality": "Air",
+        "maxOrb": 5.3,
+        "summary": "Air Grand Trine connecting Moon, Saturn, Mars (max orb 5.3°)."
+      },
+      {
+        "type": "T-Square",
+        "planets": [
+          "Sun",
+          "Saturn",
+          "Pluto"
+        ],
+        "apex": "Pluto",
+        "elementOrModality": "Fixed",
+        "houseOrSign": "Scorpio H2",
+        "maxOrb": 7.7,
+        "summary": "Fixed T-Square: Sun opposite Saturn squaring apex Pluto (Scorpio H2, max orb 7.7°)."
+      },
+      {
+        "type": "Stellium",
+        "planets": [
+          "Mercury",
+          "Jupiter",
+          "Venus"
+        ],
+        "houseOrSign": "Virgo (Sign Stellium)",
+        "maxOrb": 30,
+        "summary": "Virgo Stellium (Mercury, Jupiter, Venus) concentrating focus across H12."
+      }
+    ],
+    "hellenistic": {
+      "lots": [
+        {
+          "name": "Lot of Fortune",
+          "longitude": 237.2539,
+          "signIndex": 7,
+          "sign": "Scorpio",
+          "degreeInSign": 27.2539,
+          "dms": "27°15'14\"",
+          "wholeSignHouse": 2,
+          "lord": "Mars",
+          "boundLord": "Saturn"
+        },
+        {
+          "name": "Lot of Spirit",
+          "longitude": 135.0539,
+          "signIndex": 4,
+          "sign": "Leo",
+          "degreeInSign": 15.0539,
+          "dms": "15°03'14\"",
+          "wholeSignHouse": 11,
+          "lord": "Sun",
+          "boundLord": "Saturn"
+        },
+        {
+          "name": "Lot of Eros",
+          "longitude": 211.354,
+          "signIndex": 7,
+          "sign": "Scorpio",
+          "degreeInSign": 1.354,
+          "dms": "01°21'14\"",
+          "wholeSignHouse": 2,
+          "lord": "Mars",
+          "boundLord": "Mars"
+        },
+        {
+          "name": "Lot of Necessity",
+          "longitude": 269.0538,
+          "signIndex": 8,
+          "sign": "Sagittarius",
+          "degreeInSign": 29.0538,
+          "dms": "29°03'14\"",
+          "wholeSignHouse": 3,
+          "lord": "Jupiter",
+          "boundLord": "Mars"
+        }
+      ],
+      "bounds": [
+        {
+          "body": "Ascendant",
+          "sign": "Libra",
+          "degree": "06°09'14\"",
+          "wholeSignHouse": 1,
+          "termLord": "Mercury",
+          "decanLord": "Moon"
+        },
+        {
+          "body": "Sun",
+          "sign": "Leo",
+          "degree": "21°33'14\"",
+          "wholeSignHouse": 11,
+          "termLord": "Mercury",
+          "decanLord": "Mars"
+        },
+        {
+          "body": "Moon",
+          "sign": "Libra",
+          "degree": "12°39'14\"",
+          "wholeSignHouse": 1,
+          "termLord": "Mercury",
+          "decanLord": "Saturn"
+        },
+        {
+          "body": "Mercury",
+          "sign": "Virgo",
+          "degree": "04°21'14\"",
+          "wholeSignHouse": 12,
+          "termLord": "Mercury",
+          "decanLord": "Sun"
+        },
+        {
+          "body": "Venus",
+          "sign": "Virgo",
+          "degree": "10°15'14\"",
+          "wholeSignHouse": 12,
+          "termLord": "Venus",
+          "decanLord": "Venus"
+        },
+        {
+          "body": "Mars",
+          "sign": "Gemini",
+          "degree": "17°57'14\"",
+          "wholeSignHouse": 9,
+          "termLord": "Mars",
+          "decanLord": "Mars"
+        },
+        {
+          "body": "Jupiter",
+          "sign": "Virgo",
+          "degree": "19°03'14\"",
+          "wholeSignHouse": 12,
+          "termLord": "Jupiter",
+          "decanLord": "Venus"
+        },
+        {
+          "body": "Saturn",
+          "sign": "Aquarius",
+          "degree": "13°51'14\"",
+          "wholeSignHouse": 5,
+          "termLord": "Jupiter",
+          "decanLord": "Mercury"
+        }
+      ],
+      "zodiacalReleasing": {
+        "spirit": {
+          "fromLot": "Spirit",
+          "lotSign": "Leo",
+          "l1Sign": "Virgo",
+          "l1Lord": "Mercury",
+          "l1StartIso": "2011-05-07",
+          "l1EndIso": "2031-01-22",
+          "l2Sign": "Cancer",
+          "l2Lord": "Moon",
+          "l2StartIso": "2025-01-23",
+          "l2EndIso": "2027-02-12",
+          "loosingOfBond": false
+        },
+        "fortune": {
+          "fromLot": "Fortune",
+          "lotSign": "Scorpio",
+          "l1Sign": "Capricorn",
+          "l1Lord": "Saturn",
+          "l1StartIso": "2019-03-26",
+          "l1EndIso": "2045-11-04",
+          "l2Sign": "Gemini",
+          "l2Lord": "Mercury",
+          "l2StartIso": "2026-10-15",
+          "l2EndIso": "2028-06-06",
+          "loosingOfBond": false
+        }
+      }
+    }
   },
 };
 

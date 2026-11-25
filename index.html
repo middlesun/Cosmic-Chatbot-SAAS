@@ -292,6 +292,25 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+        /* Non-distracting transparent scrollbar for long landing chat transcripts */
+        .cc-chat-scroll {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(61, 56, 48, 0.14) transparent;
+        }
+        .cc-chat-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        .cc-chat-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .cc-chat-scroll::-webkit-scrollbar-thumb {
+            background-color: rgba(61, 56, 48, 0.14);
+            border-radius: 9999px;
+        }
+        .cc-chat-scroll:hover::-webkit-scrollbar-thumb {
+            background-color: rgba(61, 56, 48, 0.26);
+        }
+
         .btn-gradient-indigo {
             background: linear-gradient(135deg, #4F46E5 0%, #312E81 100%);
         }

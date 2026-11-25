@@ -148,12 +148,6 @@ const BlogPage: React.FC<BlogPageProps> = ({ sanityPosts, sanityLoaded }) => {
               Home
             </Link>
             <Link
-              to="/home-2"
-              className="text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors whitespace-nowrap"
-            >
-              Home #2
-            </Link>
-            <Link
               to="/app/login"
               className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] transition-colors whitespace-nowrap"
             >

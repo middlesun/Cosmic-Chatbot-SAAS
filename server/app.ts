@@ -20,7 +20,7 @@ import { getCompanionSpecializations } from './services/companionV2Service';
 import { checkRateLimit, getClientIpHash } from './services/abuseGuard';
 import { fetchSanityBlogPosts, isSanityConfigured } from '../lib/sanity';
 import { normalizeCouncilSlug } from '../lib/vedicTypes';
-import { ALLOWED_CHAT_NUMERIC_FONTS } from './services/platformSettings';
+import { ALLOWED_CHAT_NUMERIC_FONTS, getPricingConfig } from './services/platformSettings';
 import { sanitizeUserContextPreferences } from './services/lifeContextGuard';
 
 function isValidIanaTimezone(tz: string): boolean {
@@ -73,6 +73,39 @@ export function createExpressApp(): Express {
       res.json({ companions, specializations });
     } catch {
       res.status(500).json({ error: 'Unable to load specialist companions right now.' });
+    }
+  });
+
+  // Public pricing catalog for landing showcase (mirrors live Admin Pricing without internal IDs)
+  app.get('/api/public/pricing', async (_req, res) => {
+    try {
+      const pricing = await getPricingConfig();
+      res.setHeader('Cache-Control', 'public, max-age=120');
+      res.json({
+        signupWelcomeCredits: pricing.signup_welcome_credits,
+        referralRewardCredits: pricing.referral_reward_credits,
+        tiers: pricing.membership_tiers.map((t) => ({
+          slug: t.slug,
+          name: t.name,
+          profileLimit: t.profileLimit,
+          activationCostCredits: t.activationCostCredits,
+          includedMonthlyCredits: t.includedMonthlyCredits,
+          prices: t.prices,
+          features: t.features,
+        })),
+        creditPacks: pricing.credit_packs
+          .filter((p) => p.is_active !== false)
+          .map((p) => ({
+            slug: p.slug,
+            name: p.name,
+            subtitle: p.subtitle,
+            credits: p.credits,
+            highlight: p.highlight,
+            prices: p.prices,
+          })),
+      });
+    } catch {
+      res.status(500).json({ error: 'Unable to load pricing catalog right now.' });
     }
   });
 

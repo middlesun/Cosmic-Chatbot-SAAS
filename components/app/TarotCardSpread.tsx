@@ -310,14 +310,6 @@ const TarotCardSpread: React.FC<TarotCardSpreadProps> = ({
                 }`}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setZoomedIndex(selectedIndex)}
-            className="min-h-[34px] inline-flex items-center gap-1.5 rounded-lg border border-[#3D3830]/15 bg-[#FAF7F2] px-2.5 py-1 text-[11px] font-medium text-[#3D3830] hover:bg-[#EAE3D7] transition-colors cursor-pointer shrink-0"
-          >
-            <Maximize2 className="h-3 w-3 text-[#8B7355]" />
-            <span>Inspect card</span>
-          </button>
         </div>
       )}
 

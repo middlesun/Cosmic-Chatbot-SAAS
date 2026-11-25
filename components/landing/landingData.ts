@@ -1,3 +1,8 @@
+import heroHumanCounselImg from '../../src/assets/images/hero_human_counsel_1795581606668.jpg';
+import heroHumanReflectionImg from '../../src/assets/images/hero_human_reflection_1795582207524.jpg';
+import heroHumanConnectionImg from '../../src/assets/images/hero_human_connection_1795582207788.jpg';
+import heroHumanClarityImg from '../../src/assets/images/hero_human_clarity_1795582208303.jpg';
+
 export interface EditorialFeatureItem {
   title: string;
   description: string;
@@ -13,6 +18,7 @@ export interface CompanionCarouselItem {
   role: string;
   imageUrl: string;
   alt: string;
+  imgClassName?: string;
 }
 
 export interface LifeAreaItem {
@@ -22,12 +28,60 @@ export interface LifeAreaItem {
   alt: string;
 }
 
+export interface HeroBackdropOption {
+  id: 'human-counsel' | 'human-reflection' | 'human-connection' | 'human-clarity';
+  label: string;
+  imageUrl: string;
+  imageAlt: string;
+  tone: 'light' | 'dark';
+  objectPositionClass: string;
+  canvasBgClass: string;
+}
+
 export const HERO_CONTENT = {
   headlineLine1: 'Clarity & Guidance',
   headlineLine2: 'When you need it the most.',
   body: "When life doesn't go as planned. When the future feels uncertain. When you're searching for answers, struggling to make a decision or simply trying to find your way forward. Find the insights, guidance and emotional support to navigate life's most challenging moments and realise your highest potential.",
-  imageUrl: '/assets/landing/hero-lake-dawn.jpg',
-  imageAlt: 'Misty golden-apricot dawn over a tranquil lake with a lone tree mirrored in still water',
+  imageUrl: heroHumanCounselImg,
+  imageAlt: 'Thoughtful woman seated by a warm sunlit wooden window with tea in calm morning light',
+  backdrops: [
+    {
+      id: 'human-counsel',
+      label: 'Human Counsel',
+      imageUrl: heroHumanCounselImg,
+      imageAlt: 'Thoughtful woman seated by a warm sunlit wooden window with tea in calm morning light',
+      tone: 'light',
+      objectPositionClass: 'object-[70%_center] md:object-right',
+      canvasBgClass: 'bg-[#F3ECE1]',
+    },
+    {
+      id: 'human-reflection',
+      label: 'Morning Reflection',
+      imageUrl: heroHumanReflectionImg,
+      imageAlt: 'Thoughtful man seated at a timber table near a sunlit window with an open notebook',
+      tone: 'light',
+      objectPositionClass: 'object-[75%_center] md:object-right',
+      canvasBgClass: 'bg-[#F3ECE1]',
+    },
+    {
+      id: 'human-connection',
+      label: 'Quiet Conversation',
+      imageUrl: heroHumanConnectionImg,
+      imageAlt: 'Couple sharing an empathetic conversation beside sunlit sheer curtains',
+      tone: 'light',
+      objectPositionClass: 'object-[76%_center] md:object-right',
+      canvasBgClass: 'bg-[#F3ECE1]',
+    },
+    {
+      id: 'human-clarity',
+      label: 'Open Window',
+      imageUrl: heroHumanClarityImg,
+      imageAlt: 'Serene woman standing by an open sunlit wooden window with calm clarity',
+      tone: 'light',
+      objectPositionClass: 'object-[78%_center] md:object-right',
+      canvasBgClass: 'bg-[#F3ECE1]',
+    },
+  ] satisfies HeroBackdropOption[],
   pillars: [
     { id: 'birthchart', label: 'Birth Chart' },
     { id: 'consultation', label: 'Consultation' },
@@ -37,14 +91,14 @@ export const HERO_CONTENT = {
 };
 
 export const BIRTHCHART_CONTENT = {
-  indexLabel: '01. Deep Birth Chart Analysis',
+  indexLabel: 'Deep Birth Chart Analysis',
   headline: 'Your birth chart holds more clues than you realise.',
   lead: 'The relationships you attract. The patterns that repeat. Your natural strengths, untapped potential and the unexpected turning points that shape your life.',
   chartImageUrl: '/assets/landing/chart-parchment.jpg',
   chartImageAlt: 'Luminous parchment engraving of a celestial natal birth chart with zodiac rings and house divisions',
   closingLead:
     'Discover the hidden promises and patterns within your birth chart. Understand your experiences through a deeper astrological perspective, explore the karmic themes of your life and make more considered decisions as you navigate its changing cycles.',
-  depthHeading: 'An extraordinary depth of analysis.',
+  depthHeading: '6 ways AI astrology is better than human astrology',
   depthIntro:
     "Traditional consultations are often limited by time and the scope of an individual astrologer's expertise. Cosmic Council brings together hundreds of chart indicators, multiple analytical techniques and different astrological traditions to produce comprehensive, nuanced interpretations.",
   features: [
@@ -82,7 +136,7 @@ export const BIRTHCHART_CONTENT = {
 };
 
 export const CONSULTATION_CONTENT = {
-  indexLabel: '02. One-on-One Consultations',
+  indexLabel: 'One-on-One Consultations',
   headline: 'An astrologer who understands more than just your birth chart.',
   lead: "Your circumstances. Your relationships. Your past experiences. Your ambitions. The questions you've been carrying for years.",
   triptych: [
@@ -132,7 +186,7 @@ export const CONSULTATION_CONTENT = {
       text: "Absolutely. That's worth examining separately. We can compare the indicators for independent enterprise and structured employment, alongside your actual experience and appetite for risk.",
     },
   ] satisfies ConversationLine[],
-  dialogueFootnote: 'Illustrative consultation',
+  dialogueFootnote: '',
   features: [
     {
       title: 'Deeply personal consultations',
@@ -174,7 +228,7 @@ export const CONSULTATION_CONTENT = {
         'Return to a conversation whenever you have another question or something changes in your life.',
     },
   ] satisfies EditorialFeatureItem[],
-  carouselTitle: 'Spiritual guides',
+  carouselTitle: 'Esoteric guides',
   carouselItems: [
     {
       name: 'Nandini',
@@ -210,7 +264,7 @@ export const CONSULTATION_CONTENT = {
 };
 
 export const GUIDANCE_CONTENT = {
-  indexLabel: '03. Finding Real Solutions',
+  indexLabel: 'Finding Real Solutions',
   headline: 'Understanding your life is only the beginning.',
   lead1:
     "Knowing why certain patterns may be repeating, understanding the phase of life you're in and gaining perspective on what lies ahead can bring tremendous clarity.",
@@ -248,7 +302,7 @@ export const GUIDANCE_CONTENT = {
       text: "Fair enough. Then let's stop treating quitting as the immediate goal. Let's figure out what financial position you'd need to be in to give yourself a genuine choice.",
     },
   ] satisfies ConversationLine[],
-  dialogueFootnote: 'Illustrative conversation',
+  dialogueFootnote: '',
   lifeAreasTitle: 'For the things that matter most in your life.',
   lifeAreas: [
     {
@@ -348,7 +402,7 @@ export const GUIDANCE_CONTENT = {
 };
 
 export const SUPPORT_CONTENT = {
-  indexLabel: '04. Emotional Support',
+  indexLabel: 'Emotional Support',
   headlineLine1: 'Life can be a lot to carry.',
   headlineLine2: 'Especially when you carry it alone.',
   lead1:
@@ -383,7 +437,7 @@ export const SUPPORT_CONTENT = {
       text: "Then you don't have to pretend here.",
     },
   ] satisfies ConversationLine[],
-  dialogueFootnote: 'Illustrative conversation',
+  dialogueFootnote: '',
   features: [
     {
       title: 'Feel heard. Feel understood.',
