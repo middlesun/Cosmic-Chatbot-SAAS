@@ -162,7 +162,6 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [showTagFilterBar, setShowTagFilterBar] = useState(false);
   const [sortBy, setSortBy] = useState<PromptSortMode>('default');
   const [activeOnly, setActiveOnly] = useState(false);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(prompts[0]?.id || null);
@@ -1178,36 +1177,10 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                   {cat.label} ({categoryCounts[cat.value] || 0})
                 </button>
               ))}
-              {allLibraryTags.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowTagFilterBar((v) => !v)}
-                  aria-expanded={showTagFilterBar}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-                    showTagFilterBar || tagFilter
-                      ? 'bg-[#4A453D] text-[#FAF7F2]'
-                      : 'bg-[#FDFBF7] border border-[#3D3830]/15 text-[#5C5449] hover:bg-[#EAE3D7]/60'
-                  }`}
-                >
-                  <Tag className="h-3 w-3" />
-                  <span>
-                    {showTagFilterBar
-                      ? 'Hide tags'
-                      : tagFilter
-                      ? `Tags (#${tagFilter})`
-                      : `Tags (${allLibraryTags.length})`}
-                  </span>
-                  <ChevronDown
-                    className={`h-3 w-3 transition-transform ${
-                      showTagFilterBar ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-              )}
             </div>
 
             {/* Tag Discovery Bar */}
-            {allLibraryTags.length > 0 && showTagFilterBar && (
+            {allLibraryTags.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                 <span className="inline-flex items-center gap-1 text-[#8B8275] font-medium mr-0.5">
                   <Tag className="h-3 w-3" />

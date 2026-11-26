@@ -36,11 +36,48 @@ export interface RecordChatbotPipelineLogInput {
   stage4_json?: Record<string, unknown> | null;
   total_latency_ms: number;
   error_message?: string | null;
+  /** Opt-in administrator-only diagnostic turn capture; bypasses global toggle cleanly without recording on ordinary user turns. */
+  bypassGlobalToggle?: boolean;
 }
 
 const MAX_MEMORY_LOGS = 120;
+const MAX_DB_LOGS_RETAINED = 150;
 const memoryLogBuffer: ChatbotPipelineLogEntry[] = [];
 let lastWriteError: string | null = null;
+
+const SENSITIVE_KEY_RE =
+  /(api[-_]?key|secret|password|authorization|service[-_]?role|private[-_]?key|access[-_]?token|refresh[-_]?token|bearer)/i;
+
+export function redactDiagnosticString(raw: string): string {
+  return raw
+    .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, 'Bearer [REDACTED]')
+    .replace(/\bsk-(?:or-v1-)?[A-Za-z0-9_-]{12,}\b/g, '[REDACTED_API_KEY]')
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{6,}\b/g, '[REDACTED_JWT]')
+    .replace(/\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s"'`]+/gi, '[REDACTED_DB_URI]')
+    .replace(/(openrouter_api_key|supabase_service_role_key|resend_api_key)\s*[:=]\s*\S+/gi, '$1=[REDACTED]');
+}
+
+export function redactDiagnosticSecrets<T>(value: T, depth = 0): T {
+  if (depth > 8 || value === null || value === undefined) return value;
+  if (typeof value === 'string') {
+    return redactDiagnosticString(value) as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactDiagnosticSecrets(item, depth + 1)) as unknown as T;
+  }
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (SENSITIVE_KEY_RE.test(k)) {
+        out[k] = '[REDACTED]';
+      } else {
+        out[k] = redactDiagnosticSecrets(v, depth + 1);
+      }
+    }
+    return out as T;
+  }
+  return value;
+}
 
 function pushToMemoryBuffer(entry: ChatbotPipelineLogEntry): void {
   memoryLogBuffer.unshift(entry);
@@ -72,14 +109,15 @@ export async function isPipelineLogsTableReady(): Promise<boolean> {
 }
 
 /**
- * Records a compact diagnostic trace for one chatbot turn whenever Admin logging is enabled.
- * Never logs raw system_prompts, chart_json, or API secrets.
+ * Records a diagnostic trace for one chatbot turn whenever Admin logging is enabled
+ * OR an administrator opted into single-turn production diagnostics (`bypassGlobalToggle`).
+ * Never logs raw API secrets or auth tokens; normal user turns remain gated behind Admin toggle.
  */
 export async function recordChatbotPipelineLog(
   input: RecordChatbotPipelineLogInput
 ): Promise<void> {
   try {
-    const enabled = await isPipelineLoggingEnabled();
+    const enabled = input.bypassGlobalToggle ? true : await isPipelineLoggingEnabled();
     if (!enabled) return;
 
     const entry: ChatbotPipelineLogEntry = {
@@ -92,15 +130,19 @@ export async function recordChatbotPipelineLog(
       mode_slug: input.mode_slug || null,
       response_length: input.response_length || null,
       user_prompt_preview: input.user_prompt_preview
-        ? input.user_prompt_preview.replace(/\s+/g, ' ').trim().slice(0, 220)
+        ? redactDiagnosticString(
+            input.user_prompt_preview.replace(/\s+/g, ' ').trim().slice(0, 220)
+          )
         : null,
       action_taken: input.action_taken || 'proceed',
-      stage1_json: input.stage1_json ?? null,
-      stage2_json: input.stage2_json ?? null,
-      stage3_json: input.stage3_json ?? null,
-      stage4_json: input.stage4_json ?? null,
+      stage1_json: input.stage1_json ? redactDiagnosticSecrets(input.stage1_json) : null,
+      stage2_json: input.stage2_json ? redactDiagnosticSecrets(input.stage2_json) : null,
+      stage3_json: input.stage3_json ? redactDiagnosticSecrets(input.stage3_json) : null,
+      stage4_json: input.stage4_json ? redactDiagnosticSecrets(input.stage4_json) : null,
       total_latency_ms: Math.max(0, Math.round(input.total_latency_ms || 0)),
-      error_message: input.error_message ? String(input.error_message).slice(0, 320) : null,
+      error_message: input.error_message
+        ? redactDiagnosticString(String(input.error_message).slice(0, 320))
+        : null,
     };
 
     pushToMemoryBuffer(entry);
@@ -134,6 +176,24 @@ export async function recordChatbotPipelineLog(
       }
     } else {
       lastWriteError = null;
+      // Enforce bounded DB retention quietly so companion diagnostic dumps never grow unboundedly
+      try {
+        const { data: oldestExcess } = await supabaseAdmin
+          .from('chatbot_pipeline_logs')
+          .select('id')
+          .order('created_at', { ascending: false })
+          .range(MAX_DB_LOGS_RETAINED, MAX_DB_LOGS_RETAINED + 25);
+        if (Array.isArray(oldestExcess) && oldestExcess.length > 0) {
+          const idsToDelete = oldestExcess
+            .map((r) => String((r as { id?: string }).id || ''))
+            .filter(Boolean);
+          if (idsToDelete.length > 0) {
+            await supabaseAdmin.from('chatbot_pipeline_logs').delete().in('id', idsToDelete);
+          }
+        }
+      } catch {
+        // Non-fatal retention cleanup
+      }
     }
   } catch (err) {
     lastWriteError = err instanceof Error ? err.message : 'Unexpected telemetry write failure';
@@ -225,6 +285,28 @@ export async function getChatbotPipelineLogs(options?: {
     schemaCacheStale: false,
     schemaErrorDetail: 'Supabase admin client is unavailable.',
   };
+}
+
+export async function deleteChatbotPipelineLog(
+  logId: string
+): Promise<{ deletedDb: boolean }> {
+  const cleanId = logId.trim();
+  if (!cleanId) return { deletedDb: false };
+  const idx = memoryLogBuffer.findIndex((entry) => entry.id === cleanId);
+  if (idx !== -1) {
+    memoryLogBuffer.splice(idx, 1);
+  }
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) return { deletedDb: false };
+  try {
+    const { error } = await supabaseAdmin
+      .from('chatbot_pipeline_logs')
+      .delete()
+      .eq('id', cleanId);
+    return { deletedDb: !error };
+  } catch {
+    return { deletedDb: false };
+  }
 }
 
 export async function clearChatbotPipelineLogs(): Promise<{ clearedDb: boolean }> {

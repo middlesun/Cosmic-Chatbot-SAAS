@@ -642,9 +642,19 @@ export function sanitizeUserContextPreferences(rawInput: unknown): UserContextPr
   };
 }
 
+const ASTRO_INTERPRETATION_CLAIM_RE =
+  /\b(?:mahadasha|antardasha|pratyantardasha|vimshottari|dasha|bhukti|gochar|nakshatra|navamsa|d-?9|d-?10|d-?7|ashtakavarga|sub[- ]?lord|house lord|ascendant|lagna|profections?|progressions?|synastry|solar return|sade sati|manglik|kaal sarp|yoga|dosha)\b|\b\d{1,2}(?:st|nd|rd|th)\s+house\b|\b(?:sun|moon|mars|mercury|jupiter|venus|saturn|rahu|ketu|uranus|neptune|pluto)\s+(?:in|conjunct|square|trine|opposite|aspects?|aspecting|transiting|retrograde|debilitated|exalted|combust)\b|\b(?:chart|planets?|transits?|dashas?|readings?|horoscope|tarot|spread|numerology|astrologer)\s+(?:shows?|indicates?|suggests?|predicts?|promises?|denies|points to|revealed|said|noted)\b/i;
+
+export function isAstrologicalInterpretationText(text: string | null | undefined): boolean {
+  const cleaned = (text || '').trim();
+  if (!cleaned) return false;
+  return ASTRO_INTERPRETATION_CLAIM_RE.test(cleaned);
+}
+
 /**
  * Combines user-level Living Context (public.users) and optional default birth profile context
- * cleanly without mutating DB objects, honoring cross-companion memory filtering when disabled.
+ * cleanly without mutating DB objects, honoring cross-companion memory filtering when disabled
+ * and independent astrological analysis mode when enabled.
  */
 export function mergeUserAndProfileContextForPrompt(options: {
   userLivingContext?: unknown;
@@ -652,6 +662,7 @@ export function mergeUserAndProfileContextForPrompt(options: {
   profileLifeContext?: unknown;
   profileDeepProfile?: unknown;
   allowCrossCompanionMemory?: boolean;
+  independentAnalysisMode?: boolean;
   activeCompanionSlug?: string | null;
 }): {
   life_context_json: LifeContextData;
@@ -722,6 +733,53 @@ export function mergeUserAndProfileContextForPrompt(options: {
       rebuiltBuckets.entries = filteredEntries;
     }
     mergedDeep = sanitizeDeepProfile(rebuiltBuckets);
+  } else if (options.independentAnalysisMode) {
+    // Preserve factual user life context and same-companion context, while stripping any
+    // astrological interpretations/claims from cross-practitioner memory buckets.
+    const activeSlug = (options.activeCompanionSlug || '').trim().toLowerCase();
+    const isSameOrUserSlug = (slug?: string | null): boolean => {
+      const normalized = (slug || '').trim().toLowerCase();
+      if (!normalized || normalized === 'user' || normalized === 'manual') return true;
+      return Boolean(activeSlug && normalized === activeSlug);
+    };
+
+    if (Array.isArray(mergedLife.core_stress_areas)) {
+      const filteredStress = mergedLife.core_stress_areas.filter(
+        (item) => !isAstrologicalInterpretationText(item)
+      );
+      if (filteredStress.length > 0) {
+        mergedLife.core_stress_areas = filteredStress;
+      } else {
+        delete mergedLife.core_stress_areas;
+      }
+    }
+
+    if (Array.isArray(mergedLife.cited_insights)) {
+      const filteredInsights = mergedLife.cited_insights.filter(
+        (i) => isSameOrUserSlug(i.cited_slug) || !isAstrologicalInterpretationText(i.summary)
+      );
+      if (filteredInsights.length > 0) {
+        mergedLife.cited_insights = filteredInsights;
+      } else {
+        delete mergedLife.cited_insights;
+      }
+    }
+
+    const strippedDeep: DeepProfileData = {};
+    for (const key of Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]) {
+      const arr = mergedDeep[key];
+      if (!Array.isArray(arr) || arr.length === 0) continue;
+      const kept = arr.filter((fact) => !isAstrologicalInterpretationText(fact));
+      if (kept.length > 0) strippedDeep[key] = kept;
+    }
+    if (Array.isArray(mergedDeep.entries) && mergedDeep.entries.length > 0) {
+      const keptEntries = mergedDeep.entries.filter(
+        (entry) =>
+          isSameOrUserSlug(entry.source_slug) || !isAstrologicalInterpretationText(entry.fact)
+      );
+      if (keptEntries.length > 0) strippedDeep.entries = keptEntries;
+    }
+    mergedDeep = sanitizeDeepProfile(strippedDeep);
   }
 
   return {
@@ -790,7 +848,7 @@ export function formatAnalystNotesForCompanion(
     .slice(0, maxNotes)
     .map((n) => {
       const dateTag = n.captured_at ? ` · ${String(n.captured_at).slice(0, 10)}` : '';
-      return `- [${n.system_label}${dateTag}] ${n.summary}`;
+      return `- [Prior interpretation by ${n.system_label}${dateTag}] ${n.summary}`;
     })
     .join('\n');
 }

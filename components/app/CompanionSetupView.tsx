@@ -51,6 +51,7 @@ interface CompanionSetupViewProps {
   pastCompanionConversations: ConversationRecord[];
   archetypeConfigs?: CompanionArchetypeConfigItem[];
   companionCatalog?: PublicCompanionCard[];
+  adminPreviewCompanions?: PublicCompanionCard[];
   isPreviewMode?: boolean;
   getAccessToken: () => Promise<string | null>;
   onSelectPastCompanion: (conversationId: string) => void;
@@ -66,7 +67,8 @@ interface CompanionSetupViewProps {
   ) => Promise<void>;
   onCatalogLoaded?: (
     cards: PublicCompanionCard[],
-    customCompanions?: CustomCompanionSummary[]
+    customCompanions?: CustomCompanionSummary[],
+    adminPreviewCards?: PublicCompanionCard[]
   ) => void;
 }
 
@@ -236,6 +238,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
   pastCompanionConversations,
   archetypeConfigs,
   companionCatalog,
+  adminPreviewCompanions,
   isPreviewMode = false,
   getAccessToken,
   onSelectPastCompanion,
@@ -257,6 +260,11 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
       ? companionCatalog.filter(isConsultantCatalogEntryAllowed)
       : isPreviewMode
       ? PREVIEW_PUBLIC_COMPANIONS.filter(isConsultantCatalogEntryAllowed)
+      : []
+  );
+  const [adminPreviewPresets, setAdminPreviewPresets] = useState<PublicCompanionCard[]>(() =>
+    !isPreviewMode && adminPreviewCompanions && adminPreviewCompanions.length > 0
+      ? adminPreviewCompanions
       : []
   );
   const [customCompanions, setCustomCompanions] = useState<CustomCompanionSummary[]>([]);
@@ -297,8 +305,15 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
   }, [companionCatalog]);
 
   useEffect(() => {
+    if (!isPreviewMode && Array.isArray(adminPreviewCompanions)) {
+      setAdminPreviewPresets(adminPreviewCompanions);
+    }
+  }, [adminPreviewCompanions, isPreviewMode]);
+
+  useEffect(() => {
     if (isPreviewMode) {
       setPresets(PREVIEW_PUBLIC_COMPANIONS.filter(isConsultantCatalogEntryAllowed));
+      setAdminPreviewPresets([]);
       setLoadingHub(false);
       return;
     }
@@ -326,14 +341,18 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
         const loadedCustom = Array.isArray(data.customCompanions)
           ? (data.customCompanions as CustomCompanionSummary[])
           : [];
+        const loadedAdminPreview = Array.isArray(data.adminPreviewCompanions)
+          ? (data.adminPreviewCompanions as PublicCompanionCard[])
+          : [];
         if (loadedCards.length > 0) {
           setPresets(loadedCards);
         }
+        setAdminPreviewPresets(loadedAdminPreview);
         if (Array.isArray(data.specializations) && data.specializations.length > 0) {
           setSpecializations(data.specializations as CompanionSpecializationTag[]);
         }
         setCustomCompanions(loadedCustom);
-        onCatalogLoaded?.(loadedCards, loadedCustom);
+        onCatalogLoaded?.(loadedCards, loadedCustom, loadedAdminPreview);
       } catch {
         // Keep whatever catalog was hydrated
       } finally {
@@ -404,6 +423,38 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
       ),
     [enrichedPresets, activeGroup, activeSituationChip, activeSpecialization, searchQuery]
   );
+
+  const enrichedAdminPreviewPresets = useMemo(() => {
+    if (isPreviewMode || adminPreviewPresets.length === 0) return [];
+    const bySlug = new Map<string, ConversationRecord>();
+    for (const conv of pastCompanionConversations) {
+      const slug = conv.companion_slug || conv.companion_persona_json?.slug;
+      if (slug && !bySlug.has(slug)) {
+        bySlug.set(slug, conv);
+      }
+    }
+    const q = searchQuery.trim().toLowerCase();
+    return adminPreviewPresets
+      .map((card) => {
+        const localLatest = bySlug.get(card.slug);
+        return localLatest
+          ? {
+              ...card,
+              last_conversation_id: card.last_conversation_id || localLatest.id,
+              last_interaction_at: card.last_interaction_at || localLatest.updated_at,
+            }
+          : card;
+      })
+      .filter((card) => {
+        if (!q) return true;
+        return (
+          card.name.toLowerCase().includes(q) ||
+          card.slug.toLowerCase().includes(q) ||
+          card.primary_expertise.toLowerCase().includes(q) ||
+          card.tagline.toLowerCase().includes(q)
+        );
+      });
+  }, [adminPreviewPresets, isPreviewMode, pastCompanionConversations, searchQuery]);
 
   const isDefaultDirectoryView =
     !activeSpecialization && !activeSituationChip && !searchQuery.trim();
@@ -906,6 +957,108 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                       </div>
                     );
                   })
+                )}
+
+                {!isPreviewMode && enrichedAdminPreviewPresets.length > 0 && (
+                  <div className="md:col-span-2 space-y-3 pt-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-[#3D3830]">
+                          Admin Preview · Inactive
+                        </span>
+                        <span className="rounded-md border border-[#B8965A]/45 bg-[#B8965A]/12 px-2 py-0.5 text-[10px] font-medium text-[#7A5E30]">
+                          Admin Only
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-mono tabular-nums text-[#8B8275]">
+                        {enrichedAdminPreviewPresets.length} inactive
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                      {enrichedAdminPreviewPresets.map((card) => {
+                        const isStarting = startingId === card.slug;
+                        return (
+                          <div
+                            key={`admin-preview-${card.slug}`}
+                            className="flex flex-col justify-between rounded-3xl border border-dashed border-[#B8965A]/50 bg-[#FDFBF7]/90 p-4 sm:p-5 gap-4 hover:border-[#B8965A] transition-colors"
+                          >
+                            <div className="flex items-start gap-3.5 min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => setSheetCompanion(card)}
+                                aria-label={`View ${card.name}'s profile`}
+                                className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A] cursor-pointer"
+                              >
+                                <CompanionAvatar
+                                  name={card.name}
+                                  avatarUrl={card.avatar_url}
+                                  palette={card.monogram_palette}
+                                  size="lg"
+                                  shape="circle"
+                                />
+                              </button>
+
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center justify-between gap-2 min-w-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSheetCompanion(card)}
+                                    className="flex items-baseline gap-2 min-w-0 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                                  >
+                                    <h3 className="font-['Cormorant_Garamond',serif] text-[21px] font-semibold text-[#3D3830] leading-tight truncate">
+                                      {card.name}
+                                    </h3>
+                                    <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] shrink-0">
+                                      {card.age}
+                                    </span>
+                                  </button>
+                                  <span className="rounded-md border border-[#3D3830]/15 bg-[#F1ECE3] px-2 py-0.5 text-[10px] font-medium text-[#5C5449] shrink-0">
+                                    Inactive
+                                  </span>
+                                </div>
+
+                                <p className="text-xs text-[#8B8275] truncate">
+                                  {card.card_subtitle || card.primary_expertise}
+                                </p>
+
+                                <p className="text-xs text-[#5C5449] leading-relaxed line-clamp-2 pt-0.5">
+                                  {card.short_bio || card.tagline}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 items-center gap-1.5 pt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => setSheetCompanion(card)}
+                                className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] transition-colors cursor-pointer truncate"
+                              >
+                                About
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={startingId !== null}
+                                onClick={() => void handleStartPreset(card, { forceNew: true })}
+                                className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] disabled:opacity-50 transition-colors cursor-pointer truncate"
+                              >
+                                Start new
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={startingId !== null}
+                                onClick={() => void handleStartPreset(card)}
+                                className="min-h-[36px] rounded-xl border border-[#B8965A]/45 bg-[#EDE6DA] px-2.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#E4DCCD] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer truncate"
+                              >
+                                {isStarting ? 'Connecting…' : 'Continue Chat'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
 
                 {/* LAST OPTION ON THE LIST: Find someone new (preserved custom matcher) */}

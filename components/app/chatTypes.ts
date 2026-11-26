@@ -798,6 +798,7 @@ export interface PublicCompanionCard {
   tts_voice_profile: CompanionTtsVoiceProfile;
   supports_listening_cue: boolean;
   suggestions_enabled: boolean;
+  is_active?: boolean;
   sort_order: number;
   last_conversation_id?: string | null;
   last_interaction_at?: string | null;

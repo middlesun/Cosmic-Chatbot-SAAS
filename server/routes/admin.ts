@@ -37,8 +37,6 @@ import {
   DEFAULT_COMPANION_REALISM_BASELINE,
   DEFAULT_CORE_COUNCIL_CONSTITUTION,
   DEFAULT_FORMAT_CONTRACTS,
-  DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT,
-  DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT,
   DEFAULT_VEDIC_ANTI_CLICHE_RULES,
   DEFAULT_VEDIC_TIER1_REASONING_LAWS,
   WESTERN_ANTI_CLICHE_RULES,
@@ -89,7 +87,6 @@ import {
 import { stripUnsafeJsonKeys } from '../../lib/companionV2Schema';
 import {
   BUILTIN_MODEL_SUGGESTIONS,
-  DEFAULT_BIRTH_CHART_CONVERSION_CONFIG,
   DEFAULT_CONVERSATIONAL_RULES,
   DEFAULT_DEEPER_ANALYSIS_RULES,
   DEFAULT_FOLLOWUPS_RULES,
@@ -97,7 +94,6 @@ import {
   DEFAULT_SUGGESTIONS_CONFIG,
   encryptSecret,
   getAiSettings,
-  getBirthChartConversionConfig,
   getChatbotConfig,
   getEnginePromptDefaultsBundle,
   getEnginePromptOverrides,
@@ -111,17 +107,13 @@ import {
   getSuggestionsConfig,
   invalidateAllPlatformCaches,
   invalidateRecipesCache,
-  sanitizeBirthChartConversionConfig,
   savePlatformSetting,
-  type BirthChartConversionConfig,
   type EnginePromptOverrides,
   type GuideChatbotOverride,
   type MiniAppOverrideConfig,
   type MiniAppsGovernanceConfig,
   type ModularRuleBlock,
-  type PerGuideChatbotConfigMap,
   type PlaybookOverrideEntry,
-  type PlaybookOverridesMap,
   type PromptRecipeStep,
 } from '../services/platformSettings';
 import {
@@ -147,6 +139,7 @@ import { ensureReportCatalogSeeded } from '../services/reportDefaults';
 import { isSanityConfigured } from '../../lib/sanity';
 import {
   clearChatbotPipelineLogs,
+  deleteChatbotPipelineLog,
   getChatbotPipelineLogs,
   isPipelineLogsTableReady,
 } from '../services/pipelineLogger';
@@ -2138,7 +2131,6 @@ router.get('/settings/chatbot', async (_req: AuthenticatedRequest, res) => {
     perGuideResolvedList,
     engineOverrides,
     playbookOverrides,
-    birthChartConversion,
     promptsRes,
   ] = await Promise.all([
     getChatbotConfig(),
@@ -2148,7 +2140,6 @@ router.get('/settings/chatbot', async (_req: AuthenticatedRequest, res) => {
     Promise.all(GUIDE_SLUGS.map((slug) => getResolvedGuideConfig(slug))),
     getEnginePromptOverrides(),
     getPlaybookOverrides(),
-    getBirthChartConversionConfig(),
     supabaseAdmin
       .from('system_prompts')
       .select('id, slug, category, display_name, subtitle, prompt_body, is_active, model_id, sort_order, version, updated_at')
@@ -2263,8 +2254,6 @@ router.get('/settings/chatbot', async (_req: AuthenticatedRequest, res) => {
     },
     playbookOverrides,
     canonicalPlaybooks: getPlaybooksCatalogSummary(),
-    birthChartConversion,
-    birthChartDefaults: DEFAULT_BIRTH_CHART_CONVERSION_CONFIG,
   });
 });
 
@@ -2757,12 +2746,6 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     | 'memory_rolling_thread_compactor_prompt'
     | 'memory_profile_synthesizer_prompt'
     | 'companion_matcher_instructions'
-    | 'companion_neutral_verification_prompt'
-    | 'companion_analysis_task_frame_prompt'
-    | 'companion_analysis_investigation_prompt'
-    | 'companion_analysis_refine_prompt'
-    | 'companion_analysis_response_strategy_prompt'
-    | 'companion_analysis_memory_extraction_prompt'
     | 'clarity_helper_system_prompt'
     | 'vedic_tier1_reasoning_laws'
     | 'vedic_anti_cliche_rules'
@@ -2780,8 +2763,6 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     | 'western_deep_audit_adjudicator_mandate'
     | 'western_stage4_aligned_suggestions_prompt'
     | 'western_stage4_fast_more_suggestions_prompt'
-    | 'natal_narrative_kernel_system_prompt'
-    | 'natal_narrative_kernel_user_prompt'
   > = [
     'core_council_constitution',
     'companion_constitution',
@@ -2797,12 +2778,6 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     'memory_rolling_thread_compactor_prompt',
     'memory_profile_synthesizer_prompt',
     'companion_matcher_instructions',
-    'companion_neutral_verification_prompt',
-    'companion_analysis_task_frame_prompt',
-    'companion_analysis_investigation_prompt',
-    'companion_analysis_refine_prompt',
-    'companion_analysis_response_strategy_prompt',
-    'companion_analysis_memory_extraction_prompt',
     'clarity_helper_system_prompt',
     'vedic_tier1_reasoning_laws',
     'vedic_anti_cliche_rules',
@@ -2820,8 +2795,6 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     'western_deep_audit_adjudicator_mandate',
     'western_stage4_aligned_suggestions_prompt',
     'western_stage4_fast_more_suggestions_prompt',
-    'natal_narrative_kernel_system_prompt',
-    'natal_narrative_kernel_user_prompt',
   ];
 
   for (const key of scalarKeys) {
@@ -3100,753 +3073,6 @@ router.delete('/settings/chatbot/playbooks/:playbookId', async (req: Authenticat
 
   invalidateAllPlatformCaches();
   res.json({ deleted: true, playbookId, overrides: await getPlaybookOverrides() });
-});
-
-// 8B. Birth Chart Conversion & Natal Truth Dossier Settings
-router.get('/settings/birth-chart', async (_req: AuthenticatedRequest, res) => {
-  if (!getSupabaseAdmin()) {
-    res.status(503).json({ error: 'Backend unavailable' });
-    return;
-  }
-
-  const [config, engineOverrides, runtime] = await Promise.all([
-    getBirthChartConversionConfig(),
-    getEnginePromptOverrides(),
-    getResolvedOpenRouterRuntime(),
-  ]);
-
-  res.json({
-    config,
-    defaults: DEFAULT_BIRTH_CHART_CONVERSION_CONFIG,
-    prompts: {
-      natal_narrative_kernel_system_prompt:
-        engineOverrides.natal_narrative_kernel_system_prompt ||
-        DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT,
-      natal_narrative_kernel_user_prompt:
-        engineOverrides.natal_narrative_kernel_user_prompt ||
-        DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT,
-      hasCustomSystemPrompt: Boolean(
-        engineOverrides.natal_narrative_kernel_system_prompt &&
-          engineOverrides.natal_narrative_kernel_system_prompt.trim() !==
-            DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT.trim()
-      ),
-      hasCustomUserPrompt: Boolean(
-        engineOverrides.natal_narrative_kernel_user_prompt &&
-          engineOverrides.natal_narrative_kernel_user_prompt.trim() !==
-            DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT.trim()
-      ),
-    },
-    promptDefaults: {
-      natal_narrative_kernel_system_prompt: DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT,
-      natal_narrative_kernel_user_prompt: DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT,
-    },
-    utilityModel: runtime.utilityModel,
-  });
-});
-
-router.put('/settings/birth-chart', async (req: AuthenticatedRequest, res) => {
-  if (!req.appUser) {
-    res.status(503).json({ error: 'Backend unavailable' });
-    return;
-  }
-
-  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
-  const currentConfig = await getBirthChartConversionConfig();
-  const nextConfig = sanitizeBirthChartConversionConfig(
-    body.config && typeof body.config === 'object' ? body.config : body,
-    currentConfig
-  );
-
-  const savedCfg = await savePlatformSetting(
-    'birth_chart_conversion_config',
-    nextConfig,
-    req.appUser.id
-  );
-  if (!savedCfg.ok) {
-    res.status(400).json({ error: savedCfg.error || 'Failed to save birth chart conversion settings.' });
-    return;
-  }
-
-  const hasSysPrompt = typeof body.natal_narrative_kernel_system_prompt === 'string';
-  const hasUserPrompt = typeof body.natal_narrative_kernel_user_prompt === 'string';
-  if (hasSysPrompt || hasUserPrompt) {
-    const engineOverrides = await getEnginePromptOverrides();
-    const nextEngine: EnginePromptOverrides = { ...engineOverrides };
-    if (hasSysPrompt) {
-      const cleaned = (body.natal_narrative_kernel_system_prompt as string).trim();
-      if (cleaned && cleaned !== DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT.trim()) {
-        nextEngine.natal_narrative_kernel_system_prompt = cleaned.slice(0, 12000);
-      } else {
-        delete nextEngine.natal_narrative_kernel_system_prompt;
-      }
-    }
-    if (hasUserPrompt) {
-      const cleaned = (body.natal_narrative_kernel_user_prompt as string).trim();
-      if (cleaned && cleaned !== DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT.trim()) {
-        nextEngine.natal_narrative_kernel_user_prompt = cleaned.slice(0, 12000);
-      } else {
-        delete nextEngine.natal_narrative_kernel_user_prompt;
-      }
-    }
-    const savedEngine = await savePlatformSetting(
-      'engine_prompt_overrides',
-      nextEngine,
-      req.appUser.id
-    );
-    if (!savedEngine.ok) {
-      res.status(400).json({ error: savedEngine.error || 'Failed to save extraction prompts.' });
-      return;
-    }
-  }
-
-  invalidateAllPlatformCaches();
-  const [freshCfg, freshEngine, runtime] = await Promise.all([
-    getBirthChartConversionConfig(),
-    getEnginePromptOverrides(),
-    getResolvedOpenRouterRuntime(),
-  ]);
-
-  res.json({
-    saved: true,
-    config: freshCfg,
-    defaults: DEFAULT_BIRTH_CHART_CONVERSION_CONFIG,
-    prompts: {
-      natal_narrative_kernel_system_prompt:
-        freshEngine.natal_narrative_kernel_system_prompt ||
-        DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT,
-      natal_narrative_kernel_user_prompt:
-        freshEngine.natal_narrative_kernel_user_prompt ||
-        DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT,
-      hasCustomSystemPrompt: Boolean(
-        freshEngine.natal_narrative_kernel_system_prompt &&
-          freshEngine.natal_narrative_kernel_system_prompt.trim() !==
-            DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT.trim()
-      ),
-      hasCustomUserPrompt: Boolean(
-        freshEngine.natal_narrative_kernel_user_prompt &&
-          freshEngine.natal_narrative_kernel_user_prompt.trim() !==
-            DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT.trim()
-      ),
-    },
-    promptDefaults: {
-      natal_narrative_kernel_system_prompt: DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT,
-      natal_narrative_kernel_user_prompt: DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT,
-    },
-    utilityModel: runtime.utilityModel,
-  });
-});
-
-router.post('/settings/birth-chart/reset', async (req: AuthenticatedRequest, res) => {
-  if (!req.appUser) {
-    res.status(503).json({ error: 'Backend unavailable' });
-    return;
-  }
-
-  const scope = typeof req.body?.scope === 'string' ? req.body.scope : 'all';
-  if (scope === 'all' || scope === 'config') {
-    await savePlatformSetting(
-      'birth_chart_conversion_config',
-      DEFAULT_BIRTH_CHART_CONVERSION_CONFIG,
-      req.appUser.id
-    );
-  }
-  if (scope === 'all' || scope === 'prompts' || scope === 'system_prompt' || scope === 'user_prompt') {
-    const engineOverrides = await getEnginePromptOverrides();
-    const nextEngine: EnginePromptOverrides = { ...engineOverrides };
-    if (scope !== 'user_prompt') delete nextEngine.natal_narrative_kernel_system_prompt;
-    if (scope !== 'system_prompt') delete nextEngine.natal_narrative_kernel_user_prompt;
-    await savePlatformSetting('engine_prompt_overrides', nextEngine, req.appUser.id);
-  }
-
-  invalidateAllPlatformCaches();
-  const [freshCfg, freshEngine, runtime] = await Promise.all([
-    getBirthChartConversionConfig(),
-    getEnginePromptOverrides(),
-    getResolvedOpenRouterRuntime(),
-  ]);
-
-  res.json({
-    reset: true,
-    scope,
-    config: freshCfg,
-    defaults: DEFAULT_BIRTH_CHART_CONVERSION_CONFIG,
-    prompts: {
-      natal_narrative_kernel_system_prompt:
-        freshEngine.natal_narrative_kernel_system_prompt ||
-        DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT,
-      natal_narrative_kernel_user_prompt:
-        freshEngine.natal_narrative_kernel_user_prompt ||
-        DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT,
-      hasCustomSystemPrompt: Boolean(freshEngine.natal_narrative_kernel_system_prompt),
-      hasCustomUserPrompt: Boolean(freshEngine.natal_narrative_kernel_user_prompt),
-    },
-    promptDefaults: {
-      natal_narrative_kernel_system_prompt: DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT,
-      natal_narrative_kernel_user_prompt: DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT,
-    },
-    utilityModel: runtime.utilityModel,
-  });
-});
-
-// 8C. Export & Import Chatbot Engine Prompts, Playbooks, Modular Rules & Birth Chart Config
-const ENGINE_BUNDLE_SCALAR_KEYS = [
-  'core_council_constitution',
-  'companion_constitution',
-  'companion_realism_baseline',
-  'companion_listen_only_guardrail',
-  'companion_empathy_first_guardrail',
-  'companion_chart_presence_prompt',
-  'companion_return_greeting_prompt',
-  'companion_bond_extractor_prompt',
-  'memory_companion_bond_prompt',
-  'profile_memory_extractor_prompt',
-  'memory_deep_profile_extractor_prompt',
-  'memory_rolling_thread_compactor_prompt',
-  'memory_profile_synthesizer_prompt',
-  'companion_matcher_instructions',
-  'clarity_helper_system_prompt',
-  'vedic_tier1_reasoning_laws',
-  'vedic_anti_cliche_rules',
-  'vedic_turn_modifier_prompt',
-  'short_reply_breakdown_wrapper',
-  'timing_widget_placement_wrapper',
-  'stage1_router_prompt',
-  'deep_audit_adjudicator_mandate',
-  'stage4_aligned_suggestions_prompt',
-  'stage4_fast_more_suggestions_prompt',
-  'western_core_council_constitution',
-  'western_tier1_reasoning_laws',
-  'western_anti_cliche_rules',
-  'western_turn_modifier_prompt',
-  'western_deep_audit_adjudicator_mandate',
-  'western_stage4_aligned_suggestions_prompt',
-  'western_stage4_fast_more_suggestions_prompt',
-  'natal_narrative_kernel_system_prompt',
-  'natal_narrative_kernel_user_prompt',
-] as const;
-
-const ENGINE_BUNDLE_RECORD_KEYS = [
-  'companion_skill_rules',
-  'intent_output_contracts',
-  'fluency_instructions',
-  'format_contracts',
-  'deep_audit_lenses',
-  'western_intent_output_contracts',
-  'western_fluency_instructions',
-  'western_format_contracts',
-  'western_deep_audit_lenses',
-] as const;
-
-router.get('/settings/chatbot/export', async (req: AuthenticatedRequest, res) => {
-  if (!getSupabaseAdmin()) {
-    res.status(503).json({ error: 'Backend unavailable' });
-    return;
-  }
-
-  const rawScope = String(req.query.scope || 'all').trim().toLowerCase();
-  const scope = (['all', 'engine', 'playbooks', 'rules', 'birth_chart'] as const).includes(
-    rawScope as 'all' | 'engine' | 'playbooks' | 'rules' | 'birth_chart'
-  )
-    ? (rawScope as 'all' | 'engine' | 'playbooks' | 'rules' | 'birth_chart')
-    : 'all';
-  const includeDefaults =
-    req.query.includeDefaults === '1' || req.query.includeDefaults === 'true';
-  const rawGuide = typeof req.query.guide === 'string' ? normalizeCouncilSlug(req.query.guide.trim()) : '';
-  const targetGuide = rawGuide && isValidGuideSlug(rawGuide) ? rawGuide : null;
-
-  const [engineOverrides, playbookOverrides, perGuideResolvedList, chatbotCfg, birthChartCfg] =
-    await Promise.all([
-      getEnginePromptOverrides(),
-      getPlaybookOverrides(),
-      Promise.all(GUIDE_SLUGS.map((slug) => getResolvedGuideConfig(slug))),
-      getChatbotConfig(),
-      getBirthChartConversionConfig(),
-    ]);
-
-  const bundle: Record<string, unknown> = {
-    schema: 'cosmic_council.chatbot_engine_bundle.v1',
-    exportedAt: new Date().toISOString(),
-    scope,
-  };
-
-  if (scope === 'all' || scope === 'engine') {
-    bundle.enginePrompts = {
-      overrides: engineOverrides,
-      ...(includeDefaults ? { defaults: getEnginePromptDefaultsBundle() } : {}),
-    };
-  }
-
-  if (scope === 'all' || scope === 'playbooks') {
-    bundle.playbookOverrides = playbookOverrides;
-    if (includeDefaults) {
-      bundle.canonicalPlaybooksReference = getPlaybooksCatalogSummary();
-    }
-  }
-
-  if (scope === 'all' || scope === 'rules') {
-    const perGuideRules: Record<string, { displayName: string; modular_rules: ModularRuleBlock[] }> = {};
-    for (const resolved of perGuideResolvedList) {
-      if (targetGuide && resolved.slug !== targetGuide) continue;
-      perGuideRules[resolved.slug] = {
-        displayName: resolved.meta.displayName,
-        modular_rules: resolved.modular_rules,
-      };
-    }
-    bundle.rules = {
-      ...(targetGuide ? { guideSlug: targetGuide } : { global_conversational_rules: chatbotCfg.conversational_rules }),
-      per_guide: perGuideRules,
-    };
-  }
-
-  if (scope === 'all' || scope === 'birth_chart') {
-    bundle.birthChartConversion = birthChartCfg;
-  }
-
-  res.json(bundle);
-});
-
-router.post('/settings/chatbot/import', async (req: AuthenticatedRequest, res) => {
-  if (!req.appUser || !getSupabaseAdmin()) {
-    res.status(503).json({ error: 'Backend unavailable' });
-    return;
-  }
-
-  const reqBody = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
-  const rawBundle = stripUnsafeJsonKeys(reqBody.bundle);
-  if (!rawBundle || typeof rawBundle !== 'object') {
-    res.status(400).json({ error: 'Invalid JSON bundle: expected a JSON object or array.' });
-    return;
-  }
-
-  const rawScope = String(reqBody.scope || 'auto').trim().toLowerCase();
-  const requestedScope = (['auto', 'all', 'engine', 'playbooks', 'rules', 'birth_chart'] as const).includes(
-    rawScope as 'auto' | 'all' | 'engine' | 'playbooks' | 'rules' | 'birth_chart'
-  )
-    ? (rawScope as 'auto' | 'all' | 'engine' | 'playbooks' | 'rules' | 'birth_chart')
-    : 'auto';
-  const replaceMode = reqBody.replaceMode === 'replace' ? 'replace' : 'merge';
-  const dryRun = reqBody.dryRun !== false;
-  const rawGuideParam =
-    typeof reqBody.guideSlug === 'string' && reqBody.guideSlug.trim()
-      ? normalizeCouncilSlug(reqBody.guideSlug.trim())
-      : '';
-  const fallbackGuideSlug: GuideSlug | null =
-    rawGuideParam && isValidGuideSlug(rawGuideParam) ? rawGuideParam : null;
-
-  const bundleObj = Array.isArray(rawBundle) ? null : (rawBundle as Record<string, unknown>);
-
-  const [
-    currentEngine,
-    currentPlaybooks,
-    currentPerGuideMap,
-    currentChatbotCfg,
-    currentBirthChart,
-  ] = await Promise.all([
-    getEnginePromptOverrides(),
-    getPlaybookOverrides(),
-    getPerGuideChatbotConfig(),
-    getChatbotConfig(),
-    getBirthChartConversionConfig(),
-  ]);
-
-  const warnings: string[] = [];
-  const engineChanges: Array<{ key: string; subKey?: string; action: 'add' | 'update' | 'remove' }> = [];
-  const playbookChanges: Array<{ playbookId: string; action: 'add' | 'update' | 'remove' }> = [];
-  const ruleChanges: Array<{ target: string; action: 'update' | 'clear'; ruleCount: number }> = [];
-  const birthChartChanges: Array<{ field: string; action: 'update' }> = [];
-
-  // 1. Engine prompts
-  let engineTouched = false;
-  const nextEngine: EnginePromptOverrides =
-    replaceMode === 'replace'
-      ? {
-          ...(currentEngine.companion_group_configs
-            ? { companion_group_configs: currentEngine.companion_group_configs }
-            : {}),
-          ...(currentEngine.companion_archetypes
-            ? { companion_archetypes: currentEngine.companion_archetypes }
-            : {}),
-          ...(currentEngine.companion_specializations
-            ? { companion_specializations: currentEngine.companion_specializations }
-            : {}),
-        }
-      : { ...currentEngine };
-  const defaultsBundle = getEnginePromptDefaultsBundle();
-
-  const wantsEngine =
-    requestedScope === 'engine' ||
-    requestedScope === 'all' ||
-    (requestedScope === 'auto' &&
-      Boolean(
-        bundleObj &&
-          (bundleObj.enginePrompts ||
-            ENGINE_BUNDLE_SCALAR_KEYS.some((k) => bundleObj[k] !== undefined) ||
-            ENGINE_BUNDLE_RECORD_KEYS.some((k) => bundleObj[k] !== undefined))
-      ));
-
-  if (wantsEngine && bundleObj) {
-    const engineContainer =
-      bundleObj.enginePrompts && typeof bundleObj.enginePrompts === 'object' && !Array.isArray(bundleObj.enginePrompts)
-        ? (bundleObj.enginePrompts as Record<string, unknown>)
-        : bundleObj;
-    const incomingOverrides =
-      engineContainer.overrides && typeof engineContainer.overrides === 'object' && !Array.isArray(engineContainer.overrides)
-        ? (engineContainer.overrides as Record<string, unknown>)
-        : engineContainer;
-
-    engineTouched = true;
-    for (const sKey of ENGINE_BUNDLE_SCALAR_KEYS) {
-      if (incomingOverrides[sKey] === undefined) continue;
-      const val = typeof incomingOverrides[sKey] === 'string' ? (incomingOverrides[sKey] as string).trim() : '';
-      const defVal = typeof defaultsBundle[sKey] === 'string' ? (defaultsBundle[sKey] as string).trim() : '';
-      if (val && val !== defVal) {
-        const prevVal = currentEngine[sKey];
-        if (!prevVal) {
-          engineChanges.push({ key: sKey, action: 'add' });
-        } else if (prevVal.trim() !== val) {
-          engineChanges.push({ key: sKey, action: 'update' });
-        }
-        nextEngine[sKey] = val.slice(0, 12000);
-      } else {
-        if (currentEngine[sKey]) {
-          engineChanges.push({ key: sKey, action: 'remove' });
-        }
-        delete nextEngine[sKey];
-      }
-    }
-
-    for (const rKey of ENGINE_BUNDLE_RECORD_KEYS) {
-      const incomingRec = incomingOverrides[rKey];
-      if (!incomingRec || typeof incomingRec !== 'object' || Array.isArray(incomingRec)) continue;
-      const baseRec =
-        replaceMode === 'replace'
-          ? {}
-          : { ...((currentEngine[rKey] as Record<string, string>) || {}) };
-      const defaultRec = (defaultsBundle[rKey] as Record<string, string>) || {};
-      const prevRec = (currentEngine[rKey] as Record<string, string>) || {};
-
-      for (const [subKey, rawSubVal] of Object.entries(incomingRec as Record<string, unknown>)) {
-        if (typeof defaultRec[subKey] !== 'string' && !prevRec[subKey]) {
-          warnings.push(`Ignored unknown sub-key "${rKey}.${subKey}".`);
-          continue;
-        }
-        const cleaned = typeof rawSubVal === 'string' ? rawSubVal.trim() : '';
-        const defSub = (defaultRec[subKey] || '').trim();
-        if (cleaned && cleaned !== defSub) {
-          if (!prevRec[subKey]) engineChanges.push({ key: rKey, subKey, action: 'add' });
-          else if (prevRec[subKey].trim() !== cleaned) engineChanges.push({ key: rKey, subKey, action: 'update' });
-          baseRec[subKey] = cleaned.slice(0, 8000);
-        } else {
-          if (prevRec[subKey]) engineChanges.push({ key: rKey, subKey, action: 'remove' });
-          delete baseRec[subKey];
-        }
-      }
-
-      if (Object.keys(baseRec).length > 0) {
-        (nextEngine as Record<string, unknown>)[rKey] = baseRec;
-      } else {
-        delete nextEngine[rKey];
-      }
-    }
-
-    if (replaceMode === 'replace') {
-      for (const sKey of ENGINE_BUNDLE_SCALAR_KEYS) {
-        if (currentEngine[sKey] && !nextEngine[sKey]) {
-          engineChanges.push({ key: sKey, action: 'remove' });
-        }
-      }
-    }
-  }
-
-  // 2. Canonical Playbook Overrides
-  let playbooksTouched = false;
-  const nextPlaybooks: PlaybookOverridesMap =
-    replaceMode === 'replace' ? {} : { ...currentPlaybooks };
-  const validPlaybookIds = new Set(CANONICAL_PLAYBOOKS.map((p) => p.id));
-
-  const wantsPlaybooks =
-    requestedScope === 'playbooks' ||
-    requestedScope === 'all' ||
-    (requestedScope === 'auto' && Boolean(bundleObj && bundleObj.playbookOverrides));
-
-  if (wantsPlaybooks && bundleObj) {
-    const incomingPb =
-      bundleObj.playbookOverrides && typeof bundleObj.playbookOverrides === 'object' && !Array.isArray(bundleObj.playbookOverrides)
-        ? (bundleObj.playbookOverrides as Record<string, unknown>)
-        : requestedScope === 'playbooks'
-        ? bundleObj
-        : null;
-
-    if (incomingPb) {
-      playbooksTouched = true;
-      for (const [rawPbId, rawEntry] of Object.entries(incomingPb)) {
-        const pbId = rawPbId.trim().toUpperCase();
-        if (!validPlaybookIds.has(pbId)) {
-          if (!['schema', 'exportedAt', 'scope', 'canonicalPlaybooksReference'].includes(rawPbId)) {
-            warnings.push(`Skipped unknown playbook ID "${pbId}".`);
-          }
-          continue;
-        }
-        if (!rawEntry || typeof rawEntry !== 'object' || Array.isArray(rawEntry)) continue;
-        const eObj = rawEntry as Record<string, unknown>;
-        const entry: PlaybookOverrideEntry = {
-          ...(typeof eObj.requiresTimingStack === 'boolean'
-            ? { requiresTimingStack: eObj.requiresTimingStack }
-            : {}),
-          ...(Array.isArray(eObj.formulaSlugs)
-            ? { formulaSlugs: eObj.formulaSlugs.map((s) => String(s || '').trim()).filter(Boolean) }
-            : {}),
-          ...(typeof eObj.customInstructions === 'string' && eObj.customInstructions.trim()
-            ? { customInstructions: eObj.customInstructions.trim().slice(0, 3000) }
-            : {}),
-          updated_at: new Date().toISOString(),
-        };
-        const hasMeaningfulField =
-          entry.requiresTimingStack !== undefined ||
-          entry.formulaSlugs !== undefined ||
-          Boolean(entry.customInstructions);
-        if (!hasMeaningfulField) {
-          if (currentPlaybooks[pbId]) playbookChanges.push({ playbookId: pbId, action: 'remove' });
-          delete nextPlaybooks[pbId];
-          continue;
-        }
-        const prevPb = currentPlaybooks[pbId];
-        if (!prevPb) {
-          playbookChanges.push({ playbookId: pbId, action: 'add' });
-        } else if (
-          prevPb.requiresTimingStack !== entry.requiresTimingStack ||
-          JSON.stringify(prevPb.formulaSlugs || []) !== JSON.stringify(entry.formulaSlugs || []) ||
-          (prevPb.customInstructions || '') !== (entry.customInstructions || '')
-        ) {
-          playbookChanges.push({ playbookId: pbId, action: 'update' });
-        }
-        nextPlaybooks[pbId] = entry;
-      }
-
-      if (replaceMode === 'replace') {
-        for (const existingId of Object.keys(currentPlaybooks)) {
-          if (!nextPlaybooks[existingId]) {
-            playbookChanges.push({ playbookId: existingId, action: 'remove' });
-          }
-        }
-      }
-    }
-  }
-
-  // 3. Modular Rules & Global Conversational Rules
-  let rulesTouched = false;
-  let globalRulesTouched = false;
-  let nextGlobalConvRules = currentChatbotCfg.conversational_rules;
-  const nextPerGuideMap: PerGuideChatbotConfigMap = { ...currentPerGuideMap };
-
-  const cleanModularRulesList = (arr: unknown[]): ModularRuleBlock[] => {
-    const cleaned: ModularRuleBlock[] = [];
-    for (let i = 0; i < Math.min(30, arr.length); i++) {
-      const item = arr[i];
-      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-      const obj = item as Record<string, unknown>;
-      const title =
-        typeof obj.title === 'string' && obj.title.trim()
-          ? obj.title.trim().slice(0, 140)
-          : `Rule ${i + 1}`;
-      const bodyStr = typeof obj.body === 'string' ? obj.body.trim().slice(0, 8000) : '';
-      const id =
-        typeof obj.id === 'string' && obj.id.trim()
-          ? obj.id.trim().slice(0, 80)
-          : `rule_${i + 1}_${crypto.randomBytes(3).toString('hex')}`;
-      cleaned.push({
-        id,
-        title,
-        body: bodyStr,
-        enabled: obj.enabled !== false,
-        source_slug:
-          typeof obj.source_slug === 'string' && obj.source_slug.trim()
-            ? obj.source_slug.trim()
-            : null,
-        updated_at: new Date().toISOString(),
-      });
-    }
-    return cleaned;
-  };
-
-  const wantsRules =
-    requestedScope === 'rules' ||
-    requestedScope === 'all' ||
-    (requestedScope === 'auto' &&
-      (Array.isArray(rawBundle) ||
-        Boolean(bundleObj && (bundleObj.rules || bundleObj.modular_rules || bundleObj.per_guide))));
-
-  if (wantsRules) {
-    if (Array.isArray(rawBundle)) {
-      if (!fallbackGuideSlug) {
-        res.status(400).json({ error: 'Select a target guide when importing a raw modular_rules array.' });
-        return;
-      }
-      const cleaned = cleanModularRulesList(rawBundle);
-      nextPerGuideMap[fallbackGuideSlug] = {
-        ...(nextPerGuideMap[fallbackGuideSlug] || {}),
-        modular_rules: cleaned,
-      };
-      rulesTouched = true;
-      ruleChanges.push({ target: `guide:${fallbackGuideSlug}`, action: 'update', ruleCount: cleaned.length });
-    } else if (bundleObj) {
-      const rulesContainer =
-        bundleObj.rules && typeof bundleObj.rules === 'object' && !Array.isArray(bundleObj.rules)
-          ? (bundleObj.rules as Record<string, unknown>)
-          : bundleObj;
-
-      if (typeof rulesContainer.global_conversational_rules === 'string' && rulesContainer.global_conversational_rules.trim()) {
-        const cleanedGlobal = rulesContainer.global_conversational_rules.trim().slice(0, 4000);
-        if (cleanedGlobal !== currentChatbotCfg.conversational_rules.trim()) {
-          globalRulesTouched = true;
-          nextGlobalConvRules = cleanedGlobal;
-          ruleChanges.push({ target: 'global_conversational_rules', action: 'update', ruleCount: 1 });
-        }
-      }
-
-      if (Array.isArray(rulesContainer.modular_rules) && fallbackGuideSlug) {
-        const cleaned = cleanModularRulesList(rulesContainer.modular_rules);
-        nextPerGuideMap[fallbackGuideSlug] = {
-          ...(nextPerGuideMap[fallbackGuideSlug] || {}),
-          modular_rules: cleaned,
-        };
-        rulesTouched = true;
-        ruleChanges.push({ target: `guide:${fallbackGuideSlug}`, action: 'update', ruleCount: cleaned.length });
-      }
-
-      const perGuideObj =
-        rulesContainer.per_guide && typeof rulesContainer.per_guide === 'object' && !Array.isArray(rulesContainer.per_guide)
-          ? (rulesContainer.per_guide as Record<string, unknown>)
-          : null;
-      if (perGuideObj) {
-        for (const [rawSlug, entryVal] of Object.entries(perGuideObj)) {
-          const slug = normalizeCouncilSlug(rawSlug.trim());
-          if (!isValidGuideSlug(slug)) {
-            warnings.push(`Skipped unknown guide slug "${rawSlug}" in rules bundle.`);
-            continue;
-          }
-          const rulesArr = Array.isArray(entryVal)
-            ? entryVal
-            : entryVal && typeof entryVal === 'object' && Array.isArray((entryVal as Record<string, unknown>).modular_rules)
-            ? ((entryVal as Record<string, unknown>).modular_rules as unknown[])
-            : null;
-          if (!rulesArr) continue;
-          const cleaned = cleanModularRulesList(rulesArr);
-          nextPerGuideMap[slug] = {
-            ...(nextPerGuideMap[slug] || {}),
-            modular_rules: cleaned,
-          };
-          rulesTouched = true;
-          ruleChanges.push({ target: `guide:${slug}`, action: 'update', ruleCount: cleaned.length });
-        }
-      }
-    }
-  }
-
-  // 4. Birth Chart Conversion Settings
-  let birthChartTouched = false;
-  let nextBirthChart: BirthChartConversionConfig = currentBirthChart;
-
-  const wantsBirthChart =
-    requestedScope === 'birth_chart' ||
-    requestedScope === 'all' ||
-    (requestedScope === 'auto' && Boolean(bundleObj && bundleObj.birthChartConversion));
-
-  if (wantsBirthChart && bundleObj) {
-    const incomingBc =
-      bundleObj.birthChartConversion && typeof bundleObj.birthChartConversion === 'object' && !Array.isArray(bundleObj.birthChartConversion)
-        ? bundleObj.birthChartConversion
-        : requestedScope === 'birth_chart'
-        ? bundleObj
-        : null;
-    if (incomingBc) {
-      birthChartTouched = true;
-      nextBirthChart = sanitizeBirthChartConversionConfig(
-        incomingBc,
-        replaceMode === 'replace' ? DEFAULT_BIRTH_CHART_CONVERSION_CONFIG : currentBirthChart
-      );
-      for (const field of Object.keys(DEFAULT_BIRTH_CHART_CONVERSION_CONFIG) as Array<keyof BirthChartConversionConfig>) {
-        if (nextBirthChart[field] !== currentBirthChart[field]) {
-          birthChartChanges.push({ field, action: 'update' });
-        }
-      }
-    }
-  }
-
-  if (!engineTouched && !playbooksTouched && !rulesTouched && !globalRulesTouched && !birthChartTouched) {
-    res.status(400).json({
-      error: 'No recognizable enginePrompts, playbookOverrides, rules, or birthChartConversion sections were found in this JSON.',
-    });
-    return;
-  }
-
-  const preview = {
-    engineChanges,
-    playbookChanges,
-    ruleChanges,
-    birthChartChanges,
-    warnings,
-    totalChanges:
-      engineChanges.length +
-      playbookChanges.length +
-      ruleChanges.length +
-      birthChartChanges.length,
-  };
-
-  if (dryRun) {
-    res.json({ ok: true, dryRun: true, preview });
-    return;
-  }
-
-  if (engineTouched) {
-    const r = await savePlatformSetting('engine_prompt_overrides', nextEngine, req.appUser.id);
-    if (!r.ok) {
-      res.status(400).json({ error: r.error || 'Failed to save imported engine prompts.' });
-      return;
-    }
-  }
-  if (playbooksTouched) {
-    const r = await savePlatformSetting('playbook_overrides', nextPlaybooks, req.appUser.id);
-    if (!r.ok) {
-      res.status(400).json({ error: r.error || 'Failed to save imported playbook overrides.' });
-      return;
-    }
-  }
-  if (rulesTouched) {
-    const r = await savePlatformSetting('per_guide_chatbot_config', nextPerGuideMap, req.appUser.id);
-    if (!r.ok) {
-      res.status(400).json({ error: r.error || 'Failed to save imported guide rules.' });
-      return;
-    }
-  }
-  if (globalRulesTouched) {
-    const r = await savePlatformSetting(
-      'chatbot_config',
-      { ...currentChatbotCfg, conversational_rules: nextGlobalConvRules },
-      req.appUser.id
-    );
-    if (!r.ok) {
-      res.status(400).json({ error: r.error || 'Failed to save imported global conversational rules.' });
-      return;
-    }
-  }
-  if (birthChartTouched) {
-    const r = await savePlatformSetting(
-      'birth_chart_conversion_config',
-      nextBirthChart,
-      req.appUser.id
-    );
-    if (!r.ok) {
-      res.status(400).json({ error: r.error || 'Failed to save imported birth chart conversion settings.' });
-      return;
-    }
-  }
-
-  invalidateAllPlatformCaches();
-  invalidatePromptCache();
-  invalidateCompanionsCache();
-
-  res.json({ ok: true, dryRun: false, preview });
 });
 
 router.get('/chatbot-settings/runtime-manifest', async (req: AuthenticatedRequest, res) => {
@@ -5662,6 +4888,16 @@ router.post('/chatbot-logs/toggle', async (req: AuthenticatedRequest, res) => {
 router.delete('/chatbot-logs', async (_req: AuthenticatedRequest, res) => {
   const result = await clearChatbotPipelineLogs();
   res.json({ cleared: true, ...result });
+});
+
+router.delete('/chatbot-logs/:id', async (req: AuthenticatedRequest, res) => {
+  const logId = String(req.params.id || '').trim();
+  if (!logId) {
+    res.status(400).json({ error: 'Log ID is required.' });
+    return;
+  }
+  const result = await deleteChatbotPipelineLog(logId);
+  res.json({ deleted: true, id: logId, ...result });
 });
 
 router.post('/platform/cache-flush', async (_req: AuthenticatedRequest, res) => {

@@ -1,22 +1,13 @@
 import React from 'react';
-import { ArrowDown, ArrowUp, MessageSquareQuote, Plus, Sparkles, Trash2, Users } from 'lucide-react';
-import CustomSelect from '../../app/CustomSelect';
+import { ArrowDown, ArrowUp, MessageSquareQuote, Plus, Sparkles, Trash2 } from 'lucide-react';
 import {
   DEFAULT_COMPANION_PERSONALITY_V2,
   normalizePersonalityV2,
   type CompanionContextualNuance,
-  type CompanionFamiliarityCeiling,
-  type CompanionFamiliarityMode,
-  type CompanionGreetingMode,
   type CompanionPersonalityV2,
   type CompanionReferenceDialogue,
 } from '../../../lib/companionV2Schema';
-import {
-  FAMILIARITY_CEILING_OPTIONS,
-  FAMILIARITY_MODE_OPTIONS,
-  GREETING_MODE_OPTIONS,
-  type AdminCompanionRecord,
-} from './companionStudioTypes';
+import type { AdminCompanionRecord } from './companionStudioTypes';
 
 interface CompanionNuancesDialoguesTabProps {
   draft: AdminCompanionRecord;
@@ -146,190 +137,8 @@ const CompanionNuancesDialoguesTab: React.FC<CompanionNuancesDialoguesTabProps> 
     }));
   };
 
-  const greetingCfg = v2.greeting_config || {
-    mode: 'generated_returning' as CompanionGreetingMode,
-    allow_memory_callback: true,
-    custom_return_instruction: '',
-  };
-  const familiarityPolicy = v2.familiarity_policy || {
-    mode: 'warm_progressive' as CompanionFamiliarityMode,
-    max_familiarity: 'close' as CompanionFamiliarityCeiling,
-  };
-
   return (
     <div className="space-y-6">
-      {/* Section 0: Greeting Behavior & Relational Familiarity Policy */}
-      <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Users className="h-3.5 w-3.5 text-[#8B7355]" />
-            <span className="text-xs font-semibold text-[#3D3830]">
-              Greeting Behavior &amp; Relational Familiarity Policy
-            </span>
-          </div>
-          <p className="text-[11px] text-[#8B8275] mt-0.5">
-            Controls how this character greets returning users and how warmth or relational distance evolves over repeated sessions (stored in V2 snapshot; live behavior updates in upcoming phases).
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-[#5C5449]">Greeting Mode</span>
-            <CustomSelect
-              value={greetingCfg.mode}
-              onChange={(val) =>
-                updateV2((prevV2) => ({
-                  ...prevV2,
-                  greeting_config: {
-                    mode: val as CompanionGreetingMode,
-                    allow_memory_callback:
-                      prevV2.greeting_config?.allow_memory_callback !== false,
-                    custom_return_instruction:
-                      prevV2.greeting_config?.custom_return_instruction || '',
-                  },
-                }))
-              }
-              ariaLabel="Companion greeting mode"
-              surface="elevated"
-              className="w-full"
-              options={GREETING_MODE_OPTIONS}
-            />
-            <p className="text-[11px] text-[#8B8275]">
-              {(
-                GREETING_MODE_OPTIONS.find((o) => o.value === greetingCfg.mode) ||
-                GREETING_MODE_OPTIONS[0]
-              ).description}
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between gap-4 rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] px-3.5 py-3">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-[#3D3830]">
-                Allow Memory Callback in Return Greetings
-              </p>
-              <p className="text-[11px] text-[#8B8275] mt-0.5">
-                Permits gently referencing prior threads or life events when welcoming a returning member.
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={greetingCfg.allow_memory_callback !== false}
-              aria-label="Allow memory callback in return greetings"
-              onClick={() =>
-                updateV2((prevV2) => ({
-                  ...prevV2,
-                  greeting_config: {
-                    mode: prevV2.greeting_config?.mode || 'generated_returning',
-                    allow_memory_callback:
-                      prevV2.greeting_config?.allow_memory_callback === false,
-                    custom_return_instruction:
-                      prevV2.greeting_config?.custom_return_instruction || '',
-                  },
-                }))
-              }
-              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors cursor-pointer ${
-                greetingCfg.allow_memory_callback !== false
-                  ? 'bg-[#4A453D]'
-                  : 'bg-[#D6CEC0]'
-              }`}
-            >
-              <span
-                className={`h-5 w-5 rounded-full bg-[#FDFBF7] shadow-xs transition-transform ${
-                  greetingCfg.allow_memory_callback !== false
-                    ? 'translate-x-5'
-                    : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        <label className="block space-y-1.5">
-          <span className="text-xs font-medium text-[#5C5449]">
-            Custom Return-Greeting Instruction (Optional)
-          </span>
-          <textarea
-            rows={2}
-            value={greetingCfg.custom_return_instruction || ''}
-            onChange={(e) => {
-              const val = e.target.value;
-              updateV2((prevV2) => ({
-                ...prevV2,
-                greeting_config: {
-                  mode: prevV2.greeting_config?.mode || 'generated_returning',
-                  allow_memory_callback:
-                    prevV2.greeting_config?.allow_memory_callback !== false,
-                  custom_return_instruction: val,
-                },
-              }));
-            }}
-            placeholder="Specific phrasing cues, tone boundaries, or welcome rituals when returning..."
-            className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] p-2.5 text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
-          />
-        </label>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-[#5C5449]">
-              Relational Familiarity Progression
-            </span>
-            <CustomSelect
-              value={familiarityPolicy.mode}
-              onChange={(val) =>
-                updateV2((prevV2) => ({
-                  ...prevV2,
-                  familiarity_policy: {
-                    mode: val as CompanionFamiliarityMode,
-                    max_familiarity:
-                      prevV2.familiarity_policy?.max_familiarity || 'close',
-                  },
-                }))
-              }
-              ariaLabel="Familiarity progression mode"
-              surface="elevated"
-              className="w-full"
-              options={FAMILIARITY_MODE_OPTIONS}
-            />
-            <p className="text-[11px] text-[#8B8275]">
-              {(
-                FAMILIARITY_MODE_OPTIONS.find((o) => o.value === familiarityPolicy.mode) ||
-                FAMILIARITY_MODE_OPTIONS[0]
-              ).description}
-            </p>
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-[#5C5449]">
-              Maximum Familiarity Ceiling
-            </span>
-            <CustomSelect
-              value={familiarityPolicy.max_familiarity || 'close'}
-              onChange={(val) =>
-                updateV2((prevV2) => ({
-                  ...prevV2,
-                  familiarity_policy: {
-                    mode: prevV2.familiarity_policy?.mode || 'warm_progressive',
-                    max_familiarity: val as CompanionFamiliarityCeiling,
-                  },
-                }))
-              }
-              ariaLabel="Maximum familiarity ceiling"
-              surface="elevated"
-              className="w-full"
-              options={FAMILIARITY_CEILING_OPTIONS}
-            />
-            <p className="text-[11px] text-[#8B8275]">
-              {(
-                FAMILIARITY_CEILING_OPTIONS.find(
-                  (o) => o.value === (familiarityPolicy.max_familiarity || 'close')
-                ) || FAMILIARITY_CEILING_OPTIONS[0]
-              ).description}
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Section 1: Contextual Nuances */}
       <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">

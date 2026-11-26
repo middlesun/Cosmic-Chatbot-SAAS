@@ -25,14 +25,6 @@ import {
   isOpenRouterConfiguredAsync,
   safeExtractJson,
 } from './openrouter';
-import {
-  DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT,
-  DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT,
-} from './enginePromptDefaults';
-import {
-  getBirthChartConversionConfig,
-  getEnginePromptOverrides,
-} from './platformSettings';
 
 export const CURRENT_NATAL_DOSSIER_VERSION = 2;
 
@@ -1030,57 +1022,57 @@ export async function generateNatalNarrativeKernel(
   const fallback = buildDeterministicNarrativeKernel(layerA);
 
   try {
-    const [conversionCfg, engineOverrides, configured] = await Promise.all([
-      getBirthChartConversionConfig(),
-      getEnginePromptOverrides(),
-      isOpenRouterConfiguredAsync(),
-    ]);
-    if (!configured || !conversionCfg.narrative_kernel_enabled) {
+    const configured = await isOpenRouterConfiguredAsync();
+    if (!configured) {
       return fallback;
     }
 
-    const model =
-      conversionCfg.narrative_kernel_model_id?.trim() || (await getUtilityModelAsync());
+    const model = await getUtilityModelAsync();
     const compactInput = {
       birth_time_sensitivity: layerA.birth_time_sensitivity,
       snapshot_scores: layerA.snapshot_scores,
       lagnesh_profile: layerA.lagnesh_profile,
       command_hierarchy: layerA.command_hierarchy,
-      validated_yogas: layerA.validated_yogas.slice(0, conversionCfg.include_validated_yogas_limit),
-      suppressed_or_cosmetic_yogas: layerA.suppressed_or_cosmetic_yogas.slice(
-        0,
-        conversionCfg.include_suppressed_yogas_limit
-      ),
-      doshas_and_hidden_risks: layerA.doshas_and_hidden_risks.slice(
-        0,
-        conversionCfg.include_doshas_limit
-      ),
+      validated_yogas: layerA.validated_yogas.slice(0, 5),
+      suppressed_or_cosmetic_yogas: layerA.suppressed_or_cosmetic_yogas.slice(0, 4),
+      doshas_and_hidden_risks: layerA.doshas_and_hidden_risks.slice(0, 4),
       special_points_summary: layerA.special_points_summary,
       domain_pre_audits: layerA.domain_pre_audits,
       unresolved_contradictions: layerA.unresolved_contradictions,
     };
 
-    const systemPrompt =
-      engineOverrides.natal_narrative_kernel_system_prompt?.trim() ||
-      DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT;
-    const userTemplate =
-      engineOverrides.natal_narrative_kernel_user_prompt?.trim() ||
-      DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT;
-    const compactJsonStr = JSON.stringify(compactInput);
-    const userContent = userTemplate.includes('{{VERIFIED_LAYER_A_JSON}}')
-      ? userTemplate.replace('{{VERIFIED_LAYER_A_JSON}}', compactJsonStr)
-      : `${userTemplate}\n\nVERIFIED LAYER A JSON:\n${compactJsonStr}`;
-
     const completion = await createOpenRouterCompletion({
       model,
-      temperature: conversionCfg.narrative_kernel_temperature,
-      maxTokens: conversionCfg.narrative_kernel_max_tokens,
+      temperature: 0.15,
+      maxTokens: 900,
       jsonMode: true,
-      system: systemPrompt,
+      system: `You are a Grandmaster Vedic Astrology Structural Compiler.
+Transform the verified Layer A Natal Truth Dossier JSON into concise, grounded Observatory prose fields.
+STRICT RULES:
+1. ZERO FABRICATION: Cite ONLY signs, planets, scores, and flags present in the supplied JSON.
+2. NEVER use the phrase "the native" — write plainly ("this chart" or "the individual").
+3. NO fear-mongering, NO gemstone/ritual sales, NO em-dashes.
+4. Return ONLY valid JSON matching the exact keys requested.`,
       messages: [
         {
           role: 'user',
-          content: userContent,
+          content: `Compile the narrative Layer B JSON from this verified Layer A structural dossier. Return JSON with keys:
+{
+  "core_identity_summary": string,
+  "top_3_structural_tensions": string[],
+  "active_life_arc": string,
+  "d1_d9_contrast": string,
+  "ascendant_degree_maturity": string,
+  "bhava_chalit_shifts": string,
+  "d2_hora_and_al_note": string,
+  "indu_shri_lagna_note": string,
+  "key_latent_yogas_if_triggered": string[],
+  "anti_hype_caveats": string[],
+  "narrative_kernel": "200-350 word clear synthesis of core powers, bottlenecks, D1-vs-D9 maturity, and life pacing"
+}
+
+VERIFIED LAYER A JSON:
+${JSON.stringify(compactInput)}`,
         },
       ],
     });

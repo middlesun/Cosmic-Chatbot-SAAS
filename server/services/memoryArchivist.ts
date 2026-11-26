@@ -27,6 +27,7 @@ import {
 } from './enginePromptDefaults';
 import {
   appendCouncilAnalystNotes,
+  isAstrologicalInterpretationText,
   mergeExtractedDeepProfile,
   mergeExtractedLifeFacts,
   mergeUserAndProfileContextForPrompt,
@@ -448,7 +449,9 @@ export async function extractAndPersistDeepProfileFacts(
     }
 
     const stressAreas = Array.isArray(parsed.core_stress_areas)
-      ? parsed.core_stress_areas.filter((s): s is string => typeof s === 'string')
+      ? parsed.core_stress_areas.filter(
+          (s): s is string => typeof s === 'string' && !isAstrologicalInterpretationText(s)
+        )
       : [];
 
     const relStatus =
@@ -508,7 +511,7 @@ export async function extractAndPersistDeepProfileFacts(
         const cleanedArr = bVal
           .filter((item): item is string => typeof item === 'string')
           .map((item) => item.replace(/\s+/g, ' ').trim().slice(0, 180))
-          .filter((item) => item.length >= 4)
+          .filter((item) => item.length >= 4 && !isAstrologicalInterpretationText(item))
           .slice(0, 3);
         if (cleanedArr.length > 0) {
           deepBuckets[bKey as DeepProfileBucketKey] = cleanedArr;
@@ -530,7 +533,7 @@ export async function extractAndPersistDeepProfileFacts(
           ? (rawBucket as DeepProfileBucketKey)
           : undefined;
         const summary = typeof row.summary === 'string' ? row.summary.trim().slice(0, 180) : '';
-        if (!summary || summary.length < 4) continue;
+        if (!summary || summary.length < 4 || isAstrologicalInterpretationText(summary)) continue;
         const supersedesTopic =
           typeof row.supersedes_topic === 'string' && row.supersedes_topic.trim().length >= 3
             ? row.supersedes_topic.trim().slice(0, 48)

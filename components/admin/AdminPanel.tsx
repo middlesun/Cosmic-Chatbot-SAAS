@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Coins,
-  Compass,
   Cpu,
   HeartHandshake,
   LayoutDashboard,
@@ -37,7 +36,6 @@ import AdminSupportDesk from './AdminSupportDesk';
 import AdminPlatformHealth from './AdminPlatformHealth';
 import AdminAppsAnalytics from './AdminAppsAnalytics';
 import AdminCompanionsManager from './AdminCompanionsManager';
-import AdminBirthChartCompiler from './AdminBirthChartCompiler';
 
 type AdminSectionKey =
   | 'dash'
@@ -49,7 +47,6 @@ type AdminSectionKey =
   | 'reports'
   | 'apps'
   | 'ai-settings'
-  | 'birth-chart'
   | 'pricing'
   | 'support'
   | 'platform';
@@ -160,13 +157,6 @@ const PRIMARY_ADMIN_NAV: SidebarNavItem[] = [
     icon: Cpu,
   },
   {
-    key: 'birth-chart',
-    label: 'Birth chart engine',
-    path: '/app/admin/birth-chart',
-    description: 'AstrologyAPI conversion parameters, deterministic math stages, and Natal Truth Dossier LLM prompts.',
-    icon: Compass,
-  },
-  {
     key: 'pricing',
     label: 'Pricing & Plans',
     path: '/app/admin/pricing',
@@ -214,8 +204,6 @@ function resolveSectionFromPath(pathname: string): AdminSectionKey {
       return 'apps';
     case 'ai-settings':
       return 'ai-settings';
-    case 'birth-chart':
-      return 'birth-chart';
     case 'pricing':
       return 'pricing';
     case 'support':
@@ -940,14 +928,6 @@ const AdminPanel: React.FC = () => {
                     : prev
                 );
               }}
-            />
-          )}
-
-          {/* SECTION 6B: Birth Chart Conversion & Natal Truth Dossier */}
-          {activeSection === 'birth-chart' && (
-            <AdminBirthChartCompiler
-              getAccessToken={getAccessToken}
-              modelOptions={modelOptions}
             />
           )}
 

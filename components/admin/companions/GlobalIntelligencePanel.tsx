@@ -35,13 +35,11 @@ import CompanionAvatar from '../../app/CompanionAvatar';
 import {
   ACTIVE_SKILL_LEVEL_OPTIONS,
   ACTIVE_SPECIALIZATION_GROUP_OPTIONS,
-  GLOBAL_ANALYTICAL_PREP_PROMPT_META,
   GLOBAL_COMPANION_PROMPT_META,
   SKILL_BADGE_MAP,
   SKILL_LEVEL_OPTIONS,
   SPECIALIZATION_GROUP_OPTIONS,
   type AdminCompanionRosterSummary,
-  type GlobalAnalyticalPrepPromptKey,
   type GlobalCompanionAdminOverrides,
   type GlobalCompanionPromptKey,
 } from './companionStudioTypes';
@@ -294,68 +292,6 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
                 );
               })}
             </div>
-
-            {/* Analytical Intelligence Foundations (Prep / Future Multi-Pass — Inactive in Single-Pass Runtime) */}
-            <details className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] px-4 py-3">
-              <summary className="text-xs font-semibold text-[#3D3830] cursor-pointer select-none">
-                Analytical Intelligence Foundations (Prep / Future Multi-Pass — Inactive in Single-Pass Runtime)
-              </summary>
-              <p className="text-[11px] text-[#8B8275] mt-2 mb-3">
-                Future multi-pass analysis templates stored and exported safely in Global Intelligence. Not injected into live single-pass companion chats in Phase 1.
-              </p>
-              <div className="space-y-3">
-                {GLOBAL_ANALYTICAL_PREP_PROMPT_META.map((meta) => {
-                  const overrideVal = String(
-                    engineOverrides[meta.key as GlobalAnalyticalPrepPromptKey] ?? ''
-                  );
-                  const defaultVal = String(
-                    engineDefaults[meta.key as GlobalAnalyticalPrepPromptKey] ?? ''
-                  );
-                  const effectiveText = overrideVal || defaultVal;
-                  const isOverridden = Boolean(overrideVal.trim());
-                  return (
-                    <div
-                      key={meta.key}
-                      className="rounded-xl border border-[#3D3830]/12 bg-[#FDFBF7] p-3.5 space-y-2"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-[#3D3830]">
-                              {meta.label}
-                            </span>
-                            <span className="font-mono text-[10px] text-[#8B8275]">
-                              {isOverridden ? 'Authored' : 'Prep (Empty)'}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-[#8B8275] mt-0.5">{meta.description}</p>
-                        </div>
-                        {isOverridden && (
-                          <button
-                            type="button"
-                            onClick={() => onResetGlobalPromptKey(meta.key)}
-                            className="inline-flex items-center gap-1 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-2.5 py-1 text-[11px] text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
-                          >
-                            <RotateCcw className="h-3 w-3" />
-                            <span>Reset</span>
-                          </button>
-                        )}
-                      </div>
-                      <textarea
-                        rows={3}
-                        value={effectiveText}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setEngineOverrides((prev) => ({ ...prev, [meta.key]: val }));
-                        }}
-                        placeholder="Optional prep prompt template..."
-                        className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] p-2.5 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </details>
 
             {/* Pillar Group Defaults */}
             <div className="space-y-3 pt-3 border-t border-[#3D3830]/10">

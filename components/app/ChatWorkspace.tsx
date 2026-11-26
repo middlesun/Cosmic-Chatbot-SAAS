@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
+  Activity,
   BookOpen,
   Check,
   ChevronDown,
@@ -444,6 +445,8 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const [companionCatalog, setCompanionCatalog] = useState<PublicCompanionCard[]>(
     isPreviewMode ? PREVIEW_PUBLIC_COMPANIONS : []
   );
+  const [adminPreviewCatalog, setAdminPreviewCatalog] = useState<PublicCompanionCard[]>([]);
+  const [enableAdminDiagnostics, setEnableAdminDiagnostics] = useState(false);
   const [profileSheetCompanion, setProfileSheetCompanion] =
     useState<PublicCompanionCard | null>(null);
 
@@ -510,12 +513,17 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     if (activePillar !== 'companion') return null;
     const slug = activeConversation?.companion_slug || activeCompanionPersona?.slug;
     if (!slug) return null;
-    return companionCatalog.find((c) => c.slug === slug) || null;
+    return (
+      companionCatalog.find((c) => c.slug === slug) ||
+      adminPreviewCatalog.find((c) => c.slug === slug) ||
+      null
+    );
   }, [
     activePillar,
     activeConversation?.companion_slug,
     activeCompanionPersona?.slug,
     companionCatalog,
+    adminPreviewCatalog,
   ]);
 
   const buildSheetCardFromPersona = useCallback(
@@ -673,6 +681,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
   const loadCompanionCatalog = useCallback(async () => {
     if (isPreviewMode) {
       setCompanionCatalog(PREVIEW_PUBLIC_COMPANIONS.filter(isConsultantCatalogEntryAllowed));
+      setAdminPreviewCatalog([]);
       return;
     }
     try {
@@ -687,6 +696,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           setCompanionCatalog(
             (data.companions as PublicCompanionCard[]).filter(isConsultantCatalogEntryAllowed)
           );
+        }
+        if (Array.isArray(data.adminPreviewCompanions)) {
+          setAdminPreviewCatalog(data.adminPreviewCompanions as PublicCompanionCard[]);
         }
       }
     } catch {
@@ -2874,7 +2886,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     const forceNew = options?.mode === 'fresh';
     const handoffNote = options?.mode === 'handoff' ? options.handoffNote : undefined;
     const fromName = options?.mode === 'handoff' ? options.fromName : undefined;
-    const matched = companionCatalog.find((c) => c.slug.toLowerCase() === cleanSlug);
+    const matched =
+      companionCatalog.find((c) => c.slug.toLowerCase() === cleanSlug) ||
+      adminPreviewCatalog.find((c) => c.slug.toLowerCase() === cleanSlug);
     if (matched) {
       await handleStartPresetCompanion(matched, {
         forceNew,
@@ -2957,11 +2971,11 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       }
       return;
     }
-    if (companionCatalog.length === 0) return;
+    if (companionCatalog.length === 0 && adminPreviewCatalog.length === 0) return;
     pendingSeedCompanionRef.current = null;
     pendingSeedNewRef.current = false;
     void handleSwitchToReferredCompanion(targetSlug, forceNew ? { mode: 'fresh' } : undefined);
-  }, [companionCatalog, isPreviewMode]);
+  }, [companionCatalog, adminPreviewCatalog, isPreviewMode]);
 
   // Handle matched custom persona or onboarding profile handoff via navigation state
   useEffect(() => {
@@ -3594,6 +3608,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           clarifiedPlaybookId: vedicOptions?.clarifiedPlaybookId || undefined,
           clarifiedContextPatch: vedicOptions?.clarifiedContextPatch || undefined,
           curatedStarter: vedicOptions?.curatedStarter || undefined,
+          enableAdminDiagnostics:
+            sendPillar === 'companion' &&
+            Boolean(appUser?.is_admin) &&
+            !isPreviewMode &&
+            enableAdminDiagnostics
+              ? true
+              : undefined,
           attachments: pendingAttachments.map((a) => ({
             kind: a.kind,
             name: a.name,
@@ -5361,6 +5382,32 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
               </Tooltip>
             )}
 
+            {activePillar === 'companion' &&
+              activeConversation &&
+              appUser?.is_admin &&
+              !isPreviewMode && (
+                <Tooltip
+                  content="Capture companion production diagnostics for your sent turns in Admin Chatbot Logs"
+                  placement="bottom"
+                >
+                  <button
+                    type="button"
+                    aria-pressed={enableAdminDiagnostics}
+                    onClick={() => setEnableAdminDiagnostics((v) => !v)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                      enableAdminDiagnostics
+                        ? 'border-[#2D6A4F]/45 bg-[#2D6A4F]/12 text-[#2D6A4F]'
+                        : 'border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3]'
+                    }`}
+                  >
+                    <Activity className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">
+                      {enableAdminDiagnostics ? 'Diagnostics ON' : 'Prod Diagnostics'}
+                    </span>
+                  </button>
+                </Tooltip>
+              )}
+
             {activePillar === 'clarity' && messages.length > 0 && (
               <Tooltip content="Clear Clarity sidekick chat" placement="bottom">
                 <button
@@ -5644,13 +5691,17 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             pastCompanionConversations={pastCompanionConversations}
             archetypeConfigs={chatbotConfig?.companion_archetypes}
             companionCatalog={companionCatalog}
+            adminPreviewCompanions={adminPreviewCatalog}
             isPreviewMode={isPreviewMode}
             getAccessToken={getAccessToken}
             onSelectPastCompanion={(convId) => handleSelectSidebarConversation(convId)}
             onStartWithCompanion={handleStartWithCompanion}
             onStartPresetCompanion={handleStartPresetCompanion}
             onStartCustomBySlug={handleStartCustomBySlug}
-            onCatalogLoaded={(cards) => setCompanionCatalog(cards)}
+            onCatalogLoaded={(cards, _custom, adminCards) => {
+              setCompanionCatalog(cards);
+              if (adminCards) setAdminPreviewCatalog(adminCards);
+            }}
           />
         ) : (
           <MessageThread

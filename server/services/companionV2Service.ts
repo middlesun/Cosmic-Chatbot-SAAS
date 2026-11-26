@@ -29,7 +29,6 @@ import {
   isCompanionsTableReady,
   isMissing022ColumnError,
   readCompanionV2Overlay,
-  sanitizeCompanionTemperature,
   saveCompanionV2OverlayEntry,
   upsertAdminCompanion,
   type AdminCompanionMutationResult,
@@ -53,11 +52,6 @@ import {
   isOpenRouterConfiguredAsync,
 } from './openrouter';
 import {
-  DEFAULT_COMPANION_ANALYSIS_INVESTIGATION_PROMPT,
-  DEFAULT_COMPANION_ANALYSIS_MEMORY_EXTRACTION_PROMPT,
-  DEFAULT_COMPANION_ANALYSIS_REFINE_PROMPT,
-  DEFAULT_COMPANION_ANALYSIS_RESPONSE_STRATEGY_PROMPT,
-  DEFAULT_COMPANION_ANALYSIS_TASK_FRAME_PROMPT,
   DEFAULT_COMPANION_ARCHETYPES,
   DEFAULT_COMPANION_BOND_EXTRACTOR_PROMPT,
   DEFAULT_COMPANION_CHART_PRESENCE_PROMPT,
@@ -66,7 +60,6 @@ import {
   DEFAULT_COMPANION_GROUP_CONFIGS,
   DEFAULT_COMPANION_LISTEN_ONLY_GUARDRAIL,
   DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
-  DEFAULT_COMPANION_NEUTRAL_VERIFICATION_PROMPT,
   DEFAULT_COMPANION_REALISM_BASELINE,
   DEFAULT_COMPANION_RETURN_GREETING_PROMPT,
   DEFAULT_COMPANION_SKILL_RULES,
@@ -148,7 +141,6 @@ export interface AdminCompanionRosterSummary {
   skill_level: CompanionPresetRecord['skill_level'];
   chat_style: CompanionPresetRecord['chat_style'];
   model_id: string | null;
-  temperature?: number | null;
   avatar_url: string | null;
   monogram_palette: CompanionPresetRecord['monogram_palette'];
   override_global_rules: boolean;
@@ -191,7 +183,6 @@ export function toAdminCompanionRosterSummary(
     skill_level: c.skill_level,
     chat_style: c.chat_style,
     model_id: c.model_id,
-    temperature: sanitizeCompanionTemperature(c.temperature),
     avatar_url: c.avatar_url,
     monogram_palette: c.monogram_palette,
     override_global_rules: c.override_global_rules,
@@ -339,7 +330,6 @@ export function buildCompanionSnapshot(record: CompanionPresetRecord): Record<st
     skill_level: record.skill_level,
     chat_style: record.chat_style,
     model_id: record.model_id,
-    temperature: sanitizeCompanionTemperature(record.temperature),
     tts_voice_profile: record.tts_voice_profile,
     supports_listening_cue: record.supports_listening_cue,
     suggestions_enabled: record.suggestions_enabled,
@@ -432,9 +422,6 @@ function sanitizeDraftPayload(
       typeof input.model_id === 'string' && input.model_id.trim()
         ? input.model_id.trim().slice(0, 160)
         : null;
-  }
-  if (input.temperature !== undefined) {
-    next.temperature = sanitizeCompanionTemperature(input.temperature);
   }
   if (input.avatar_url === null || typeof input.avatar_url === 'string') {
     next.avatar_url = input.avatar_url;
@@ -1690,24 +1677,6 @@ export async function exportGlobalCompanionBundle(): Promise<GlobalCompanionInte
       overrides.companion_bond_extractor_prompt?.trim() || DEFAULT_COMPANION_BOND_EXTRACTOR_PROMPT,
     companion_matcher_instructions:
       overrides.companion_matcher_instructions?.trim() || DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
-    companion_neutral_verification_prompt:
-      overrides.companion_neutral_verification_prompt?.trim() ||
-      DEFAULT_COMPANION_NEUTRAL_VERIFICATION_PROMPT,
-    companion_analysis_task_frame_prompt:
-      overrides.companion_analysis_task_frame_prompt?.trim() ||
-      DEFAULT_COMPANION_ANALYSIS_TASK_FRAME_PROMPT,
-    companion_analysis_investigation_prompt:
-      overrides.companion_analysis_investigation_prompt?.trim() ||
-      DEFAULT_COMPANION_ANALYSIS_INVESTIGATION_PROMPT,
-    companion_analysis_refine_prompt:
-      overrides.companion_analysis_refine_prompt?.trim() ||
-      DEFAULT_COMPANION_ANALYSIS_REFINE_PROMPT,
-    companion_analysis_response_strategy_prompt:
-      overrides.companion_analysis_response_strategy_prompt?.trim() ||
-      DEFAULT_COMPANION_ANALYSIS_RESPONSE_STRATEGY_PROMPT,
-    companion_analysis_memory_extraction_prompt:
-      overrides.companion_analysis_memory_extraction_prompt?.trim() ||
-      DEFAULT_COMPANION_ANALYSIS_MEMORY_EXTRACTION_PROMPT,
     companion_skill_rules: {
       ...DEFAULT_COMPANION_SKILL_RULES,
       ...(overrides.companion_skill_rules || {}),
@@ -1753,12 +1722,6 @@ export async function importGlobalCompanionBundle(
     'companion_return_greeting_prompt',
     'companion_bond_extractor_prompt',
     'companion_matcher_instructions',
-    'companion_neutral_verification_prompt',
-    'companion_analysis_task_frame_prompt',
-    'companion_analysis_investigation_prompt',
-    'companion_analysis_refine_prompt',
-    'companion_analysis_response_strategy_prompt',
-    'companion_analysis_memory_extraction_prompt',
   ] as const;
 
   let touched = false;
@@ -2008,10 +1971,6 @@ function snapshotToPresetRecord(
         : typeof snapshot.model_id === 'string'
         ? snapshot.model_id
         : base.model_id,
-    temperature:
-      snapshot.temperature !== undefined
-        ? sanitizeCompanionTemperature(snapshot.temperature)
-        : base.temperature ?? null,
     tts_voice_profile:
       snapshot.tts_voice_profile && typeof snapshot.tts_voice_profile === 'object'
         ? (snapshot.tts_voice_profile as CompanionPresetRecord['tts_voice_profile'])
