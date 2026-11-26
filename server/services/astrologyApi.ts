@@ -291,7 +291,10 @@ export function buildApiPayload(
   birthTimeStr: string,
   lat: number,
   lon: number,
-  tz: number
+  tz: number,
+  options?: {
+    observationPoint?: 'topocentric' | 'geocentric';
+  }
 ): BirthApiPayload {
   const [year, month, date] = birthDateISO.split('-').map(Number);
   const [hours, minutes, seconds] = birthTimeStr.split(':').map(Number);
@@ -307,7 +310,7 @@ export function buildApiPayload(
     longitude: lon,
     timezone: tz,
     config: {
-      observation_point: 'geocentric',
+      observation_point: options?.observationPoint === 'topocentric' ? 'topocentric' : 'geocentric',
       ayanamsha: 'lahiri',
       language: 'en',
     },
@@ -442,7 +445,14 @@ function parseWesternApiPlanets(
   return result;
 }
 
-export async function fetchChartFromApi(payload: BirthApiPayload): Promise<{
+export async function fetchChartFromApi(
+  payload: BirthApiPayload,
+  options?: {
+    fetchApiShadBala?: boolean;
+    fetchApiWesternPlanets?: boolean;
+    westernHouseSystem?: 'Placidus' | 'Whole Sign';
+  }
+): Promise<{
   planets: PlanetPosition[];
   apiShadBala?: unknown;
   apiWesternPlanets?: Array<{ name: string; longitude: number; isRetrograde?: boolean }> | null;
@@ -458,30 +468,38 @@ export async function fetchChartFromApi(payload: BirthApiPayload): Promise<{
   let apiShadBala: unknown = null;
   let apiWesternPlanets: Array<{ name: string; longitude: number; isRetrograde?: boolean }> | null = null;
 
-  try {
-    apiShadBala = await postAstrologyEndpoint('/shad-bala/summary', payload as unknown as Record<string, unknown>, 0);
-  } catch {
-    apiShadBala = null;
+  if (options?.fetchApiShadBala !== false) {
+    try {
+      apiShadBala = await postAstrologyEndpoint('/shad-bala/summary', payload as unknown as Record<string, unknown>, 0);
+    } catch {
+      apiShadBala = null;
+    }
   }
 
-  try {
-    const westernPayload = {
-      year: payload.year,
-      month: payload.month,
-      date: payload.date,
-      hours: payload.hours,
-      minutes: payload.minutes,
-      seconds: payload.seconds,
-      latitude: payload.latitude,
-      longitude: payload.longitude,
-      timezone: payload.timezone,
-      config: { observation_point: 'geocentric', house_system: 'Placidus', language: 'en' },
-    };
-    const westernRaw = await postAstrologyEndpoint('/western/planets', westernPayload, 0);
-    const parsed = parseWesternApiPlanets(westernRaw);
-    if (parsed.length > 0) apiWesternPlanets = parsed;
-  } catch {
-    apiWesternPlanets = null;
+  if (options?.fetchApiWesternPlanets !== false) {
+    try {
+      const westernPayload = {
+        year: payload.year,
+        month: payload.month,
+        date: payload.date,
+        hours: payload.hours,
+        minutes: payload.minutes,
+        seconds: payload.seconds,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        timezone: payload.timezone,
+        config: {
+          observation_point: payload.config.observation_point || 'geocentric',
+          house_system: options?.westernHouseSystem === 'Whole Sign' ? 'Whole Sign' : 'Placidus',
+          language: 'en',
+        },
+      };
+      const westernRaw = await postAstrologyEndpoint('/western/planets', westernPayload, 0);
+      const parsed = parseWesternApiPlanets(westernRaw);
+      if (parsed.length > 0) apiWesternPlanets = parsed;
+    } catch {
+      apiWesternPlanets = null;
+    }
   }
 
   return {

@@ -863,3 +863,30 @@ Rules:
 1. Place ONLY tokens for periods you actually discuss in your answer (typically 1–3 relevant widgets; never dump all tokens together at the bottom).
 2. Put each token on its own line right below its matching paragraph (never inside a Markdown table cell or code fence).
 3. NEVER invent new token IDs, NEVER modify the \`[[TIMING_BAR:...]]\` syntax, and NEVER mention these tokens in your prose.`;
+
+export const DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT = `You are a Grandmaster Vedic Astrology Structural Compiler.
+Transform the verified Layer A Natal Truth Dossier JSON into concise, grounded Observatory prose fields.
+STRICT RULES:
+1. ZERO FABRICATION: Cite ONLY signs, planets, scores, and flags present in the supplied JSON.
+2. NEVER use the phrase "the native" — write plainly ("this chart" or "the individual").
+3. NO fear-mongering, NO gemstone/ritual sales, NO em-dashes.
+4. Return ONLY valid JSON matching the exact keys requested.`;
+
+export const DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT = `Compile the narrative Layer B JSON from this verified Layer A structural dossier. Return JSON with keys:
+{
+  "core_identity_summary": string,
+  "top_3_structural_tensions": string[],
+  "active_life_arc": string,
+  "d1_d9_contrast": string,
+  "ascendant_degree_maturity": string,
+  "bhava_chalit_shifts": string,
+  "d2_hora_and_al_note": string,
+  "indu_shri_lagna_note": string,
+  "key_latent_yogas_if_triggered": string[],
+  "anti_hype_caveats": string[],
+  "narrative_kernel": "200-350 word clear synthesis of core powers, bottlenecks, D1-vs-D9 maturity, and life pacing"
+}
+
+VERIFIED LAYER A JSON:
+{{VERIFIED_LAYER_A_JSON}}`;
+

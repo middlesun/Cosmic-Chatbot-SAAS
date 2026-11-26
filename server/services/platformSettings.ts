@@ -28,6 +28,8 @@ import {
   DEFAULT_MEMORY_DEEP_PROFILE_EXTRACTOR_PROMPT,
   DEFAULT_MEMORY_PROFILE_SYNTHESIZER_PROMPT,
   DEFAULT_MEMORY_ROLLING_THREAD_COMPACTOR_PROMPT,
+  DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT,
+  DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT,
   DEFAULT_PROFILE_MEMORY_EXTRACTOR_PROMPT,
   DEFAULT_SHORT_REPLY_BREAKDOWN_WRAPPER,
   DEFAULT_STAGE1_ROUTER_PROMPT,
@@ -234,7 +236,39 @@ export interface EnginePromptOverrides {
   western_deep_audit_adjudicator_mandate?: string;
   western_stage4_aligned_suggestions_prompt?: string;
   western_stage4_fast_more_suggestions_prompt?: string;
+  natal_narrative_kernel_system_prompt?: string;
+  natal_narrative_kernel_user_prompt?: string;
 }
+
+export interface BirthChartConversionConfig {
+  observation_point: 'geocentric' | 'topocentric';
+  ayanamsha: 'lahiri';
+  western_house_system: 'Placidus' | 'Whole Sign';
+  fetch_api_shadbala: boolean;
+  fetch_api_western_planets: boolean;
+  narrative_kernel_enabled: boolean;
+  narrative_kernel_model_id: string | null;
+  narrative_kernel_temperature: number;
+  narrative_kernel_max_tokens: number;
+  include_validated_yogas_limit: number;
+  include_suppressed_yogas_limit: number;
+  include_doshas_limit: number;
+}
+
+export const DEFAULT_BIRTH_CHART_CONVERSION_CONFIG: BirthChartConversionConfig = {
+  observation_point: 'geocentric',
+  ayanamsha: 'lahiri',
+  western_house_system: 'Placidus',
+  fetch_api_shadbala: true,
+  fetch_api_western_planets: true,
+  narrative_kernel_enabled: true,
+  narrative_kernel_model_id: null,
+  narrative_kernel_temperature: 0.15,
+  narrative_kernel_max_tokens: 900,
+  include_validated_yogas_limit: 5,
+  include_suppressed_yogas_limit: 4,
+  include_doshas_limit: 4,
+};
 
 export interface PlaybookOverrideEntry {
   requiresTimingStack?: boolean;
@@ -596,6 +630,7 @@ let promptRecipesCache: { value: PromptRecipeRecord[]; expiresAt: number } | nul
 let perGuideConfigCache: { value: PerGuideChatbotConfigMap; expiresAt: number } | null = null;
 let enginePromptsCache: { value: EnginePromptOverrides; expiresAt: number } | null = null;
 let playbookOverridesCache: { value: PlaybookOverridesMap; expiresAt: number } | null = null;
+let birthChartConversionCache: { value: BirthChartConversionConfig; expiresAt: number } | null = null;
 
 export function invalidateAllPlatformCaches(): void {
   aiSettingsCache = null;
@@ -608,6 +643,7 @@ export function invalidateAllPlatformCaches(): void {
   perGuideConfigCache = null;
   enginePromptsCache = null;
   playbookOverridesCache = null;
+  birthChartConversionCache = null;
 }
 
 export function invalidateRecipesCache(): void {
@@ -647,7 +683,8 @@ export type PlatformSettingKey =
   | 'companion_versions_overlay'
   | 'per_guide_chatbot_config'
   | 'engine_prompt_overrides'
-  | 'playbook_overrides';
+  | 'playbook_overrides'
+  | 'birth_chart_conversion_config';
 
 export async function savePlatformSetting(
   key: PlatformSettingKey,
@@ -1290,7 +1327,98 @@ export function getEnginePromptDefaultsBundle() {
     western_deep_audit_adjudicator_mandate: WESTERN_DEEP_AUDIT_ADJUDICATOR_MANDATE,
     western_stage4_aligned_suggestions_prompt: WESTERN_STAGE4_ALIGNED_SUGGESTIONS_PROMPT,
     western_stage4_fast_more_suggestions_prompt: WESTERN_STAGE4_FAST_MORE_SUGGESTIONS_PROMPT,
+    natal_narrative_kernel_system_prompt: DEFAULT_NATAL_NARRATIVE_KERNEL_SYSTEM_PROMPT,
+    natal_narrative_kernel_user_prompt: DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT,
   };
+}
+
+export function sanitizeBirthChartConversionConfig(
+  raw: unknown,
+  fallback: BirthChartConversionConfig = DEFAULT_BIRTH_CHART_CONVERSION_CONFIG
+): BirthChartConversionConfig {
+  const obj = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : {};
+  const clampInt = (val: unknown, min: number, max: number, def: number): number => {
+    if (typeof val !== 'number' || !Number.isFinite(val)) return def;
+    return Math.max(min, Math.min(max, Math.round(val)));
+  };
+  const clampFloat = (val: unknown, min: number, max: number, def: number): number => {
+    if (typeof val !== 'number' || !Number.isFinite(val)) return def;
+    return Math.max(min, Math.min(max, Math.round(val * 100) / 100));
+  };
+  return {
+    observation_point:
+      obj.observation_point === 'topocentric' || obj.observation_point === 'geocentric'
+        ? obj.observation_point
+        : fallback.observation_point,
+    ayanamsha: 'lahiri',
+    western_house_system:
+      obj.western_house_system === 'Whole Sign' || obj.western_house_system === 'Placidus'
+        ? obj.western_house_system
+        : fallback.western_house_system,
+    fetch_api_shadbala:
+      typeof obj.fetch_api_shadbala === 'boolean'
+        ? obj.fetch_api_shadbala
+        : fallback.fetch_api_shadbala,
+    fetch_api_western_planets:
+      typeof obj.fetch_api_western_planets === 'boolean'
+        ? obj.fetch_api_western_planets
+        : fallback.fetch_api_western_planets,
+    narrative_kernel_enabled:
+      typeof obj.narrative_kernel_enabled === 'boolean'
+        ? obj.narrative_kernel_enabled
+        : fallback.narrative_kernel_enabled,
+    narrative_kernel_model_id:
+      obj.narrative_kernel_model_id === null
+        ? null
+        : typeof obj.narrative_kernel_model_id === 'string' && obj.narrative_kernel_model_id.trim()
+        ? obj.narrative_kernel_model_id.trim().slice(0, 140)
+        : obj.narrative_kernel_model_id === ''
+        ? null
+        : fallback.narrative_kernel_model_id,
+    narrative_kernel_temperature: clampFloat(
+      obj.narrative_kernel_temperature,
+      0,
+      1,
+      fallback.narrative_kernel_temperature
+    ),
+    narrative_kernel_max_tokens: clampInt(
+      obj.narrative_kernel_max_tokens,
+      300,
+      3000,
+      fallback.narrative_kernel_max_tokens
+    ),
+    include_validated_yogas_limit: clampInt(
+      obj.include_validated_yogas_limit,
+      1,
+      15,
+      fallback.include_validated_yogas_limit
+    ),
+    include_suppressed_yogas_limit: clampInt(
+      obj.include_suppressed_yogas_limit,
+      1,
+      15,
+      fallback.include_suppressed_yogas_limit
+    ),
+    include_doshas_limit: clampInt(
+      obj.include_doshas_limit,
+      1,
+      15,
+      fallback.include_doshas_limit
+    ),
+  };
+}
+
+export async function getBirthChartConversionConfig(): Promise<BirthChartConversionConfig> {
+  const now = Date.now();
+  if (birthChartConversionCache && birthChartConversionCache.expiresAt > now) {
+    return birthChartConversionCache.value;
+  }
+  const stored = await readSettingRow<BirthChartConversionConfig>('birth_chart_conversion_config');
+  const merged = sanitizeBirthChartConversionConfig(stored, DEFAULT_BIRTH_CHART_CONVERSION_CONFIG);
+  birthChartConversionCache = { value: merged, expiresAt: now + CACHE_TTL_MS };
+  return merged;
 }
 
 export async function getPlaybookOverrides(): Promise<PlaybookOverridesMap> {

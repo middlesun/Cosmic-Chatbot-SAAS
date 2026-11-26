@@ -5,6 +5,7 @@ import {
   resolveHistoricalTimezoneOffset,
   type BirthLocationResolved,
 } from './astrologyApi';
+import { getBirthChartConversionConfig } from './platformSettings';
 import {
   computeAscendantMaturity,
   computeAshtakavarga,
@@ -162,15 +163,22 @@ export async function compileBirthChart(input: CompileProfileInput): Promise<{
     );
   }
 
+  const conversionConfig = await getBirthChartConversionConfig();
+
   const payload = buildApiPayload(
     input.birthDate,
     input.birthTime,
     location.latitude,
     location.longitude,
-    location.timezoneOffset
+    location.timezoneOffset,
+    { observationPoint: conversionConfig.observation_point }
   );
 
-  const apiData = await fetchChartFromApi(payload);
+  const apiData = await fetchChartFromApi(payload, {
+    fetchApiShadBala: conversionConfig.fetch_api_shadbala,
+    fetchApiWesternPlanets: conversionConfig.fetch_api_western_planets,
+    westernHouseSystem: conversionConfig.western_house_system,
+  });
   const planets = apiData.planets;
 
   const asc = planets.find((p) => p.name === 'Ascendant');
