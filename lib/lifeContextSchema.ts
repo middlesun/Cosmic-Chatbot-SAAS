@@ -63,6 +63,7 @@ export interface CitedProfileInsight {
   fact?: string;
   cited_by: string;
   cited_slug?: string;
+  is_factual_life_fact?: boolean;
   conversation_id?: string | null;
   captured_at?: string;
   updated_at?: string;
@@ -88,6 +89,7 @@ export interface DeepProfileEntry {
   fact: string;
   source_label: string;
   source_slug: string;
+  is_factual_life_fact?: boolean;
   conversation_id: string | null;
   captured_at: string;
   updated_at: string;

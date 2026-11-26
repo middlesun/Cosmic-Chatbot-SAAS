@@ -10,6 +10,12 @@
   "companion_return_greeting_prompt": "",
   "companion_bond_extractor_prompt": "",
   "companion_matcher_instructions": "",
+  "companion_neutral_verification_prompt": "",
+  "companion_analysis_task_frame_prompt": "",
+  "companion_analysis_investigation_prompt": "",
+  "companion_analysis_refine_prompt": "",
+  "companion_analysis_response_strategy_prompt": "",
+  "companion_analysis_memory_extraction_prompt": "",
   "companion_skill_rules": {
     "none_emotional": "",
     "vedic": "",

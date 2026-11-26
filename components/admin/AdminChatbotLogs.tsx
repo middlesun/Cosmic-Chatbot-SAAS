@@ -62,7 +62,6 @@ const AdminChatbotLogs: React.FC<AdminChatbotLogsProps> = ({ getAccessToken }) =
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [clearing, setClearing] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [jevEnabled, setJevEnabled] = useState(true);
   const [jevModel, setJevModel] = useState('typesafe/jev-1.14');
@@ -73,7 +72,6 @@ const AdminChatbotLogs: React.FC<AdminChatbotLogsProps> = ({ getAccessToken }) =
   const [schemaErrorDetail, setSchemaErrorDetail] = useState<string | null>(null);
   const [actionFilter, setActionFilter] = useState('all');
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
-  const [expandedPromptSections, setExpandedPromptSections] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
   const loadLogs = useCallback(
@@ -156,24 +154,6 @@ const AdminChatbotLogs: React.FC<AdminChatbotLogsProps> = ({ getAccessToken }) =
       setError(err instanceof Error ? err.message : 'Failed to clear logs');
     } finally {
       setClearing(false);
-    }
-  };
-
-  const handleDeleteSingleLog = async (id: string) => {
-    setDeletingId(id);
-    setError(null);
-    try {
-      const token = await getAccessToken();
-      const res = await fetch(`/api/admin/chatbot-logs/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error('Failed to delete log entry');
-      setLogs((prev) => prev.filter((item) => item.id !== id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete log entry');
-    } finally {
-      setDeletingId(null);
     }
   };
 
@@ -372,18 +352,6 @@ const AdminChatbotLogs: React.FC<AdminChatbotLogsProps> = ({ getAccessToken }) =
                     <span className="font-mono text-[11px] text-[#8B8275]">
                       {new Date(entry.created_at).toLocaleString()}
                     </span>
-                    <button
-                      type="button"
-                      disabled={deletingId === entry.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleDeleteSingleLog(entry.id);
-                      }}
-                      aria-label="Delete log entry"
-                      className="rounded-lg p-1 text-[#8B8275] hover:bg-[#7A3E36]/10 hover:text-[#7A3E36] disabled:opacity-40 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
                     {isExpanded ? (
                       <ChevronUp className="h-4 w-4 text-[#5C5449]" />
                     ) : (
@@ -399,199 +367,6 @@ const AdminChatbotLogs: React.FC<AdminChatbotLogsProps> = ({ getAccessToken }) =
                       <span>Conversation: {entry.conversation_id || '—'}</span>
                       <span>Profile: {entry.profile_id || 'General'}</span>
                     </div>
-
-                    {entry.stage2_json &&
-                      typeof entry.stage2_json.companion_diagnostics === 'object' &&
-                      entry.stage2_json.companion_diagnostics !== null && (() => {
-                        const diag = entry.stage2_json.companion_diagnostics as Record<string, unknown>;
-                        const charts = (diag.charts as Record<string, unknown> | undefined) || {};
-                        const idMeta =
-                          (diag.identity_and_methodology as Record<string, unknown> | undefined) || {};
-                        const memoryBond =
-                          (diag.memory_and_bond as Record<string, unknown> | undefined) || {};
-                        const verification =
-                          (diag.verification as Record<string, unknown> | undefined) || {};
-                        const orderedSections = Array.isArray(diag.ordered_sections)
-                          ? (diag.ordered_sections as Array<{
-                              key?: string;
-                              label?: string;
-                              estimatedTokens?: number;
-                              charCount?: number;
-                              content?: string;
-                            }>)
-                          : [];
-                        const nuancesTriggered = Array.isArray(diag.nuances_triggered)
-                          ? (diag.nuances_triggered as string[])
-                          : [];
-                        const dialoguesTriggered = Array.isArray(diag.dialogues_triggered)
-                          ? (diag.dialogues_triggered as string[])
-                          : [];
-
-                        return (
-                          <div className="rounded-2xl border border-[#B8965A]/35 bg-[#FDFBF7] p-4 space-y-4">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-xs font-semibold text-[#3D3830]">
-                                Companion Production Diagnostics
-                              </span>
-                              <span className="font-mono text-[11px] text-[#5C5449]">
-                                {String(diag.model || 'default')} · temp{' '}
-                                {String(diag.temperature ?? '0.45')} · maxTokens{' '}
-                                {String(diag.max_output_tokens ?? '—')} · style{' '}
-                                {String(diag.chat_style || 'chat_bubbles')}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
-                              <div className="rounded-xl border border-[#3D3830]/10 bg-[#FAF7F2] px-3 py-2">
-                                <p className="text-[#8B8275]">Prompt Size</p>
-                                <p className="font-mono tabular-nums text-[#3D3830] mt-0.5">
-                                  {String(diag.total_prompt_chars ?? 0)} chars (~
-                                  {String(diag.total_estimated_tokens ?? 0)} tok)
-                                </p>
-                              </div>
-                              <div className="rounded-xl border border-[#3D3830]/10 bg-[#FAF7F2] px-3 py-2">
-                                <p className="text-[#8B8275]">Tokens In / Out</p>
-                                <p className="font-mono tabular-nums text-[#3D3830] mt-0.5">
-                                  {String(diag.tokens_in ?? 0)} / {String(diag.tokens_out ?? 0)}
-                                </p>
-                              </div>
-                              <div className="rounded-xl border border-[#3D3830]/10 bg-[#FAF7F2] px-3 py-2">
-                                <p className="text-[#8B8275]">Charts (Vedic / Western)</p>
-                                <p className="font-mono text-[#3D3830] mt-0.5">
-                                  V:{charts.vedic_chart_injected ? 'yes' : 'no'} (T:
-                                  {charts.vedic_transits_injected ? 'yes' : 'no'}) · W:
-                                  {charts.western_chart_injected ? 'yes' : 'no'} (T:
-                                  {charts.western_transits_injected ? 'yes' : 'no'})
-                                </p>
-                              </div>
-                              <div className="rounded-xl border border-[#3D3830]/10 bg-[#FAF7F2] px-3 py-2">
-                                <p className="text-[#8B8275]">Availability vs Intent</p>
-                                <p className="font-mono text-[#3D3830] mt-0.5">
-                                  Univ:{charts.universal_chart_available ? 'on' : 'off'} · Intent:
-                                  {charts.active_astrological_intent ? 'active' : 'casual'} (
-                                  {String(charts.esoteric_relevance || 'none')})
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-[11px]">
-                              <div className="rounded-xl border border-[#3D3830]/10 bg-[#FAF7F2] p-3 space-y-1">
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8B8275]">
-                                  Identity &amp; Isolation
-                                </p>
-                                <p className="font-mono text-[#3D3830]">
-                                  Slug: {String(idMeta.slug || '—')} ({idMeta.is_active ? 'active' : 'inactive'})
-                                </p>
-                                <p className="font-mono text-[#5C5449]">
-                                  Mode: {String(idMeta.advisory_mode || '—')} · Entry:{' '}
-                                  {String(charts.astrology_entry_rule || '—')}
-                                </p>
-                                <p className="font-mono text-[#5C5449]">
-                                  Overrides: Global={idMeta.override_global_rules ? 'ON' : 'OFF'} · Group=
-                                  {idMeta.override_group_rules ? 'ON' : 'OFF'}
-                                </p>
-                                <p className="font-mono text-[#5C5449]">
-                                  Nuances ({nuancesTriggered.length}):{' '}
-                                  {nuancesTriggered.length > 0 ? nuancesTriggered.join(', ') : 'none'}
-                                </p>
-                                <p className="font-mono text-[#5C5449]">
-                                  Dialogues ({dialoguesTriggered.length}):{' '}
-                                  {dialoguesTriggered.length > 0 ? dialoguesTriggered.join(', ') : 'none'}
-                                </p>
-                              </div>
-
-                              <div className="rounded-xl border border-[#3D3830]/10 bg-[#FAF7F2] p-3 space-y-1">
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8B8275]">
-                                  Memory &amp; Bond State
-                                </p>
-                                <p className="font-mono text-[#3D3830]">
-                                  Analysis Mode: {String(memoryBond.shared_analysis_memory_mode || 'independent')}
-                                </p>
-                                <p className="font-mono text-[#5C5449]">
-                                  Shared Interpretations: {memoryBond.shared_interpretations_included ? 'included' : 'excluded'} · Analyst Notes:{' '}
-                                  {memoryBond.analyst_notes_injected ? 'injected' : 'excluded'}
-                                </p>
-                                <p className="font-mono text-[#5C5449]">
-                                  Bond Turns: {String(memoryBond.bond_total_turns ?? 0)} · Cross-thread:{' '}
-                                  {String(memoryBond.cross_thread_chars ?? 0)} chars
-                                </p>
-                                {typeof memoryBond.bond_memory_summary === 'string' &&
-                                  memoryBond.bond_memory_summary.trim() && (
-                                    <p className="text-[11px] text-[#5C5449] line-clamp-3 pt-1">
-                                      Bond: {memoryBond.bond_memory_summary}
-                                    </p>
-                                  )}
-                              </div>
-
-                              <div className="rounded-xl border border-[#3D3830]/10 bg-[#FAF7F2] p-3 space-y-1">
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8B8275]">
-                                  Verification &amp; Voice Reminder
-                                </p>
-                                <p className="font-mono text-[#3D3830]">
-                                  Verification: {String(verification.verification_mode || 'methodology_neutral')} (
-                                  {verification.modifier_applied ? 'applied' : 'skipped'})
-                                </p>
-                                {typeof verification.verification_modifier_text === 'string' &&
-                                  verification.verification_modifier_text.trim() && (
-                                    <p className="font-mono text-[10px] text-[#5C5449] line-clamp-3">
-                                      {verification.verification_modifier_text.trim()}
-                                    </p>
-                                  )}
-                                {typeof verification.voice_reminder_text === 'string' &&
-                                  verification.voice_reminder_text.trim() && (
-                                    <p className="font-mono text-[10px] text-[#8B8275] pt-1">
-                                      {verification.voice_reminder_text.trim()}
-                                    </p>
-                                  )}
-                              </div>
-                            </div>
-
-                            {orderedSections.length > 0 && (
-                              <div className="space-y-1.5">
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8B8275]">
-                                  Prompt Assembly Layers ({orderedSections.length})
-                                </p>
-                                <div className="space-y-1.5">
-                                  {orderedSections.map((sec, idx) => {
-                                    const secKey = `${entry.id}:${sec.key || idx}`;
-                                    const secOpen = Boolean(expandedPromptSections[secKey]);
-                                    return (
-                                      <div
-                                        key={secKey}
-                                        className="rounded-xl border border-[#3D3830]/10 bg-[#FAF7F2] overflow-hidden"
-                                      >
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setExpandedPromptSections((prev) => ({
-                                              ...prev,
-                                              [secKey]: !prev[secKey],
-                                            }))
-                                          }
-                                          className="w-full px-3 py-2 flex items-center justify-between gap-2 text-left text-[11px] hover:bg-[#F1ECE3]/70 cursor-pointer"
-                                        >
-                                          <span className="font-medium text-[#3D3830] truncate">
-                                            {sec.label || sec.key || `Layer ${idx + 1}`}
-                                          </span>
-                                          <span className="font-mono tabular-nums text-[#8B8275] shrink-0">
-                                            {sec.charCount ?? 0} chars · ~{sec.estimatedTokens ?? 0} tok{' '}
-                                            {secOpen ? '▲' : '▼'}
-                                          </span>
-                                        </button>
-                                        {secOpen && (
-                                          <pre className="border-t border-[#3D3830]/10 bg-[#FDFBF7] p-3 text-[11px] font-mono text-[#3D3830] overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto">
-                                            {sec.content || ''}
-                                          </pre>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                       <div className="rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] p-3 space-y-1">

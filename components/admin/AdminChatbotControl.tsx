@@ -9,6 +9,7 @@ import {
   Columns2,
   Cpu,
   Database,
+  Download,
   Eye,
   EyeOff,
   FileCode2,
@@ -27,11 +28,16 @@ import {
   Star,
   Terminal,
   Trash2,
+  Upload,
   Wrench,
 } from 'lucide-react';
 import CustomSelect from '../app/CustomSelect';
 import ChatWorkspace from '../app/ChatWorkspace';
 import type { ModelChoiceOption, PromptRecipeRecord } from './PromptLibraryManager';
+import ChatbotEngineImportExportModal, {
+  type ChatbotEngineIoScope,
+} from './ChatbotEngineImportExportModal';
+import AdminBirthChartCompiler from './AdminBirthChartCompiler';
 
 interface ChatbotFeaturesConfig {
   voice_input: boolean;
@@ -181,6 +187,8 @@ interface EnginePromptBundle {
   western_turn_modifier_prompt: string;
   western_stage4_aligned_suggestions_prompt: string;
   western_stage4_fast_more_suggestions_prompt: string;
+  natal_narrative_kernel_system_prompt: string;
+  natal_narrative_kernel_user_prompt: string;
 }
 
 interface EnginePromptOverridesState {
@@ -218,6 +226,8 @@ interface EnginePromptOverridesState {
   western_turn_modifier_prompt?: string;
   western_stage4_aligned_suggestions_prompt?: string;
   western_stage4_fast_more_suggestions_prompt?: string;
+  natal_narrative_kernel_system_prompt?: string;
+  natal_narrative_kernel_user_prompt?: string;
 }
 
 interface PlaybookCatalogItem {
@@ -619,12 +629,26 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
   // Engine & Playbook state
   const [engineDefaults, setEngineDefaults] = useState<EnginePromptBundle | null>(null);
   const [engineOverrides, setEngineOverrides] = useState<EnginePromptOverridesState>({});
-  const [engineTraditionTab, setEngineTraditionTab] = useState<'vedic' | 'western'>('vedic');
+  const [engineTraditionTab, setEngineTraditionTab] = useState<'vedic' | 'western' | 'birth_chart'>('vedic');
   const [expandedEngineSection, setExpandedEngineSection] = useState<Record<string, boolean>>({
     core_council_constitution: true,
     western_core_council_constitution: true,
   });
   const [savingEngine, setSavingEngine] = useState(false);
+
+  // Export / Import JSON Modal state
+  const [ioModalOpen, setIoModalOpen] = useState(false);
+  const [ioModalScope, setIoModalScope] = useState<ChatbotEngineIoScope>('all');
+  const [ioModalFocus, setIoModalFocus] = useState<'export' | 'import' | null>(null);
+
+  const openIoModal = (
+    scope: ChatbotEngineIoScope,
+    focus: 'export' | 'import' | null = null
+  ) => {
+    setIoModalScope(scope);
+    setIoModalFocus(focus);
+    setIoModalOpen(true);
+  };
 
   const [canonicalPlaybooks, setCanonicalPlaybooks] = useState<PlaybookCatalogItem[]>([]);
   const [playbookOverrides, setPlaybookOverrides] = useState<Record<string, PlaybookOverrideItem>>({});
@@ -2582,15 +2606,33 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={resetting}
-                    onClick={() => void handleResetGuideScope('rules')}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    <span>Reset Guide Rules</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openIoModal('rules', 'export')}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span>Export Rules</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openIoModal('rules', 'import')}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>Import Rules</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={resetting}
+                      onClick={() => void handleResetGuideScope('rules')}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>Reset Guide Rules</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Add / Import Toolbar */}
@@ -3069,7 +3111,7 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="inline-flex items-center rounded-xl bg-[#F1ECE3] p-1">
+                      <div className="inline-flex flex-wrap items-center rounded-xl bg-[#F1ECE3] p-1">
                         <button
                           type="button"
                           onClick={() => setEngineTraditionTab('vedic')}
@@ -3092,28 +3134,81 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                         >
                           Western Tropical Engine
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setEngineTraditionTab('birth_chart')}
+                          className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                            engineTraditionTab === 'birth_chart'
+                              ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                              : 'text-[#5C5449] hover:text-[#3D3830]'
+                          }`}
+                        >
+                          Birth Chart Compiler
+                        </button>
                       </div>
                       <button
                         type="button"
-                        disabled={savingEngine}
-                        onClick={() => void handleResetEngineKey('all')}
+                        onClick={() =>
+                          openIoModal(
+                            engineTraditionTab === 'birth_chart' ? 'birth_chart' : 'engine',
+                            'export'
+                          )
+                        }
                         className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
                       >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        <span>Reset All Engine Defaults</span>
+                        <Download className="h-3.5 w-3.5" />
+                        <span>Export JSON</span>
                       </button>
                       <button
                         type="button"
-                        disabled={savingEngine}
-                        onClick={() => void handleSaveEnginePromptsOnly()}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-4 py-1.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 transition-colors cursor-pointer"
+                        onClick={() =>
+                          openIoModal(
+                            engineTraditionTab === 'birth_chart' ? 'birth_chart' : 'engine',
+                            'import'
+                          )
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
                       >
-                        <Save className="h-3.5 w-3.5" />
-                        <span>{savingEngine ? 'Saving...' : 'Save Engine Prompts'}</span>
+                        <Upload className="h-3.5 w-3.5" />
+                        <span>Import JSON</span>
                       </button>
+                      {engineTraditionTab !== 'birth_chart' && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={savingEngine}
+                            onClick={() => void handleResetEngineKey('all')}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            <span>Reset All Engine Defaults</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingEngine}
+                            onClick={() => void handleSaveEnginePromptsOnly()}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-4 py-1.5 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 transition-colors cursor-pointer"
+                          >
+                            <Save className="h-3.5 w-3.5" />
+                            <span>{savingEngine ? 'Saving...' : 'Save Engine Prompts'}</span>
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
+                  {engineTraditionTab === 'birth_chart' ? (
+                    <AdminBirthChartCompiler
+                      getAccessToken={getAccessToken}
+                      modelOptions={modelOptions}
+                      compact
+                      onSaved={() => {
+                        void loadChatbotSettings();
+                        onPromptsChanged?.();
+                      }}
+                    />
+                  ) : (
+                    <>
                   {/* Scalar Engine Prompt Accordions */}
                   <div className="space-y-2.5">
                     {(engineTraditionTab === 'western'
@@ -3380,6 +3475,8 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                       );
                     })}
                   </div>
+                    </>
+                  )}
                 </section>
 
                 {/* Canonical Playbooks Viewer & Override Editor */}
@@ -3393,9 +3490,27 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
                         Inspect every Vedic routing playbook, bound formula cartridges, required Vargas, or add custom domain instructions &amp; timing overrides.
                       </p>
                     </div>
-                    <span className="font-mono text-xs tabular-nums text-[#8B8275]">
-                      {Object.keys(playbookOverrides).length} customized
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs tabular-nums text-[#8B8275] mr-1">
+                        {Object.keys(playbookOverrides).length} customized
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => openIoModal('playbooks', 'export')}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span>Export Playbooks</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openIoModal('playbooks', 'import')}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                        <span>Import Playbooks</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex flex-col sm:flex-row gap-3">
@@ -3857,6 +3972,25 @@ const AdminChatbotControl: React.FC<AdminChatbotControlProps> = ({
           </div>
         )}
       </div>
+
+      <ChatbotEngineImportExportModal
+        isOpen={ioModalOpen}
+        onClose={() => setIoModalOpen(false)}
+        selectedGuide={selectedGuide}
+        selectedGuideName={activeGuideMeta?.displayName || selectedGuide}
+        initialScope={ioModalScope}
+        initialFocus={ioModalFocus}
+        getAccessToken={getAccessToken}
+        onImportSuccess={async (msg) => {
+          await loadChatbotSettings();
+          if (sectionTab === 'stack') {
+            void loadRuntimeManifest(selectedGuide);
+          }
+          setFeedback(msg);
+          setPreviewKey((k) => k + 1);
+          onPromptsChanged?.();
+        }}
+      />
     </div>
   );
 };

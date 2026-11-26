@@ -48,6 +48,10 @@ import {
   analyzeCompanionTurnContext,
   generateContextualCompanionReturnGreeting,
   generateMatchedCompanions,
+  resolveCompanionAstrologicalMemoryMode,
+  resolveCompanionFamiliarityPolicy,
+  resolveCompanionGreetingConfig,
+  shouldGenerateReturnGreetingForPreset,
   type ChatPillar,
   type CompanionArchetypeSlug,
   type CompanionPersona,
@@ -59,7 +63,6 @@ import {
 } from '../services/companionV2Mapper';
 import { getCompanionSpecializations } from '../services/companionV2Service';
 import {
-  getAdminPreviewCompanionsCatalogCached,
   getCompanionBySlug,
   getPublicCompanionsCatalogCached,
   normalizeCompanionSlug,
@@ -851,9 +854,8 @@ router.get('/companions', requireAuth, async (req: AuthenticatedRequest, res) =>
     return;
   }
 
-  const [catalog, adminPreviewCatalog, specializations] = await Promise.all([
+  const [catalog, specializations] = await Promise.all([
     getPublicCompanionsCatalogCached(),
-    req.appUser.is_admin ? getAdminPreviewCompanionsCatalogCached() : Promise.resolve([]),
     getCompanionSpecializations(),
   ]);
 
@@ -929,25 +931,6 @@ router.get('/companions', requireAuth, async (req: AuthenticatedRequest, res) =>
         };
   });
 
-  const enrichedAdminPreviewCompanions: PublicCompanionCard[] = req.appUser.is_admin
-    ? adminPreviewCatalog.map((card) => {
-        const meta = statsBySlug.get(card.slug.toLowerCase());
-        return meta
-          ? {
-              ...card,
-              last_conversation_id: meta.last_conversation_id,
-              last_interaction_at: meta.last_interaction_at,
-              thread_count: meta.thread_count,
-            }
-          : {
-              ...card,
-              last_conversation_id: null,
-              last_interaction_at: null,
-              thread_count: 0,
-            };
-      })
-    : [];
-
   // Load saved custom companions from "Find someone new" (graceful if migration 015 hasn't run)
   let customCompanions: Array<{
     id: string;
@@ -995,7 +978,6 @@ router.get('/companions', requireAuth, async (req: AuthenticatedRequest, res) =>
   res.setHeader('Cache-Control', 'private, no-cache');
   res.json({
     companions: enrichedCompanions,
-    ...(req.appUser.is_admin ? { adminPreviewCompanions: enrichedAdminPreviewCompanions } : {}),
     customCompanions,
     specializations,
   });
@@ -1243,11 +1225,10 @@ const buildWarmHandoffGreeting = (
     .trim()
     .slice(0, 40);
   const firstLine = fromLabel
-    ? `Continuing from ${fromLabel}: ${cleanNote}`
-    : `Following up on your previous note: ${cleanNote}`;
-  const secondLine = targetName
-    ? 'Which part would you like to examine first?'
-    : 'Where would you like to start?';
+    ? `Hey — ${fromLabel} mentioned you wanted to talk through this together: ${cleanNote}`
+    : `Hey — glad you came over. Looking at what you just shared: ${cleanNote}`;
+  const secondLine =
+    `No need to repeat everything from scratch. What part of this feels most helpful to look at first, ${targetName ? 'whenever you are ready' : 'right now'}?`;
 
   if (chatStyle === 'chat_bubbles') {
     return `${firstLine} [[BUBBLE]] ${secondLine}`;
@@ -1348,9 +1329,7 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
 
   // ── FLOW A: Preset Admin-Governed Companion ────────────────────────────────
   if (rawCompanionSlug && !rawCompanionSlug.startsWith('custom_')) {
-    const preset = await getCompanionBySlug(rawCompanionSlug, {
-      includeInactive: Boolean(req.appUser.is_admin),
-    });
+    const preset = await getCompanionBySlug(rawCompanionSlug);
     if (!preset) {
       res.status(404).json({ error: 'Companion not found or currently unavailable' });
       return;
@@ -1491,18 +1470,25 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
       }
     }
 
-    // Pick a contextual returning greeting if returning via forceNew, else rotate unused welcome lines
+    const greetingConfig = resolveCompanionGreetingConfig(preset);
+    const familiarityPolicy = resolveCompanionFamiliarityPolicy(preset);
+    const defaultWelcomeFallback =
+      familiarityPolicy.mode === 'fixed_register' ||
+      familiarityPolicy.max_familiarity === 'reserved'
+        ? `Welcome. I am ${preset.name}. What would you like to examine today?`
+        : `Hello — I am ${preset.name}. Where would you like to begin today?`;
+
+    // Pick a contextual returning greeting only when enabled by greeting_config & returning via forceNew; otherwise rotate unused authored welcome lines
     const welcomePool =
       preset.welcome_messages.length > 0
         ? preset.welcome_messages
-        : [`${preset.name} here. What would you like to examine?`];
+        : [defaultWelcomeFallback];
     let selectedWelcome = warmHandoffText || welcomePool[0];
     let usedContextualReturn = false;
 
-    if (!warmHandoffText && forceNew) {
+    if (!warmHandoffText && forceNew && shouldGenerateReturnGreetingForPreset(preset)) {
       const bond = await getCompanionBond(req.appUser.id, preset.slug).catch(() => null);
       if (bond && ((bond.relationship_state?.total_turns || 0) > 0 || bond.last_interaction_at)) {
-        const presetV2 = ensureCompanionV2Initialized(preset);
         const contextual = await generateContextualCompanionReturnGreeting({
           name: preset.name,
           roleLabel: preset.primary_expertise,
@@ -1510,19 +1496,17 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
           tagline: preset.tagline,
           systemPromptSnippet: preset.system_prompt,
           soulSnippet: preset.soul_consciousness,
-          coreIdentityCapsule: presetV2.core_identity_capsule,
-          characterEssence: presetV2.character_essence,
-          linguisticFingerprint: presetV2.linguistic_fingerprint,
-          specialistExpertise: presetV2.specialist_expertise,
-          signatureMethodology: presetV2.signature_methodology,
-          advisoryMode: preset.advisory_mode,
-          temperature: presetV2.temperature ?? null,
           chatStyle: preset.chat_style,
           languageSlug: req.appUser.default_language || 'English',
           preferredCallName: req.appUser.preferred_call_name,
           bond,
           clientLocalHour: rawClientLocalHour,
           modelId: preset.model_id,
+          temperature: preset.temperature,
+          greetingConfig,
+          familiarityPolicy,
+          personalityV2: preset.personality_v2_json,
+          welcomeMessages: preset.welcome_messages,
         });
         if (contextual) {
           selectedWelcome = contextual;
@@ -1984,6 +1968,7 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
         preferredCallName: req.appUser.preferred_call_name,
         bond: customBond,
         clientLocalHour: rawClientLocalHour,
+        temperature: 0.45,
       });
       if (contextual) {
         customOpeningText = contextual;
@@ -2473,8 +2458,16 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     clarifiedContextPatch,
     curatedStarter,
     deepAudit,
-    enableAdminDiagnostics,
+    handoffContext: rawTurnHandoffContext,
+    handoffFullContext: rawTurnHandoffFullContext,
   } = req.body || {};
+
+  const directTurnHandoffText =
+    typeof rawTurnHandoffFullContext === 'string' && rawTurnHandoffFullContext.trim()
+      ? rawTurnHandoffFullContext.trim().slice(0, 1400)
+      : typeof rawTurnHandoffContext === 'string' && rawTurnHandoffContext.trim()
+      ? rawTurnHandoffContext.trim().slice(0, 1400)
+      : '';
 
   const safeTechnicalDirective =
     typeof technicalDirective === 'string' && technicalDirective.trim()
@@ -2602,9 +2595,6 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     : isValidPillar(requestedPillar)
     ? requestedPillar
     : 'council';
-  const captureAdminDiagnostics = Boolean(
-    enableAdminDiagnostics && req.appUser.is_admin && activePillar === 'companion'
-  );
 
   let activeCompanionPersona: CompanionPersona | null =
     (convRecord.companion_persona_json as CompanionPersona | null | undefined) ||
@@ -2623,20 +2613,8 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
   const presetCompanion: CompanionPresetRecord | null =
     activePillar === 'companion' && effectiveCompanionSlug && !effectiveCompanionSlug.startsWith('custom_')
-      ? await getCompanionBySlug(effectiveCompanionSlug, {
-          includeInactive: Boolean(req.appUser.is_admin),
-        })
+      ? await getCompanionBySlug(effectiveCompanionSlug)
       : null;
-
-  if (
-    activePillar === 'companion' &&
-    effectiveCompanionSlug &&
-    !effectiveCompanionSlug.startsWith('custom_') &&
-    !presetCompanion
-  ) {
-    res.status(404).json({ error: 'Companion not found or currently unavailable' });
-    return;
-  }
 
   if (
     activePillar === 'companion' &&
@@ -2841,7 +2819,6 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     timezone_offset?: number | null;
   } | null = null;
   let scopeMemoryContext: string | null = null;
-  let companionAllowSharedInterpretations = false;
 
   const [{ data: historyRows }, parentQuote] = await Promise.all([
     supabaseAdmin
@@ -3024,21 +3001,14 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       advisoryMode: companionCaps.advisory_mode,
     });
 
-    const needsCompanionChartJson =
-      preTurnAnalysis.should_load_chart &&
-      Boolean(
-        preTurnAnalysis.universal_chart_available ||
-          companionCaps.chart_access.vedic ||
-          companionCaps.chart_access.western ||
-          companionCaps.chart_access.past_life
-      );
-    const compV2SharedMode = companionV2?.shared_analysis_memory_mode || 'independent';
-    const allowSharedInterpretations = compV2SharedMode === 'shared_interpretations';
-    companionAllowSharedInterpretations = allowSharedInterpretations;
-    const needsCompanionNotes = preTurnAnalysis.should_load_notes && allowSharedInterpretations;
-    const compBaseCols = `id, name, is_activated, birth_date, birth_time, birth_city, birth_state, birth_country, gender, latitude, longitude, timezone_offset${
-      needsCompanionChartJson ? ', chart_text_context, chart_json' : ''
-    }`;
+    const astrologicalMemoryMode = resolveCompanionAstrologicalMemoryMode(
+      effectiveCompanionRecord,
+      companionV2
+    );
+    const needsCompanionNotes =
+      astrologicalMemoryMode === 'shared' && preTurnAnalysis.should_load_notes;
+    const compBaseCols =
+      'id, name, is_activated, birth_date, birth_time, birth_city, birth_state, birth_country, gender, latitude, longitude, timezone_offset, chart_text_context, chart_json';
     const compProfileColsPre018 = `${compBaseCols}, short_name, is_default, current_city, current_state, current_country, life_context_json`;
     const compProfileCols = `${compProfileColsPre018}, deep_profile_json${
       needsCompanionNotes ? ', analyst_notes_json' : ''
@@ -3115,9 +3085,14 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       }
     }
 
+    const hasCompilableBirthData = Boolean(
+      focusedCompanionProf?.birth_date &&
+        focusedCompanionProf?.birth_time &&
+        focusedCompanionProf?.birth_city
+    );
     if (
       focusedCompanionProf &&
-      needsCompanionChartJson &&
+      hasCompilableBirthData &&
       (!focusedCompanionProf.chart_text_context || !focusedCompanionProf.chart_json) &&
       isAstrologyApiConfigured()
     ) {
@@ -3163,12 +3138,10 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
 
     if (focusedCompanionProf) {
       const hasBirthChart = Boolean(
-        focusedCompanionProf.birth_date &&
-          (focusedCompanionProf.is_activated ||
-            focusedCompanionProf.chart_text_context ||
-            focusedCompanionProf.chart_json ||
-            Boolean(focusedCompanionProf.birth_city) ||
-            needsCompanionChartJson)
+        focusedCompanionProf.chart_json ||
+          focusedCompanionProf.chart_text_context ||
+          (focusedCompanionProf.birth_date &&
+            (focusedCompanionProf.is_activated || Boolean(focusedCompanionProf.birth_city)))
       );
       const isSelfContextProfile =
         !conversation.profile_id || focusedCompanionProf.is_default === true;
@@ -3179,11 +3152,15 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         profileDeepProfile: focusedCompanionProf.deep_profile_json,
         allowCrossCompanionMemory: allowCrossCompanion,
         activeCompanionSlug: effectiveCompanionSlug,
-        independentAnalysisMode: !allowSharedInterpretations,
+        astrologicalMemoryMode,
       });
 
       profileData = {
         ...focusedCompanionProf,
+        analyst_notes_json:
+          astrologicalMemoryMode === 'shared'
+            ? focusedCompanionProf.analyst_notes_json
+            : undefined,
         has_birth_chart: hasBirthChart,
         life_context_json: mergedContext.life_context_json,
         deep_profile_json: mergedContext.deep_profile_json,
@@ -3195,7 +3172,7 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         userDeepProfile: userLivingState?.deepProfile,
         allowCrossCompanionMemory: allowCrossCompanion,
         activeCompanionSlug: effectiveCompanionSlug,
-        independentAnalysisMode: !allowSharedInterpretations,
+        astrologicalMemoryMode,
       });
       profileData = {
         id: '',
@@ -3323,12 +3300,16 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
   let referrableCompanions: Array<{ slug: string; name: string; primary_expertise: string }> = [];
   let councilReadingNotesText: string | null = null;
   if (activePillar === 'companion') {
+    const companionConfigRecord =
+      presetCompanion ||
+      (activeCompanionPersona ? mapCustomPersonaToV2PresetRecord(activeCompanionPersona) : null);
+    const activeAstrologicalMemoryMode = resolveCompanionAstrologicalMemoryMode(companionConfigRecord);
     const [loadedBond, publicCompanionRoster, sharedNotes] = await Promise.all([
       effectiveCompanionSlug
         ? getCompanionBond(req.appUser.id, effectiveCompanionSlug)
         : Promise.resolve(null),
       getPublicCompanionsCatalogCached(),
-      companionAllowSharedInterpretations
+      activeAstrologicalMemoryMode === 'shared'
         ? listSharedReadingNotes(
             supabaseAdmin,
             req.appUser.id,
@@ -3342,9 +3323,12 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       name: c.name,
       primary_expertise: c.primary_expertise,
     }));
-    const formattedNotes = companionAllowSharedInterpretations
-      ? formatCouncilReadingNotesForCompanion(sharedNotes, 4)
-      : '';
+    const formattedNotes =
+      activeAstrologicalMemoryMode === 'shared'
+        ? formatCouncilReadingNotesForCompanion(sharedNotes, 4)
+        : directTurnHandoffText
+        ? `[Direct User Handoff for This Turn]\n${directTurnHandoffText}`
+        : '';
     councilReadingNotesText = formattedNotes || null;
   }
 
@@ -3857,7 +3841,6 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       stage1Decision,
       userPriorFluency: req.appUser.sutra_user_profile_json?.inferred_fluency || null,
       deepAudit: useDeepAudit,
-      enableAdminDiagnostics: captureAdminDiagnostics,
       abortSignal: abortController.signal,
       onStatus: (statusText) => {
         sendEvent({ type: 'status', text: statusText });
@@ -3888,18 +3871,8 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
           action_taken: 'aborted',
           stage1_json: stage1Decision
             ? (stage1Decision.routerResult as unknown as Record<string, unknown>)
-            : streamResult.companionDiagnostics
-            ? {
-                pillar: 'companion',
-                companion_slug: effectiveCompanionSlug || null,
-                aborted: true,
-              }
-            : null,
-          stage2_json: streamResult.companionDiagnostics
-            ? { companion_diagnostics: streamResult.companionDiagnostics }
             : null,
           total_latency_ms: Date.now() - turnStartedAt,
-          bypassGlobalToggle: captureAdminDiagnostics,
         })
       );
       if (!res.writableEnded) {
@@ -4261,6 +4234,10 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
               companionName,
               userPrompt: promptText,
               assistantAnswer: finalAssistantText,
+              familiarityPolicy: presetCompanion
+                ? resolveCompanionFamiliarityPolicy(presetCompanion)
+                : null,
+              companionRole,
             }),
             ...(canUpdateProfileDeepMemory
               ? [
@@ -4410,23 +4387,6 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
               bypass_clarification: Boolean(bypassClarification),
               is_curated_starter: Boolean(curatedStarter),
             }
-          : streamResult.companionDiagnostics
-          ? (() => {
-              const cd = streamResult.companionDiagnostics as Record<string, unknown>;
-              const charts = (cd.charts as Record<string, unknown> | undefined) || {};
-              const idMeta =
-                (cd.identity_and_methodology as Record<string, unknown> | undefined) || {};
-              return {
-                pillar: 'companion',
-                companion_slug: effectiveCompanionSlug || null,
-                active_astrological_intent: Boolean(charts.active_astrological_intent),
-                universal_chart_available: Boolean(charts.universal_chart_available),
-                verification_mode: idMeta.verification_mode ?? null,
-                shared_analysis_memory_mode: idMeta.shared_analysis_memory_mode ?? null,
-                model: cd.model ?? null,
-                temperature: cd.temperature ?? null,
-              };
-            })()
           : null,
         stage2_json: streamResult.stage2Pkg
           ? {
@@ -4434,10 +4394,6 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
               domain: streamResult.stage2Pkg.domain,
               intent: streamResult.stage2Pkg.intent,
               ...streamResult.stage2Pkg.metrics,
-            }
-          : streamResult.companionDiagnostics
-          ? {
-              companion_diagnostics: streamResult.companionDiagnostics,
             }
           : null,
         stage3_json: {
@@ -4456,7 +4412,6 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
           decoupled_stage4: useStage4AlignedSuggestions,
         },
         total_latency_ms: Date.now() - turnStartedAt,
-        bypassGlobalToggle: captureAdminDiagnostics,
       })
     );
 
@@ -4478,15 +4433,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         action_taken: 'error',
         stage1_json: stage1Decision
           ? (stage1Decision.routerResult as unknown as Record<string, unknown>)
-          : captureAdminDiagnostics
-          ? {
-              pillar: 'companion',
-              companion_slug: effectiveCompanionSlug || null,
-            }
           : null,
         total_latency_ms: Date.now() - turnStartedAt,
         error_message: message,
-        bypassGlobalToggle: captureAdminDiagnostics,
       })
     );
     sendEvent({ type: 'error', error: message });

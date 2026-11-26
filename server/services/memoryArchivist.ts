@@ -17,6 +17,7 @@ import {
   VALID_LOCATION_STATUSES,
   VALID_RELATIONSHIP_STATUSES,
 } from '../../lib/lifeContextSchema';
+import type { CompanionFamiliarityPolicy } from '../../lib/companionV2Schema';
 import type { Stage1RouterResult, UserFluencyTier, VedicUserProfile } from '../../lib/vedicTypes';
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import {
@@ -27,7 +28,7 @@ import {
 } from './enginePromptDefaults';
 import {
   appendCouncilAnalystNotes,
-  isAstrologicalInterpretationText,
+  containsAstrologicalInterpretationClaim,
   mergeExtractedDeepProfile,
   mergeExtractedLifeFacts,
   mergeUserAndProfileContextForPrompt,
@@ -438,10 +439,16 @@ export async function extractAndPersistDeepProfileFacts(
         if (!userPrompt.includes(String(yr))) continue;
         const tag = typeof rec.tag === 'string' ? rec.tag.trim() : '';
         if (!tag) continue;
+        const rawMilestoneNote =
+          typeof rec.note === 'string' ? rec.note.trim().slice(0, 80) : undefined;
+        const safeMilestoneNote =
+          rawMilestoneNote && !containsAstrologicalInterpretationClaim(rawMilestoneNote)
+            ? rawMilestoneNote
+            : undefined;
         milestones.push({
           year: yr,
           tag,
-          note: typeof rec.note === 'string' ? rec.note.trim().slice(0, 80) : undefined,
+          ...(safeMilestoneNote ? { note: safeMilestoneNote } : {}),
           cited_by: actorCitation,
           ...(actorSlug ? { cited_slug: actorSlug } : {}),
         });
@@ -450,7 +457,8 @@ export async function extractAndPersistDeepProfileFacts(
 
     const stressAreas = Array.isArray(parsed.core_stress_areas)
       ? parsed.core_stress_areas.filter(
-          (s): s is string => typeof s === 'string' && !isAstrologicalInterpretationText(s)
+          (s): s is string =>
+            typeof s === 'string' && !containsAstrologicalInterpretationClaim(s)
         )
       : [];
 
@@ -511,7 +519,10 @@ export async function extractAndPersistDeepProfileFacts(
         const cleanedArr = bVal
           .filter((item): item is string => typeof item === 'string')
           .map((item) => item.replace(/\s+/g, ' ').trim().slice(0, 180))
-          .filter((item) => item.length >= 4 && !isAstrologicalInterpretationText(item))
+          .filter(
+            (item) =>
+              item.length >= 4 && !containsAstrologicalInterpretationClaim(item)
+          )
           .slice(0, 3);
         if (cleanedArr.length > 0) {
           deepBuckets[bKey as DeepProfileBucketKey] = cleanedArr;
@@ -533,7 +544,8 @@ export async function extractAndPersistDeepProfileFacts(
           ? (rawBucket as DeepProfileBucketKey)
           : undefined;
         const summary = typeof row.summary === 'string' ? row.summary.trim().slice(0, 180) : '';
-        if (!summary || summary.length < 4 || isAstrologicalInterpretationText(summary)) continue;
+        if (!summary || summary.length < 4) continue;
+        if (containsAstrologicalInterpretationClaim(summary)) continue;
         const supersedesTopic =
           typeof row.supersedes_topic === 'string' && row.supersedes_topic.trim().length >= 3
             ? row.supersedes_topic.trim().slice(0, 48)
@@ -545,6 +557,7 @@ export async function extractAndPersistDeepProfileFacts(
           ...(supersedesTopic ? { supersedes_topic: supersedesTopic } : {}),
           cited_by: actorCitation,
           ...(actorSlug ? { cited_slug: actorSlug } : {}),
+          is_factual_life_fact: true,
           conversation_id: turnContext?.conversationId || null,
         });
       }
@@ -582,6 +595,7 @@ export async function extractAndPersistDeepProfileFacts(
       supersede_status_updates: Boolean(parsed.supersede_status_updates),
       ...(hasDeepBuckets ? { deep_profile_buckets: deepBuckets } : {}),
       cited_insights: citedInsights,
+      is_factual_life_fact: true,
       actor_citation: actorCitation,
       actor_slug: actorSlug,
       conversation_id: turnContext?.conversationId || null,
@@ -1053,6 +1067,22 @@ export function computeFamiliarityStage(totalTurns: number): CompanionRelationsh
   return 'close_confidant';
 }
 
+export function computeEffectiveFamiliarityStage(
+  totalTurns: number,
+  familiarityPolicy?: CompanionFamiliarityPolicy | null
+): CompanionRelationshipStage {
+  const mode = familiarityPolicy?.mode || 'warm_progressive';
+  const ceiling = familiarityPolicy?.max_familiarity || 'close';
+  if (mode === 'fixed_register' || ceiling === 'reserved') {
+    return 'just_met';
+  }
+  const raw = computeFamiliarityStage(totalTurns);
+  if (ceiling === 'cordial' && raw === 'close_confidant') {
+    return 'warming_up';
+  }
+  return raw;
+}
+
 function cleanStringList(input: unknown, maxItems: number, maxLen: number): string[] {
   if (!Array.isArray(input)) return [];
   const seen = new Set<string>();
@@ -1217,6 +1247,8 @@ export async function updateCompanionBondAfterTurn(params: {
   companionName: string;
   userPrompt: string;
   assistantAnswer: string;
+  familiarityPolicy?: CompanionFamiliarityPolicy | null;
+  companionRole?: string | null;
 }): Promise<void> {
   const normalizedSlug = String(params.companionSlug || '').trim().toLowerCase();
   if (!params.userId || !normalizedSlug) return;
@@ -1232,13 +1264,23 @@ export async function updateCompanionBondAfterTurn(params: {
 
     const current = await getCompanionBond(params.userId, normalizedSlug);
     const nextTurns = current.relationship_state.total_turns + 1;
-    const nextStage = computeFamiliarityStage(nextTurns);
+    const familiarityMode = params.familiarityPolicy?.mode || 'warm_progressive';
+    const familiarityCeiling = params.familiarityPolicy?.max_familiarity || 'close';
+    const isFixedOrReserved =
+      familiarityMode === 'fixed_register' || familiarityCeiling === 'reserved';
+    const allowSlangTracking =
+      !isFixedOrReserved &&
+      familiarityMode !== 'organic_subtle' &&
+      familiarityCeiling === 'close';
+
+    const nextStage = computeEffectiveFamiliarityStage(nextTurns, params.familiarityPolicy);
 
     let nextSummary = current.memory_summary;
     let nextRelState: CompanionRelationshipState = {
       ...current.relationship_state,
       total_turns: nextTurns,
       familiarity_stage: nextStage,
+      ...(isFixedOrReserved ? { user_slang_cues: [] } : {}),
     };
 
     const promptClean = String(params.userPrompt || '').trim();
@@ -1246,7 +1288,7 @@ export async function updateCompanionBondAfterTurn(params: {
       .replace(/\[\[BUBBLE\]\]/g, ' ')
       .trim();
 
-    // Distill incremental relationship & shared memory safely in the background
+    // Distill incremental continuity & communication notes safely in the background
     if (promptClean.length >= 4 && (await isOpenRouterConfiguredAsync())) {
       try {
         const [utilityModel, engineOverrides] = await Promise.all([
@@ -1257,10 +1299,19 @@ export async function updateCompanionBondAfterTurn(params: {
           engineOverrides.memory_companion_bond_prompt?.trim() ||
           engineOverrides.companion_bond_extractor_prompt?.trim() ||
           DEFAULT_MEMORY_COMPANION_BOND_PROMPT;
+        const familiarityPostureNote = isFixedOrReserved
+          ? `INTERPERSONAL BOUNDARY (FIXED / RESERVED${params.companionRole ? ` — ${params.companionRole}` : ''}): This practitioner maintains consistent formal/professional boundaries regardless of session count. Record only factual consultation topics, chart questions, and analytical clarity preferences; return [] for user_slang_cues and never invent buddy nicknames or friend-style framing.`
+          : familiarityMode === 'organic_subtle' || familiarityCeiling === 'cordial'
+          ? `INTERPERSONAL BOUNDARY (SUBTLE / CORDIAL${params.companionRole ? ` — ${params.companionRole}` : ''}): Track recurring life/consultation subjects and communication preferences understatedly. Do not force casual slang mimicking; return [] for user_slang_cues.`
+          : `INTERPERSONAL POSTURE${params.companionRole ? ` (${params.companionRole})` : ''}: Track authentic continuity, tone preferences, and recurring life or consultation subjects faithfully without inventing intimacy.`;
+
         const bondPrompt = applyPromptTemplate(bondTemplate, {
           COMPANION_NAME: params.companionName,
+          FAMILIARITY_POSTURE: familiarityPostureNote,
           EXISTING_SUMMARY: current.memory_summary || '(none yet)',
-          EXISTING_SLANG: JSON.stringify(current.relationship_state.user_slang_cues),
+          EXISTING_SLANG: allowSlangTracking
+            ? JSON.stringify(current.relationship_state.user_slang_cues)
+            : '[]',
           EXISTING_TONE: JSON.stringify(current.relationship_state.tone_preferences),
           EXISTING_REFS: JSON.stringify(current.relationship_state.inside_references),
           USER_MESSAGE: promptClean.slice(0, 900),
@@ -1291,14 +1342,18 @@ export async function updateCompanionBondAfterTurn(params: {
         if (typeof parsed.memory_summary === 'string' && parsed.memory_summary.trim()) {
           nextSummary = parsed.memory_summary.trim().slice(0, 1200);
         }
-        const mergedSlang = cleanStringList(
-          [
-            ...(Array.isArray(parsed.user_slang_cues) ? parsed.user_slang_cues : []),
-            ...current.relationship_state.user_slang_cues,
-          ],
-          6,
-          60
-        );
+        const mergedSlang = allowSlangTracking
+          ? cleanStringList(
+              [
+                ...(Array.isArray(parsed.user_slang_cues) ? parsed.user_slang_cues : []),
+                ...current.relationship_state.user_slang_cues,
+              ],
+              6,
+              60
+            )
+          : isFixedOrReserved
+          ? []
+          : current.relationship_state.user_slang_cues;
         const mergedTone = cleanStringList(
           [
             ...(Array.isArray(parsed.tone_preferences) ? parsed.tone_preferences : []),

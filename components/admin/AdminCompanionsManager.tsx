@@ -406,6 +406,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
               skill_level: c.skill_level,
               chat_style: c.chat_style,
               model_id: c.model_id,
+              temperature: c.temperature ?? null,
               avatar_url: c.avatar_url,
               monogram_palette: c.monogram_palette,
               override_global_rules: c.override_global_rules,
@@ -798,6 +799,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                 skill_level: updated.skill_level,
                 override_global_rules: updated.override_global_rules,
                 companion_group: updated.companion_group || c.companion_group,
+                temperature: updated.temperature ?? c.temperature ?? null,
               }
             : c
         )

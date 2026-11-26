@@ -5,6 +5,7 @@ import {
   resolveHistoricalTimezoneOffset,
   type BirthLocationResolved,
 } from './astrologyApi';
+import { getBirthChartConversionConfig } from './platformSettings';
 import {
   computeAscendantMaturity,
   computeAshtakavarga,
@@ -27,6 +28,7 @@ import {
   computeStructuralFlagsAndDoshas,
   computeVimshottariTimeline,
   computeWesternChart,
+  computeWesternTimingSnapshot,
   SIGNS,
   type AscendantMaturityReport,
   type AshtakavargaTable,
@@ -49,6 +51,7 @@ import {
   type StructuralFlagsReport,
   type VedicYogaItem,
   type WesternChartData,
+  type WesternPlanetPosition,
 } from './jyotishMath';
 
 export interface CompiledChartData {
@@ -162,15 +165,22 @@ export async function compileBirthChart(input: CompileProfileInput): Promise<{
     );
   }
 
+  const conversionConfig = await getBirthChartConversionConfig();
+
   const payload = buildApiPayload(
     input.birthDate,
     input.birthTime,
     location.latitude,
     location.longitude,
-    location.timezoneOffset
+    location.timezoneOffset,
+    { observationPoint: conversionConfig.observation_point }
   );
 
-  const apiData = await fetchChartFromApi(payload);
+  const apiData = await fetchChartFromApi(payload, {
+    fetchApiShadBala: conversionConfig.fetch_api_shadbala,
+    fetchApiWesternPlanets: conversionConfig.fetch_api_western_planets,
+    westernHouseSystem: conversionConfig.western_house_system,
+  });
   const planets = apiData.planets;
 
   const asc = planets.find((p) => p.name === 'Ascendant');
@@ -454,6 +464,10 @@ export function formatChartForLLM(
   chart: CompiledChartData,
   mode: 'vedic' | 'western' = 'vedic'
 ): string {
+  if (!chart || !Array.isArray(chart.planets) || chart.planets.length === 0) {
+    return '';
+  }
+
   const enriched =
     !chart.shadbala ||
     !chart.western ||
@@ -704,4 +718,70 @@ export function formatChartForLLM(
   };
 
   return `VERIFIED CANONICAL VEDIC CHART JSON:\n${JSON.stringify(compactVedic)}`;
+}
+
+export function formatWesternTimingForLLM(
+  chart: CompiledChartData,
+  westernTransitPlanets?: WesternPlanetPosition[] | null
+): string {
+  if (!chart || !Array.isArray(chart.planets) || chart.planets.length === 0) {
+    return '';
+  }
+
+  const enriched = !chart.western ? enrichCompiledChart(chart).chartJson : chart;
+  if (!enriched.western) {
+    return '';
+  }
+
+  try {
+    const timing = computeWesternTimingSnapshot({
+      westernChart: enriched.western,
+      birthDateISO: enriched.meta?.birthDate || '2000-01-01',
+      birthTimeStr: enriched.meta?.birthTime || '12:00:00',
+      timezoneOffsetHours: enriched.meta?.location?.timezoneOffset ?? 0,
+      latitude: enriched.meta?.location?.latitude ?? 0,
+      longitude: enriched.meta?.location?.longitude ?? 0,
+      transitPlanets: westernTransitPlanets ?? null,
+    });
+
+    const timingPayload = {
+      asOfDate: timing.asOfDate,
+      annualProfection: {
+        age: timing.profection.age,
+        house: timing.profection.profectedHouse,
+        sign: timing.profection.profectedSign,
+        lordTraditional: timing.profection.lordOfYearTraditional,
+        lordModern: timing.profection.lordOfYearModern,
+        lordNatalHouse: timing.profection.lordNatalHouse,
+        lordDignity: timing.profection.lordDignity,
+        window: `${timing.profection.yearStartIso}..${timing.profection.yearEndIso}`,
+      },
+      secondaryProgressions: {
+        progressedSun: `${timing.progressions.sun.sign} ${timing.progressions.sun.dms} (H${timing.progressions.sun.house})`,
+        progressedMoon: `${timing.progressions.moon.sign} ${timing.progressions.moon.dms} (H${timing.progressions.moon.house}, ${timing.progressions.moon.signStartIso}..${timing.progressions.moon.signEndIso})`,
+        progressedMercury: `${timing.progressions.mercury.sign} ${timing.progressions.mercury.dms}${timing.progressions.mercury.isRetrograde ? ' Rx' : ''}`,
+        progressedVenus: `${timing.progressions.venus.sign} ${timing.progressions.venus.dms}${timing.progressions.venus.isRetrograde ? ' Rx' : ''}`,
+        progressedMars: `${timing.progressions.mars.sign} ${timing.progressions.mars.dms}${timing.progressions.mars.isRetrograde ? ' Rx' : ''}`,
+        progressedAngles: `Asc ${timing.progressions.ascendantSign} / MC ${timing.progressions.midheavenSign}`,
+        ...(timing.progressions.tightAspectsToNatal.length > 0
+          ? {
+              tightAspectsToNatal: timing.progressions.tightAspectsToNatal
+                .slice(0, 8)
+                .map((a) => `Prog ${a.progressedBody} ${a.aspect} Natal ${a.natalBody} (${a.orb} deg)`),
+            }
+          : {}),
+      },
+      ...(timing.transits.tightHitsToNatal.length > 0
+        ? {
+            activeTransitHitsToNatal: timing.transits.tightHitsToNatal
+              .slice(0, 10)
+              .map((h) => `Tr ${h.transitPlanet} ${h.aspect} Natal ${h.natalBody} (${h.orb} deg)`),
+          }
+        : {}),
+    };
+
+    return `WESTERN TIMING (PROFECTIONS, SECONDARY PROGRESSIONS & TRANSIT HITS):\n${JSON.stringify(timingPayload)}`;
+  } catch {
+    return '';
+  }
 }

@@ -247,6 +247,7 @@ export function sanitizeLifeContext(rawInput: unknown): {
       if (!summary || summary.length < 4) continue;
       const citedBy = cleanShortText(row.cited_by, 64) || 'Cosmic Council';
       const citedSlug = cleanShortText(row.cited_slug, 64);
+      const isFactualLifeFact = row.is_factual_life_fact === true;
       const id = cleanShortText(row.id, 64) || buildInsightId(category, summary);
       const conversationId =
         typeof row.conversation_id === 'string' && row.conversation_id.trim()
@@ -270,6 +271,7 @@ export function sanitizeLifeContext(rawInput: unknown): {
           fact: summary,
           cited_by: citedBy,
           ...(citedSlug ? { cited_slug: citedSlug } : {}),
+          ...(isFactualLifeFact ? { is_factual_life_fact: true } : {}),
           ...(conversationId ? { conversation_id: conversationId } : {}),
           captured_at: capturedAt,
           updated_at: updatedAt,
@@ -326,8 +328,10 @@ export interface ExtractedLifeFactsPatch {
     supersedes_topic?: string;
     cited_by?: string;
     cited_slug?: string;
+    is_factual_life_fact?: boolean;
     conversation_id?: string | null;
   }>;
+  is_factual_life_fact?: boolean;
   actor_citation?: string;
   actor_slug?: string;
   conversation_id?: string | null;
@@ -379,6 +383,9 @@ export function mergeExtractedLifeFacts(
     cited_by: cleanShortText(item.cited_by, 64) || defaultCitedBy,
     ...(item.cited_slug || defaultCitedSlug
       ? { cited_slug: item.cited_slug || defaultCitedSlug }
+      : {}),
+    ...(item.is_factual_life_fact === true || extracted.is_factual_life_fact === true
+      ? { is_factual_life_fact: true }
       : {}),
     ...(item.conversation_id || defaultConvId
       ? { conversation_id: item.conversation_id || defaultConvId }
@@ -474,6 +481,7 @@ export function sanitizeDeepProfile(rawInput: unknown): DeepProfileData {
         : undefined;
       const sourceLabel = cleanShortText(row.source_label ?? row.cited_by, 64) || 'Cosmic Council';
       const sourceSlug = cleanShortText(row.source_slug ?? row.cited_slug, 64) || 'council';
+      const isFactualLifeFact = row.is_factual_life_fact === true;
       const conversationId =
         typeof row.conversation_id === 'string' && row.conversation_id.trim()
           ? row.conversation_id.trim().slice(0, 80)
@@ -497,6 +505,7 @@ export function sanitizeDeepProfile(rawInput: unknown): DeepProfileData {
           fact,
           source_label: sourceLabel,
           source_slug: sourceSlug,
+          ...(isFactualLifeFact ? { is_factual_life_fact: true } : {}),
           conversation_id: conversationId,
           captured_at: capturedAt,
           updated_at: updatedAt,
@@ -569,6 +578,9 @@ export function mergeExtractedDeepProfile(
       fact,
       source_label: cleanShortText(insight.cited_by, 64) || sourceLabel,
       source_slug: cleanShortText(insight.cited_slug, 64) || sourceSlug,
+      ...(insight.is_factual_life_fact === true || extracted.is_factual_life_fact === true
+        ? { is_factual_life_fact: true }
+        : {}),
       conversation_id: insight.conversation_id ?? conversationId,
       captured_at: nowIso,
       updated_at: nowIso,
@@ -603,6 +615,7 @@ export function mergeExtractedDeepProfile(
           fact,
           source_label: sourceLabel,
           source_slug: sourceSlug,
+          ...(extracted.is_factual_life_fact === true ? { is_factual_life_fact: true } : {}),
           conversation_id: conversationId,
           captured_at: nowIso,
           updated_at: nowIso,
@@ -642,19 +655,45 @@ export function sanitizeUserContextPreferences(rawInput: unknown): UserContextPr
   };
 }
 
-const ASTRO_INTERPRETATION_CLAIM_RE =
-  /\b(?:mahadasha|antardasha|pratyantardasha|vimshottari|dasha|bhukti|gochar|nakshatra|navamsa|d-?9|d-?10|d-?7|ashtakavarga|sub[- ]?lord|house lord|ascendant|lagna|profections?|progressions?|synastry|solar return|sade sati|manglik|kaal sarp|yoga|dosha)\b|\b\d{1,2}(?:st|nd|rd|th)\s+house\b|\b(?:sun|moon|mars|mercury|jupiter|venus|saturn|rahu|ketu|uranus|neptune|pluto)\s+(?:in|conjunct|square|trine|opposite|aspects?|aspecting|transiting|retrograde|debilitated|exalted|combust)\b|\b(?:chart|planets?|transits?|dashas?|readings?|horoscope|tarot|spread|numerology|astrologer)\s+(?:shows?|indicates?|suggests?|predicts?|promises?|denies|points to|revealed|said|noted)\b/i;
+const ASTRO_INTERPRETATION_PATTERNS: RegExp[] = [
+  /\b(mahadasha|antardasha|pratyantardasha|vimshottari|dasha|gochar|sade\s*sati|lagna|navamsa|d9|d10|ashtakavarga|shadbala|nakshatra|kp\s+sub[- ]?lord|sub[- ]?lord|placidus|whole\s*sign|ascendant|profection|secondary\s+progression|vargottama|kundali|natal\s+chart|birth\s+chart|horoscope)\b/i,
+  /\b(\d{1,2}(?:st|nd|rd|th)\s+house)\b/i,
+  /\b(saturn|jupiter|rahu|ketu|mars|venus|mercury|pluto|uranus|neptune)\s+(?:in|aspecting|transiting|ruling|lord|return|cycle|period|dasha|effect|placement|conjunct|opposite|square|trine)\b/i,
+  /\b(?:sun|moon)\s+in\s+(?:aries|taurus|gemini|cancer|leo|virgo|libra|scorpio|sagittarius|capricorn|aquarius|pisces|mesha|vrishabha|mithuna|karka|simha|kanya|tula|vrishchika|dhanu|makara|kumbha|meena)\b/i,
+  /\b(?:aries|taurus|gemini|cancer|leo|virgo|libra|scorpio|sagittarius|capricorn|aquarius|pisces)\s+(?:ascendant|rising|moon|sun|lagna)\b/i,
+  /\b(tarot\s+spread|drawn\s+card|reversed\s+card|numerology\s+cycle|life\s+path\s+number|karmic\s+debt|past[- ]life\s+karma)\b/i,
+  /\b(?:astrologer|astrology|reading|chart)\s+(?:said|predicted|diagnosed|warned|indicated|shows)\b/i,
+];
 
-export function isAstrologicalInterpretationText(text: string | null | undefined): boolean {
-  const cleaned = (text || '').trim();
-  if (!cleaned) return false;
-  return ASTRO_INTERPRETATION_CLAIM_RE.test(cleaned);
+/**
+ * Returns true if a string contains astrological, Tarot, numerological, or esoteric
+ * interpretive claims/diagnoses rather than objective real-world user life facts.
+ */
+export function containsAstrologicalInterpretationClaim(text: string): boolean {
+  const clean = String(text || '').trim();
+  if (!clean) return false;
+  return ASTRO_INTERPRETATION_PATTERNS.some((re) => re.test(clean));
+}
+
+export function isFactualUserRealityOrigin(
+  slug?: string | null,
+  isFactualLifeFact?: boolean,
+  text?: string
+): boolean {
+  if (isFactualLifeFact === true) {
+    return !text || !containsAstrologicalInterpretationClaim(text);
+  }
+  const normalized = (slug || '').trim().toLowerCase();
+  if (normalized === '' || normalized === 'user' || normalized === 'manual' || normalized === 'facts') {
+    return !text || !containsAstrologicalInterpretationClaim(text);
+  }
+  return false;
 }
 
 /**
  * Combines user-level Living Context (public.users) and optional default birth profile context
- * cleanly without mutating DB objects, honoring cross-companion memory filtering when disabled
- * and independent astrological analysis mode when enabled.
+ * cleanly without mutating DB objects, honoring cross-companion memory filtering and per-companion
+ * astrological_memory_mode ('independent' vs 'shared').
  */
 export function mergeUserAndProfileContextForPrompt(options: {
   userLivingContext?: unknown;
@@ -662,8 +701,8 @@ export function mergeUserAndProfileContextForPrompt(options: {
   profileLifeContext?: unknown;
   profileDeepProfile?: unknown;
   allowCrossCompanionMemory?: boolean;
-  independentAnalysisMode?: boolean;
   activeCompanionSlug?: string | null;
+  astrologicalMemoryMode?: 'independent' | 'shared';
 }): {
   life_context_json: LifeContextData;
   deep_profile_json: DeepProfileData;
@@ -697,18 +736,28 @@ export function mergeUserAndProfileContextForPrompt(options: {
 
   let mergedDeep = sanitizeDeepProfile(mergedDeepCandidate);
 
-  if (options.allowCrossCompanionMemory === false) {
+  const shouldIsolateAstrologicalNotes =
+    options.allowCrossCompanionMemory === false ||
+    options.astrologicalMemoryMode === 'independent';
+
+  if (shouldIsolateAstrologicalNotes) {
     const activeSlug = (options.activeCompanionSlug || '').trim().toLowerCase();
-    const isAllowedSlug = (slug?: string | null): boolean => {
+    const isAllowedEntry = (
+      slug?: string | null,
+      isFactualLifeFact?: boolean,
+      text?: string
+    ): boolean => {
       const normalized = (slug || '').trim().toLowerCase();
-      if (!normalized) return true; // manual / user-authored context
-      if (normalized === 'user' || normalized === 'manual') return true;
-      return Boolean(activeSlug && normalized === activeSlug);
+      if (activeSlug && normalized === activeSlug) return true;
+      if (options.allowCrossCompanionMemory === false) {
+        return normalized === '' || normalized === 'user' || normalized === 'manual' || normalized === 'facts';
+      }
+      return isFactualUserRealityOrigin(slug, isFactualLifeFact, text);
     };
 
     if (Array.isArray(mergedLife.cited_insights)) {
       const filteredInsights = mergedLife.cited_insights.filter((i) =>
-        isAllowedSlug(i.cited_slug)
+        isAllowedEntry(i.cited_slug, i.is_factual_life_fact, i.summary)
       );
       if (filteredInsights.length > 0) {
         mergedLife.cited_insights = filteredInsights;
@@ -717,10 +766,34 @@ export function mergeUserAndProfileContextForPrompt(options: {
       }
     }
 
-    const filteredEntries = (mergedDeep.entries || []).filter((e) =>
-      isAllowedSlug(e.source_slug)
+    const allEntries = mergedDeep.entries || [];
+    const filteredEntries = allEntries.filter((e) =>
+      isAllowedEntry(e.source_slug, e.is_factual_life_fact, e.fact)
     );
+    const excludedFactSet = new Set<string>(
+      allEntries
+        .filter((e) => !isAllowedEntry(e.source_slug, e.is_factual_life_fact, e.fact))
+        .map((e) => e.fact.trim().toLowerCase())
+    );
+    const allowedOwnFactSet = new Set<string>(
+      filteredEntries
+        .filter((e) => Boolean(activeSlug && e.source_slug.trim().toLowerCase() === activeSlug))
+        .map((e) => e.fact.trim().toLowerCase())
+    );
+
     const rebuiltBuckets: DeepProfileData = {};
+    for (const key of Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]) {
+      const existingList = mergedDeep[key] || [];
+      const keptFlat = existingList.filter((item) => {
+        const norm = item.trim().toLowerCase();
+        if (excludedFactSet.has(norm)) return false;
+        if (allowedOwnFactSet.has(norm)) return true;
+        return !containsAstrologicalInterpretationClaim(item);
+      });
+      if (keptFlat.length > 0) {
+        rebuiltBuckets[key] = keptFlat;
+      }
+    }
     for (const entry of filteredEntries) {
       if (entry.bucket) {
         const list = rebuiltBuckets[entry.bucket] || [];
@@ -733,53 +806,6 @@ export function mergeUserAndProfileContextForPrompt(options: {
       rebuiltBuckets.entries = filteredEntries;
     }
     mergedDeep = sanitizeDeepProfile(rebuiltBuckets);
-  } else if (options.independentAnalysisMode) {
-    // Preserve factual user life context and same-companion context, while stripping any
-    // astrological interpretations/claims from cross-practitioner memory buckets.
-    const activeSlug = (options.activeCompanionSlug || '').trim().toLowerCase();
-    const isSameOrUserSlug = (slug?: string | null): boolean => {
-      const normalized = (slug || '').trim().toLowerCase();
-      if (!normalized || normalized === 'user' || normalized === 'manual') return true;
-      return Boolean(activeSlug && normalized === activeSlug);
-    };
-
-    if (Array.isArray(mergedLife.core_stress_areas)) {
-      const filteredStress = mergedLife.core_stress_areas.filter(
-        (item) => !isAstrologicalInterpretationText(item)
-      );
-      if (filteredStress.length > 0) {
-        mergedLife.core_stress_areas = filteredStress;
-      } else {
-        delete mergedLife.core_stress_areas;
-      }
-    }
-
-    if (Array.isArray(mergedLife.cited_insights)) {
-      const filteredInsights = mergedLife.cited_insights.filter(
-        (i) => isSameOrUserSlug(i.cited_slug) || !isAstrologicalInterpretationText(i.summary)
-      );
-      if (filteredInsights.length > 0) {
-        mergedLife.cited_insights = filteredInsights;
-      } else {
-        delete mergedLife.cited_insights;
-      }
-    }
-
-    const strippedDeep: DeepProfileData = {};
-    for (const key of Object.keys(DEEP_PROFILE_BUCKET_LABELS) as DeepProfileBucketKey[]) {
-      const arr = mergedDeep[key];
-      if (!Array.isArray(arr) || arr.length === 0) continue;
-      const kept = arr.filter((fact) => !isAstrologicalInterpretationText(fact));
-      if (kept.length > 0) strippedDeep[key] = kept;
-    }
-    if (Array.isArray(mergedDeep.entries) && mergedDeep.entries.length > 0) {
-      const keptEntries = mergedDeep.entries.filter(
-        (entry) =>
-          isSameOrUserSlug(entry.source_slug) || !isAstrologicalInterpretationText(entry.fact)
-      );
-      if (keptEntries.length > 0) strippedDeep.entries = keptEntries;
-    }
-    mergedDeep = sanitizeDeepProfile(strippedDeep);
   }
 
   return {
@@ -848,7 +874,7 @@ export function formatAnalystNotesForCompanion(
     .slice(0, maxNotes)
     .map((n) => {
       const dateTag = n.captured_at ? ` · ${String(n.captured_at).slice(0, 10)}` : '';
-      return `- [Prior interpretation by ${n.system_label}${dateTag}] ${n.summary}`;
+      return `- [${n.system_label}${dateTag}] ${n.summary}`;
     })
     .join('\n');
 }

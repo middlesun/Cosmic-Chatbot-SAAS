@@ -21,21 +21,16 @@ import {
   type DrawnTarotSpread,
 } from './divinationEngines';
 import {
+  applyCompanionTurnVerification,
   buildChatStyleInstruction,
   buildClaritySystemPromptAsync,
   buildCompanionSystemPromptAsync,
+  resolveCompanionTemperature,
   type ChatPillar,
-  type CompanionAssemblyManifest,
   type CompanionPersona,
-  type CompanionTurnAnalysis,
   type ReferrableCompanionSummary,
 } from './companionEngine';
-import { ensureCompanionV2Initialized } from './companionV2Mapper';
-import {
-  DEFAULT_COMPANION_TEMPERATURE,
-  type CompanionSharedAnalysisMemoryMode,
-  type CompanionVerificationMode,
-} from '../../lib/companionV2Schema';
+import type { CompanionVerificationMode } from '../../lib/companionV2Schema';
 import type { CompanionBondState } from './memoryArchivist';
 import {
   createOpenRouterCompletion,
@@ -102,7 +97,6 @@ import {
   buildShortReplyBreakdownInstruction,
   buildVedicPathAPrompt,
   extractTechBreakdown,
-  resolveTurnVerificationModifier,
   type VedicVoicePreset,
 } from './vedicAstrologerEngine';
 
@@ -234,7 +228,6 @@ export interface StreamConsultationParams {
   deepAudit?: boolean;
   voicePreset?: VedicVoicePreset;
   dailyTransitsOverride?: DailyTransitSliceInput | null;
-  enableAdminDiagnostics?: boolean;
   abortSignal: AbortSignal;
   onStatus?: (statusText: string) => void;
   onTimingWidgets?: (widgets: TimingProgressWidget[]) => void;
@@ -272,7 +265,6 @@ export interface StreamConsultationResult {
   stage2Pkg?: Stage2ContextPackage | null;
   timingWidgets?: TimingProgressWidget[];
   tarotSpread?: DrawnTarotSpread | null;
-  companionDiagnostics?: Record<string, unknown> | null;
 }
 
 function normalizeDraftBirthTime(raw: string): string | null {
@@ -1388,11 +1380,8 @@ User's specific question: ${finalUserText}`;
   let activeTarotSpread: DrawnTarotSpread | null = null;
   let companionCaps: ResolvedCompanionCapabilities | null = null;
   let companionInvitedEsoteric = false;
-  let companionVerificationMode: CompanionVerificationMode = 'methodology_neutral';
-  let companionSharedMemoryMode: CompanionSharedAnalysisMemoryMode = 'independent';
-  let companionEffectiveTemperature: number | undefined;
-  let companionTurnAnalysis: CompanionTurnAnalysis | null = null;
-  let companionAssemblyManifest: CompanionAssemblyManifest | null = null;
+  let companionVerificationMode: CompanionVerificationMode = 'neutral';
+  let companionTemperature: number = resolveCompanionTemperature(params.companionPreset);
 
   if (activePillar === 'companion') {
     const builtComp = await buildCompanionSystemPromptAsync({
@@ -1422,10 +1411,7 @@ User's specific question: ${finalUserText}`;
     companionCaps = builtComp.capabilities;
     companionInvitedEsoteric = builtComp.invitedEsoteric;
     companionVerificationMode = builtComp.verificationMode;
-    companionSharedMemoryMode = builtComp.sharedAnalysisMemoryMode;
-    companionEffectiveTemperature = builtComp.effectiveTemperature;
-    companionTurnAnalysis = builtComp.turnAnalysis;
-    companionAssemblyManifest = builtComp.assemblyManifest;
+    companionTemperature = builtComp.temperature;
     wantsSuggestions = false;
   } else if (activePillar === 'clarity') {
     const builtClarity = await buildClaritySystemPromptAsync({
@@ -1559,78 +1545,19 @@ User's specific question: ${finalUserText}`;
   const maxOutputTokens = wantsSuggestions ? baseOutputTokens + 420 : baseOutputTokens;
 
   let requestUserText = finalUserText;
-  let companionVerificationApplied = false;
-  let companionVerificationModifierText: string | null = null;
-  let companionVoiceReminderText: string | null = null;
-
-  const hasCompanionChartData = Boolean(
-    params.profile?.chart_json || params.profile?.chart_text_context
-  );
-  const companionActiveAstroIntent = Boolean(
-    companionTurnAnalysis?.active_astrological_intent
-  );
-  const companionChartEnabled = Boolean(
-    companionCaps &&
-      (companionCaps.advisory_mode === 'esoteric_guide' ||
-        companionCaps.advisory_mode === 'balanced_support' ||
-        companionTurnAnalysis?.universal_chart_available) &&
-      (companionTurnAnalysis?.universal_chart_available ||
-        companionCaps.chart_access.vedic ||
-        companionCaps.chart_access.western ||
-        companionCaps.chart_access.past_life)
-  );
-
-  if (
-    activePillar === 'companion' &&
-    companionChartEnabled &&
-    companionVerificationMode !== 'none' &&
-    companionActiveAstroIntent &&
-    hasCompanionChartData &&
-    companionInvitedEsoteric
-  ) {
-    if (companionVerificationMode === 'forensic_council' && params.profile?.chart_json) {
-      const hasVedicAccess = Boolean(
-        companionTurnAnalysis?.universal_chart_available ||
-          companionCaps?.chart_access.vedic ||
-          companionCaps?.chart_access.past_life
-      );
-      const hasWesternAccess = Boolean(
-        companionTurnAnalysis?.universal_chart_available || companionCaps?.chart_access.western
-      );
-      const primaryTradition: 'vedic' | 'western' =
-        hasWesternAccess && !hasVedicAccess ? 'western' : 'vedic';
-      requestUserText = appendTurnVerificationModifier(
-        finalUserText,
-        primaryTradition,
-        engineOverrides
-      );
-      const secondaryParts: string[] = [];
-      if (hasVedicAccess && hasWesternAccess) {
-        const westernMod = resolveTurnVerificationModifier('western', engineOverrides);
-        if (westernMod) {
-          secondaryParts.push(
-            `[SECONDARY TROPICAL CHECK (APPLY SILENTLY IF BLENDING WESTERN CONTEXT; STAY IN YOUR AUTHORED VOICE)]\n${westernMod}`
-          );
-        }
-      }
-      companionVoiceReminderText =
-        '[CHARACTER VOICE REMINDER: Apply the forensic chart verification above silently, then respond strictly in your own authentic authored voice, temperament, and analytical register without quoting audit headers or sounding like a generic template.]';
-      requestUserText = [requestUserText, ...secondaryParts, companionVoiceReminderText]
-        .filter(Boolean)
-        .join('\n\n');
-      companionVerificationApplied = true;
-      companionVerificationModifierText = requestUserText.slice(finalUserText.length).trim();
-    } else if (companionVerificationMode === 'methodology_neutral') {
-      const neutralModifier = `[METHODOLOGY-NEUTRAL CHART ACCURACY CHECK (APPLY SILENTLY):
-- Ground every natal placement, sign, house, degree, Nakshatra, Dasha, aspect, or transit you mention strictly in the verified Vedic and/or Western data attached in context.
-- Never invent, assume, or guess missing placements or birth details.
-- Interpret strictly through your own authored discipline, analytical hierarchy, and voice — never conform to external house/timing/remedy conventions you were not authored to use.]`;
-      companionVoiceReminderText =
-        '[CHARACTER VOICE REMINDER: Apply the chart accuracy check above silently, then respond strictly in your own authentic authored voice, temperament, and analytical discipline without quoting internal labels.]';
-      requestUserText = `${finalUserText}\n\n${neutralModifier}\n\n${companionVoiceReminderText}`;
-      companionVerificationApplied = true;
-      companionVerificationModifierText = `${neutralModifier}\n\n${companionVoiceReminderText}`;
-    }
+  if (activePillar === 'companion') {
+    const hasChartData = Boolean(
+      params.profile?.chart_json || params.profile?.chart_text_context?.trim()
+    );
+    const verifiedTurn = applyCompanionTurnVerification({
+      userText: finalUserText,
+      verificationMode: companionVerificationMode,
+      capabilities: companionCaps,
+      invitedEsoteric: companionInvitedEsoteric,
+      hasChartData,
+      engineOverrides,
+    });
+    requestUserText = verifiedTurn.userText;
   }
 
   // Filter out messages excluded from context (already filtered above)
@@ -1744,10 +1671,8 @@ User's specific question: ${finalUserText}`;
       model,
       system: systemInstructionWithDynamic,
       messages,
-      ...(activePillar === 'companion'
-        ? { temperature: companionEffectiveTemperature ?? DEFAULT_COMPANION_TEMPERATURE }
-        : {}),
       maxTokens: maxOutputTokens,
+      temperature: activePillar === 'companion' ? companionTemperature : undefined,
       abortSignal: internalAbortController.signal,
       onChunk: handlePathBChunk,
     });
@@ -1775,10 +1700,8 @@ User's specific question: ${finalUserText}`;
               'Continue seamlessly from your exact last word to finish this sentence and complete your response cleanly without repeating anything already written.',
           },
         ],
-        ...(activePillar === 'companion'
-          ? { temperature: companionEffectiveTemperature ?? DEFAULT_COMPANION_TEMPERATURE }
-          : {}),
         maxTokens: 1600,
+        temperature: activePillar === 'companion' ? companionTemperature : undefined,
         abortSignal: internalAbortController.signal,
         onChunk: handlePathBChunk,
       });
@@ -1849,78 +1772,6 @@ User's specific question: ${finalUserText}`;
       }
     }
 
-    let companionDiagnostics: Record<string, unknown> | null = null;
-    if (
-      activePillar === 'companion' &&
-      params.enableAdminDiagnostics === true &&
-      companionAssemblyManifest
-    ) {
-      const presetV2 = params.companionPreset
-        ? ensureCompanionV2Initialized(params.companionPreset)
-        : null;
-      companionDiagnostics = {
-        captured_at: new Date().toISOString(),
-        model,
-        temperature: companionEffectiveTemperature ?? DEFAULT_COMPANION_TEMPERATURE,
-        max_output_tokens: maxOutputTokens,
-        chat_style: resolvedRenderStyle || 'chat_bubbles',
-        total_prompt_chars: systemInstructionWithDynamic.length,
-        total_estimated_tokens: companionAssemblyManifest.totalEstimatedTokens,
-        tokens_in: totalTokensIn,
-        tokens_out: totalTokensOut,
-        layers_loaded: companionAssemblyManifest.layersLoaded,
-        estimated_tokens_by_section: companionAssemblyManifest.estimatedTokensBySection,
-        ordered_sections: companionAssemblyManifest.orderedSections.map((sec) => ({
-          key: sec.key,
-          label: sec.label,
-          estimatedTokens: sec.estimatedTokens,
-          charCount: sec.charCount,
-          content: sec.content,
-        })),
-        identity_and_methodology: {
-          slug: params.companionPreset?.slug || params.conversation.companion_slug || null,
-          name: params.companionPreset?.name || activeCompanionPersona?.name || null,
-          is_active: params.companionPreset ? params.companionPreset.is_active : null,
-          advisory_mode: companionCaps?.advisory_mode || null,
-          verification_mode: companionVerificationMode,
-          shared_analysis_memory_mode: companionSharedMemoryMode,
-          core_identity_capsule: presetV2?.core_identity_capsule || null,
-          linguistic_fingerprint: presetV2?.linguistic_fingerprint || null,
-          specialist_expertise: presetV2?.specialist_expertise || null,
-          signature_methodology: presetV2?.signature_methodology || null,
-          override_global_rules: Boolean(params.companionPreset?.override_global_rules),
-          override_group_rules: Boolean(companionCaps?.override_group_rules),
-        },
-        charts: {
-          universal_chart_available: companionAssemblyManifest.universalChartAvailable,
-          active_astrological_intent: companionAssemblyManifest.activeAstrologicalIntent,
-          astrology_entry_rule: companionAssemblyManifest.astrologyEntryRule,
-          esoteric_relevance: companionAssemblyManifest.esotericRelevance,
-          vedic_chart_injected: companionAssemblyManifest.vedicChartInjected,
-          western_chart_injected: companionAssemblyManifest.westernChartInjected,
-          vedic_transits_injected: companionAssemblyManifest.vedicTransitsInjected,
-          western_transits_injected: companionAssemblyManifest.westernTransitsInjected,
-          gate_decision: companionAssemblyManifest.astrologyGateDecision,
-        },
-        nuances_triggered: companionAssemblyManifest.nuancesTriggered,
-        dialogues_triggered: companionAssemblyManifest.dialoguesTriggered,
-        memory_and_bond: {
-          bond_total_turns: params.companionBond?.relationship_state?.total_turns ?? 0,
-          bond_memory_summary: params.companionBond?.memory_summary || null,
-          cross_thread_chars: params.companionCrossThreadSummary?.length || 0,
-          shared_interpretations_included: companionAssemblyManifest.sharedInterpretationsIncluded,
-          analyst_notes_injected: companionAssemblyManifest.analystNotesInjected,
-          shared_analysis_memory_mode: companionSharedMemoryMode,
-        },
-        verification: {
-          verification_mode: companionVerificationMode,
-          modifier_applied: companionVerificationApplied,
-          verification_modifier_text: companionVerificationModifierText,
-          voice_reminder_text: companionVoiceReminderText,
-        },
-      };
-    }
-
     return {
       fullText: sanitized.text,
       techBreakdown: safeLegacyBreakdown,
@@ -1934,7 +1785,6 @@ User's specific question: ${finalUserText}`;
       suggestions: streamResult.aborted || contAborted ? null : extractedFinal.suggestions,
       referral: streamResult.aborted || contAborted ? null : extractedFinal.referral,
       renderStyle: resolvedRenderStyle,
-      companionDiagnostics,
     };
   } finally {
     params.abortSignal.removeEventListener('abort', forwardAbort);

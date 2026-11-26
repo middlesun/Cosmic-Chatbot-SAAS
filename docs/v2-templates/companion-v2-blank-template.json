@@ -52,6 +52,7 @@
     "skill_level": "none_emotional",
     "chat_style": "chat_bubbles",
     "model_id": null,
+    "temperature": null,
     "tts_voice_profile": {
       "rate": 1,
       "pitch": 1
@@ -82,9 +83,27 @@
       "autonomy_guidance": "",
       "specialist_expertise": "",
       "signature_methodology": "",
+      "investigation_strategy": "",
+      "refinement_philosophy": "",
       "astrology_entry_rule": "never",
       "esoteric_guardrails": "",
       "ai_identity_disclosure": "natural_immersion_honest_when_asked",
+      "astrological_memory_mode": "independent",
+      "verification_mode": "neutral",
+      "greeting_config": {
+        "mode": "generated_returning",
+        "allow_memory_callback": true,
+        "custom_return_instruction": ""
+      },
+      "familiarity_policy": {
+        "mode": "warm_progressive",
+        "max_familiarity": "close"
+      },
+      "analytical_execution": {
+        "mode": "single_pass",
+        "max_passes": 1,
+        "verify_contradictions": true
+      },
       "contextual_nuances": [
         {
           "id": "nuance_1",
