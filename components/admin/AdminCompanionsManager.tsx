@@ -4,9 +4,9 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  Download,
   Eye,
   EyeOff,
-  FileJson,
   GitBranch,
   GripVertical,
   History,
@@ -20,6 +20,7 @@ import {
   Sliders,
   Sparkles,
   Trash2,
+  Upload,
   UserCheck,
   Volume2,
   VolumeX,
@@ -58,6 +59,7 @@ import CompanionPublicProfileTab from './companions/CompanionPublicProfileTab';
 import CompanionCoreIdentityTab from './companions/CompanionCoreIdentityTab';
 import CompanionNuancesDialoguesTab from './companions/CompanionNuancesDialoguesTab';
 import CompanionSpecialistRulesTab from './companions/CompanionSpecialistRulesTab';
+import CompanionChatAiSettingsTab from './companions/CompanionChatAiSettingsTab';
 import CompanionVersionsTab from './companions/CompanionVersionsTab';
 import GlobalIntelligencePanel from './companions/GlobalIntelligencePanel';
 import CompanionImportExportModal from './companions/CompanionImportExportModal';
@@ -124,7 +126,11 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
   const [unlockOverride, setUnlockOverride] = useState(false);
   const [changeNote, setChangeNote] = useState('');
   const [testingVoice, setTestingVoice] = useState(false);
-  const [ioModalOpen, setIoModalOpen] = useState(false);
+  const [ioModalState, setIoModalState] = useState<{
+    open: boolean;
+    scope: 'single' | 'bulk' | 'global';
+    focus: 'import' | 'export' | null;
+  }>({ open: false, scope: 'bulk', focus: null });
 
   const [globalPromptsLoaded, setGlobalPromptsLoaded] = useState(false);
   const [globalPromptsLoading, setGlobalPromptsLoading] = useState(false);
@@ -964,14 +970,29 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
             {pendingDraftCount > 0 ? `${pendingDraftCount} drafts · ` : ''}
             {companions.length} total
           </span>
-          <button
-            type="button"
-            onClick={() => setIoModalOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] px-3.5 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <FileJson className="h-3.5 w-3.5 text-[#8B7355]" />
-            <span>Import / Export JSON</span>
-          </button>
+          <div className="inline-flex items-center rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] overflow-hidden shrink-0">
+            <button
+              type="button"
+              onClick={() =>
+                setIoModalState({ open: true, scope: 'bulk', focus: 'import' })
+              }
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap cursor-pointer"
+            >
+              <Download className="h-3.5 w-3.5 text-[#8B7355]" />
+              <span>Import</span>
+            </button>
+            <span className="h-4 w-px bg-[#3D3830]/15" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() =>
+                setIoModalState({ open: true, scope: 'bulk', focus: 'export' })
+              }
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap cursor-pointer"
+            >
+              <Upload className="h-3.5 w-3.5 text-[#8B7355]" />
+              <span>Export</span>
+            </button>
+          </div>
           <button
             type="button"
             onClick={handleStartNewCompanion}
@@ -1107,9 +1128,9 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
           getAccessToken={getAccessToken}
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[296px_minmax(0,1fr)] xl:grid-cols-[310px_minmax(0,1fr)] gap-5 items-start">
           {/* LEFT DIRECTORY RAIL */}
-          <aside className="lg:col-span-4 rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] overflow-hidden">
+          <aside className="rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] overflow-hidden">
             <div className="p-3.5 border-b border-[#3D3830]/10 space-y-2.5 bg-[#FAF7F2]/60">
               <div className="relative">
                 <Search className="h-3.5 w-3.5 text-[#8B8275] absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1416,7 +1437,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
           </aside>
 
           {/* RIGHT EDITOR WORKBENCH */}
-          <div className="lg:col-span-8 space-y-4">
+          <div className="min-w-0 space-y-4">
             {detailLoading ? (
               <div className="rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-10 text-center text-sm text-[#8B8275]">
                 Loading companion V2 workspace...
@@ -1562,43 +1583,93 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                         <span>{publishing ? 'Publishing...' : 'Publish Live'}</span>
                       </button>
                     )}
+
+                    <div className="inline-flex items-center rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] overflow-hidden shrink-0">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setIoModalState({
+                            open: true,
+                            scope: 'single',
+                            focus: 'import',
+                          })
+                        }
+                        title={
+                          isCreating
+                            ? 'Import JSON into new companion'
+                            : `Import JSON for ${draft.name}`
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors whitespace-nowrap cursor-pointer"
+                      >
+                        <Download className="h-3.5 w-3.5 text-[#8B7355]" />
+                        <span>Import</span>
+                      </button>
+                      <span className="h-4 w-px bg-[#3D3830]/15" aria-hidden="true" />
+                      <button
+                        type="button"
+                        disabled={isCreating || !draft.slug}
+                        onClick={() =>
+                          setIoModalState({
+                            open: true,
+                            scope: 'single',
+                            focus: 'export',
+                          })
+                        }
+                        title={
+                          isCreating
+                            ? 'Save companion first to export JSON'
+                            : `Export JSON for ${draft.name}`
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] disabled:opacity-40 transition-colors whitespace-nowrap cursor-pointer"
+                      >
+                        <Upload className="h-3.5 w-3.5 text-[#8B7355]" />
+                        <span>Export</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                {/* Split Editor + Live Preview Grid */}
-                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_330px] gap-6 items-start">
-                  <div className="min-w-0 space-y-5">
-                    {/* 5-Tab V2 Authoring Navigation */}
-                    <div className="flex flex-wrap items-center gap-1 rounded-2xl bg-[#F1ECE3] p-1.5">
-                      {(
-                        [
-                          { key: 'profile', label: 'Public Profile', icon: UserCheck },
-                          { key: 'core_identity', label: 'Core Identity & Voice', icon: Sparkles },
-                          { key: 'nuances', label: 'Nuances & Dialogues', icon: MessageSquareQuote },
-                          { key: 'specialist', label: 'Specialist & Rules', icon: Sliders },
-                          { key: 'versions', label: 'Versions & Rollback', icon: History },
-                        ] as const
-                      ).map((t) => {
-                        const Icon = t.icon;
-                        const active = editorTab === t.key;
-                        return (
-                          <button
-                            key={t.key}
-                            type="button"
-                            onClick={() => setEditorTab(t.key)}
-                            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                              active
-                                ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
-                                : 'text-[#5C5449] hover:text-[#3D3830]'
-                            }`}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                            <span>{t.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                {/* 6-Tab V2 Authoring Navigation (Full Width) */}
+                <div className="flex flex-wrap items-center gap-1 rounded-2xl bg-[#F1ECE3] p-1.5">
+                  {(
+                    [
+                      { key: 'profile', label: 'Public Profile', icon: UserCheck },
+                      { key: 'core_identity', label: 'Core Identity & Voice', icon: Sparkles },
+                      { key: 'nuances', label: 'Nuances & Dialogues', icon: MessageSquareQuote },
+                      { key: 'specialist', label: 'Specialist & Rules', icon: Sliders },
+                      { key: 'chat_ai', label: 'Chat & AI Settings', icon: MessageSquare },
+                      { key: 'versions', label: 'Versions & Rollback', icon: History },
+                    ] as const
+                  ).map((t) => {
+                    const Icon = t.icon;
+                    const active = editorTab === t.key;
+                    return (
+                      <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => setEditorTab(t.key)}
+                        className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                          active
+                            ? 'bg-[#FDFBF7] text-[#3D3830] shadow-xs'
+                            : 'text-[#5C5449] hover:text-[#3D3830]'
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        <span>{t.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
 
+                {/* Full-width editor by default; split with Live Companion Preview only on Chat & AI Settings */}
+                <div
+                  className={
+                    editorTab === 'chat_ai'
+                      ? 'grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_330px] gap-6 items-start'
+                      : 'w-full'
+                  }
+                >
+                  <div className="min-w-0 space-y-5">
                     {editorTab === 'profile' && (
                       <CompanionPublicProfileTab
                         draft={draft}
@@ -1638,8 +1709,15 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                       <CompanionSpecialistRulesTab
                         draft={draft}
                         setDraft={setDraft}
-                        modelOptions={modelOptions}
                         formulaCartridges={formulaCartridges}
+                      />
+                    )}
+
+                    {editorTab === 'chat_ai' && (
+                      <CompanionChatAiSettingsTab
+                        draft={draft}
+                        setDraft={setDraft}
+                        modelOptions={modelOptions}
                       />
                     )}
 
@@ -1659,7 +1737,8 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                     )}
                   </div>
 
-                  {/* Sticky Side-by-Side Live Companion Preview */}
+                  {/* Sticky Side-by-Side Live Companion Preview (visible only when modifying Chat & AI Settings) */}
+                  {editorTab === 'chat_ai' && (
                   <aside className="xl:sticky xl:top-4 space-y-4 rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8B8275]">
@@ -1830,6 +1909,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                       </button>
                     </div>
                   </aside>
+                  )}
                 </div>
               </div>
             )}
@@ -1839,10 +1919,12 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
 
       {/* Import / Export JSON Studio Modal */}
       <CompanionImportExportModal
-        isOpen={ioModalOpen}
-        onClose={() => setIoModalOpen(false)}
+        isOpen={ioModalState.open}
+        onClose={() => setIoModalState((prev) => ({ ...prev, open: false }))}
         selectedSlug={!isCreating && draft?.slug ? draft.slug : null}
         selectedName={!isCreating && draft?.name ? draft.name : null}
+        initialScope={ioModalState.scope}
+        initialFocus={ioModalState.focus}
         getAccessToken={getAccessToken}
         onImportSuccess={async (msg, targetSlug) => {
           setFeedback(msg);

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -54,6 +54,8 @@ interface CompanionImportExportModalProps {
   onClose: () => void;
   selectedSlug: string | null;
   selectedName: string | null;
+  initialScope?: IoScope;
+  initialFocus?: 'import' | 'export' | null;
   getAccessToken: () => Promise<string | null>;
   onImportSuccess: (message: string, targetSlug?: string) => Promise<void>;
 }
@@ -75,10 +77,14 @@ const CompanionImportExportModal: React.FC<CompanionImportExportModalProps> = ({
   onClose,
   selectedSlug,
   selectedName,
+  initialScope,
+  initialFocus,
   getAccessToken,
   onImportSuccess,
 }) => {
-  const [scope, setScope] = useState<IoScope>(selectedSlug ? 'single' : 'bulk');
+  const [scope, setScope] = useState<IoScope>(
+    initialScope || (selectedSlug ? 'single' : 'bulk')
+  );
   const [exportStage, setExportStage] = useState<'published' | 'draft'>('published');
   const [importMode, setImportMode] = useState<'draft' | 'publish'>('draft');
   const [unlockCore, setUnlockCore] = useState(false);
@@ -90,6 +96,24 @@ const CompanionImportExportModal: React.FC<CompanionImportExportModalProps> = ({
   const [bulkPreview, setBulkPreview] = useState<BulkPreviewResult | null>(null);
   const [globalPreview, setGlobalPreview] = useState<GlobalPreviewResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const exportSectionRef = useRef<HTMLDivElement | null>(null);
+  const importSectionRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setScope(initialScope || (selectedSlug ? 'single' : 'bulk'));
+    setError(null);
+    setStatusMessage(null);
+    if (initialFocus) {
+      window.setTimeout(() => {
+        const target =
+          initialFocus === 'import'
+            ? importSectionRef.current
+            : exportSectionRef.current;
+        target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 60);
+    }
+  }, [isOpen, initialScope, initialFocus, selectedSlug]);
 
   if (!isOpen) return null;
 
@@ -418,7 +442,14 @@ const CompanionImportExportModal: React.FC<CompanionImportExportModalProps> = ({
           )}
 
           {/* Export Section */}
-          <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 flex flex-wrap items-center justify-between gap-3">
+          <div
+            ref={exportSectionRef}
+            className={`rounded-2xl border bg-[#FAF7F2] p-4 flex flex-wrap items-center justify-between gap-3 transition-colors ${
+              initialFocus === 'export'
+                ? 'border-[#B8965A]/55'
+                : 'border-[#3D3830]/12'
+            }`}
+          >
             <div>
               <p className="text-xs font-semibold text-[#3D3830]">
                 Export{' '}
@@ -455,14 +486,21 @@ const CompanionImportExportModal: React.FC<CompanionImportExportModalProps> = ({
                 onClick={() => void handleExport()}
                 className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 cursor-pointer whitespace-nowrap"
               >
-                <Download className="h-3.5 w-3.5" />
+                <Upload className="h-3.5 w-3.5" />
                 <span>Download JSON</span>
               </button>
             </div>
           </div>
 
           {/* Import Section */}
-          <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-3.5">
+          <div
+            ref={importSectionRef}
+            className={`rounded-2xl border bg-[#FAF7F2] p-4 space-y-3.5 transition-colors ${
+              initialFocus === 'import'
+                ? 'border-[#B8965A]/55'
+                : 'border-[#3D3830]/12'
+            }`}
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-semibold text-[#3D3830]">
@@ -496,7 +534,7 @@ const CompanionImportExportModal: React.FC<CompanionImportExportModalProps> = ({
                   onClick={() => fileInputRef.current?.click()}
                   className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/18 bg-[#FDFBF7] px-3 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
                 >
-                  <Upload className="h-3.5 w-3.5 text-[#8B7355]" />
+                  <Download className="h-3.5 w-3.5 text-[#8B7355]" />
                   <span>Load .json File</span>
                 </button>
               </div>

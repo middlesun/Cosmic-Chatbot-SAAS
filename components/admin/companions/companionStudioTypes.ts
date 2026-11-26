@@ -157,6 +157,7 @@ export type EditorTab =
   | 'core_identity'
   | 'nuances'
   | 'specialist'
+  | 'chat_ai'
   | 'versions';
 
 export const CATEGORY_OPTIONS: Array<{ value: CompanionCategoryTag; label: string }> = [

@@ -1090,7 +1090,7 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                 }}
                 className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors cursor-pointer"
               >
-                <Download className="h-3.5 w-3.5" />
+                <Upload className="h-3.5 w-3.5" />
                 Export
               </button>
               <button
@@ -1101,7 +1101,7 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                 }}
                 className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-1.5 text-xs font-medium text-[#5C5449] hover:bg-[#EAE3D7]/60 hover:text-[#3D3830] transition-colors cursor-pointer"
               >
-                <Upload className="h-3.5 w-3.5" />
+                <Download className="h-3.5 w-3.5" />
                 Import
               </button>
             </div>
@@ -2674,7 +2674,7 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                   onClick={handleDownloadExport}
                   className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-45 cursor-pointer"
                 >
-                  <Download className="h-3.5 w-3.5" />
+                  <Upload className="h-3.5 w-3.5" />
                   Download .{exportFormat === 'markdown' ? 'md' : 'json'}
                 </button>
               </div>
@@ -2735,7 +2735,7 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                     onClick={() => importFileRef.current?.click()}
                     className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/18 bg-[#FAF7F2] px-3.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7]/60 cursor-pointer"
                   >
-                    <Upload className="h-3.5 w-3.5" />
+                    <Download className="h-3.5 w-3.5" />
                     Choose .json file
                   </button>
                   {importJsonText.trim() && (
@@ -2889,7 +2889,7 @@ const PromptLibraryManager: React.FC<PromptLibraryManagerProps> = ({
                   onClick={() => void handleRunImport()}
                   className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-45 cursor-pointer"
                 >
-                  <Upload className="h-3.5 w-3.5" />
+                  <Download className="h-3.5 w-3.5" />
                   {importingPrompts
                     ? 'Importing...'
                     : `Import ${parsedImportPreview.items.length || ''} Prompt${

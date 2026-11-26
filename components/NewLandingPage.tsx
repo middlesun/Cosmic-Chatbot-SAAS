@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle,
+  ArrowDown,
   ArrowRight,
   BarChart3,
   BookOpen,
+  Brain,
   CalendarClock,
   Check,
   ChevronDown,
@@ -17,6 +19,7 @@ import {
   Orbit,
   RotateCcw,
   Scale,
+  ShieldCheck,
   Sparkles,
   Sun,
   UserCheck,
@@ -150,6 +153,35 @@ const HERO_BULLET_POINTS = [
   "Better understand your life's journey and purpose",
   'Fully private, secure & anonymous',
 ];
+
+const HERO_BULLET_ICONS = [Orbit, Layers, BookOpen, Compass, ShieldCheck] as const;
+
+const VEDIC_RASHI_GLYPHS = [
+  '\u2648\uFE0E',
+  '\u2649\uFE0E',
+  '\u264A\uFE0E',
+  '\u264B\uFE0E',
+  '\u264C\uFE0E',
+  '\u264D\uFE0E',
+  '\u264E\uFE0E',
+  '\u264F\uFE0E',
+  '\u2650\uFE0E',
+  '\u2651\uFE0E',
+  '\u2652\uFE0E',
+  '\u2653\uFE0E',
+] as const;
+
+const NAVAGRAHA_MARKERS = [
+  { glyph: '\u2609\uFE0E', angle: 18 },
+  { glyph: '\u263D\uFE0E', angle: 58 },
+  { glyph: '\u2642\uFE0E', angle: 98 },
+  { glyph: '\u263F\uFE0E', angle: 138 },
+  { glyph: '\u2643\uFE0E', angle: 178 },
+  { glyph: '\u2640\uFE0E', angle: 218 },
+  { glyph: '\u2644\uFE0E', angle: 258 },
+  { glyph: '\u260A\uFE0E', angle: 298 },
+  { glyph: '\u260B\uFE0E', angle: 338 },
+] as const;
 
 const PERSONAL_USE_CARDS = [
   {
@@ -1712,28 +1744,226 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                   'radial-gradient(circle, rgba(184, 150, 90, 0.16) 0%, rgba(234, 227, 215, 0.25) 45%, transparent 75%)',
               }}
             />
+            {/* Vedic Celestial Observatory Astrolabe Dial (anchored behind right-column form card) */}
             <svg
-              viewBox="0 0 1440 760"
+              viewBox="0 0 960 960"
               fill="none"
-              className="absolute left-1/2 top-0 h-[760px] w-[1440px] -translate-x-1/2 opacity-55"
+              className="absolute -top-16 -right-44 sm:-top-20 sm:-right-28 lg:-top-20 lg:right-[-4%] h-[760px] w-[760px] sm:h-[900px] sm:w-[900px] lg:h-[980px] lg:w-[980px]"
             >
-              <circle
-                cx="720"
-                cy="360"
-                r="310"
-                stroke="#3D3830"
-                strokeOpacity="0.06"
-                strokeWidth="1"
-              />
-              <circle
-                cx="720"
-                cy="360"
-                r="470"
-                stroke="#B8965A"
-                strokeOpacity="0.14"
-                strokeWidth="1"
-                strokeDasharray="4 8"
-              />
+              {/* Outer Nakshatra & Rashi Rotating Bezel */}
+              <g className="animate-cc-slow-orbit">
+                <circle
+                  cx="480"
+                  cy="480"
+                  r="446"
+                  stroke="#B8965A"
+                  strokeOpacity="0.22"
+                  strokeWidth="1"
+                  strokeDasharray="3 7"
+                />
+                <circle
+                  cx="480"
+                  cy="480"
+                  r="432"
+                  stroke="#3D3830"
+                  strokeOpacity="0.10"
+                  strokeWidth="1"
+                />
+                <circle
+                  cx="480"
+                  cy="480"
+                  r="386"
+                  stroke="#B8965A"
+                  strokeOpacity="0.18"
+                  strokeWidth="1"
+                />
+                <circle
+                  cx="480"
+                  cy="480"
+                  r="332"
+                  stroke="#3D3830"
+                  strokeOpacity="0.08"
+                  strokeWidth="0.9"
+                  strokeDasharray="2 6"
+                />
+
+                {/* 27 Nakshatra Lunar Mansion Ticks (13°20′ each) */}
+                {Array.from({ length: 27 }).map((_, idx) => {
+                  const deg = (idx * 360) / 27;
+                  const rad = ((deg - 90) * Math.PI) / 180;
+                  const x1 = 480 + Math.cos(rad) * 422;
+                  const y1 = 480 + Math.sin(rad) * 422;
+                  const x2 = 480 + Math.cos(rad) * 432;
+                  const y2 = 480 + Math.sin(rad) * 432;
+                  return (
+                    <line
+                      key={`nak-${idx}`}
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke="#B8965A"
+                      strokeOpacity="0.34"
+                      strokeWidth="1.2"
+                    />
+                  );
+                })}
+
+                {/* 12 Rashi (30°) Divisions & Astronomical Glyphs */}
+                {VEDIC_RASHI_GLYPHS.map((glyph, idx) => {
+                  const lineDeg = idx * 30;
+                  const lineRad = ((lineDeg - 90) * Math.PI) / 180;
+                  const lx1 = 480 + Math.cos(lineRad) * 386;
+                  const ly1 = 480 + Math.sin(lineRad) * 386;
+                  const lx2 = 480 + Math.cos(lineRad) * 446;
+                  const ly2 = 480 + Math.sin(lineRad) * 446;
+
+                  const glyphDeg = idx * 30 + 15;
+                  const glyphRad = ((glyphDeg - 90) * Math.PI) / 180;
+                  const gx = 480 + Math.cos(glyphRad) * 406;
+                  const gy = 480 + Math.sin(glyphRad) * 406;
+
+                  return (
+                    <g key={`rashi-${idx}`}>
+                      <line
+                        x1={lx1}
+                        y1={ly1}
+                        x2={lx2}
+                        y2={ly2}
+                        stroke="#3D3830"
+                        strokeOpacity="0.16"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x={gx}
+                        y={gy}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill="#7A6245"
+                        fillOpacity="0.24"
+                        fontSize="15"
+                        fontFamily="Georgia, 'Cormorant Garamond', serif"
+                      >
+                        {glyph}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {/* 9 Navagraha Orbit Markers */}
+                {NAVAGRAHA_MARKERS.map(({ glyph, angle }) => {
+                  const rad = ((angle - 90) * Math.PI) / 180;
+                  const nx = 480 + Math.cos(rad) * 332;
+                  const ny = 480 + Math.sin(rad) * 332;
+                  const gx = 480 + Math.cos(rad) * 354;
+                  const gy = 480 + Math.sin(rad) * 354;
+                  return (
+                    <g key={`graha-${angle}`}>
+                      <circle
+                        cx={nx}
+                        cy={ny}
+                        r="2.6"
+                        fill="#B8965A"
+                        fillOpacity="0.34"
+                      />
+                      <text
+                        x={gx}
+                        y={gy}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill="#3D3830"
+                        fillOpacity="0.18"
+                        fontSize="13"
+                        fontFamily="Georgia, 'Cormorant Garamond', serif"
+                      >
+                        {glyph}
+                      </text>
+                    </g>
+                  );
+                })}
+              </g>
+
+              {/* Inner Vedic Kundali Lattice & Aspect Chords (gentle counter-rotation) */}
+              <g className="animate-cc-slow-orbit-reverse">
+                <circle
+                  cx="480"
+                  cy="480"
+                  r="268"
+                  stroke="#B8965A"
+                  strokeOpacity="0.16"
+                  strokeWidth="1"
+                />
+
+                {/* Inscribed North Indian Kundali Diamond Chart Geometry */}
+                <rect
+                  x="291"
+                  y="291"
+                  width="378"
+                  height="378"
+                  stroke="#B8965A"
+                  strokeOpacity="0.14"
+                  strokeWidth="1"
+                />
+                <polygon
+                  points="480,291 669,480 480,669 291,480"
+                  stroke="#B8965A"
+                  strokeOpacity="0.16"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="291"
+                  y1="291"
+                  x2="669"
+                  y2="669"
+                  stroke="#3D3830"
+                  strokeOpacity="0.08"
+                  strokeWidth="0.9"
+                />
+                <line
+                  x1="669"
+                  y1="291"
+                  x2="291"
+                  y2="669"
+                  stroke="#3D3830"
+                  strokeOpacity="0.08"
+                  strokeWidth="0.9"
+                />
+
+                {/* Faint Trine & Sextile Aspect Chords */}
+                <polygon
+                  points="480,148 767,646 193,646"
+                  stroke="#B8965A"
+                  strokeOpacity="0.11"
+                  strokeWidth="0.9"
+                  strokeDasharray="3 6"
+                />
+                <polygon
+                  points="480,812 767,314 193,314"
+                  stroke="#B8965A"
+                  strokeOpacity="0.09"
+                  strokeWidth="0.9"
+                  strokeDasharray="3 6"
+                />
+
+                {/* Inner Meridian Rings */}
+                <circle
+                  cx="480"
+                  cy="480"
+                  r="112"
+                  stroke="#3D3830"
+                  strokeOpacity="0.09"
+                  strokeWidth="0.9"
+                />
+                <circle
+                  cx="480"
+                  cy="480"
+                  r="36"
+                  stroke="#B8965A"
+                  strokeOpacity="0.22"
+                  strokeWidth="1"
+                />
+                <circle cx="480" cy="480" r="3" fill="#B8965A" fillOpacity="0.32" />
+              </g>
             </svg>
           </div>
 
@@ -1757,6 +1987,11 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                     Advanced birth chart analysis, multiple astrological traditions and personalised AI consultations.
                   </p>
 
+                  <p className="flex items-center gap-2.5 pt-0.5 text-xs sm:text-[13px] font-medium tracking-[0.04em] text-[#7A6245]">
+                    <span className="h-px w-5 bg-[#B8965A]/60 shrink-0" aria-hidden="true" />
+                    <span>Parashari · KP · Jaimini · Tropical Western</span>
+                  </p>
+
                   {/* Mobile quick-jump to form */}
                   <div className="pt-1 lg:hidden">
                     <button
@@ -1770,25 +2005,28 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                   </div>
                 </div>
 
-                {/* 6 Premium Line Cards with Soft Sublime Sliding Animations */}
+                {/* 5 Premium Line Cards with Soft Sublime Sliding Animations */}
                 <ul className="space-y-3 pt-2">
-                  {HERO_BULLET_POINTS.map((point, idx) => (
-                    <li key={point}>
-                      <Reveal direction="left" delay={80 + idx * 60}>
-                        <div className="group inline-flex w-fit max-w-full items-center gap-3.5 rounded-xl border border-[#3D3830]/16 bg-[#FDFBF7] px-5 py-3 shadow-[0_6px_18px_-10px_rgba(61,56,48,0.18)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:translate-x-1.5 hover:border-[#B8965A]/65 hover:shadow-[0_10px_24px_-10px_rgba(61,56,48,0.24)]">
-                          <span
-                            aria-hidden="true"
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#EAE3D7] text-[#8B7355] transition-colors duration-300 group-hover:bg-[#4A453D] group-hover:text-[#FAF7F2]"
-                          >
-                            <Check className="h-3 w-3 stroke-[2.25]" />
-                          </span>
-                          <span className="text-[15px] sm:text-base font-medium text-[#3D3830] leading-snug">
-                            {point}
-                          </span>
-                        </div>
-                      </Reveal>
-                    </li>
-                  ))}
+                  {HERO_BULLET_POINTS.map((point, idx) => {
+                    const BulletIcon = HERO_BULLET_ICONS[idx] || Orbit;
+                    return (
+                      <li key={point}>
+                        <Reveal direction="left" delay={80 + idx * 60}>
+                          <div className="group inline-flex w-fit max-w-full items-center gap-3.5 rounded-xl border border-[#3D3830]/16 bg-[#FDFBF7] px-5 py-3 shadow-[0_6px_18px_-10px_rgba(61,56,48,0.18)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:translate-x-1.5 hover:border-[#B8965A]/65 hover:shadow-[0_10px_24px_-10px_rgba(61,56,48,0.24)]">
+                            <span
+                              aria-hidden="true"
+                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#EAE3D7] text-[#8B7355] transition-colors duration-300 group-hover:bg-[#4A453D] group-hover:text-[#FAF7F2]"
+                            >
+                              <BulletIcon className="h-3.5 w-3.5 stroke-[2]" />
+                            </span>
+                            <span className="text-[15px] sm:text-base font-medium text-[#3D3830] leading-snug">
+                              {point}
+                            </span>
+                          </div>
+                        </Reveal>
+                      </li>
+                    );
+                  })}
                 </ul>
 
                 <Reveal direction="up" delay={440}>
@@ -2703,6 +2941,109 @@ const NewLandingPage: React.FC<NewLandingPageProps> = () => {
                     </div>
                   ))}
                 </div>
+
+                {activeObjectionComparison.id === 'ai' && (
+                  <div className="pt-4 border-t border-white/10 space-y-5">
+                    <p className="text-sm sm:text-base text-[#D2CBC0]">
+                      What makes the difference is the astrological architecture behind it.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 items-stretch">
+                      {/* General-purpose AI column */}
+                      <div className="rounded-2xl border border-white/10 bg-[#23262E] p-5 sm:p-6 flex flex-col">
+                        <h4 className="text-base sm:text-lg font-semibold text-[#F4EFE6] mb-4">
+                          General-purpose AI
+                        </h4>
+
+                        <div className="rounded-xl border border-white/10 bg-[#31353F] px-4 py-3.5 text-center text-sm font-medium text-[#E8E2D9]">
+                          User&apos;s question
+                        </div>
+
+                        <div className="py-2.5 pl-1">
+                          <ArrowDown
+                            className="h-3.5 w-3.5 text-[#9D9589]"
+                            aria-hidden="true"
+                          />
+                        </div>
+
+                        <div className="rounded-xl border border-white/10 bg-[#31353F] px-4 py-7 flex flex-col items-center justify-center text-center gap-1.5">
+                          <Brain
+                            className="h-6 w-6 text-[#D2CBC0] mb-1"
+                            aria-hidden="true"
+                          />
+                          <p className="text-sm sm:text-base font-medium text-[#F4EFE6]">
+                            Language model
+                          </p>
+                          <p className="text-xs sm:text-sm text-[#A7A095]">
+                            Available data &amp; tools
+                          </p>
+                        </div>
+
+                        <div className="py-2.5 pl-1">
+                          <ArrowDown
+                            className="h-3.5 w-3.5 text-[#9D9589]"
+                            aria-hidden="true"
+                          />
+                        </div>
+
+                        <div className="rounded-xl border border-white/10 bg-[#31353F] px-4 py-3.5 text-center text-sm font-medium text-[#E8E2D9]">
+                          Generated interpretation
+                        </div>
+                      </div>
+
+                      {/* CosmicCouncil column */}
+                      <div className="rounded-2xl border border-white/10 bg-[#23262E] p-5 sm:p-6 flex flex-col">
+                        <h4 className="text-base sm:text-lg font-semibold text-[#C9A769] mb-4">
+                          CosmicCouncil
+                        </h4>
+
+                        <div className="rounded-xl border border-white/10 bg-[#31353F] px-4 py-3 text-center text-sm font-medium text-[#F4EFE6]">
+                          User&apos;s question
+                        </div>
+
+                        <div className="py-2 pl-1">
+                          <ArrowDown
+                            className="h-3.5 w-3.5 text-[#9D9589]"
+                            aria-hidden="true"
+                          />
+                        </div>
+
+                        <div className="space-y-2.5">
+                          {[
+                            'Astrological calculation engine',
+                            'Structured birth chart data',
+                            'Methodology-specific techniques',
+                            'Strengths, combinations & timing',
+                            'Personal context & history',
+                            'AI reasoning & synthesis',
+                          ].map((layer) => (
+                            <div
+                              key={layer}
+                              className="rounded-xl border border-[#B8965A]/35 bg-[#2B2926]/90 px-4 py-2.5 text-center text-xs sm:text-sm font-medium text-[#F4EFE6]"
+                            >
+                              {layer}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="py-2 pl-1">
+                          <ArrowDown
+                            className="h-3.5 w-3.5 text-[#9D9589]"
+                            aria-hidden="true"
+                          />
+                        </div>
+
+                        <div className="rounded-xl bg-[#D6BF91] px-4 py-3.5 text-center text-sm sm:text-base font-semibold text-[#1F2229]">
+                          Contextual chart interpretation
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-xs sm:text-sm leading-relaxed text-[#9D9589]">
+                      Conceptual architecture comparison. General-purpose AI can also use external astrological tools when configured to do so.
+                    </p>
+                  </div>
+                )}
               </div>
             </Reveal>
 
