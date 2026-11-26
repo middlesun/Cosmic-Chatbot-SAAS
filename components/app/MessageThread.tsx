@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import {
   CHAT_NUMERIC_FONT_CLASSES,
+  COMPANION_LABEL_SINGULAR,
   DEFAULT_COUNCIL_EXPERT_SLUG,
   normalizeCouncilSlug,
   type AskLaterItem,
@@ -1890,11 +1891,11 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 {activePillar === 'council' &&
                   msg.role === 'assistant' &&
                   onHandoffToCompanion && (
-                    <Tooltip content="Discuss with a Companion" placement="top">
+                    <Tooltip content={`Discuss with a ${COMPANION_LABEL_SINGULAR}`} placement="top">
                       <button
                         type="button"
                         onClick={() => onHandoffToCompanion(msg)}
-                        aria-label="Discuss this reading with a Companion"
+                        aria-label={`Discuss this reading with a ${COMPANION_LABEL_SINGULAR}`}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-[#F1ECE3] hover:text-[#3D3830] transition-colors cursor-pointer"
                       >
                         <HeartHandshake className="h-3.5 w-3.5" />
@@ -2791,7 +2792,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                         {streamingStatus
                           ? streamingStatus
                           : activePillar === 'companion'
-                          ? `${activeCompanionPersona?.name || 'Companion'} is typing...`
+                          ? `${activeCompanionPersona?.name || COMPANION_LABEL_SINGULAR} is typing...`
                           : activePillar === 'clarity'
                           ? 'Thinking clearly...'
                           : isWesternSystem

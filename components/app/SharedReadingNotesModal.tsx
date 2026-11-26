@@ -1,6 +1,9 @@
 import React, { useEffect } from 'react';
 import { Sparkles, Trash2, X } from 'lucide-react';
-import type { SharedReadingNoteRecord } from './chatTypes';
+import {
+  COMPANION_LABEL_SINGULAR,
+  type SharedReadingNoteRecord,
+} from './chatTypes';
 
 interface SharedReadingNotesModalProps {
   isOpen: boolean;
@@ -57,7 +60,7 @@ const SharedReadingNotesModal: React.FC<SharedReadingNotesModalProps> = ({
               Council reading notes
             </h2>
             <p className="text-xs text-[#5C5449]">
-              Your Companion can quietly reference these saved or handed-off Council notes when you ask about your chart or readings.
+              Your {COMPANION_LABEL_SINGULAR} can quietly reference these saved or handed-off Council notes when you ask about your chart or readings.
             </p>
           </div>
           <button
@@ -75,7 +78,7 @@ const SharedReadingNotesModal: React.FC<SharedReadingNotesModalProps> = ({
             <div className="rounded-2xl border border-[#3D3830]/10 bg-[#FDFBF7] p-6 text-center space-y-1.5">
               <p className="font-serif text-lg text-[#3D3830]">No shared Council notes yet</p>
               <p className="text-xs text-[#5C5449] leading-relaxed">
-                Tap &ldquo;Discuss with a Companion&rdquo; on any Astrology Council response—or save a Council note—to give your Companion this context automatically.
+                Tap &ldquo;Discuss with a {COMPANION_LABEL_SINGULAR}&rdquo; on any Astrology Council response—or save a Council note—to give your {COMPANION_LABEL_SINGULAR} this context automatically.
               </p>
             </div>
           ) : (

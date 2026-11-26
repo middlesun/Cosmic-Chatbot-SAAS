@@ -393,24 +393,6 @@ export const MINI_APPS_CATALOG: MiniAppDefinition[] = [
     chatSeedPrompt: 'Explain how my Ascendant, Moon Nakshatra, and Atmakaraka work together in my core personality.',
     estimatedRead: '3 min read',
   },
-  {
-    slug: 'pet-bond',
-    title: 'Pet Temperament & Bond',
-    shortTitle: 'Pet Bond',
-    tagline: 'Warm character reading of your companion animal & shared rhythm',
-    description:
-      'Share your pet’s name, species, and birth or adoption date for a lighthearted, thoughtful portrait of their temperament and bond with your home.',
-    category: 'mind_wellness',
-    categoryLabel: 'Mind & Wellness',
-    template: 'form_reading',
-    iconKey: 'paw-print',
-    popular: false,
-    featuredOnHome: false,
-    requiresProfile: false,
-    cacheScope: 'none',
-    chatSeedPrompt: 'Tell me more about my 4th and 6th house themes around home sanctuary and caring for animals.',
-    estimatedRead: 'Interactive',
-  },
 ];
 
 export const MINI_APPS_BY_SLUG: Record<string, MiniAppDefinition> = Object.fromEntries(

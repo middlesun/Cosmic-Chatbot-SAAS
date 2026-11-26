@@ -33,11 +33,13 @@ import {
 } from 'lucide-react';
 import { useAppShell } from './AppLayout';
 import { useAuth } from './AuthContext';
-import type {
-  ChatProfile,
-  ConversationRecord,
-  FavoriteMessageRecord,
-  PublicCompanionCard,
+import {
+  COMPANION_LABEL_PLURAL,
+  COMPANION_LABEL_SINGULAR,
+  type ChatProfile,
+  type ConversationRecord,
+  type FavoriteMessageRecord,
+  type PublicCompanionCard,
 } from './chatTypes';
 import CompanionAvatar from './CompanionAvatar';
 import CustomSelect from './CustomSelect';
@@ -511,7 +513,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 className="w-full flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-xs text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
               >
                 <HeartHandshake className="h-3.5 w-3.5 text-[#8B7355]" />
-                <span>New Companion</span>
+                <span>New {COMPANION_LABEL_SINGULAR}</span>
               </button>
               <button
                 type="button"
@@ -648,7 +650,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 [
                   { id: 'all', label: 'All' },
                   { id: 'council', label: 'Council' },
-                  { id: 'companion', label: 'Companion' },
+                  { id: 'companion', label: COMPANION_LABEL_SINGULAR },
                 ] as const
               ).map((seg) => (
                 <button
@@ -746,19 +748,19 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       <ChevronRight className="h-3.5 w-3.5 text-[#5C5449] shrink-0" />
                     )}
                     <HeartHandshake className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
-                    <span className="truncate">Companions</span>
+                    <span className="truncate">{COMPANION_LABEL_PLURAL}</span>
                     <span className="text-[10px] font-medium text-[#8B8275] font-['DM_Sans',sans-serif] tabular-nums">
                       ({groupedConversations.companions.length})
                     </span>
                   </button>
-                  <Tooltip content="Browse all companions" placement="top">
+                  <Tooltip content={`Browse all ${COMPANION_LABEL_PLURAL.toLowerCase()}`} placement="top">
                     <button
                       type="button"
                       onClick={() => {
                         onStartNewCompanion();
                         onCloseMobileDrawer();
                       }}
-                      aria-label="Browse all companions"
+                      aria-label={`Browse all ${COMPANION_LABEL_PLURAL.toLowerCase()}`}
                       className="p-1 text-[#8B8275] hover:text-[#3D3830] rounded cursor-pointer"
                     >
                       <MessageSquarePlus className="h-3.5 w-3.5" />
@@ -771,7 +773,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                     {groupedConversations.companions.length === 0 ? (
                       <div className="px-2.5 py-2 space-y-2">
                         <p className="text-[11px] text-[#8B8275]">
-                          No companion chats yet.
+                          No {COMPANION_LABEL_SINGULAR.toLowerCase()} chats yet.
                         </p>
                         <button
                           type="button"
@@ -781,7 +783,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                           }}
                           className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-[11px] font-medium text-[#3D3830] hover:bg-[#FAF7F2] transition-colors cursor-pointer"
                         >
-                          Find a Companion
+                          Find a {COMPANION_LABEL_SINGULAR}
                         </button>
                       </div>
                     ) : (() => {
@@ -809,7 +811,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                           card?.name ||
                           conv.companion_persona_json?.name ||
                           conv.title ||
-                          'Companion';
+                          COMPANION_LABEL_SINGULAR;
                         const key = (slug || name).toLowerCase();
                         let group = groupMap.get(key);
                         if (!group) {
@@ -908,7 +910,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                         className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-[#3D3830]/12 bg-[#FAF7F2]/80 px-2.5 py-1.5 text-[11px] font-medium text-[#5C5449] hover:bg-[#FDFBF7] hover:text-[#3D3830] transition-colors cursor-pointer"
                       >
                         <HeartHandshake className="h-3 w-3 text-[#8B7355]" />
-                        <span>Browse all companions</span>
+                        <span>Browse all {COMPANION_LABEL_PLURAL.toLowerCase()}</span>
                       </button>
                     )}
                   </div>
@@ -1142,7 +1144,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 className={mobileNavLinkClass}
               >
                 <HeartHandshake className="h-3.5 w-3.5 text-[#8B8275]" />
-                <span>Companions</span>
+                <span>{COMPANION_LABEL_PLURAL}</span>
               </NavLink>
               <NavLink
                 to="/app/apps"

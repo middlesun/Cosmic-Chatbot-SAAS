@@ -5,6 +5,7 @@ import CustomSelect from './CustomSelect';
 import {
   CHAT_NUMERIC_FONT_CLASSES,
   CHAT_NUMERIC_FONT_OPTIONS,
+  COMPANION_LABEL_PLURAL,
   DEFAULT_COUNCIL_EXPERT_SLUG,
   type ChatCatalog,
   type ChatNumericFont,
@@ -357,7 +358,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
                   What should we call you?
                 </label>
                 <span className="text-[11px] text-[#8B8275]">
-                  Used naturally by companions &amp; guides
+                  Used naturally by {COMPANION_LABEL_PLURAL.toLowerCase()} &amp; guides
                 </span>
               </div>
               <input
@@ -559,7 +560,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({
               {onOpenMemoryInspector && (
                 <div className="pt-2 border-t border-[#3D3830]/8 flex items-center justify-between gap-2">
                   <span className="text-[11px] text-[#8B8275]">
-                    View, edit, or reset what companions remember
+                    View, edit, or reset what {COMPANION_LABEL_PLURAL.toLowerCase()} remember
                   </span>
                   <button
                     type="button"

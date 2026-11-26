@@ -3,6 +3,10 @@ import { ArrowRight, Loader2, Search, Sparkles, X } from 'lucide-react';
 import CompanionAvatar from './CompanionAvatar';
 import {
   COMPANION_DISCOVERY_TABS,
+  COMPANION_LABEL_PLURAL,
+  COMPANION_LABEL_SINGULAR,
+  CONSULTANTS_ONLY_MODE,
+  isConsultantCatalogEntryAllowed,
   matchesCompanionDiscoveryFilter,
   type CompanionDiscoveryTabId,
   type PublicCompanionCard,
@@ -83,24 +87,29 @@ const CouncilToCompanionModal: React.FC<CouncilToCompanionModalProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, submittingSlug, onClose]);
 
+  const allowedCompanions = useMemo(
+    () => companions.filter(isConsultantCatalogEntryAllowed),
+    [companions]
+  );
+
   const filteredCompanions = useMemo(
     () =>
-      companions.filter((card) =>
+      allowedCompanions.filter((card) =>
         matchesCompanionDiscoveryFilter(card, {
           groupTab: activeGroup,
           searchQuery,
         })
       ),
-    [companions, activeGroup, searchQuery]
+    [allowedCompanions, activeGroup, searchQuery]
   );
 
   const selectedCard = useMemo(
     () =>
-      companions.find((c) => c.slug === selectedSlug) ||
+      allowedCompanions.find((c) => c.slug === selectedSlug) ||
       filteredCompanions[0] ||
-      companions[0] ||
+      allowedCompanions[0] ||
       null,
-    [companions, filteredCompanions, selectedSlug]
+    [allowedCompanions, filteredCompanions, selectedSlug]
   );
 
   if (!isOpen || !source) return null;
@@ -154,7 +163,7 @@ const CouncilToCompanionModal: React.FC<CouncilToCompanionModalProps> = ({
               id="handoff-modal-title"
               className="font-['Cormorant_Garamond',serif] text-2xl font-semibold text-[#3D3830] leading-tight"
             >
-              Talk through this reading with a Companion
+              Talk through this reading with a {COMPANION_LABEL_SINGULAR}
             </h2>
             <p className="text-xs text-[#5C5449]">
               Bring the key takeaway into a calm chat—either for emotional grounding or plain-English perspective.
@@ -180,7 +189,7 @@ const CouncilToCompanionModal: React.FC<CouncilToCompanionModalProps> = ({
                 htmlFor="handoff-summary-input"
                 className="text-xs font-medium text-[#5C5449]"
               >
-                Reading note shared with your Companion
+                Reading note shared with your {COMPANION_LABEL_SINGULAR}
               </label>
               <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[10px] text-[#8B8275]">
                 {summaryText.length}/1400
@@ -203,38 +212,44 @@ const CouncilToCompanionModal: React.FC<CouncilToCompanionModalProps> = ({
                 onChange={(e) => setRememberReadingNote(e.target.checked)}
                 className="h-3.5 w-3.5 accent-[#4A453D] rounded cursor-pointer"
               />
-              <span>Remember this reading note across future Companion chats</span>
+              <span>Remember this reading note across future {COMPANION_LABEL_SINGULAR} chats</span>
             </label>
           </div>
 
           {/* Companion Picker */}
           <div className="space-y-3 pt-2 border-t border-[#3D3830]/10">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div
-                className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar"
-                role="tablist"
-                aria-label="Filter companions"
-              >
-                {COMPANION_DISCOVERY_TABS.map((tab) => {
-                  const isActive = activeGroup === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      onClick={() => setActiveGroup(tab.id)}
-                      className={`min-h-[34px] shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                        isActive
-                          ? 'bg-[#4A453D] text-[#FAF7F2]'
-                          : 'border border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:bg-[#F1ECE3]'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
+            <div
+              className={`flex flex-col sm:flex-row sm:items-center gap-2.5 ${
+                CONSULTANTS_ONLY_MODE ? 'justify-end' : 'justify-between'
+              }`}
+            >
+              {!CONSULTANTS_ONLY_MODE && (
+                <div
+                  className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar"
+                  role="tablist"
+                  aria-label={`Filter ${COMPANION_LABEL_PLURAL.toLowerCase()}`}
+                >
+                  {COMPANION_DISCOVERY_TABS.map((tab) => {
+                    const isActive = activeGroup === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => setActiveGroup(tab.id)}
+                        className={`min-h-[34px] shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                          isActive
+                            ? 'bg-[#4A453D] text-[#FAF7F2]'
+                            : 'border border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:bg-[#F1ECE3]'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className="relative w-full sm:w-48 shrink-0">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8B8275]" />
@@ -249,7 +264,7 @@ const CouncilToCompanionModal: React.FC<CouncilToCompanionModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    aria-label="Clear companion filter"
+                    aria-label={`Clear ${COMPANION_LABEL_SINGULAR.toLowerCase()} filter`}
                     className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-[#8B8275] hover:text-[#3D3830] cursor-pointer"
                   >
                     <X className="h-3 w-3" />
@@ -260,7 +275,7 @@ const CouncilToCompanionModal: React.FC<CouncilToCompanionModalProps> = ({
 
             {filteredCompanions.length === 0 ? (
               <div className="rounded-2xl border border-[#3D3830]/10 bg-[#FDFBF7] p-5 text-center text-xs text-[#5C5449]">
-                No companions match that search. Try clearing the search box.
+                No {COMPANION_LABEL_PLURAL.toLowerCase()} match that search. Try clearing the search box.
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[260px] overflow-y-auto pr-0.5">
@@ -318,7 +333,7 @@ const CouncilToCompanionModal: React.FC<CouncilToCompanionModalProps> = ({
                 Opening chat with <strong className="text-[#3D3830]">{selectedCard.name}</strong>
               </>
             ) : (
-              'Select a companion above'
+              `Select a ${COMPANION_LABEL_SINGULAR.toLowerCase()} above`
             )}
           </p>
           <div className="flex items-center gap-2">
@@ -346,7 +361,9 @@ const CouncilToCompanionModal: React.FC<CouncilToCompanionModalProps> = ({
               ) : (
                 <>
                   <span>
-                    {selectedCard ? `Talk with ${selectedCard.name}` : 'Open Companion Chat'}
+                    {selectedCard
+                      ? `Talk with ${selectedCard.name}`
+                      : `Open ${COMPANION_LABEL_SINGULAR} Chat`}
                   </span>
                   <ArrowRight className="h-3.5 w-3.5" />
                 </>

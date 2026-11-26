@@ -16,6 +16,8 @@ import HomeLandingPage from './components/landing/HomeLandingPage';
 import NewLandingPage from './components/NewLandingPage';
 import BlogPage from './components/BlogPage';
 import ComingSoonPage from './components/ComingSoonPage';
+import PrivacyPage from './components/PrivacyPage';
+import TermsPage from './components/TermsPage';
 
 const NavigateToBlogSlug: React.FC = () => {
   const { slug } = useParams<{ slug?: string }>();
@@ -233,6 +235,10 @@ const App: React.FC = () => {
       />
       <Route path="/essays" element={<Navigate to="/blog" replace />} />
       <Route path="/essays/:slug" element={<NavigateToBlogSlug />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/privacy-policy" element={<Navigate to="/privacy" replace />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/terms-of-service" element={<Navigate to="/terms" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

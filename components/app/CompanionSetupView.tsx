@@ -24,6 +24,9 @@ import {
   type CompanionSpecializationTag,
 } from '../../lib/companionV2Schema';
 import {
+  COMPANION_LABEL_PLURAL,
+  COMPANION_LABEL_SINGULAR,
+  isConsultantCatalogEntryAllowed,
   matchesCompanionDiscoveryFilter,
   type CompanionArchetypeConfigItem,
   type CompanionArchetypeSlug,
@@ -251,9 +254,9 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
   // Preset hub catalog + saved custom companions
   const [presets, setPresets] = useState<PublicCompanionCard[]>(() =>
     companionCatalog && companionCatalog.length > 0
-      ? companionCatalog
+      ? companionCatalog.filter(isConsultantCatalogEntryAllowed)
       : isPreviewMode
-      ? PREVIEW_PUBLIC_COMPANIONS
+      ? PREVIEW_PUBLIC_COMPANIONS.filter(isConsultantCatalogEntryAllowed)
       : []
   );
   const [customCompanions, setCustomCompanions] = useState<CustomCompanionSummary[]>([]);
@@ -288,14 +291,14 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
 
   useEffect(() => {
     if (companionCatalog && companionCatalog.length > 0) {
-      setPresets(companionCatalog);
+      setPresets(companionCatalog.filter(isConsultantCatalogEntryAllowed));
       setLoadingHub(false);
     }
   }, [companionCatalog]);
 
   useEffect(() => {
     if (isPreviewMode) {
-      setPresets(PREVIEW_PUBLIC_COMPANIONS);
+      setPresets(PREVIEW_PUBLIC_COMPANIONS.filter(isConsultantCatalogEntryAllowed));
       setLoadingHub(false);
       return;
     }
@@ -318,7 +321,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
         const loadedCards = Array.isArray(data.companions)
-          ? (data.companions as PublicCompanionCard[])
+          ? (data.companions as PublicCompanionCard[]).filter(isConsultantCatalogEntryAllowed)
           : [];
         const loadedCustom = Array.isArray(data.customCompanions)
           ? (data.customCompanions as CustomCompanionSummary[])
@@ -369,7 +372,8 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
 
   // Merge live thread counts from pastCompanionConversations for snappy UI updates
   const enrichedPresets = useMemo(() => {
-    if (pastCompanionConversations.length === 0) return presets;
+    const allowed = presets.filter(isConsultantCatalogEntryAllowed);
+    if (pastCompanionConversations.length === 0) return allowed;
     const bySlug = new Map<string, ConversationRecord>();
     for (const conv of pastCompanionConversations) {
       const slug = conv.companion_slug || conv.companion_persona_json?.slug;
@@ -377,7 +381,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
         bySlug.set(slug, conv);
       }
     }
-    return presets.map((card) => {
+    return allowed.map((card) => {
       const localLatest = bySlug.get(card.slug);
       if (!localLatest) return card;
       return {
@@ -436,7 +440,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
     try {
       const token = await getAccessToken();
       if (!token) {
-        setErrorMsg('Please sign in to match with a companion.');
+        setErrorMsg(`Please sign in to match with a ${COMPANION_LABEL_SINGULAR.toLowerCase()}.`);
         setStep('intake');
         return;
       }
@@ -463,7 +467,9 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !Array.isArray(data.companions) || data.companions.length === 0) {
-        throw new Error(data.error || 'Could not find companion matches right now.');
+        throw new Error(
+          data.error || `Could not find ${COMPANION_LABEL_SINGULAR.toLowerCase()} matches right now.`
+        );
       }
 
       const generated = data.companions as CompanionPersona[];
@@ -601,13 +607,13 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
           <div className="space-y-6 animate-cc-message-in">
             <div className="space-y-2">
               <p className="text-[11px] font-medium text-[#8B8275]">
-                Companions · Judgment-free human space
+                {COMPANION_LABEL_PLURAL} · Personal Astrological &amp; Esoteric Counsel
               </p>
               <h2 className="font-['Cormorant_Garamond',serif] text-2xl sm:text-3xl font-medium text-[#3D3830] leading-tight text-balance">
-                Someone in your corner, whenever you want company
+                Personal consultants aligned with your chart and life path
               </h2>
               <p className="text-xs sm:text-sm text-[#5C5449] leading-relaxed max-w-2xl">
-                Vent freely, talk about nothing at all, or invite grounded astrology, tarot, or numerology when you want perspective. Every companion remembers your story across chats together—strictly private and platonic.
+                Talk through decisions, relationships, timing, or deeper reflection with Vedic, Western, Tarot, and Numerology guides. Every {COMPANION_LABEL_SINGULAR.toLowerCase()} remembers your story across chats together—strictly private and grounded.
               </p>
             </div>
 
@@ -638,7 +644,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-[#5C5449]">
-                    Your matched companions
+                    Your matched {COMPANION_LABEL_PLURAL.toLowerCase()}
                   </h3>
                   <span className="text-[11px] font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275]">
                     {customCompanions.length} saved
@@ -723,7 +729,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                                 tagline: p.tagline || '',
                                 short_bio: p.bio || p.tagline || '',
                                 full_bio: p.bio || p.tagline || '',
-                                primary_expertise: p.role_label || 'Companion',
+                                primary_expertise: p.role_label || COMPANION_LABEL_SINGULAR,
                                 secondary_expertise: [],
                                 category_tag: 'friends',
                                 cultural_fluency: p.background || '',
@@ -789,10 +795,10 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                 {filteredPresets.length === 0 ? (
                   <div className="md:col-span-2 rounded-3xl border border-[#3D3830]/12 bg-[#FDFBF7] p-7 text-center space-y-2.5">
                     <p className="font-['Cormorant_Garamond',serif] text-xl font-medium text-[#3D3830]">
-                      No companions match that filter or search
+                      No {COMPANION_LABEL_PLURAL.toLowerCase()} match that filter or search
                     </p>
                     <p className="text-xs text-[#5C5449]">
-                      Reset your filters or match a custom companion below.
+                      Reset your filters or match a custom {COMPANION_LABEL_SINGULAR.toLowerCase()} below.
                     </p>
                     <button
                       type="button"
@@ -920,7 +926,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                         Find someone new
                       </h3>
                       <p className="text-xs text-[#5C5449] leading-relaxed">
-                        Want a companion shaped around something specific—like a spiritual tradition, life coach, or fresh voice? Tell us briefly and meet 4 tailored matches.
+                        Want a {COMPANION_LABEL_SINGULAR.toLowerCase()} shaped around something specific—like a spiritual tradition, focus area, or fresh perspective? Tell us briefly and meet 4 tailored matches.
                       </p>
                     </div>
                   </div>
@@ -946,18 +952,18 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
               className="inline-flex items-center gap-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] transition-colors cursor-pointer"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Back to all companions</span>
+              <span>Back to all {COMPANION_LABEL_PLURAL.toLowerCase()}</span>
             </button>
 
             <div className="space-y-2">
               <p className="text-[11px] font-medium text-[#8B8275]">
-                Find someone new · Custom companion match
+                Find someone new · Custom {COMPANION_LABEL_SINGULAR.toLowerCase()} match
               </p>
               <h2 className="font-['Cormorant_Garamond',serif] text-2xl sm:text-3xl font-medium text-[#3D3830] leading-tight text-balance">
                 Who would feel right to talk with today?
               </h2>
               <p className="text-xs sm:text-sm text-[#5C5449] leading-relaxed max-w-xl">
-                Pick a direction below. We will ask two brief questions and introduce four grounded, realistic companions matched to what you need — strictly private, platonic, and honest.
+                Pick a direction below. We will ask two brief questions and introduce four grounded, realistic {COMPANION_LABEL_PLURAL.toLowerCase()} matched to what you need — strictly private, platonic, and honest.
               </p>
             </div>
 
@@ -1016,17 +1022,17 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                 }}
                 className="text-xs font-medium text-[#8B8275] hover:text-[#3D3830] transition-colors cursor-pointer"
               >
-                Browse preset companions
+                Browse preset {COMPANION_LABEL_PLURAL.toLowerCase()}
               </button>
             </div>
 
             <div className="space-y-1.5">
               <p className="text-[11px] font-medium text-[#8B8275]">
-                Companion · {activeArchetypeMeta.label}
+                {COMPANION_LABEL_SINGULAR} · {activeArchetypeMeta.label}
               </p>
               <h2 className="font-['Cormorant_Garamond',serif] text-2xl sm:text-3xl font-medium text-[#3D3830] text-balance">
                 {activeArchetypeMeta.isSpiritual
-                  ? 'Tune your spiritual companion'
+                  ? `Tune your spiritual ${COMPANION_LABEL_SINGULAR.toLowerCase()}`
                   : 'Tell us a little before we match you'}
               </h2>
               <p className="text-xs text-[#5C5449] leading-relaxed">
@@ -1175,7 +1181,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                   className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] active:scale-[0.98] transition-all cursor-pointer"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
-                  <span>Find my companion</span>
+                  <span>Find my {COMPANION_LABEL_SINGULAR.toLowerCase()}</span>
                 </button>
               </div>
             </div>
@@ -1216,7 +1222,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                   Choose who you would like to talk with
                 </h2>
                 <p className="text-xs text-[#5C5449]">
-                  {activeArchetypeMeta.label} · 4 matched companions (2 women, 2 men)
+                  {activeArchetypeMeta.label} · 4 matched {COMPANION_LABEL_PLURAL.toLowerCase()} (2 women, 2 men)
                 </p>
               </div>
 
@@ -1226,7 +1232,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                 className="min-h-[42px] inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors cursor-pointer"
               >
                 <RefreshCw className="h-3.5 w-3.5 text-[#8B7355]" />
-                <span>Show different companions</span>
+                <span>Show different {COMPANION_LABEL_PLURAL.toLowerCase()}</span>
               </button>
             </div>
 

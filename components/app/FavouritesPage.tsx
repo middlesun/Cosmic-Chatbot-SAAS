@@ -20,6 +20,10 @@ import {
   PREVIEW_FAVORITES,
   PREVIEW_PROFILES,
 } from './previewFixtures';
+import {
+  COMPANION_LABEL_PLURAL,
+  COMPANION_LABEL_SINGULAR,
+} from './chatTypes';
 
 interface FavouriteAppItem {
   slug: string;
@@ -256,7 +260,7 @@ const FavouritesPage: React.FC = () => {
     { id: 'all', label: 'All', count: totalCount },
     { id: 'apps', label: 'Apps', count: data.apps.length },
     { id: 'reports', label: 'Reports', count: data.reports.length },
-    { id: 'chats', label: 'Chats & Companions', count: data.conversations.length },
+    { id: 'chats', label: `Chats & ${COMPANION_LABEL_PLURAL}`, count: data.conversations.length },
     { id: 'insights', label: 'Insights', count: data.starredMessages.length },
     { id: 'profiles', label: 'Profiles', count: data.profiles.length },
   ];
@@ -363,7 +367,7 @@ const FavouritesPage: React.FC = () => {
               Favourites
             </h1>
             <p className="mt-1 text-sm text-[#5C5449]">
-              Quick access to your starred Apps, Reports, Chats, Companions, Insights, and Profiles.
+              Quick access to your starred Apps, Reports, Chats, {COMPANION_LABEL_PLURAL}, Insights, and Profiles.
             </p>
           </div>
           <div className="relative w-full sm:w-72">
@@ -563,7 +567,7 @@ const FavouritesPage: React.FC = () => {
               <section className="space-y-3">
                 <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-[#8B8275]">
                   <MessageSquare className="h-3.5 w-3.5 text-[#8B7355]" />
-                  <span>Starred Chats & Companions</span>
+                  <span>Starred Chats &amp; {COMPANION_LABEL_PLURAL}</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                   {filtered.conversations.map((conv) => (
@@ -576,7 +580,7 @@ const FavouritesPage: React.FC = () => {
                           {conv.kind === 'companion' ? (
                             <>
                               <HeartHandshake className="h-3.5 w-3.5" />
-                              <span>Companion{conv.companionRole ? ` · ${conv.companionRole}` : ''}</span>
+                              <span>{COMPANION_LABEL_SINGULAR}{conv.companionRole ? ` · ${conv.companionRole}` : ''}</span>
                             </>
                           ) : (
                             <>

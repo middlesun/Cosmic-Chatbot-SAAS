@@ -25,6 +25,8 @@ import LifeContextModal from './LifeContextModal';
 import TimingRadarDashboard from './TimingRadarDashboard';
 import { getUserProfileDisplayLabel } from './chatUtilities';
 import {
+  COMPANION_LABEL_PLURAL,
+  isConsultantCatalogEntryAllowed,
   matchesCompanionDiscoveryFilter,
   type CompanionDiscoveryTabId,
 } from './chatTypes';
@@ -559,7 +561,7 @@ const AppDashboardHome: React.FC = () => {
             }
           }
           return merged;
-        })();
+        })().filter(isConsultantCatalogEntryAllowed);
 
         if (baseCompanions.length === 0) return null;
 
@@ -586,7 +588,7 @@ const AppDashboardHome: React.FC = () => {
           <section className="space-y-4">
             <div className="flex items-end justify-between gap-4">
               <h2 className="font-serif text-2xl md:text-3xl font-medium text-[#3D3830]">
-                Companions
+                {COMPANION_LABEL_PLURAL}
               </h2>
               <Link
                 to="/app/companions"
@@ -628,7 +630,7 @@ const AppDashboardHome: React.FC = () => {
             {displayedCompanions.length === 0 ? (
               <div className="rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/12 p-6 text-center space-y-2.5">
                 <p className="font-serif text-lg text-[#3D3830]">
-                  No companions match this filter or search
+                  No {COMPANION_LABEL_PLURAL.toLowerCase()} match this filter or search
                 </p>
                 <button
                   type="button"
@@ -697,7 +699,7 @@ const AppDashboardHome: React.FC = () => {
                       <span>
                         {showAllDashboardCompanions
                           ? 'Show fewer'
-                          : `Show all ${filteredCompanions.length} companions`}
+                          : `Show all ${filteredCompanions.length} ${COMPANION_LABEL_PLURAL.toLowerCase()}`}
                       </span>
                     </button>
                   </div>

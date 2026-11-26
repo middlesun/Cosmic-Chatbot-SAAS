@@ -245,11 +245,11 @@ export const PricingSection: React.FC = () => {
                   >
                     <div className="space-y-5">
                       <div className="flex items-center justify-between gap-2 text-xs text-[#8B8275]">
-                        <span className="font-['JetBrains_Mono',monospace] tabular-nums">
+                        <span className="font-['DM_Sans',sans-serif] tabular-nums">
                           {tier.profileLimit} Profiles
                         </span>
                         {tier.includedMonthlyCredits > 0 && (
-                          <span className="font-['JetBrains_Mono',monospace] tabular-nums text-[#6B5A45]">
+                          <span className="font-['DM_Sans',sans-serif] tabular-nums text-[#6B5A45]">
                             +{tier.includedMonthlyCredits.toLocaleString()} credits
                           </span>
                         )}
@@ -259,7 +259,7 @@ export const PricingSection: React.FC = () => {
                         <h4 className="font-['Cormorant_Garamond',serif] text-2xl font-medium text-[#3D3830]">
                           {tier.name}
                         </h4>
-                        <p className="mt-2 font-['JetBrains_Mono',monospace] tabular-nums text-2xl font-medium text-[#3D3830]">
+                        <p className="mt-2 font-['DM_Sans',sans-serif] tabular-nums text-2xl font-medium text-[#3D3830]">
                           {formatCurrencyAmount(price, currency)}
                           {price > 0 && (
                             <span className="font-['Plus_Jakarta_Sans',sans-serif] text-xs font-normal text-[#8B8275]">
@@ -336,7 +336,7 @@ export const PricingSection: React.FC = () => {
                       </div>
 
                       <div>
-                        <p className="font-['JetBrains_Mono',monospace] tabular-nums text-3xl font-medium text-[#3D3830] leading-tight">
+                        <p className="font-['DM_Sans',sans-serif] tabular-nums text-3xl font-medium text-[#3D3830] leading-tight">
                           {pack.credits.toLocaleString()}
                         </p>
                         <p className="text-sm font-medium text-[#5C5449] mt-0.5">
@@ -350,7 +350,7 @@ export const PricingSection: React.FC = () => {
                     </div>
 
                     <div className="pt-4 border-t border-[#3D3830]/10 flex items-center justify-between gap-4">
-                      <span className="font-['JetBrains_Mono',monospace] tabular-nums text-xl font-medium text-[#3D3830]">
+                      <span className="font-['DM_Sans',sans-serif] tabular-nums text-xl font-medium text-[#3D3830]">
                         {formatCurrencyAmount(packPrice, currency)}
                       </span>
                       <Link

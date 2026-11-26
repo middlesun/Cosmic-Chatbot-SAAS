@@ -16,8 +16,14 @@ import {
 } from 'lucide-react';
 import CustomDatePicker from './CustomDatePicker';
 import CustomSelect from './CustomSelect';
-import { PREVIEW_MEMORY_SNAPSHOT } from './previewFixtures';
-import type { UserMemoryBondSummary, UserMemorySnapshot } from './chatTypes';
+import { PREVIEW_MEMORY_SNAPSHOT, PREVIEW_PUBLIC_COMPANIONS } from './previewFixtures';
+import {
+  COMPANION_LABEL_PLURAL,
+  COMPANION_LABEL_SINGULAR,
+  isConsultantCatalogEntryAllowed,
+  type UserMemoryBondSummary,
+  type UserMemorySnapshot,
+} from './chatTypes';
 import {
   BIRTH_TIME_ACCURACY_OPTIONS,
   CAREER_MODE_OPTIONS,
@@ -237,7 +243,16 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
           Object.keys(prev).length > 0 ? prev : cloneDeepProfile(PREVIEW_MEMORY_SNAPSHOT.deepProfile)
         );
         setMemoryPreferences({ ...PREVIEW_MEMORY_SNAPSHOT.preferences });
-        setMemoryBonds(PREVIEW_MEMORY_SNAPSHOT.bonds.map((b) => ({ ...b })));
+        setMemoryBonds(
+          PREVIEW_MEMORY_SNAPSHOT.bonds
+            .filter((b) => {
+              const card = PREVIEW_PUBLIC_COMPANIONS.find(
+                (c) => c.slug === b.companion_slug
+              );
+              return card ? isConsultantCatalogEntryAllowed(card) : true;
+            })
+            .map((b) => ({ ...b }))
+        );
         return;
       }
 
@@ -808,7 +823,7 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
               <h2 className="font-serif text-2xl font-medium text-[#3D3830] truncate">
                 {isUserMemoryMode
                   ? activeTab === 'memory'
-                    ? 'What Companions Remember'
+                    ? `What ${COMPANION_LABEL_PLURAL} Remember`
                     : 'Your Living Story'
                   : `Calibrate ${profileName}`}
               </h2>
@@ -825,7 +840,7 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
 
           <p className="text-xs text-[#5C5449] leading-relaxed">
             {isUserMemoryMode
-              ? 'Everything you share or let Companions notice stays here — completely independent of any birth chart. Edit, pause, or forget anything anytime.'
+              ? `Everything you share or let ${COMPANION_LABEL_PLURAL} notice stays here — completely independent of any birth chart. Edit, pause, or forget anything anytime.`
               : LIFE_CONTEXT_FRAMING_COPY}
           </p>
 
@@ -921,7 +936,7 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                           Pause automatic memory learning
                         </p>
                         <p className="text-[11px] text-[#8B8275] leading-relaxed">
-                          When paused, Companions still use what is already saved here, without learning new facts after turns.
+                          When paused, {COMPANION_LABEL_PLURAL} still use what is already saved here, without learning new facts after turns.
                         </p>
                       </div>
                     </div>
@@ -948,10 +963,10 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                       <Share2 className="h-4 w-4 text-[#8B7355] mt-0.5 shrink-0" />
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-[#3D3830]">
-                          Share context across companions
+                          Share context across {COMPANION_LABEL_PLURAL.toLowerCase()}
                         </p>
                         <p className="text-[11px] text-[#8B8275] leading-relaxed">
-                          Allow notes learned by one Companion to support continuity with others (you can keep each Companion separate when off).
+                          Allow notes learned by one {COMPANION_LABEL_SINGULAR} to support continuity with others (you can keep each {COMPANION_LABEL_SINGULAR} separate when off).
                         </p>
                       </div>
                     </div>
@@ -959,7 +974,7 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                       type="button"
                       role="switch"
                       aria-checked={memoryPreferences.allow_cross_companion_memory}
-                      aria-label="Share context across companions"
+                      aria-label={`Share context across ${COMPANION_LABEL_PLURAL.toLowerCase()}`}
                       onClick={() => void handleToggleMemoryPref('allow_cross_companion_memory')}
                       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 cursor-pointer ${
                         memoryPreferences.allow_cross_companion_memory
@@ -982,16 +997,16 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                 <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 space-y-3">
                   <div>
                     <p className="text-xs font-semibold text-[#3D3830]">
-                      Companion Bonds &amp; Continuity
+                      {COMPANION_LABEL_SINGULAR} Bonds &amp; Continuity
                     </p>
                     <p className="text-[11px] text-[#8B8275] mt-0.5">
-                      Each Companion remembers your tone preferences and shared threads separately.
+                      Each {COMPANION_LABEL_SINGULAR} remembers your tone preferences and shared threads separately.
                     </p>
                   </div>
 
                   {memoryBonds.length === 0 ? (
                     <p className="rounded-xl bg-[#FAF7F2] border border-[#3D3830]/10 px-3.5 py-3 text-xs text-[#8B8275]">
-                      No companion bond memories stored yet. As you chat with a Companion, gentle continuity notes appear here for you to inspect or reset.
+                      No {COMPANION_LABEL_SINGULAR.toLowerCase()} bond memories stored yet. As you chat with a {COMPANION_LABEL_SINGULAR}, gentle continuity notes appear here for you to inspect or reset.
                     </p>
                   ) : (
                     <div className="space-y-2.5">
@@ -1147,7 +1162,7 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                 {/* Empty-state hint when no extracted insights or deep patterns yet */}
                 {!hasAnyLivingProfileSection && !memoryLoading && (
                   <div className="rounded-2xl bg-[#FDFBF7] border border-[#3D3830]/10 p-4 text-xs text-[#5C5449] leading-relaxed">
-                    No extracted insights or recurring patterns yet. You can add your background anytime in the <span className="font-medium text-[#3D3830]">Context &amp; Story</span> tab, or let Companions learn gently as you talk.
+                    No extracted insights or recurring patterns yet. You can add your background anytime in the <span className="font-medium text-[#3D3830]">Context &amp; Story</span> tab, or let {COMPANION_LABEL_PLURAL} learn gently as you talk.
                   </div>
                 )}
               </div>
@@ -1550,7 +1565,7 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                   </label>
                   <p className="text-[11px] text-[#8B8275] mt-0.5">
                     {isUserMemoryMode
-                      ? 'Major milestones & life chapters that help Companions understand where you have been.'
+                      ? `Major milestones & life chapters that help ${COMPANION_LABEL_PLURAL} understand where you have been.`
                       : 'Helps cross-check how active planetary periods manifested in real life.'}
                   </p>
                 </div>
@@ -1624,7 +1639,7 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                       : '6. Living Profile Notes & Citations'}
                   </label>
                   <p className="text-[11px] text-[#8B8275] mt-0.5">
-                    Details remembered across conversations with your Council and Companions so you never have to repeat yourself. Edit or remove anything anytime.
+                    Details remembered across conversations with your Council and {COMPANION_LABEL_PLURAL} so you never have to repeat yourself. Edit or remove anything anytime.
                   </p>
                 </div>
 
@@ -1794,7 +1809,7 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                         Deep Personal Patterns &amp; Tendencies
                       </p>
                       <p className="text-[10px] text-[#8B8275]">
-                        Emotional habits, goals, and practical dynamics shared across your Council &amp; Companion sessions.
+                        Emotional habits, goals, and practical dynamics shared across your Council &amp; {COMPANION_LABEL_SINGULAR} sessions.
                       </p>
                     </div>
                     <div className="space-y-2">
@@ -1918,7 +1933,7 @@ const LifeContextModal: React.FC<LifeContextModalProps> = ({
                         Council Chart Takeaways
                       </p>
                       <p className="text-[10px] text-[#8B8275]">
-                        Key astrology findings shared silently with chart-aware Companions so advice stays consistent.
+                        Key astrology findings shared silently with chart-aware {COMPANION_LABEL_PLURAL} so advice stays consistent.
                       </p>
                     </div>
                     <div className="space-y-2">

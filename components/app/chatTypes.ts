@@ -21,16 +21,24 @@ import {
 import type { DrawnTarotCard, DrawnTarotSpread } from '../../lib/tarotDeck';
 import {
   BUILTIN_COMPANION_SPECIALIZATIONS,
+  COMPANION_LABEL_PLURAL,
+  COMPANION_LABEL_SINGULAR,
   COMPANION_SUBFILTER_HEADING_BY_GROUP,
+  CONSULTANTS_ONLY_MODE,
   DEFAULT_COMPANION_SPECIALIZATIONS,
   hasOnlyLegacySpecializationSlugs,
   inferSpecializationsForCompanion,
+  isConsultantCatalogEntryAllowed,
   normalizeSpecializationSlugsWithMigration,
 } from '../../lib/companionV2Schema';
 
 export {
+  COMPANION_LABEL_PLURAL,
+  COMPANION_LABEL_SINGULAR,
   COMPANION_SUBFILTER_HEADING_BY_GROUP,
+  CONSULTANTS_ONLY_MODE,
   DEFAULT_COUNCIL_EXPERT_SLUG,
+  isConsultantCatalogEntryAllowed,
   normalizeCouncilSlug,
 };
 
@@ -323,21 +331,28 @@ export type CompanionDiscoveryTabId = 'all' | CompanionGroup;
 export const COMPANION_CATEGORY_TABS: Array<{
   id: CompanionGroup;
   label: string;
-}> = [
-  { id: 'spiritual_guides', label: 'Spiritual Guides' },
-  { id: 'everyday_companions', label: 'Everyday Companions' },
-  { id: 'life_companions', label: 'Life Companions' },
-];
+}> = CONSULTANTS_ONLY_MODE
+  ? [{ id: 'spiritual_guides', label: 'Consultants' }]
+  : [
+      { id: 'spiritual_guides', label: 'Spiritual Guides' },
+      { id: 'everyday_companions', label: 'Everyday Companions' },
+      { id: 'life_companions', label: 'Life Companions' },
+    ];
 
 export const COMPANION_DISCOVERY_TABS: Array<{
   id: CompanionDiscoveryTabId;
   label: string;
-}> = [
-  { id: 'all', label: 'All' },
-  { id: 'spiritual_guides', label: 'Spiritual Guides' },
-  { id: 'everyday_companions', label: 'Everyday Companions' },
-  { id: 'life_companions', label: 'Life Companions' },
-];
+}> = CONSULTANTS_ONLY_MODE
+  ? [
+      { id: 'all', label: 'All' },
+      { id: 'spiritual_guides', label: 'Consultants' },
+    ]
+  : [
+      { id: 'all', label: 'All' },
+      { id: 'spiritual_guides', label: 'Spiritual Guides' },
+      { id: 'everyday_companions', label: 'Everyday Companions' },
+      { id: 'life_companions', label: 'Life Companions' },
+    ];
 
 export interface CompanionSituationChip {
   id: string;

@@ -1704,6 +1704,12 @@ const FlagshipHomePage: React.FC = () => {
             <Link to="/blog" className="hover:text-[#3D3830] transition-colors">
               Journal
             </Link>
+            <Link to="/privacy" className="hover:text-[#3D3830] transition-colors">
+              Privacy
+            </Link>
+            <Link to="/terms" className="hover:text-[#3D3830] transition-colors">
+              Terms
+            </Link>
             <Link to="/app/login" className="hover:text-[#3D3830] transition-colors">
               Login
             </Link>

@@ -24,7 +24,11 @@ import CouncilToCompanionModal, {
   type CouncilHandoffConfirmPayload,
   type CouncilHandoffSource,
 } from './CouncilToCompanionModal';
-import type { PublicCompanionCard } from './chatTypes';
+import {
+  COMPANION_LABEL_SINGULAR,
+  isConsultantCatalogEntryAllowed,
+  type PublicCompanionCard,
+} from './chatTypes';
 import { PREVIEW_PUBLIC_COMPANIONS } from './previewFixtures';
 
 export type NoteSourceType = 'personal' | 'council' | 'companion' | 'apps' | 'reports';
@@ -53,7 +57,7 @@ const SOURCE_TABS: { id: 'all' | NoteSourceType; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'personal', label: 'Personal' },
   { id: 'council', label: 'Council' },
-  { id: 'companion', label: 'Companion' },
+  { id: 'companion', label: COMPANION_LABEL_SINGULAR },
   { id: 'apps', label: 'Apps' },
   { id: 'reports', label: 'Reports' },
 ];
@@ -61,7 +65,7 @@ const SOURCE_TABS: { id: 'all' | NoteSourceType; label: string }[] = [
 const SOURCE_LABELS: Record<NoteSourceType, string> = {
   personal: 'Personal Note',
   council: 'Council Chat',
-  companion: 'Companion',
+  companion: COMPANION_LABEL_SINGULAR,
   apps: 'Mini-App',
   reports: 'My Reports',
 };
@@ -256,7 +260,7 @@ const NotesPage: React.FC = () => {
       setProfiles([
         { id: 'preview-prof-1', name: 'Aarav Mehta (Sample)', short_name: 'Aarav', is_default: true },
       ]);
-      setCompanionCatalog(PREVIEW_PUBLIC_COMPANIONS);
+      setCompanionCatalog(PREVIEW_PUBLIC_COMPANIONS.filter(isConsultantCatalogEntryAllowed));
       setSelectedNoteId((prev) => prev || PREVIEW_NOTES[0]?.id || null);
       setIsLoading(false);
       return;
@@ -297,7 +301,9 @@ const NotesPage: React.FC = () => {
       if (compRes.ok) {
         const compData = await compRes.json().catch(() => ({}));
         if (Array.isArray(compData.companions)) {
-          setCompanionCatalog(compData.companions as PublicCompanionCard[]);
+          setCompanionCatalog(
+            (compData.companions as PublicCompanionCard[]).filter(isConsultantCatalogEntryAllowed)
+          );
         }
       }
     } catch {
@@ -342,7 +348,7 @@ const NotesPage: React.FC = () => {
 
     const token = await getAccessToken();
     if (!token) {
-      setErrorMsg('Please sign in to chat with a companion.');
+      setErrorMsg(`Please sign in to chat with a ${COMPANION_LABEL_SINGULAR.toLowerCase()}.`);
       return;
     }
 
@@ -380,7 +386,7 @@ const NotesPage: React.FC = () => {
       setHandoffSource(null);
       navigate(`/app/chat/${encodeURIComponent(data.conversation.id)}`);
     } catch {
-      setErrorMsg('Network error starting Companion chat.');
+      setErrorMsg(`Network error starting ${COMPANION_LABEL_SINGULAR} chat.`);
     } finally {
       setHandoffSubmittingSlug(null);
     }
@@ -991,7 +997,7 @@ const NotesPage: React.FC = () => {
                             className="inline-flex items-center gap-1.5 rounded-xl bg-[#4A453D] hover:bg-[#38342E] text-[#FAF7F2] px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer"
                           >
                             <HeartHandshake className="h-3.5 w-3.5" />
-                            <span>Talk with Companion</span>
+                            <span>Talk with {COMPANION_LABEL_SINGULAR}</span>
                           </button>
                         )}
                       <button

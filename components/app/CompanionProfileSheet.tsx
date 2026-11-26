@@ -1,7 +1,11 @@
 import React, { useEffect } from 'react';
 import { MessageCircle, Plus, X } from 'lucide-react';
 import CompanionAvatar from './CompanionAvatar';
-import type { CompanionSkillLevel, PublicCompanionCard } from './chatTypes';
+import {
+  COMPANION_LABEL_SINGULAR,
+  type CompanionSkillLevel,
+  type PublicCompanionCard,
+} from './chatTypes';
 
 interface CompanionProfileSheetProps {
   companion: PublicCompanionCard | null;
@@ -107,7 +111,7 @@ const CompanionProfileSheet: React.FC<CompanionProfileSheetProps> = ({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close companion profile"
+            aria-label={`Close ${COMPANION_LABEL_SINGULAR.toLowerCase()} profile`}
             className="min-h-[44px] min-w-[44px] -mr-2 -mt-1 flex items-center justify-center rounded-full text-[#8B8275] hover:text-[#3D3830] hover:bg-[#EAE3D7]/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A]"
           >
             <X className="w-5 h-5" />

@@ -14,12 +14,15 @@ import {
 } from 'lucide-react';
 import Tooltip from './Tooltip';
 import CompanionAvatar from './CompanionAvatar';
-import type {
-  ActiveChatTab,
-  ChatCatalog,
-  CompanionArchetypeSlug,
-  ConversationRecord,
-  PublicCompanionCard,
+import {
+  COMPANION_LABEL_PLURAL,
+  COMPANION_LABEL_SINGULAR,
+  isConsultantCatalogEntryAllowed,
+  type ActiveChatTab,
+  type ChatCatalog,
+  type CompanionArchetypeSlug,
+  type ConversationRecord,
+  type PublicCompanionCard,
 } from './chatTypes';
 
 interface ComposerTabStripProps {
@@ -449,13 +452,18 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
     return experts;
   }, [catalog?.experts, defaultAstrologyMode]);
 
+  const allowedCompanionCatalog = useMemo(
+    () => companionCatalog.filter(isConsultantCatalogEntryAllowed),
+    [companionCatalog]
+  );
+
   const companionBySlug = useMemo(() => {
     const map = new Map<string, PublicCompanionCard>();
-    for (const card of companionCatalog) {
+    for (const card of allowedCompanionCatalog) {
       map.set(card.slug.toLowerCase(), card);
     }
     return map;
-  }, [companionCatalog]);
+  }, [allowedCompanionCatalog]);
 
   const { displayedPastCompanions, otherPresetCompanions } = useMemo(() => {
     const pastSlice = pastCompanionConversations.slice(0, 6);
@@ -470,14 +478,14 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
         .toLowerCase();
       if (slug) seenSlugs.add(slug);
     }
-    const others = companionCatalog.filter(
+    const others = allowedCompanionCatalog.filter(
       (c) => !seenSlugs.has(c.slug.toLowerCase())
     );
     return {
       displayedPastCompanions: pastSlice,
       otherPresetCompanions: others,
     };
-  }, [pastCompanionConversations, companionCatalog]);
+  }, [pastCompanionConversations, allowedCompanionCatalog]);
 
   const closeCustomizeMenu = () => {
     setCustomizeTabId(null);
@@ -538,7 +546,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                     : 'text-[#5C5449] hover:text-[#3D3830]'
                 }`}
               >
-                Companions
+                {COMPANION_LABEL_PLURAL}
               </button>
             </div>
 
@@ -568,7 +576,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                           </p>
                           <p className="text-[10px] text-[#8B8275] truncate">
                             {conv.pillar === 'companion'
-                              ? 'Companion'
+                              ? COMPANION_LABEL_SINGULAR
                               : conv.pillar === 'clarity'
                               ? 'Clarity'
                               : 'Council'}
@@ -646,7 +654,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                       <span className="inline-flex items-center gap-2 min-w-0">
                         <HeartHandshake className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
                         <span className="text-xs font-medium text-[#3D3830] truncate">
-                          Browse all companions
+                          Browse all {COMPANION_LABEL_PLURAL.toLowerCase()}
                         </span>
                       </span>
                       <ChevronRight className="h-3.5 w-3.5 text-[#8B8275] shrink-0" />
@@ -656,7 +664,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                   {displayedPastCompanions.length > 0 && (
                     <div className="pb-1.5 mb-1.5 border-b border-[#3D3830]/10 space-y-0.5">
                       <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
-                        Past companions
+                        Past {COMPANION_LABEL_PLURAL.toLowerCase()}
                       </p>
                       {displayedPastCompanions.map((conv) => {
                         const slug = (
@@ -718,8 +726,8 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                     <div className="pb-1.5 mb-1.5 border-b border-[#3D3830]/10 space-y-0.5">
                       <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
                         {displayedPastCompanions.length > 0
-                          ? 'Other companions'
-                          : 'Companions'}
+                          ? `Other ${COMPANION_LABEL_PLURAL.toLowerCase()}`
+                          : COMPANION_LABEL_PLURAL}
                       </p>
                       {otherPresetCompanions.map((card) => (
                         <button
@@ -755,7 +763,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
                   )}
 
                   <p className="px-2.5 py-1 text-[10px] text-[#8B8275]">
-                    Match a new companion
+                    Match a new {COMPANION_LABEL_SINGULAR.toLowerCase()}
                   </p>
                   {COMPANION_QUICK_TYPES.map((ct) => (
                     <button
@@ -970,7 +978,7 @@ const ComposerTabStrip: React.FC<ComposerTabStripProps> = ({
 
           const tabTooltip =
             tab.pillar === 'companion'
-              ? 'Feel better talking to companions'
+              ? `Talk through life with ${COMPANION_LABEL_PLURAL.toLowerCase()}`
               : tab.pillar === 'clarity'
               ? 'A temporary sidechat to clear doubts'
               : tab.subtitle

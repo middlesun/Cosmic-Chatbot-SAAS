@@ -1461,3 +1461,31 @@ export function computeCompanionFieldDiffs(
   return diffs;
 }
 
+/**
+ * Reversible Consultants-only strategic mode.
+ * Set CONSULTANTS_ONLY_MODE to `false` (or update EXCLUDED_CONSULTANT_SLUGS_WHEN_CONSULTANTS_ONLY)
+ * to instantly restore Everyday Companions, Life Companions, Shanti, and Omar without data loss.
+ */
+export const CONSULTANTS_ONLY_MODE = true;
+
+export const EXCLUDED_CONSULTANT_SLUGS_WHEN_CONSULTANTS_ONLY: readonly string[] = [
+  'shanti',
+  'omar',
+] as const;
+
+export const COMPANION_LABEL_SINGULAR = CONSULTANTS_ONLY_MODE ? 'Consultant' : 'Companion';
+export const COMPANION_LABEL_PLURAL = CONSULTANTS_ONLY_MODE ? 'Consultants' : 'Companions';
+
+export function isConsultantCatalogEntryAllowed(item: {
+  slug?: string | null;
+  companion_group?: string | null;
+}): boolean {
+  if (!CONSULTANTS_ONLY_MODE) return true;
+  const slug = String(item.slug || '').trim().toLowerCase();
+  if (slug && EXCLUDED_CONSULTANT_SLUGS_WHEN_CONSULTANTS_ONLY.includes(slug)) {
+    return false;
+  }
+  const group = String(item.companion_group || '').trim().toLowerCase();
+  return group === 'spiritual_guides' || group === 'spiritual';
+}
+

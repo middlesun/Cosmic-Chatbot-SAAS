@@ -31,6 +31,7 @@ import Tooltip from './Tooltip';
 import UserAvatar from './UserAvatar';
 import PendingOnboardingHydrator from './PendingOnboardingHydrator';
 import { getUserProfileDisplayLabel } from './chatUtilities';
+import { COMPANION_LABEL_PLURAL } from './chatTypes';
 
 const APP_SIDEBAR_LOCK_KEY = 'cc_app_sidebar_locked';
 const APP_SIDEBAR_OPEN_KEY = 'cc_app_sidebar_open';
@@ -228,9 +229,9 @@ const AppLayout: React.FC = () => {
               {isDesktopSidebarOpen && <span>Chat</span>}
             </NavLink>
 
-            <NavLink to="/app/companions" aria-label="Companions" className={desktopNavLinkClass}>
+            <NavLink to="/app/companions" aria-label={COMPANION_LABEL_PLURAL} className={desktopNavLinkClass}>
               <HeartHandshake className="h-4 w-4 shrink-0 text-[#8B7355]" />
-              {isDesktopSidebarOpen && <span>Companions</span>}
+              {isDesktopSidebarOpen && <span>{COMPANION_LABEL_PLURAL}</span>}
             </NavLink>
 
             <NavLink to="/app/notes" aria-label="Notes" className={desktopNavLinkClass}>
@@ -498,7 +499,7 @@ const AppLayout: React.FC = () => {
                     className={mobileNavLinkClass}
                   >
                     <HeartHandshake className="h-4 w-4 text-[#8B7355]" />
-                    <span>Companions</span>
+                    <span>{COMPANION_LABEL_PLURAL}</span>
                   </NavLink>
                   <NavLink
                     to="/app/notes"

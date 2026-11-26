@@ -196,7 +196,7 @@ export const CONSULTATION_CONTENT = {
     {
       title: 'Your story continues',
       description:
-        'Build upon your previous conversations without repeatedly explaining your circumstances, challenges and goals.',
+        'Build upon your previous conversations without repeatedly explaining your circumstances',
     },
     {
       title: 'Go as deep as you need',
@@ -204,7 +204,7 @@ export const CONSULTATION_CONTENT = {
         'Ask follow-up questions, challenge interpretations and explore the finer nuances of your chart.',
     },
     {
-      title: 'Different astrologers. Different perspectives.',
+      title: 'Diverse perspectives',
       description:
         'Understand your life through different traditions, philosophies and interpretive approaches.',
     },
@@ -216,7 +216,7 @@ export const CONSULTATION_CONTENT = {
     {
       title: 'Guidance without fear',
       description:
-        'No fearmongering. No sensational predictions. Thoughtful interpretations that respect your ability to shape your own life.',
+        'No fearmongering. No sensational predictions. Only genuine grounded analysis',
     },
     {
       title: 'Ask the uncomfortable questions',

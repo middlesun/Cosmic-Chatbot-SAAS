@@ -46,7 +46,10 @@ import SharedReadingNotesModal from './SharedReadingNotesModal';
 import { getUserProfileDisplayLabel, isAffirmativeReply } from './chatUtilities';
 import {
   CHAT_NUMERIC_FONT_OPTIONS,
+  COMPANION_LABEL_PLURAL,
+  COMPANION_LABEL_SINGULAR,
   DEFAULT_COUNCIL_EXPERT_SLUG,
+  isConsultantCatalogEntryAllowed,
   normalizeCouncilSlug,
   type ActiveChatTab,
   type AskLaterItem,
@@ -128,7 +131,7 @@ const DEFAULT_CORE_TABS: ActiveChatTab[] = [
     tabId: 'core-companion',
     pillar: 'companion',
     conversationId: null,
-    label: 'Companion',
+    label: COMPANION_LABEL_SINGULAR,
     isCore: false,
   },
   {
@@ -239,7 +242,7 @@ function deriveTabLabelForConversation(
     ) {
       return companionName;
     }
-    return (conv.title || companionName || 'Companion').trim();
+    return (conv.title || companionName || COMPANION_LABEL_SINGULAR).trim();
   }
   const title = (conv.title || '').trim();
   const isGenericTitle =
@@ -269,7 +272,7 @@ function loadInitialTabs(isPreview: boolean): ActiveChatTab[] {
         tabId: 'core-companion',
         pillar: 'companion',
         conversationId: null,
-        label: 'Companion',
+        label: COMPANION_LABEL_SINGULAR,
         isCore: false,
       },
       {
@@ -289,7 +292,17 @@ function loadInitialTabs(isPreview: boolean): ActiveChatTab[] {
     if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_CORE_TABS;
     const sanitized: ActiveChatTab[] = parsed
       .filter((t): t is ActiveChatTab => Boolean(t && t.tabId && t.pillar))
-      .map((t) => ({ ...t, isCore: false }))
+      .map((t) => ({
+        ...t,
+        isCore: false,
+        label:
+          t.pillar === 'companion' &&
+          !t.conversationId &&
+          !t.customLabel &&
+          (t.label === 'Companion' || t.label === 'Consultant')
+            ? COMPANION_LABEL_SINGULAR
+            : t.label,
+      }))
       .slice(0, MAX_ACTIVE_TABS);
 
     return sanitized.length > 0 ? sanitized : DEFAULT_CORE_TABS;
@@ -659,7 +672,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
   const loadCompanionCatalog = useCallback(async () => {
     if (isPreviewMode) {
-      setCompanionCatalog(PREVIEW_PUBLIC_COMPANIONS);
+      setCompanionCatalog(PREVIEW_PUBLIC_COMPANIONS.filter(isConsultantCatalogEntryAllowed));
       return;
     }
     try {
@@ -671,7 +684,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (Array.isArray(data.companions)) {
-          setCompanionCatalog(data.companions as PublicCompanionCard[]);
+          setCompanionCatalog(
+            (data.companions as PublicCompanionCard[]).filter(isConsultantCatalogEntryAllowed)
+          );
         }
       }
     } catch {
@@ -710,7 +725,17 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         ...dynamicPreviewConvs,
         ...PREVIEW_CONVERSATIONS.filter((c) => !previewConvStoreRef.current[c.id]),
       ];
-      const filtered = merged.filter((c) => !q || c.title.toLowerCase().includes(q));
+      const filtered = merged.filter((c) => {
+        if (q && !c.title.toLowerCase().includes(q)) return false;
+        if (c.pillar === 'companion' || c.companion_persona_json) {
+          const slug = c.companion_slug || c.companion_persona_json?.slug;
+          const card = slug
+            ? PREVIEW_PUBLIC_COMPANIONS.find((p) => p.slug === slug)
+            : undefined;
+          if (card && !isConsultantCatalogEntryAllowed(card)) return false;
+        }
+        return true;
+      });
       setConversations(filtered);
       setProfiles(PREVIEW_PROFILES);
       return;
@@ -1198,7 +1223,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           tabId: `tab-companion-${Date.now()}`,
           pillar: 'companion',
           conversationId: null,
-          label: 'Companion',
+          label: COMPANION_LABEL_SINGULAR,
           isCore: false,
         };
         setTabs((prev) => (prev.length < MAX_ACTIVE_TABS ? [...prev, newCompTab] : prev));
@@ -1877,7 +1902,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       ...targetTab,
       pillar: 'companion',
       conversationId: null,
-      label: 'Companion',
+      label: COMPANION_LABEL_SINGULAR,
       expertSlug: undefined,
       companionType: archetype,
       customLabel: false,
@@ -1950,7 +1975,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       const resetTab: ActiveChatTab = {
         ...activeTab,
         conversationId: null,
-        label: 'Companion',
+        label: COMPANION_LABEL_SINGULAR,
       };
       setTabs((prev) => prev.map((t) => (t.tabId === activeTab.tabId ? resetTab : t)));
       delete tabCacheRef.current[activeTab.tabId];
@@ -1964,7 +1989,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         tabId: `tab-companion-${Date.now()}`,
         pillar: 'companion',
         conversationId: null,
-        label: 'Companion',
+        label: COMPANION_LABEL_SINGULAR,
         isCore: false,
       };
       snapshotActiveTabState(activeTabId);
@@ -1979,7 +2004,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         const resetComp: ActiveChatTab = {
           ...anyComp,
           conversationId: null,
-          label: 'Companion',
+          label: COMPANION_LABEL_SINGULAR,
         };
         setTabs((prev) => prev.map((t) => (t.tabId === anyComp.tabId ? resetComp : t)));
         delete tabCacheRef.current[anyComp.tabId];
@@ -1989,7 +2014,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           ...activeTab,
           pillar: 'companion',
           conversationId: null,
-          label: 'Companion',
+          label: COMPANION_LABEL_SINGULAR,
           expertSlug: undefined,
           customLabel: false,
         };
@@ -1998,7 +2023,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         activateTab(resetActive, { skipSnapshot: true });
       } else {
         setErrorBanner(
-          `Up to ${MAX_ACTIVE_TABS} active tabs can be open at once. Close a tab to browse companions in chat.`
+          `Up to ${MAX_ACTIVE_TABS} active tabs can be open at once. Close a tab to browse ${COMPANION_LABEL_PLURAL.toLowerCase()} in chat.`
         );
       }
     }
@@ -2105,7 +2130,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       } else {
         const defaultLabel =
           existingTab.pillar === 'companion'
-            ? 'Companion'
+            ? COMPANION_LABEL_SINGULAR
             : existingTab.pillar === 'clarity'
             ? 'Clarity'
             : defaultCouncilMode === 'western'
@@ -2302,7 +2327,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
     const token = await getAccessToken();
     if (!token) {
-      throw new Error('Please sign in to start chatting with a companion.');
+      throw new Error(
+        `Please sign in to start chatting with a ${COMPANION_LABEL_SINGULAR.toLowerCase()}.`
+      );
     }
 
     const res = await fetch('/api/chat/companions/start', {
@@ -2322,7 +2349,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.conversation) {
-      throw new Error(data.error || 'Could not start companion conversation.');
+      throw new Error(
+        data.error || `Could not start ${COMPANION_LABEL_SINGULAR.toLowerCase()} conversation.`
+      );
     }
 
     const rawConv = data.conversation as ConversationRecord;
@@ -2492,7 +2521,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
     const token = await getAccessToken();
     if (!token) {
-      setErrorBanner('Please sign in to chat with a companion.');
+      setErrorBanner(
+        `Please sign in to chat with a ${COMPANION_LABEL_SINGULAR.toLowerCase()}.`
+      );
       return;
     }
 
@@ -2627,7 +2658,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
 
     const token = await getAccessToken();
     if (!token) {
-      setErrorBanner('Please sign in to open this companion.');
+      setErrorBanner(
+        `Please sign in to open this ${COMPANION_LABEL_SINGULAR.toLowerCase()}.`
+      );
       return;
     }
 
@@ -2857,7 +2890,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
     try {
       const token = await getAccessToken();
       if (!token) {
-        setErrorBanner('Please sign in to start chatting with a companion.');
+        setErrorBanner(
+          `Please sign in to start chatting with a ${COMPANION_LABEL_SINGULAR.toLowerCase()}.`
+        );
         return;
       }
       const res = await fetch('/api/chat/companions/start', {
@@ -2994,7 +3029,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         tabId: `tab-companion-${Date.now()}`,
         pillar: 'companion',
         conversationId: null,
-        label: incomingPersona.name || 'Companion',
+        label: incomingPersona.name || COMPANION_LABEL_SINGULAR,
         isCore: false,
       };
       setTabs((prev) => [...prev, newTab]);
@@ -3088,7 +3123,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         conversationId: null,
         label:
           first.pillar === 'companion'
-            ? 'Companion'
+            ? COMPANION_LABEL_SINGULAR
             : first.pillar === 'clarity'
             ? 'Clarity'
             : defaultCouncilMode === 'western'
@@ -4989,7 +5024,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                   <div className="flex items-center gap-2 min-w-0">
                     <HeartHandshake className="h-4 w-4 text-[#8B7355] shrink-0" />
                     <h1 className="font-serif text-[15px] sm:text-base font-medium text-[#3D3830] truncate">
-                      <span className="font-semibold text-[#3D3830]">Companions</span>{' '}
+                      <span className="font-semibold text-[#3D3830]">{COMPANION_LABEL_PLURAL}</span>{' '}
                       <span className="text-[#5C5449]">· Choose someone to talk to</span>
                     </h1>
                   </div>
@@ -5280,7 +5315,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             {activePillar === 'companion' &&
               activeConversation &&
               sharedReadingNotes.length > 0 && (
-                <Tooltip content="View Council reading notes shared with companions" placement="bottom">
+                <Tooltip
+                  content={`View Council reading notes shared with ${COMPANION_LABEL_PLURAL.toLowerCase()}`}
+                  placement="bottom"
+                >
                   <button
                     type="button"
                     onClick={() => setShowSharedReadingNotesModal(true)}
@@ -5311,14 +5349,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
             )}
 
             {activePillar === 'companion' && activeConversation && (
-              <Tooltip content="Browse all companions" placement="bottom">
+              <Tooltip content={`Browse all ${COMPANION_LABEL_PLURAL.toLowerCase()}`} placement="bottom">
                 <button
                   type="button"
                   onClick={() => handleOpenNewCompanionSetup(null)}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-[#3D3830]/12 bg-[#FDFBF7] px-2.5 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] whitespace-nowrap shrink-0 transition-colors cursor-pointer"
                 >
                   <RefreshCw className="h-3.5 w-3.5 text-[#8B7355]" />
-                  <span className="hidden sm:inline">All companions</span>
+                  <span className="hidden sm:inline">All {COMPANION_LABEL_PLURAL.toLowerCase()}</span>
                 </button>
               </Tooltip>
             )}
@@ -5784,7 +5822,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           defaultAstrologyMode={defaultCouncilMode}
           isStreamingTabId={streamingTabId}
           composerDisabled={isCompanionSetupMode}
-          composerDisabledHint="Choose a companion above to begin talking..."
+          composerDisabledHint={`Choose a ${COMPANION_LABEL_SINGULAR.toLowerCase()} above to begin talking...`}
           onSelectTab={handleSelectTab}
           onCloseTab={handleCloseTab}
           onReorderTabs={handleReorderTabs}

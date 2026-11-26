@@ -3,18 +3,33 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import CompanionSetupView from './CompanionSetupView';
 import { PREVIEW_CONVERSATIONS, PREVIEW_PUBLIC_COMPANIONS } from './previewFixtures';
-import type { CompanionPersona, PublicCompanionCard } from './chatTypes';
+import {
+  COMPANION_LABEL_SINGULAR,
+  isConsultantCatalogEntryAllowed,
+  type CompanionPersona,
+  type PublicCompanionCard,
+} from './chatTypes';
 
 const CompanionsPage: React.FC = () => {
   const { getAccessToken, isPreviewMode } = useAuth();
   const navigate = useNavigate();
 
+  const previewCatalog = useMemo(
+    () => PREVIEW_PUBLIC_COMPANIONS.filter(isConsultantCatalogEntryAllowed),
+    []
+  );
+
   const previewPastCompanions = useMemo(
     () =>
       isPreviewMode
-        ? PREVIEW_CONVERSATIONS.filter(
-            (c) => c.pillar === 'companion' || Boolean(c.companion_persona_json)
-          )
+        ? PREVIEW_CONVERSATIONS.filter((c) => {
+            if (c.pillar !== 'companion' && !c.companion_persona_json) return false;
+            const slug = c.companion_slug || c.companion_persona_json?.slug;
+            const matched = slug
+              ? PREVIEW_PUBLIC_COMPANIONS.find((p) => p.slug === slug)
+              : undefined;
+            return matched ? isConsultantCatalogEntryAllowed(matched) : true;
+          })
         : [],
     [isPreviewMode]
   );
@@ -30,7 +45,9 @@ const CompanionsPage: React.FC = () => {
   }) => {
     const token = await getAccessToken();
     if (!token) {
-      throw new Error('Please sign in to start chatting with a companion.');
+      throw new Error(
+        `Please sign in to start chatting with a ${COMPANION_LABEL_SINGULAR.toLowerCase()}.`
+      );
     }
 
     const res = await fetch('/api/chat/companions/start', {
@@ -50,7 +67,10 @@ const CompanionsPage: React.FC = () => {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.conversation?.id) {
-      throw new Error(data.error || 'Could not open companion conversation right now.');
+      throw new Error(
+        data.error ||
+          `Could not open ${COMPANION_LABEL_SINGULAR.toLowerCase()} conversation right now.`
+      );
     }
 
     navigate(`/app/chat/${encodeURIComponent(data.conversation.id)}`);
@@ -120,7 +140,7 @@ const CompanionsPage: React.FC = () => {
     <CompanionSetupView
       variant="page"
       pastCompanionConversations={previewPastCompanions}
-      companionCatalog={isPreviewMode ? PREVIEW_PUBLIC_COMPANIONS : undefined}
+      companionCatalog={isPreviewMode ? previewCatalog : undefined}
       isPreviewMode={isPreviewMode}
       getAccessToken={getAccessToken}
       onSelectPastCompanion={handleSelectPastCompanion}

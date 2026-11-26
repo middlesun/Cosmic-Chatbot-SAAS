@@ -69,6 +69,7 @@ const AppRoutes: React.FC = () => {
           <Route path="chat" element={<ChatWorkspace />} />
           <Route path="chat/:conversationId" element={<ChatWorkspace />} />
           <Route path="companions" element={<CompanionsPage />} />
+          <Route path="consultants" element={<CompanionsPage />} />
           <Route path="reports" element={<ReportsStore />} />
           <Route path="reports/:orderId" element={<ReportOrderDetail />} />
           <Route path="billing" element={<BillingCredits />} />

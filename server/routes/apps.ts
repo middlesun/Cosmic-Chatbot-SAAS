@@ -34,6 +34,7 @@ import { getCompanionSpecializations } from '../services/companionV2Service';
 import { getUserLivingContextState } from '../services/memoryArchivist';
 import { mergeUserAndProfileContextForPrompt } from '../services/lifeContextGuard';
 import { countLivingContextSignals } from '../../lib/lifeContextSchema';
+import { CONSULTANTS_ONLY_MODE } from '../../lib/companionV2Schema';
 import type { PublicCompanionCard } from '../../components/app/chatTypes';
 import type {
   MiniAppDefinition,
@@ -615,7 +616,9 @@ router.get('/home-summary', requireAuth, async (req: AuthenticatedRequest, res) 
 
   // 3. Council Guides (All 6 Council experts; Companions render in the Companions grid below)
 
-  const featuredSlugs = ['dev', 'nandini', 'luna', 'marc', 'bella', 'mira', 'aira', 'kabir', 'rohan', 'nikhil', 'neha', 'robin'];
+  const featuredSlugs = CONSULTANTS_ONLY_MODE
+    ? ['dev', 'nandini', 'luna', 'marc', 'sofia', 'tara', 'bella', 'julian', 'ines', 'kai', 'anya', 'vikram']
+    : ['dev', 'nandini', 'luna', 'marc', 'bella', 'mira', 'aira', 'kabir', 'rohan', 'nikhil', 'neha', 'robin'];
   const featuredSet = new Set<string>();
   const orderedFeaturedCards = [];
   for (const slug of featuredSlugs) {

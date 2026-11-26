@@ -24,6 +24,7 @@ import {
   detectCoreIdentityChanges,
   hasOnlyLegacySpecializationSlugs,
   inferSpecializationsForCompanion,
+  isConsultantCatalogEntryAllowed,
   normalizePersonalityV2,
   normalizeSpecializationSlugsWithMigration,
   sanitizeSpecializationSlugs,
@@ -4395,7 +4396,7 @@ export async function getAllCompanionsServerCached(): Promise<CompanionPresetRec
 export async function getPublicCompanionsCatalogCached(): Promise<PublicCompanionCard[]> {
   const all = await getAllCompanionsServerCached();
   return all
-    .filter((c) => c.is_active)
+    .filter((c) => c.is_active && isConsultantCatalogEntryAllowed(c))
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
     .map(toPublicCompanionCard);
 }

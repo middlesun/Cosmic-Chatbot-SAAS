@@ -6,7 +6,10 @@ import {
 } from '../../lib/companionV2Schema';
 import {
   COMPANION_CATEGORY_TABS,
+  COMPANION_LABEL_PLURAL,
+  COMPANION_LABEL_SINGULAR,
   COMPANION_SUBFILTER_HEADING_BY_GROUP,
+  CONSULTANTS_ONLY_MODE,
   matchesCompanionDiscoveryFilter,
   resolveCompanionGroup,
   type CompanionDiscoveryFilterableCard,
@@ -113,58 +116,68 @@ const CompanionDiscoveryControls: React.FC<CompanionDiscoveryControlsProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Row 1: 3 Primary Category Tabs + Search */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div
-          className="flex items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar sm:flex-wrap"
-          role="tablist"
-          aria-label="Explore companions by category"
-        >
-          {COMPANION_CATEGORY_TABS.map((tab) => {
-            const isActive = resolvedGroup === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => handleSelectCategory(tab.id)}
-                className={`min-h-[40px] shrink-0 rounded-full px-4 py-2 text-xs sm:text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                  isActive
-                    ? 'bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E]'
-                    : `border border-[#3D3830]/14 ${inactivePillBg} text-[#3D3830] hover:bg-[#F1ECE3] hover:border-[#3D3830]/25`
-                }`}
-              >
-                <span>{tab.label}</span>
-                {showCounts && cards.length > 0 && (
-                  <span
-                    className={`ml-1.5 font-['JetBrains_Mono',monospace] tabular-nums text-[10px] ${
-                      isActive ? 'text-[#FAF7F2]/75' : 'text-[#8B8275]'
-                    }`}
-                  >
-                    {groupCounts[tab.id]}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+      {/* Row 1: Primary Category Tabs (hidden in Consultants-only mode) + Search */}
+      <div
+        className={`flex flex-col md:flex-row md:items-center gap-3 ${
+          CONSULTANTS_ONLY_MODE ? 'justify-end' : 'justify-between'
+        }`}
+      >
+        {!CONSULTANTS_ONLY_MODE && (
+          <div
+            className="flex items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar sm:flex-wrap"
+            role="tablist"
+            aria-label={`Explore ${COMPANION_LABEL_PLURAL.toLowerCase()} by category`}
+          >
+            {COMPANION_CATEGORY_TABS.map((tab) => {
+              const isActive = resolvedGroup === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => handleSelectCategory(tab.id)}
+                  className={`min-h-[40px] shrink-0 rounded-full px-4 py-2 text-xs sm:text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                    isActive
+                      ? 'bg-[#4A453D] text-[#FAF7F2] hover:bg-[#38342E]'
+                      : `border border-[#3D3830]/14 ${inactivePillBg} text-[#3D3830] hover:bg-[#F1ECE3] hover:border-[#3D3830]/25`
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  {showCounts && cards.length > 0 && (
+                    <span
+                      className={`ml-1.5 font-['JetBrains_Mono',monospace] tabular-nums text-[10px] ${
+                        isActive ? 'text-[#FAF7F2]/75' : 'text-[#8B8275]'
+                      }`}
+                    >
+                      {groupCounts[tab.id]}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        <div className="relative w-full md:w-64 lg:w-72 shrink-0">
+        <div
+          className={`relative w-full ${
+            CONSULTANTS_ONLY_MODE ? 'md:w-80' : 'md:w-64 lg:w-72'
+          } shrink-0`}
+        >
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8B8275]" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => onChangeSearchQuery(e.target.value)}
             placeholder="Search by name, topic, or style..."
-            aria-label="Search companions by name, topic, or style"
+            aria-label={`Search ${COMPANION_LABEL_PLURAL.toLowerCase()} by name, topic, or style`}
             className={`w-full min-h-[40px] rounded-full border border-[#3D3830]/14 ${inactivePillBg} pl-9 pr-8 py-2 text-xs text-[#3D3830] placeholder:text-[#8B8275] focus:outline-none focus:border-[#4A453D]/45 transition-colors`}
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => onChangeSearchQuery('')}
-              aria-label="Clear companion search"
+              aria-label={`Clear ${COMPANION_LABEL_SINGULAR.toLowerCase()} search`}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-[#8B8275] hover:text-[#3D3830] hover:bg-[#EAE3D7]/60 cursor-pointer"
             >
               <X className="h-3.5 w-3.5" />
