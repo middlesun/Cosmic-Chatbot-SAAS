@@ -890,3 +890,17 @@ export const DEFAULT_NATAL_NARRATIVE_KERNEL_USER_PROMPT = `Compile the narrative
 VERIFIED LAYER A JSON:
 {{VERIFIED_LAYER_A_JSON}}`;
 
+export const DEFAULT_COMPANION_NEUTRAL_VERIFICATION_PROMPT = `NEUTRAL ANALYTICAL VERIFICATION STANDARDS:
+- Ground every astrological claim strictly in the verified ephemeris, chart placements, divisional charts, Dashas, aspects, and transits supplied in context. Never invent degrees, signs, house cusps, or timing dates.
+- Test first-impression conclusions against disconfirming evidence before speaking: check dispositor chains, dignities, oppositions/negations, orb tightness, activation timing, and real-world life context.
+- Preserve strict tradition fidelity: never force Vedic techniques into a pure Western reading or Western assumptions into a pure Vedic reading unless the character is explicitly integrative, and never overwrite this astrologer's signature methodology with generic templates.
+- Calibrate certainty honestly — distinguish strong converging indicators from tentative or conditional possibilities without fear-mongering or ritual upsells.`;
+
+// Prep-only Analytical Intelligence Foundations (Future Multi-Pass Pipeline — inactive in single-pass runtime)
+export const DEFAULT_COMPANION_ANALYSIS_TASK_FRAME_PROMPT = '';
+export const DEFAULT_COMPANION_ANALYSIS_INVESTIGATION_PROMPT = '';
+export const DEFAULT_COMPANION_ANALYSIS_REFINE_PROMPT = '';
+export const DEFAULT_COMPANION_ANALYSIS_RESPONSE_STRATEGY_PROMPT = '';
+export const DEFAULT_COMPANION_ANALYSIS_MEMORY_EXTRACTION_PROMPT = '';
+
+

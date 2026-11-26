@@ -20,9 +20,14 @@ import {
   normalizePersonalityV2,
   type AiIdentityDisclosureMode,
   type AstrologyEntryRule,
+  type CompanionAstrologicalMemoryMode,
+  type CompanionFamiliarityCeiling,
+  type CompanionFamiliarityMode,
   type CompanionFieldDiff,
+  type CompanionGreetingMode,
   type CompanionPersonalityV2,
   type CompanionSpecializationTag,
+  type CompanionVerificationMode,
   type CompanionVersionRecord,
   type CoreIdentityProtectedDiff,
   type SpecializationGroupKey,
@@ -45,6 +50,7 @@ export interface AdminCompanionRosterSummary {
   skill_level: CompanionSkillLevel;
   chat_style: ChatStyle;
   model_id: string | null;
+  temperature?: number | null;
   avatar_url: string | null;
   monogram_palette: CompanionMonogramPalette;
   override_global_rules: boolean;
@@ -83,6 +89,7 @@ export interface AdminCompanionRecord {
   chart_access?: CompanionChartAccess;
   formula_cartridge_slugs?: string[];
   max_output_tokens?: number | null;
+  temperature?: number | null;
   discoverable_tags?: string[];
   situation_tags?: string[];
   specialization_slugs?: string[];
@@ -281,6 +288,116 @@ export const AI_DISCLOSURE_OPTIONS: Array<{
   },
 ];
 
+export const VERIFICATION_MODE_OPTIONS: Array<{
+  value: CompanionVerificationMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'neutral',
+    label: 'Neutral Epistemic Verification (Default)',
+    description: 'Cross-checks chart claims against computed placements without forcing a Council school.',
+  },
+  {
+    value: 'council_vedic',
+    label: 'Council Vedic Verification',
+    description: 'Applies strict Vedic Jyotish verification standards across sidereal Dasha/Varga claims.',
+  },
+  {
+    value: 'council_western',
+    label: 'Council Western Verification',
+    description: 'Applies strict tropical Western chart verification across aspects, signs, and transits.',
+  },
+  {
+    value: 'none',
+    label: 'None (No Verification Injection)',
+    description: 'Skips verification block injection for purely exploratory or non-chart styles.',
+  },
+];
+
+export const ASTROLOGICAL_MEMORY_MODE_OPTIONS: Array<{
+  value: CompanionAstrologicalMemoryMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'independent',
+    label: 'Independent Chart & Case Memory (Default)',
+    description: 'Keeps analytical hypotheses and interpretation threads isolated to this astrologer.',
+  },
+  {
+    value: 'shared',
+    label: 'Shared Across Character / Council Context',
+    description: 'Allows reading takeaways and pinned notes to flow across shared Council memory.',
+  },
+];
+
+export const GREETING_MODE_OPTIONS: Array<{
+  value: CompanionGreetingMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'generated_returning',
+    label: 'Generated Returning Check-In (Default)',
+    description: 'Adapts return greetings naturally across session gaps with bond awareness.',
+  },
+  {
+    value: 'character_authored',
+    label: 'Character-Authored Static Pool + Return Instruction',
+    description: 'Uses authored openings paired with this character’s specific return-greeting instruction.',
+  },
+  {
+    value: 'static_only',
+    label: 'Static Welcome Messages Only',
+    description: 'Always selects from the static welcome message pool without dynamic generation.',
+  },
+];
+
+export const FAMILIARITY_MODE_OPTIONS: Array<{
+  value: CompanionFamiliarityMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'warm_progressive',
+    label: 'Warm Progressive (Default)',
+    description: 'Grows naturally warmer as rapport deepens over repeated conversations.',
+  },
+  {
+    value: 'organic_subtle',
+    label: 'Organic Subtle Shift',
+    description: 'Shifts register slowly and understatedly based on shared history and tone cues.',
+  },
+  {
+    value: 'fixed_register',
+    label: 'Fixed Register (Stay Constant)',
+    description: 'Preserves consistent professional or formal distance regardless of session count.',
+  },
+];
+
+export const FAMILIARITY_CEILING_OPTIONS: Array<{
+  value: CompanionFamiliarityCeiling;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'close',
+    label: 'Close',
+    description: 'Permits high warmth, shorthand familiarity, and candid rapport over time.',
+  },
+  {
+    value: 'cordial',
+    label: 'Cordial',
+    description: 'Warm, respectful practitioner-client rapport without slipping into casual chumminess.',
+  },
+  {
+    value: 'reserved',
+    label: 'Reserved',
+    description: 'Maintains measured, poised, formal boundaries even across long-term threads.',
+  },
+];
+
 export const CHART_ACCESS_TOGGLES: Array<{
   key: keyof CompanionChartAccess;
   label: string;
@@ -378,9 +495,51 @@ export const GLOBAL_COMPANION_PROMPT_META = [
     description:
       'Guides warm 2–3 companion recommendations based on user situation, mood, and specializations.',
   },
+  {
+    key: 'companion_neutral_verification_prompt',
+    label: 'Neutral Analytical Verification Standards',
+    description:
+      'Universal chart integrity & cross-system epistemic verification standards across Vedic, Western, Tarot, and Numerology readings.',
+  },
 ] as const;
 
 export type GlobalCompanionPromptKey = (typeof GLOBAL_COMPANION_PROMPT_META)[number]['key'];
+
+export const GLOBAL_ANALYTICAL_PREP_PROMPT_META = [
+  {
+    key: 'companion_analysis_task_frame_prompt',
+    label: 'Step 1 · Task Frame Prompt (Prep Slot)',
+    description:
+      'Defines how future multi-pass analysis classifies the real user intent, tradition scope, and time horizon.',
+  },
+  {
+    key: 'companion_analysis_investigation_prompt',
+    label: 'Step 2 · Investigation Pass Prompt (Prep Slot)',
+    description:
+      'Guides structured chart inspection across Dashas, Vargas, aspects, and transits before synthesis.',
+  },
+  {
+    key: 'companion_analysis_refine_prompt',
+    label: 'Step 3 · Epistemic Refinement Prompt (Prep Slot — Contradiction Testing Only)',
+    description:
+      'Performs contradiction testing and falsification of weak astrological claims—not stylistic prose polishing.',
+  },
+  {
+    key: 'companion_analysis_response_strategy_prompt',
+    label: 'Step 4 · Response Strategy Prompt (Prep Slot)',
+    description:
+      'Determines conversational pacing, restraint, and voice framing before generating the final response.',
+  },
+  {
+    key: 'companion_analysis_memory_extraction_prompt',
+    label: 'Step 5 · Analytical Memory Extraction Prompt (Prep Slot)',
+    description:
+      'Extracts durable astrological hypotheses, confirmed timelines, and case insights without leaking character tone.',
+  },
+] as const;
+
+export type GlobalAnalyticalPrepPromptKey =
+  (typeof GLOBAL_ANALYTICAL_PREP_PROMPT_META)[number]['key'];
 
 export interface GlobalCompanionAdminOverrides {
   companion_constitution?: string;
@@ -391,6 +550,12 @@ export interface GlobalCompanionAdminOverrides {
   companion_return_greeting_prompt?: string;
   companion_bond_extractor_prompt?: string;
   companion_matcher_instructions?: string;
+  companion_neutral_verification_prompt?: string;
+  companion_analysis_task_frame_prompt?: string;
+  companion_analysis_investigation_prompt?: string;
+  companion_analysis_refine_prompt?: string;
+  companion_analysis_response_strategy_prompt?: string;
+  companion_analysis_memory_extraction_prompt?: string;
   companion_skill_rules?: Partial<CompanionSkillRulesMap>;
   companion_group_configs?: Partial<CompanionGroupConfigsMap>;
   companion_specializations?: CompanionSpecializationTag[];
@@ -442,6 +607,16 @@ export function hydrateAdminDraftFromState(
       ? null
       : base.max_output_tokens ?? null;
 
+  const rawTemp = src.temperature;
+  const temperature: number | null =
+    typeof rawTemp === 'number' && Number.isFinite(rawTemp)
+      ? Math.min(2, Math.max(0, Math.round(rawTemp * 100) / 100))
+      : rawTemp === null
+      ? null
+      : typeof base.temperature === 'number' && Number.isFinite(base.temperature)
+      ? Math.min(2, Math.max(0, Math.round(base.temperature * 100) / 100))
+      : null;
+
   const rawAvatarUrl = src.avatar_url;
   const avatarUrl: string | null =
     typeof rawAvatarUrl === 'string'
@@ -488,6 +663,7 @@ export function hydrateAdminDraftFromState(
       ? src.formula_cartridge_slugs.map(String)
       : [...(base.formula_cartridge_slugs || [])],
     max_output_tokens: maxOutputTokens,
+    temperature,
     discoverable_tags: discoverable,
     situation_tags: discoverable,
     specialization_slugs: Array.isArray(src.specialization_slugs)
@@ -569,6 +745,7 @@ export function createBlankCompanion(nextSortOrder: number): AdminCompanionRecor
     },
     formula_cartridge_slugs: [],
     max_output_tokens: null,
+    temperature: null,
     discoverable_tags: [],
     situation_tags: [],
     specialization_slugs: CONSULTANTS_ONLY_MODE ? ['vedic_astrology'] : ['fun_friendship'],

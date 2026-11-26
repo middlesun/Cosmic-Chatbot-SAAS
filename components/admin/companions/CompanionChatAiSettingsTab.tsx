@@ -99,6 +99,35 @@ const CompanionChatAiSettingsTab: React.FC<CompanionChatAiSettingsTabProps> = ({
           </label>
 
           <label className="block space-y-1.5">
+            <span className="text-xs font-semibold text-[#3D3830]">
+              Temperature Override
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={2}
+              step={0.05}
+              value={draft.temperature ?? ''}
+              placeholder="0.45 (platform default)"
+              onChange={(e) => {
+                const raw = e.target.value.trim();
+                if (raw === '') {
+                  setDraft((prev) => (prev ? { ...prev, temperature: null } : prev));
+                  return;
+                }
+                const parsed = Number(raw);
+                if (!Number.isFinite(parsed)) return;
+                const clamped = Math.min(2, Math.max(0, Math.round(parsed * 100) / 100));
+                setDraft((prev) => (prev ? { ...prev, temperature: clamped } : prev));
+              }}
+              className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-2.5 font-mono text-xs tabular-nums text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none"
+            />
+            <p className="text-[11px] text-[#8B8275]">
+              Leave blank for platform default (0.45). Range 0.00–2.00. Stored in Phase 1; runtime temperature wiring arrives in a later phase.
+            </p>
+          </label>
+
+          <label className="block space-y-1.5 md:col-span-2">
             <span className="text-xs font-semibold text-[#3D3830]">Sort Order Priority</span>
             <input
               type="number"

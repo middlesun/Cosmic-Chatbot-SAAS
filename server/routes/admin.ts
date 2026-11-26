@@ -2757,6 +2757,12 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     | 'memory_rolling_thread_compactor_prompt'
     | 'memory_profile_synthesizer_prompt'
     | 'companion_matcher_instructions'
+    | 'companion_neutral_verification_prompt'
+    | 'companion_analysis_task_frame_prompt'
+    | 'companion_analysis_investigation_prompt'
+    | 'companion_analysis_refine_prompt'
+    | 'companion_analysis_response_strategy_prompt'
+    | 'companion_analysis_memory_extraction_prompt'
     | 'clarity_helper_system_prompt'
     | 'vedic_tier1_reasoning_laws'
     | 'vedic_anti_cliche_rules'
@@ -2791,6 +2797,12 @@ router.put('/settings/chatbot/engine-prompts', async (req: AuthenticatedRequest,
     'memory_rolling_thread_compactor_prompt',
     'memory_profile_synthesizer_prompt',
     'companion_matcher_instructions',
+    'companion_neutral_verification_prompt',
+    'companion_analysis_task_frame_prompt',
+    'companion_analysis_investigation_prompt',
+    'companion_analysis_refine_prompt',
+    'companion_analysis_response_strategy_prompt',
+    'companion_analysis_memory_extraction_prompt',
     'clarity_helper_system_prompt',
     'vedic_tier1_reasoning_laws',
     'vedic_anti_cliche_rules',

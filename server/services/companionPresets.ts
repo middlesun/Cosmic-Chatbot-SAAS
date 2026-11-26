@@ -78,6 +78,7 @@ export interface CompanionPresetRecord {
   skill_level: CompanionSkillLevel;
   chat_style: ChatStyle;
   model_id: string | null;
+  temperature?: number | null;
   tts_voice_profile: CompanionTtsVoiceProfile;
   supports_listening_cue: boolean;
   suggestions_enabled: boolean;
@@ -3343,6 +3344,20 @@ function isMissingPhase2ColumnError(err: { code?: string; message?: string } | n
   );
 }
 
+export function sanitizeCompanionTemperature(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const num = typeof raw === 'number' ? raw : Number(String(raw).trim());
+  if (!Number.isFinite(num)) return null;
+  return Math.max(0, Math.min(2, Math.round(num * 100) / 100));
+}
+
+export function isMissing023ColumnError(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err) return false;
+  if (err.code === '42703') return true;
+  const msg = String(err.message || '').toLowerCase();
+  return msg.includes('temperature');
+}
+
 export function isMissing022ColumnError(err: { code?: string; message?: string } | null | undefined): boolean {
   if (!err) return false;
   if (err.code === '42703') return true;
@@ -3366,6 +3381,7 @@ export interface CompanionV2OverlayEntry {
   core_identity_locked?: boolean;
   specialization_slugs?: string[];
   last_published_at?: string | null;
+  temperature?: number | null;
 }
 
 export type CompanionV2OverlayMap = Record<string, CompanionV2OverlayEntry>;
@@ -3413,6 +3429,9 @@ export async function readCompanionV2Overlay(): Promise<CompanionV2OverlayMap> {
           : {}),
         ...(typeof entry.last_published_at === 'string' || entry.last_published_at === null
           ? { last_published_at: entry.last_published_at as string | null }
+          : {}),
+        ...(entry.temperature !== undefined
+          ? { temperature: sanitizeCompanionTemperature(entry.temperature) }
           : {}),
       };
     }
@@ -3872,6 +3891,14 @@ function mapDbRowToCompanionPreset(
     skill_level: syncedSkillLevel,
     chat_style: normalizeChatStyle(row.chat_style, 'chat_bubbles'),
     model_id: typeof row.model_id === 'string' && row.model_id.trim() ? row.model_id.trim() : null,
+    temperature:
+      row.temperature !== undefined
+        ? sanitizeCompanionTemperature(row.temperature)
+        : v2Entry?.temperature !== undefined
+        ? sanitizeCompanionTemperature(v2Entry.temperature)
+        : builtinDefault?.temperature !== undefined
+        ? sanitizeCompanionTemperature(builtinDefault.temperature)
+        : null,
     tts_voice_profile: {
       rate: Number.isFinite(Number(ttsRaw.rate)) ? Number(ttsRaw.rate) : 1.0,
       pitch: Number.isFinite(Number(ttsRaw.pitch)) ? Number(ttsRaw.pitch) : 1.0,
@@ -4282,6 +4309,7 @@ function getEnrichedDefaultCompanions(): CompanionPresetRecord[] {
       chart_access: p.chart_access || caps.chart_access,
       formula_cartridge_slugs: p.formula_cartridge_slugs || caps.formula_cartridge_slugs,
       max_output_tokens: p.max_output_tokens ?? null,
+      temperature: sanitizeCompanionTemperature(p.temperature),
       discoverable_tags: meta.situation_tags,
       situation_tags: meta.situation_tags,
       specialization_slugs: specializations,
@@ -4317,7 +4345,7 @@ export async function getAllCompanionsServerCached(): Promise<CompanionPresetRec
     const [initialRes, metaOverlay, v2Overlay] = await Promise.all([
       supabaseAdmin
         .from('companions')
-        .select(COMPANION_022_SELECT_COLUMNS)
+        .select(COMPANION_023_SELECT_COLUMNS)
         .order('sort_order', { ascending: true })
         .order('name', { ascending: true }),
       readCompanionMetaOverlay(),
@@ -4329,6 +4357,94 @@ export async function getAllCompanionsServerCached(): Promise<CompanionPresetRec
 
     if (!initialRes.error && initialRes.data) {
       rows = initialRes.data as unknown as Array<Record<string, unknown>>;
+    } else if (isMissing023ColumnError(initialRes.error)) {
+      const v22Res = await supabaseAdmin
+        .from('companions')
+        .select(COMPANION_022_SELECT_COLUMNS)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true });
+      if (!v22Res.error && v22Res.data) {
+        rows = v22Res.data as unknown as Array<Record<string, unknown>>;
+      } else if (isMissing022ColumnError(v22Res.error) || isMissing019ColumnError(v22Res.error)) {
+        const v19Res = await supabaseAdmin
+          .from('companions')
+          .select(COMPANION_019_SELECT_COLUMNS)
+          .order('sort_order', { ascending: true })
+          .order('name', { ascending: true });
+        if (!v19Res.error && v19Res.data) {
+          rows = v19Res.data as unknown as Array<Record<string, unknown>>;
+        } else if (isMissing019ColumnError(v19Res.error)) {
+          const v18Res = await supabaseAdmin
+            .from('companions')
+            .select(COMPANION_018_SELECT_COLUMNS)
+            .order('sort_order', { ascending: true })
+            .order('name', { ascending: true });
+          if (!v18Res.error && v18Res.data) {
+            rows = v18Res.data as unknown as Array<Record<string, unknown>>;
+          } else if (isMissingPhase2ColumnError(v18Res.error)) {
+            const v17Res = await supabaseAdmin
+              .from('companions')
+              .select(COMPANION_SELECT_COLUMNS)
+              .order('sort_order', { ascending: true })
+              .order('name', { ascending: true });
+            if (!v17Res.error && v17Res.data) {
+              rows = v17Res.data as unknown as Array<Record<string, unknown>>;
+            } else if (isMissingSoulBackstoryColumnError(v17Res.error)) {
+              const [fallbackRes, overlay] = await Promise.all([
+                supabaseAdmin
+                  .from('companions')
+                  .select(COMPANION_BASE_SELECT_COLUMNS)
+                  .order('sort_order', { ascending: true })
+                  .order('name', { ascending: true }),
+                readCompanionSoulOverlay(),
+              ]);
+              if (!fallbackRes.error && fallbackRes.data) {
+                rows = fallbackRes.data as unknown as Array<Record<string, unknown>>;
+                overlayMap = overlay;
+              }
+            }
+          } else if (isMissingSoulBackstoryColumnError(v18Res.error)) {
+            const [fallbackRes, overlay] = await Promise.all([
+              supabaseAdmin
+                .from('companions')
+                .select(COMPANION_BASE_SELECT_COLUMNS)
+                .order('sort_order', { ascending: true })
+                .order('name', { ascending: true }),
+              readCompanionSoulOverlay(),
+            ]);
+            if (!fallbackRes.error && fallbackRes.data) {
+              rows = fallbackRes.data as unknown as Array<Record<string, unknown>>;
+              overlayMap = overlay;
+            }
+          }
+        } else if (isMissingSoulBackstoryColumnError(v19Res.error)) {
+          const [fallbackRes, overlay] = await Promise.all([
+            supabaseAdmin
+              .from('companions')
+              .select(COMPANION_BASE_SELECT_COLUMNS)
+              .order('sort_order', { ascending: true })
+              .order('name', { ascending: true }),
+            readCompanionSoulOverlay(),
+          ]);
+          if (!fallbackRes.error && fallbackRes.data) {
+            rows = fallbackRes.data as unknown as Array<Record<string, unknown>>;
+            overlayMap = overlay;
+          }
+        }
+      } else if (isMissingSoulBackstoryColumnError(v22Res.error)) {
+        const [fallbackRes, overlay] = await Promise.all([
+          supabaseAdmin
+            .from('companions')
+            .select(COMPANION_BASE_SELECT_COLUMNS)
+            .order('sort_order', { ascending: true })
+            .order('name', { ascending: true }),
+          readCompanionSoulOverlay(),
+        ]);
+        if (!fallbackRes.error && fallbackRes.data) {
+          rows = fallbackRes.data as unknown as Array<Record<string, unknown>>;
+          overlayMap = overlay;
+        }
+      }
     } else if (isMissing022ColumnError(initialRes.error) || isMissing019ColumnError(initialRes.error)) {
       const v19Res = await supabaseAdmin
         .from('companions')
@@ -4517,6 +4633,8 @@ const COMPANION_019_SELECT_COLUMNS = `${COMPANION_018_SELECT_COLUMNS}, card_subt
 
 export const COMPANION_022_SELECT_COLUMNS = `${COMPANION_019_SELECT_COLUMNS}, personality_v2_json, draft_payload_json, published_version, has_unpublished_draft, core_identity_locked, specialization_slugs, last_published_at`;
 
+export const COMPANION_023_SELECT_COLUMNS = `${COMPANION_022_SELECT_COLUMNS}, temperature`;
+
 const RASTER_AVATAR_DATA_URL_RE =
   /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/i;
 
@@ -4612,7 +4730,10 @@ export async function upsertAdminCompanion(
       return res;
     };
 
-    let res = await fetchExisting(COMPANION_022_SELECT_COLUMNS);
+    let res = await fetchExisting(COMPANION_023_SELECT_COLUMNS);
+    if (isMissing023ColumnError(res.error)) {
+      res = await fetchExisting(COMPANION_022_SELECT_COLUMNS);
+    }
     if (isMissing022ColumnError(res.error)) {
       res = await fetchExisting(COMPANION_019_SELECT_COLUMNS);
     }
@@ -5062,6 +5183,15 @@ export async function upsertAdminCompanion(
       ? input.last_published_at
       : new Date().toISOString();
 
+  const temperature: number | null =
+    input.temperature !== undefined
+      ? sanitizeCompanionTemperature(input.temperature)
+      : existingRow?.temperature !== undefined
+      ? sanitizeCompanionTemperature(existingRow.temperature)
+      : existingV2Overlay?.temperature !== undefined
+      ? sanitizeCompanionTemperature(existingV2Overlay.temperature)
+      : null;
+
   const payload022 = {
     ...payload019,
     personality_v2_json,
@@ -5071,6 +5201,11 @@ export async function upsertAdminCompanion(
     core_identity_locked,
     specialization_slugs,
     last_published_at: nextLastPublishedAt,
+  };
+
+  const payload023 = {
+    ...payload022,
+    temperature,
   };
 
   const writeCompanionRow = async (
@@ -5089,6 +5224,7 @@ export async function upsertAdminCompanion(
   };
 
   let usedSexConstraintFallback = false;
+  let used023OverlayFallback = false;
   let used022OverlayFallback = false;
   let used019OverlayFallback = false;
   let usedOverlayFallback = false;
@@ -5105,7 +5241,12 @@ export async function upsertAdminCompanion(
     return attempt;
   };
 
-  let res = await writeWithSexFallback(payload022, COMPANION_022_SELECT_COLUMNS);
+  let res = await writeWithSexFallback(payload023, COMPANION_023_SELECT_COLUMNS);
+
+  if (isMissing023ColumnError(res.error)) {
+    used023OverlayFallback = true;
+    res = await writeWithSexFallback(payload022, COMPANION_022_SELECT_COLUMNS);
+  }
 
   if (isMissing022ColumnError(res.error)) {
     used022OverlayFallback = true;
@@ -5140,7 +5281,9 @@ export async function upsertAdminCompanion(
   }
 
   if (
+    used023OverlayFallback ||
     used022OverlayFallback ||
+    input.temperature !== undefined ||
     input.personality_v2_json !== undefined ||
     input.specialization_slugs !== undefined ||
     input.core_identity_locked !== undefined ||
@@ -5154,6 +5297,7 @@ export async function upsertAdminCompanion(
       core_identity_locked,
       specialization_slugs,
       last_published_at: nextLastPublishedAt,
+      temperature,
     });
   }
 
@@ -5206,6 +5350,7 @@ export async function upsertAdminCompanion(
           core_identity_locked,
           specialization_slugs,
           last_published_at: nextLastPublishedAt,
+          temperature,
         },
       }
     ),
@@ -5331,6 +5476,7 @@ export async function resetAdminCompanionToDefault(
     updated_at: new Date().toISOString(),
   };
 
+  const resetTemperature = sanitizeCompanionTemperature(preset.temperature);
   const payload022 = {
     ...payload019,
     personality_v2_json: resetV2,
@@ -5341,8 +5487,12 @@ export async function resetAdminCompanionToDefault(
     last_published_at: new Date().toISOString(),
   };
 
+  const payload023 = {
+    ...payload022,
+    temperature: resetTemperature,
+  };
+
   let usedSexConstraintFallback = false;
-  let used022OverlayFallback = false;
   let used019OverlayFallback = false;
   let usedOverlayFallback = false;
 
@@ -5366,10 +5516,13 @@ export async function resetAdminCompanionToDefault(
     return attempt;
   };
 
-  let resetRes = await upsertResetWithSexFallback(payload022, COMPANION_022_SELECT_COLUMNS);
+  let resetRes = await upsertResetWithSexFallback(payload023, COMPANION_023_SELECT_COLUMNS);
+
+  if (isMissing023ColumnError(resetRes.error)) {
+    resetRes = await upsertResetWithSexFallback(payload022, COMPANION_022_SELECT_COLUMNS);
+  }
 
   if (isMissing022ColumnError(resetRes.error)) {
-    used022OverlayFallback = true;
     resetRes = await upsertResetWithSexFallback(payload019, COMPANION_019_SELECT_COLUMNS);
   }
 
@@ -5432,25 +5585,15 @@ export async function resetAdminCompanionToDefault(
     );
   }
 
-  if (used022OverlayFallback) {
-    await saveCompanionV2OverlayEntry(preset.slug, {
-      personality_v2_json: resetV2,
-      draft_payload_json: null,
-      has_unpublished_draft: false,
-      core_identity_locked: true,
-      specialization_slugs: resetSpecializations,
-      last_published_at: payload022.last_published_at,
-    });
-  } else {
-    await saveCompanionV2OverlayEntry(preset.slug, {
-      personality_v2_json: resetV2,
-      draft_payload_json: null,
-      has_unpublished_draft: false,
-      core_identity_locked: true,
-      specialization_slugs: resetSpecializations,
-      last_published_at: payload022.last_published_at,
-    });
-  }
+  await saveCompanionV2OverlayEntry(preset.slug, {
+    personality_v2_json: resetV2,
+    draft_payload_json: null,
+    has_unpublished_draft: false,
+    core_identity_locked: true,
+    specialization_slugs: resetSpecializations,
+    last_published_at: payload022.last_published_at,
+    temperature: resetTemperature,
+  });
 
   const resetMeta = resolveDefaultMetaForRecord(preset);
   await saveCompanionMetaOverlayEntry(
@@ -5501,6 +5644,7 @@ export async function resetAdminCompanionToDefault(
           core_identity_locked: true,
           specialization_slugs: resetSpecializations,
           last_published_at: payload022.last_published_at,
+          temperature: resetTemperature,
         },
       }
     ),

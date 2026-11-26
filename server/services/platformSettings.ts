@@ -7,6 +7,11 @@ import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import {
   ALL_GUIDE_CATALOG_META,
   DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
+  DEFAULT_COMPANION_ANALYSIS_INVESTIGATION_PROMPT,
+  DEFAULT_COMPANION_ANALYSIS_MEMORY_EXTRACTION_PROMPT,
+  DEFAULT_COMPANION_ANALYSIS_REFINE_PROMPT,
+  DEFAULT_COMPANION_ANALYSIS_RESPONSE_STRATEGY_PROMPT,
+  DEFAULT_COMPANION_ANALYSIS_TASK_FRAME_PROMPT,
   DEFAULT_COMPANION_ARCHETYPES,
   DEFAULT_COMPANION_BOND_EXTRACTOR_PROMPT,
   DEFAULT_COMPANION_CHART_PRESENCE_PROMPT,
@@ -15,6 +20,7 @@ import {
   DEFAULT_COMPANION_GROUP_CONFIGS,
   DEFAULT_COMPANION_LISTEN_ONLY_GUARDRAIL,
   DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
+  DEFAULT_COMPANION_NEUTRAL_VERIFICATION_PROMPT,
   DEFAULT_COMPANION_REALISM_BASELINE,
   DEFAULT_COMPANION_RETURN_GREETING_PROMPT,
   DEFAULT_COMPANION_SKILL_RULES,
@@ -210,6 +216,12 @@ export interface EnginePromptOverrides {
   memory_profile_synthesizer_prompt?: string;
   companion_archetypes?: DefaultCompanionArchetype[];
   companion_matcher_instructions?: string;
+  companion_neutral_verification_prompt?: string;
+  companion_analysis_task_frame_prompt?: string;
+  companion_analysis_investigation_prompt?: string;
+  companion_analysis_refine_prompt?: string;
+  companion_analysis_response_strategy_prompt?: string;
+  companion_analysis_memory_extraction_prompt?: string;
   companion_specializations?: CompanionSpecializationTag[];
   clarity_helper_system_prompt?: string;
   vedic_tier1_reasoning_laws?: string;
@@ -1301,6 +1313,12 @@ export function getEnginePromptDefaultsBundle() {
     memory_profile_synthesizer_prompt: DEFAULT_MEMORY_PROFILE_SYNTHESIZER_PROMPT,
     companion_archetypes: DEFAULT_COMPANION_ARCHETYPES,
     companion_matcher_instructions: DEFAULT_COMPANION_MATCHER_INSTRUCTIONS,
+    companion_neutral_verification_prompt: DEFAULT_COMPANION_NEUTRAL_VERIFICATION_PROMPT,
+    companion_analysis_task_frame_prompt: DEFAULT_COMPANION_ANALYSIS_TASK_FRAME_PROMPT,
+    companion_analysis_investigation_prompt: DEFAULT_COMPANION_ANALYSIS_INVESTIGATION_PROMPT,
+    companion_analysis_refine_prompt: DEFAULT_COMPANION_ANALYSIS_REFINE_PROMPT,
+    companion_analysis_response_strategy_prompt: DEFAULT_COMPANION_ANALYSIS_RESPONSE_STRATEGY_PROMPT,
+    companion_analysis_memory_extraction_prompt: DEFAULT_COMPANION_ANALYSIS_MEMORY_EXTRACTION_PROMPT,
     companion_specializations: DEFAULT_COMPANION_SPECIALIZATIONS,
     clarity_helper_system_prompt: DEFAULT_CLARITY_HELPER_SYSTEM_PROMPT,
     vedic_tier1_reasoning_laws: DEFAULT_VEDIC_TIER1_REASONING_LAWS,

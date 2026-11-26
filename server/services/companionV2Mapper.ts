@@ -134,10 +134,28 @@ export function synthesizePersonalityV2FromV1(
     specialist_expertise: existing.specialist_expertise || expertSummary,
     signature_methodology:
       existing.signature_methodology || (hasEsoteric ? expertSummary : ''),
+    investigation_strategy: existing.investigation_strategy || '',
+    refinement_philosophy: existing.refinement_philosophy || '',
     astrology_entry_rule: astrologyEntryRule,
     esoteric_guardrails: existing.esoteric_guardrails || hardRules,
     ai_identity_disclosure:
       existing.ai_identity_disclosure || 'natural_immersion_honest_when_asked',
+    astrological_memory_mode: existing.astrological_memory_mode || 'independent',
+    verification_mode: existing.verification_mode || 'neutral',
+    greeting_config: existing.greeting_config || {
+      mode: 'generated_returning',
+      allow_memory_callback: true,
+      custom_return_instruction: '',
+    },
+    familiarity_policy: existing.familiarity_policy || {
+      mode: 'warm_progressive',
+      max_familiarity: 'close',
+    },
+    analytical_execution: existing.analytical_execution || {
+      mode: 'single_pass',
+      max_passes: 1,
+      verify_contradictions: true,
+    },
     contextual_nuances: existing.contextual_nuances || [],
     reference_dialogues: existing.reference_dialogues || [],
     core_identity_locked:
@@ -367,6 +385,7 @@ export function mapCustomPersonaToV2PresetRecord(
     skill_level: persona.skill_level || 'none_emotional',
     chat_style: persona.chat_style || 'chat_bubbles',
     model_id: null,
+    temperature: null,
     tts_voice_profile: persona.tts_voice_profile || { rate: 1, pitch: 1 },
     supports_listening_cue: persona.supports_listening_cue !== false,
     suggestions_enabled: false,

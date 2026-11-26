@@ -1,5 +1,28 @@
 export type AstrologyEntryRule = 'never' | 'invite_only' | 'contextual_invite';
 export type AiIdentityDisclosureMode = 'natural_immersion_honest_when_asked' | 'explicit_ai';
+export type CompanionAstrologicalMemoryMode = 'independent' | 'shared';
+export type CompanionVerificationMode = 'neutral' | 'council_vedic' | 'council_western' | 'none';
+export type CompanionGreetingMode = 'static_only' | 'generated_returning' | 'character_authored';
+export type CompanionFamiliarityMode = 'fixed_register' | 'organic_subtle' | 'warm_progressive';
+export type CompanionFamiliarityCeiling = 'reserved' | 'cordial' | 'close';
+export type CompanionAnalyticalExecutionMode = 'single_pass' | 'adaptive_multipass';
+
+export interface CompanionGreetingConfig {
+  mode: CompanionGreetingMode;
+  allow_memory_callback?: boolean;
+  custom_return_instruction?: string;
+}
+
+export interface CompanionFamiliarityPolicy {
+  mode: CompanionFamiliarityMode;
+  max_familiarity?: CompanionFamiliarityCeiling;
+}
+
+export interface CompanionAnalyticalExecutionConfig {
+  mode?: CompanionAnalyticalExecutionMode;
+  max_passes?: number;
+  verify_contradictions?: boolean;
+}
 
 export interface CompanionContextualNuance {
   id: string;
@@ -43,9 +66,16 @@ export interface CompanionPersonalityV2 {
   autonomy_guidance: string;
   specialist_expertise: string;
   signature_methodology: string;
+  investigation_strategy?: string;
+  refinement_philosophy?: string;
   astrology_entry_rule: AstrologyEntryRule;
   esoteric_guardrails: string;
   ai_identity_disclosure: AiIdentityDisclosureMode;
+  astrological_memory_mode?: CompanionAstrologicalMemoryMode;
+  verification_mode?: CompanionVerificationMode;
+  greeting_config?: CompanionGreetingConfig;
+  familiarity_policy?: CompanionFamiliarityPolicy;
+  analytical_execution?: CompanionAnalyticalExecutionConfig;
   contextual_nuances: CompanionContextualNuance[];
   reference_dialogues: CompanionReferenceDialogue[];
   core_identity_locked: boolean;
@@ -106,6 +136,12 @@ export interface GlobalCompanionIntelligenceBundle {
   companion_return_greeting_prompt: string;
   companion_bond_extractor_prompt: string;
   companion_matcher_instructions: string;
+  companion_neutral_verification_prompt: string;
+  companion_analysis_task_frame_prompt: string;
+  companion_analysis_investigation_prompt: string;
+  companion_analysis_refine_prompt: string;
+  companion_analysis_response_strategy_prompt: string;
+  companion_analysis_memory_extraction_prompt: string;
   companion_skill_rules: Record<string, string>;
   companion_group_configs: Record<string, unknown>;
   companion_archetypes: unknown[];
@@ -133,9 +169,27 @@ export const DEFAULT_COMPANION_PERSONALITY_V2: CompanionPersonalityV2 = {
   autonomy_guidance: '',
   specialist_expertise: '',
   signature_methodology: '',
+  investigation_strategy: '',
+  refinement_philosophy: '',
   astrology_entry_rule: 'never',
   esoteric_guardrails: '',
   ai_identity_disclosure: 'natural_immersion_honest_when_asked',
+  astrological_memory_mode: 'independent',
+  verification_mode: 'neutral',
+  greeting_config: {
+    mode: 'generated_returning',
+    allow_memory_callback: true,
+    custom_return_instruction: '',
+  },
+  familiarity_policy: {
+    mode: 'warm_progressive',
+    max_familiarity: 'close',
+  },
+  analytical_execution: {
+    mode: 'single_pass',
+    max_passes: 1,
+    verify_contradictions: true,
+  },
   contextual_nuances: [],
   reference_dialogues: [],
   core_identity_locked: true,
@@ -633,6 +687,41 @@ const ALLOWED_AI_DISCLOSURE_MODES: readonly AiIdentityDisclosureMode[] = [
   'explicit_ai',
 ];
 
+const ALLOWED_ASTROLOGICAL_MEMORY_MODES: readonly CompanionAstrologicalMemoryMode[] = [
+  'independent',
+  'shared',
+];
+
+const ALLOWED_VERIFICATION_MODES: readonly CompanionVerificationMode[] = [
+  'neutral',
+  'council_vedic',
+  'council_western',
+  'none',
+];
+
+const ALLOWED_GREETING_MODES: readonly CompanionGreetingMode[] = [
+  'static_only',
+  'generated_returning',
+  'character_authored',
+];
+
+const ALLOWED_FAMILIARITY_MODES: readonly CompanionFamiliarityMode[] = [
+  'fixed_register',
+  'organic_subtle',
+  'warm_progressive',
+];
+
+const ALLOWED_FAMILIARITY_CEILINGS: readonly CompanionFamiliarityCeiling[] = [
+  'reserved',
+  'cordial',
+  'close',
+];
+
+const ALLOWED_ANALYTICAL_EXECUTION_MODES: readonly CompanionAnalyticalExecutionMode[] = [
+  'single_pass',
+  'adaptive_multipass',
+];
+
 export function normalizePersonalityV2(raw: unknown): CompanionPersonalityV2 {
   const obj =
     raw && typeof raw === 'object' && !Array.isArray(raw)
@@ -641,6 +730,24 @@ export function normalizePersonalityV2(raw: unknown): CompanionPersonalityV2 {
   const innerRaw =
     obj.inner_compass && typeof obj.inner_compass === 'object' && !Array.isArray(obj.inner_compass)
       ? (obj.inner_compass as Record<string, unknown>)
+      : {};
+  const greetingRaw =
+    obj.greeting_config &&
+    typeof obj.greeting_config === 'object' &&
+    !Array.isArray(obj.greeting_config)
+      ? (obj.greeting_config as Record<string, unknown>)
+      : {};
+  const familiarityRaw =
+    obj.familiarity_policy &&
+    typeof obj.familiarity_policy === 'object' &&
+    !Array.isArray(obj.familiarity_policy)
+      ? (obj.familiarity_policy as Record<string, unknown>)
+      : {};
+  const analyticalRaw =
+    obj.analytical_execution &&
+    typeof obj.analytical_execution === 'object' &&
+    !Array.isArray(obj.analytical_execution)
+      ? (obj.analytical_execution as Record<string, unknown>)
       : {};
 
   const nuancesRaw = Array.isArray(obj.contextual_nuances) ? obj.contextual_nuances : [];
@@ -699,6 +806,49 @@ export function normalizePersonalityV2(raw: unknown): CompanionPersonalityV2 {
     ? (obj.ai_identity_disclosure as AiIdentityDisclosureMode)
     : 'natural_immersion_honest_when_asked';
 
+  const astrological_memory_mode: CompanionAstrologicalMemoryMode =
+    ALLOWED_ASTROLOGICAL_MEMORY_MODES.includes(
+      obj.astrological_memory_mode as CompanionAstrologicalMemoryMode
+    )
+      ? (obj.astrological_memory_mode as CompanionAstrologicalMemoryMode)
+      : 'independent';
+
+  const verification_mode: CompanionVerificationMode = ALLOWED_VERIFICATION_MODES.includes(
+    obj.verification_mode as CompanionVerificationMode
+  )
+    ? (obj.verification_mode as CompanionVerificationMode)
+    : 'neutral';
+
+  const greetingMode: CompanionGreetingMode = ALLOWED_GREETING_MODES.includes(
+    greetingRaw.mode as CompanionGreetingMode
+  )
+    ? (greetingRaw.mode as CompanionGreetingMode)
+    : 'generated_returning';
+
+  const familiarityMode: CompanionFamiliarityMode = ALLOWED_FAMILIARITY_MODES.includes(
+    familiarityRaw.mode as CompanionFamiliarityMode
+  )
+    ? (familiarityRaw.mode as CompanionFamiliarityMode)
+    : 'warm_progressive';
+
+  const familiarityCeiling: CompanionFamiliarityCeiling = ALLOWED_FAMILIARITY_CEILINGS.includes(
+    familiarityRaw.max_familiarity as CompanionFamiliarityCeiling
+  )
+    ? (familiarityRaw.max_familiarity as CompanionFamiliarityCeiling)
+    : 'close';
+
+  const analyticalMode: CompanionAnalyticalExecutionMode =
+    ALLOWED_ANALYTICAL_EXECUTION_MODES.includes(
+      analyticalRaw.mode as CompanionAnalyticalExecutionMode
+    )
+      ? (analyticalRaw.mode as CompanionAnalyticalExecutionMode)
+      : 'single_pass';
+
+  const rawMaxPasses = Number(analyticalRaw.max_passes);
+  const maxPasses = Number.isFinite(rawMaxPasses)
+    ? Math.max(1, Math.min(4, Math.round(rawMaxPasses)))
+    : 1;
+
   return {
     schema_version: 2,
     core_identity_capsule,
@@ -720,9 +870,27 @@ export function normalizePersonalityV2(raw: unknown): CompanionPersonalityV2 {
     autonomy_guidance: cleanText(obj.autonomy_guidance, 2000),
     specialist_expertise: cleanText(obj.specialist_expertise, 2400),
     signature_methodology: cleanText(obj.signature_methodology, 3000),
+    investigation_strategy: cleanText(obj.investigation_strategy, 3000),
+    refinement_philosophy: cleanText(obj.refinement_philosophy, 3000),
     astrology_entry_rule,
     esoteric_guardrails: cleanText(obj.esoteric_guardrails, 4000),
     ai_identity_disclosure,
+    astrological_memory_mode,
+    verification_mode,
+    greeting_config: {
+      mode: greetingMode,
+      allow_memory_callback: greetingRaw.allow_memory_callback !== false,
+      custom_return_instruction: cleanText(greetingRaw.custom_return_instruction, 1000),
+    },
+    familiarity_policy: {
+      mode: familiarityMode,
+      max_familiarity: familiarityCeiling,
+    },
+    analytical_execution: {
+      mode: analyticalMode,
+      max_passes: maxPasses,
+      verify_contradictions: analyticalRaw.verify_contradictions !== false,
+    },
     contextual_nuances,
     reference_dialogues,
     core_identity_locked:
@@ -749,6 +917,8 @@ export function hasAuthoredV2Depth(v2: Partial<CompanionPersonalityV2> | null | 
       v2.autonomy_guidance?.trim() ||
       v2.specialist_expertise?.trim() ||
       v2.signature_methodology?.trim() ||
+      v2.investigation_strategy?.trim() ||
+      v2.refinement_philosophy?.trim() ||
       v2.esoteric_guardrails?.trim() ||
       (v2.contextual_nuances?.length || 0) > 0 ||
       (v2.reference_dialogues?.length || 0) > 0
@@ -1194,6 +1364,7 @@ export function createBlankCompanionV2Template(): CompanionExportBundle {
       skill_level: 'none_emotional',
       chat_style: 'chat_bubbles',
       model_id: null,
+      temperature: null,
       tts_voice_profile: { rate: 1.0, pitch: 1.0 },
       supports_listening_cue: true,
       suggestions_enabled: true,
@@ -1206,6 +1377,20 @@ export function createBlankCompanionV2Template(): CompanionExportBundle {
           worldview: '',
           values: [],
           core_anchors: [],
+        },
+        greeting_config: {
+          mode: 'generated_returning',
+          allow_memory_callback: true,
+          custom_return_instruction: '',
+        },
+        familiarity_policy: {
+          mode: 'warm_progressive',
+          max_familiarity: 'close',
+        },
+        analytical_execution: {
+          mode: 'single_pass',
+          max_passes: 1,
+          verify_contradictions: true,
         },
         contextual_nuances: [
           {
@@ -1248,6 +1433,12 @@ export function createBlankGlobalConfigV2Template(): GlobalCompanionIntelligence
     companion_return_greeting_prompt: '',
     companion_bond_extractor_prompt: '',
     companion_matcher_instructions: '',
+    companion_neutral_verification_prompt: '',
+    companion_analysis_task_frame_prompt: '',
+    companion_analysis_investigation_prompt: '',
+    companion_analysis_refine_prompt: '',
+    companion_analysis_response_strategy_prompt: '',
+    companion_analysis_memory_extraction_prompt: '',
     companion_skill_rules: {
       none_emotional: '',
       vedic: '',
@@ -1426,7 +1617,9 @@ export function computeCompanionFieldDiffs(
   compare('personality_v2_json.autonomy_guidance', 'Autonomy Guidance', 'core_identity', beforeV2.autonomy_guidance, afterV2.autonomy_guidance);
   compare('autonomy_level', 'Autonomy Level', 'core_identity', before.autonomy_level, after.autonomy_level);
 
-  // Nuances & Reference Dialogues
+  // Nuances, Greetings, Familiarity & Reference Dialogues
+  compare('personality_v2_json.greeting_config', 'Greeting Behavior', 'nuances', beforeV2.greeting_config, afterV2.greeting_config);
+  compare('personality_v2_json.familiarity_policy', 'Relational Familiarity Policy', 'nuances', beforeV2.familiarity_policy, afterV2.familiarity_policy);
   compare(
     'personality_v2_json.contextual_nuances',
     'Contextual Nuances',
@@ -1447,13 +1640,19 @@ export function computeCompanionFieldDiffs(
   compare('advisory_mode', 'Advisory Mode', 'specialist', before.advisory_mode, after.advisory_mode);
   compare('personality_v2_json.specialist_expertise', 'Specialist Expertise', 'specialist', beforeV2.specialist_expertise, afterV2.specialist_expertise);
   compare('personality_v2_json.signature_methodology', 'Signature Methodology', 'specialist', beforeV2.signature_methodology, afterV2.signature_methodology);
+  compare('personality_v2_json.investigation_strategy', 'Investigation Strategy', 'specialist', beforeV2.investigation_strategy, afterV2.investigation_strategy);
+  compare('personality_v2_json.refinement_philosophy', 'Epistemic Refinement Philosophy', 'specialist', beforeV2.refinement_philosophy, afterV2.refinement_philosophy);
   compare('personality_v2_json.astrology_entry_rule', 'Astrology Entry Rule', 'specialist', beforeV2.astrology_entry_rule, afterV2.astrology_entry_rule);
+  compare('personality_v2_json.verification_mode', 'Verification Mode', 'specialist', beforeV2.verification_mode, afterV2.verification_mode);
+  compare('personality_v2_json.astrological_memory_mode', 'Astrological Memory Mode', 'specialist', beforeV2.astrological_memory_mode, afterV2.astrological_memory_mode);
+  compare('personality_v2_json.analytical_execution', 'Analytical Execution Mode', 'specialist', beforeV2.analytical_execution, afterV2.analytical_execution);
   compare('personality_v2_json.ai_identity_disclosure', 'AI Identity Disclosure', 'specialist', beforeV2.ai_identity_disclosure, afterV2.ai_identity_disclosure);
   compare('personality_v2_json.esoteric_guardrails', 'Esoteric & Hard Guardrails', 'specialist', beforeV2.esoteric_guardrails, afterV2.esoteric_guardrails);
   compare('chart_access', 'Chart Access Flags', 'specialist', before.chart_access, after.chart_access);
   compare('formula_cartridge_slugs', 'Formula Cartridges', 'specialist', before.formula_cartridge_slugs, after.formula_cartridge_slugs);
   compare('chat_style', 'Chat Style', 'specialist', before.chat_style, after.chat_style);
   compare('model_id', 'Model Override', 'specialist', before.model_id, after.model_id);
+  compare('temperature', 'Temperature Override', 'specialist', before.temperature ?? null, after.temperature ?? null);
   compare('max_output_tokens', 'Max Output Tokens', 'specialist', before.max_output_tokens, after.max_output_tokens);
   compare('override_global_rules', 'Override Global Rules', 'specialist', before.override_global_rules, after.override_global_rules);
   compare('override_group_rules', 'Override Group Rules', 'specialist', before.override_group_rules, after.override_group_rules);

@@ -13,14 +13,18 @@ import {
   normalizePersonalityV2,
   type AiIdentityDisclosureMode,
   type AstrologyEntryRule,
+  type CompanionAstrologicalMemoryMode,
   type CompanionPersonalityV2,
+  type CompanionVerificationMode,
 } from '../../../lib/companionV2Schema';
 import {
   ACTIVE_SKILL_LEVEL_OPTIONS,
   AI_DISCLOSURE_OPTIONS,
+  ASTROLOGICAL_MEMORY_MODE_OPTIONS,
   ASTROLOGY_ENTRY_RULE_OPTIONS,
   CHART_ACCESS_TOGGLES,
   SKILL_LEVEL_OPTIONS,
+  VERIFICATION_MODE_OPTIONS,
   type AdminCompanionRecord,
   type FormulaCartridgeOption,
 } from './companionStudioTypes';
@@ -229,6 +233,105 @@ const CompanionSpecialistRulesTab: React.FC<CompanionSpecialistRulesTabProps> = 
               })()}
             />
             <p className="text-[11px] text-[#8B8275]">{selectedSkillMeta.description}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Analytical Investigation, Verification & Memory Isolation */}
+      <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-3.5 w-3.5 text-[#8B7355]" />
+            <span className="text-xs font-semibold text-[#3D3830]">
+              Analytical Investigation, Verification &amp; Memory Isolation
+            </span>
+          </div>
+          <p className="text-[11px] text-[#8B8275] mt-0.5">
+            Authors this character&apos;s chart-inspection instincts, epistemic verification discipline, and case-memory boundary (stored in V2 snapshot; runtime enforcement wires in subsequent phases).
+          </p>
+        </div>
+
+        <label className="block space-y-1.5">
+          <span className="text-xs font-medium text-[#5C5449]">
+            Analytical Investigation Strategy
+          </span>
+          <textarea
+            rows={3}
+            value={v2.investigation_strategy || ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              updateV2((prevV2) => ({ ...prevV2, investigation_strategy: val }));
+            }}
+            placeholder="Which placements, houses, Dashas, Nakshatras, aspects, or transits this practitioner checks first before forming a reading..."
+            className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] p-3 text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+          />
+        </label>
+
+        <label className="block space-y-1.5">
+          <span className="text-xs font-medium text-[#5C5449]">
+            Epistemic Refinement &amp; Contradiction Testing (Not Stylistic Polishing)
+          </span>
+          <textarea
+            rows={3}
+            value={v2.refinement_philosophy || ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              updateV2((prevV2) => ({ ...prevV2, refinement_philosophy: val }));
+            }}
+            placeholder="How this character stress-tests hypotheses for conflicting chart signals, avoids forced certainty, and separates confirmed indicators from speculation..."
+            className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] p-3 text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+          />
+        </label>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-[#5C5449]">Verification Mode</span>
+            <CustomSelect
+              value={v2.verification_mode || 'neutral'}
+              onChange={(val) =>
+                updateV2((prevV2) => ({
+                  ...prevV2,
+                  verification_mode: val as CompanionVerificationMode,
+                }))
+              }
+              ariaLabel="Companion verification mode"
+              surface="elevated"
+              className="w-full"
+              options={VERIFICATION_MODE_OPTIONS}
+            />
+            <p className="text-[11px] text-[#8B8275]">
+              {(
+                VERIFICATION_MODE_OPTIONS.find(
+                  (o) => o.value === (v2.verification_mode || 'neutral')
+                ) || VERIFICATION_MODE_OPTIONS[0]
+              ).description}
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-[#5C5449]">
+              Astrological Memory Mode
+            </span>
+            <CustomSelect
+              value={v2.astrological_memory_mode || 'independent'}
+              onChange={(val) =>
+                updateV2((prevV2) => ({
+                  ...prevV2,
+                  astrological_memory_mode: val as CompanionAstrologicalMemoryMode,
+                }))
+              }
+              ariaLabel="Companion astrological memory mode"
+              surface="elevated"
+              className="w-full"
+              options={ASTROLOGICAL_MEMORY_MODE_OPTIONS}
+            />
+            <p className="text-[11px] text-[#8B8275]">
+              {(
+                ASTROLOGICAL_MEMORY_MODE_OPTIONS.find(
+                  (o) => o.value === (v2.astrological_memory_mode || 'independent')
+                ) || ASTROLOGICAL_MEMORY_MODE_OPTIONS[0]
+              ).description}
+            </p>
           </div>
         </div>
       </div>
