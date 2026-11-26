@@ -15,6 +15,7 @@ import {
   type CompanionTtsVoiceProfile,
 } from '../../app/chatTypes';
 import {
+  CONSULTANTS_ONLY_MODE,
   DEFAULT_COMPANION_PERSONALITY_V2,
   normalizePersonalityV2,
   type AiIdentityDisclosureMode,
@@ -168,6 +169,10 @@ export const CATEGORY_OPTIONS: Array<{ value: CompanionCategoryTag; label: strin
   { value: 'past_life', label: 'Past-Life & Spiritual Guides' },
 ];
 
+export const ACTIVE_CATEGORY_OPTIONS = CONSULTANTS_ONLY_MODE
+  ? CATEGORY_OPTIONS.filter((c) => c.value !== 'friends' && c.value !== 'support')
+  : CATEGORY_OPTIONS;
+
 export const SKILL_LEVEL_OPTIONS: Array<{
   value: CompanionSkillLevel;
   label: string;
@@ -204,6 +209,10 @@ export const SKILL_LEVEL_OPTIONS: Array<{
     description: 'Deep karmic themes, South Node / Ketu archetypes & meaning.',
   },
 ];
+
+export const ACTIVE_SKILL_LEVEL_OPTIONS = CONSULTANTS_ONLY_MODE
+  ? SKILL_LEVEL_OPTIONS.filter((s) => s.value !== 'none_emotional')
+  : SKILL_LEVEL_OPTIONS;
 
 export const AUTONOMY_OPTIONS: Array<{
   value: CompanionAutonomyLevel;
@@ -294,6 +303,12 @@ export const SPECIALIZATION_GROUP_OPTIONS: Array<{
   { value: 'life_companions', label: 'Life Companions' },
   { value: 'cross_cutting', label: 'Cross-Cutting' },
 ];
+
+export const ACTIVE_SPECIALIZATION_GROUP_OPTIONS = CONSULTANTS_ONLY_MODE
+  ? SPECIALIZATION_GROUP_OPTIONS.filter(
+      (g) => g.value === 'spiritual_guides' || g.value === 'cross_cutting'
+    )
+  : SPECIALIZATION_GROUP_OPTIONS;
 
 export const DEFAULT_NEW_PALETTE: CompanionMonogramPalette = {
   bg: '#EAE3D7',
@@ -543,17 +558,20 @@ export function createBlankCompanion(nextSortOrder: number): AdminCompanionRecor
     short_bio: '',
     full_bio: '',
     how_conversations_feel: '',
-    primary_expertise: 'Friend',
+    primary_expertise: CONSULTANTS_ONLY_MODE ? 'Vedic Astrologer' : 'Friend',
     secondary_expertise: [],
-    category_tag: 'friends',
-    companion_group: 'everyday_companions',
-    advisory_mode: 'friend',
-    chart_access: { ...EMPTY_COMPANION_CHART_ACCESS },
+    category_tag: CONSULTANTS_ONLY_MODE ? 'astrology' : 'friends',
+    companion_group: CONSULTANTS_ONLY_MODE ? 'spiritual_guides' : 'everyday_companions',
+    advisory_mode: CONSULTANTS_ONLY_MODE ? 'esoteric_guide' : 'friend',
+    chart_access: {
+      ...EMPTY_COMPANION_CHART_ACCESS,
+      ...(CONSULTANTS_ONLY_MODE ? { vedic: true, council_notes: true } : {}),
+    },
     formula_cartridge_slugs: [],
     max_output_tokens: null,
     discoverable_tags: [],
     situation_tags: [],
-    specialization_slugs: ['fun_friendship'],
+    specialization_slugs: CONSULTANTS_ONLY_MODE ? ['vedic_astrology'] : ['fun_friendship'],
     override_group_rules: false,
     cultural_fluency: 'English · Warm Everyday',
     avatar_url: null,
@@ -570,8 +588,8 @@ export function createBlankCompanion(nextSortOrder: number): AdminCompanionRecor
       'SOFT INSTINCTS (Override whenever real human judgment calls for it):\n- Keep replies natural and conversational like real texting unless a deeper moment calls for more.',
     autonomy_level: 'intuitive',
     override_global_rules: true,
-    skill_level: 'none_emotional',
-    chat_style: 'chat_bubbles',
+    skill_level: CONSULTANTS_ONLY_MODE ? 'vedic_soft' : 'none_emotional',
+    chat_style: CONSULTANTS_ONLY_MODE ? 'editorial' : 'chat_bubbles',
     model_id: null,
     tts_voice_profile: { rate: 1.0, pitch: 1.0 },
     supports_listening_cue: true,
@@ -581,6 +599,7 @@ export function createBlankCompanion(nextSortOrder: number): AdminCompanionRecor
     core_identity_locked: true,
     personality_v2_json: normalizePersonalityV2({
       ...DEFAULT_COMPANION_PERSONALITY_V2,
+      astrology_entry_rule: CONSULTANTS_ONLY_MODE ? 'contextual_invite' : 'never',
       core_identity_locked: true,
     }),
     published_version: 1,

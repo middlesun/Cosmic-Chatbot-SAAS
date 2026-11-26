@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import CustomSelect from '../../app/CustomSelect';
 import {
+  ACTIVE_COMPANION_GROUP_OPTIONS,
   CHAT_STYLE_OPTIONS,
   COMPANION_ADVISORY_MODE_OPTIONS,
   COMPANION_GROUP_OPTIONS,
@@ -25,12 +26,15 @@ import {
   type CompanionSkillRuleKey,
   type CompanionSkillRulesMap,
 } from '../../app/chatTypes';
-import type {
-  CompanionSpecializationTag,
-  SpecializationGroupKey,
+import {
+  CONSULTANTS_ONLY_MODE,
+  type CompanionSpecializationTag,
+  type SpecializationGroupKey,
 } from '../../../lib/companionV2Schema';
 import CompanionAvatar from '../../app/CompanionAvatar';
 import {
+  ACTIVE_SKILL_LEVEL_OPTIONS,
+  ACTIVE_SPECIALIZATION_GROUP_OPTIONS,
   GLOBAL_COMPANION_PROMPT_META,
   SKILL_BADGE_MAP,
   SKILL_LEVEL_OPTIONS,
@@ -59,6 +63,8 @@ interface GlobalIntelligencePanelProps {
   setGroupFilter: React.Dispatch<React.SetStateAction<string>>;
   skillFilter: string;
   setSkillFilter: React.Dispatch<React.SetStateAction<string>>;
+  statusFilter: string;
+  onStatusFilterChange: (nextStatus: string) => void;
   filteredCompanions: AdminCompanionRosterSummary[];
   quickUpdatingId: string | null;
   onQuickPatchCompanion: (
@@ -102,6 +108,8 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
   setGroupFilter,
   skillFilter,
   setSkillFilter,
+  statusFilter,
+  onStatusFilterChange,
   filteredCompanions,
   quickUpdatingId,
   onQuickPatchCompanion,
@@ -109,8 +117,16 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
 }) => {
   const [newSpecLabel, setNewSpecLabel] = useState('');
   const [newSpecSlug, setNewSpecSlug] = useState('');
-  const [newSpecGroup, setNewSpecGroup] = useState<SpecializationGroupKey>('cross_cutting');
+  const [newSpecGroup, setNewSpecGroup] = useState<SpecializationGroupKey>(
+    CONSULTANTS_ONLY_MODE ? 'spiritual_guides' : 'cross_cutting'
+  );
   const [newSpecDesc, setNewSpecDesc] = useState('');
+
+  const showArchivedMatrixOptions =
+    !CONSULTANTS_ONLY_MODE ||
+    statusFilter === 'hidden' ||
+    statusFilter === 'all' ||
+    statusFilter === 'draft_pending';
 
   const defaultGroups = (engineDefaults.companion_group_configs ||
     {}) as Partial<CompanionGroupConfigsMap>;
@@ -286,7 +302,7 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
                 </h4>
               </div>
               <div className="grid grid-cols-1 gap-3.5">
-                {COMPANION_GROUP_OPTIONS.map((gMeta) => {
+                {ACTIVE_COMPANION_GROUP_OPTIONS.map((gMeta) => {
                   const gKey = gMeta.value;
                   const merged = {
                     group_system_prompt: defaultGroups[gKey]?.group_system_prompt || '',
@@ -379,6 +395,125 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
                     </div>
                   );
                 })}
+
+                {CONSULTANTS_ONLY_MODE && (
+                  <details className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2]/70 px-4 py-3">
+                    <summary className="text-xs font-semibold text-[#5C5449] cursor-pointer select-none">
+                      Archived Non-Astrology Pillar Groups (
+                      {
+                        COMPANION_GROUP_OPTIONS.filter((g) => g.value !== 'spiritual_guides')
+                          .length
+                      }
+                      ) — Preserved for Re-activation
+                    </summary>
+                    <div className="mt-3 grid grid-cols-1 gap-3">
+                      {COMPANION_GROUP_OPTIONS.filter(
+                        (g) => g.value !== 'spiritual_guides'
+                      ).map((gMeta) => {
+                        const gKey = gMeta.value;
+                        const merged = {
+                          group_system_prompt: defaultGroups[gKey]?.group_system_prompt || '',
+                          default_advisory_mode:
+                            defaultGroups[gKey]?.default_advisory_mode || 'friend',
+                          default_chart_access:
+                            defaultGroups[gKey]?.default_chart_access ||
+                            EMPTY_COMPANION_CHART_ACCESS,
+                          default_chat_style:
+                            defaultGroups[gKey]?.default_chat_style || 'chat_bubbles',
+                          default_max_output_tokens:
+                            defaultGroups[gKey]?.default_max_output_tokens || 1200,
+                          ...(overrideGroups[gKey] || {}),
+                        };
+                        return (
+                          <div
+                            key={gKey}
+                            className="rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] p-4 space-y-3"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-semibold text-[#3D3830]">
+                                  {gMeta.label}
+                                </p>
+                                <p className="text-[11px] text-[#8B8275]">{gMeta.description}</p>
+                              </div>
+                              <span className="font-mono text-[10px] text-[#8B8275]">{gKey}</span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <div className="space-y-1">
+                                <span className="text-[11px] text-[#5C5449]">
+                                  Default Advisory Mode
+                                </span>
+                                <CustomSelect
+                                  value={merged.default_advisory_mode}
+                                  onChange={(val) =>
+                                    updateGroupConfig(gKey, {
+                                      default_advisory_mode: val as CompanionAdvisoryMode,
+                                    })
+                                  }
+                                  ariaLabel={`${gMeta.label} default advisory mode`}
+                                  surface="elevated"
+                                  size="sm"
+                                  options={COMPANION_ADVISORY_MODE_OPTIONS}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[11px] text-[#5C5449]">
+                                  Default Chat Style
+                                </span>
+                                <CustomSelect
+                                  value={merged.default_chat_style}
+                                  onChange={(val) =>
+                                    updateGroupConfig(gKey, {
+                                      default_chat_style: val as ChatStyle,
+                                    })
+                                  }
+                                  ariaLabel={`${gMeta.label} default chat style`}
+                                  surface="elevated"
+                                  size="sm"
+                                  options={CHAT_STYLE_OPTIONS}
+                                />
+                              </div>
+                              <label className="space-y-1">
+                                <span className="text-[11px] text-[#5C5449]">
+                                  Default Max Output Tokens
+                                </span>
+                                <input
+                                  type="number"
+                                  min={300}
+                                  max={8000}
+                                  value={merged.default_max_output_tokens}
+                                  onChange={(e) =>
+                                    updateGroupConfig(gKey, {
+                                      default_max_output_tokens: Number(e.target.value) || 1200,
+                                    })
+                                  }
+                                  className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-1.5 font-mono text-xs tabular-nums text-[#3D3830] focus:outline-none"
+                                />
+                              </label>
+                            </div>
+
+                            <label className="block space-y-1">
+                              <span className="text-[11px] text-[#5C5449]">
+                                Group Posture Prompt
+                              </span>
+                              <textarea
+                                rows={2}
+                                value={merged.group_system_prompt}
+                                onChange={(e) =>
+                                  updateGroupConfig(gKey, {
+                                    group_system_prompt: e.target.value,
+                                  })
+                                }
+                                className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FAF7F2] p-2.5 font-mono text-xs leading-relaxed text-[#3D3830] focus:outline-none resize-y"
+                              />
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
+                )}
               </div>
             </div>
 
@@ -469,7 +604,7 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
               ariaLabel="New specialization group"
               surface="elevated"
               size="sm"
-              options={SPECIALIZATION_GROUP_OPTIONS}
+              options={ACTIVE_SPECIALIZATION_GROUP_OPTIONS}
             />
           </div>
           <label className="sm:col-span-3 space-y-1">
@@ -493,8 +628,18 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
         </div>
 
         {/* Taxonomy List */}
-        <div className="divide-y divide-[#3D3830]/8 rounded-2xl border border-[#3D3830]/12 overflow-hidden">
-          {specializations.map((spec, idx) => (
+        {(() => {
+          const isArchivedTag = (s: CompanionSpecializationTag) =>
+            CONSULTANTS_ONLY_MODE &&
+            (s.group === 'everyday_companions' || s.group === 'life_companions');
+          const primarySpecs = specializations
+            .map((spec, idx) => ({ spec, idx }))
+            .filter(({ spec }) => !isArchivedTag(spec));
+          const archivedSpecs = specializations
+            .map((spec, idx) => ({ spec, idx }))
+            .filter(({ spec }) => isArchivedTag(spec));
+
+          const renderSpecRow = (spec: CompanionSpecializationTag, idx: number) => (
             <div
               key={spec.slug}
               className="flex flex-wrap items-center gap-2.5 bg-[#FDFBF7] px-3.5 py-2.5 hover:bg-[#FAF7F2]"
@@ -591,8 +736,26 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
                 )}
               </div>
             </div>
-          ))}
-        </div>
+          );
+
+          return (
+            <div className="space-y-3">
+              <div className="divide-y divide-[#3D3830]/8 rounded-2xl border border-[#3D3830]/12 overflow-hidden">
+                {primarySpecs.map(({ spec, idx }) => renderSpecRow(spec, idx))}
+              </div>
+              {archivedSpecs.length > 0 && (
+                <details className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2]/70 px-4 py-3">
+                  <summary className="text-xs font-semibold text-[#5C5449] cursor-pointer select-none">
+                    Archived Companionship &amp; Life Area Tags ({archivedSpecs.length}) — Preserved for Re-activation
+                  </summary>
+                  <div className="mt-3 divide-y divide-[#3D3830]/8 rounded-2xl border border-[#3D3830]/12 overflow-hidden">
+                    {archivedSpecs.map(({ spec, idx }) => renderSpecRow(spec, idx))}
+                  </div>
+                </details>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* 3. Quick Companion Skill & Visibility Matrix */}
@@ -618,6 +781,19 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
               />
             </div>
             <CustomSelect
+              value={statusFilter}
+              onChange={onStatusFilterChange}
+              ariaLabel="Filter matrix by status"
+              surface="canvas"
+              size="sm"
+              options={[
+                { value: 'all', label: 'All Status' },
+                { value: 'active', label: 'Active Only' },
+                { value: 'hidden', label: 'Hidden Only' },
+                { value: 'draft_pending', label: 'Draft Pending' },
+              ]}
+            />
+            <CustomSelect
               value={groupFilter}
               onChange={setGroupFilter}
               ariaLabel="Filter matrix by pillar group"
@@ -625,7 +801,10 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
               size="sm"
               options={[
                 { value: 'all', label: 'All Pillars' },
-                ...COMPANION_GROUP_OPTIONS.map((g) => ({ value: g.value, label: g.label })),
+                ...(showArchivedMatrixOptions
+                  ? COMPANION_GROUP_OPTIONS
+                  : ACTIVE_COMPANION_GROUP_OPTIONS
+                ).map((g) => ({ value: g.value, label: g.label })),
               ]}
             />
             <CustomSelect
@@ -636,9 +815,14 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
               size="sm"
               options={[
                 { value: 'all', label: 'All Skill Levels' },
-                { value: 'human_only', label: 'Human Only' },
+                ...(showArchivedMatrixOptions
+                  ? [{ value: 'human_only', label: 'Human Only' }]
+                  : []),
                 { value: 'esoteric', label: 'Chart / Esoteric Active' },
-                ...SKILL_LEVEL_OPTIONS.map((s) => ({ value: s.value, label: s.label })),
+                ...(showArchivedMatrixOptions
+                  ? SKILL_LEVEL_OPTIONS
+                  : ACTIVE_SKILL_LEVEL_OPTIONS
+                ).map((s) => ({ value: s.value, label: s.label })),
               ]}
             />
           </div>

@@ -157,13 +157,19 @@ const CompanionTestingStudio: React.FC<CompanionTestingStudioProps> = ({
   activeEditorDraft,
   getAccessToken,
 }) => {
+  const orderedCompanions = useMemo(() => {
+    const active = companions.filter((c) => c.is_active);
+    const inactive = companions.filter((c) => !c.is_active);
+    return [...active, ...inactive];
+  }, [companions]);
+
   const defaultPrimarySlug = useMemo(() => {
     if (initialSlug) return initialSlug;
     if (activeEditorDraft?.slug && activeEditorDraft.id !== '__new__') {
       return activeEditorDraft.slug;
     }
-    return companions[0]?.slug || ASTRA_MOON_BENCHMARK_SLUG;
-  }, [activeEditorDraft, companions, initialSlug]);
+    return orderedCompanions[0]?.slug || ASTRA_MOON_BENCHMARK_SLUG;
+  }, [activeEditorDraft, initialSlug, orderedCompanions]);
 
   const [primarySlug, setPrimarySlug] = useState<string>(defaultPrimarySlug);
   const [targetStage, setTargetStage] = useState<'draft' | 'published'>('draft');
@@ -173,7 +179,7 @@ const CompanionTestingStudio: React.FC<CompanionTestingStudioProps> = ({
     'off' | 'draft_vs_published' | 'vs_astra_moon' | 'vs_other'
   >('off');
   const [compareOtherSlug, setCompareOtherSlug] = useState<string>(
-    companions[1]?.slug || companions[0]?.slug || ASTRA_MOON_BENCHMARK_SLUG
+    orderedCompanions[1]?.slug || orderedCompanions[0]?.slug || ASTRA_MOON_BENCHMARK_SLUG
   );
 
   // Simulated User & Living Context
@@ -230,16 +236,16 @@ const CompanionTestingStudio: React.FC<CompanionTestingStudioProps> = ({
 
   const companionSelectOptions = useMemo(
     () => [
-      ...companions.map((c) => ({
+      ...orderedCompanions.map((c) => ({
         value: c.slug,
-        label: `${c.name} — ${c.primary_expertise}${c.has_unpublished_draft ? ' (Draft)' : ''}`,
+        label: `${c.name} — ${c.primary_expertise}${!c.is_active ? ' (Hidden)' : ''}${c.has_unpublished_draft ? ' (Draft)' : ''}`,
       })),
       {
         value: ASTRA_MOON_BENCHMARK_SLUG,
         label: 'Astra Moon (Benchmark · Modern Astrologer)',
       },
     ],
-    [companions]
+    [orderedCompanions]
   );
 
   const localHourValue = useMemo(() => {

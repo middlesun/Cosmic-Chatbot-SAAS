@@ -2,13 +2,18 @@ import React, { useRef, useState } from 'react';
 import { Image as ImageIcon, Lock, Plus, Tag, Trash2, Upload } from 'lucide-react';
 import CustomSelect from '../../app/CustomSelect';
 import {
+  ACTIVE_COMPANION_GROUP_OPTIONS,
   COMPANION_GROUP_OPTIONS,
   type CompanionCategoryTag,
   type CompanionGroup,
   type CompanionMonogramPalette,
 } from '../../app/chatTypes';
-import type { CompanionSpecializationTag } from '../../../lib/companionV2Schema';
 import {
+  CONSULTANTS_ONLY_MODE,
+  type CompanionSpecializationTag,
+} from '../../../lib/companionV2Schema';
+import {
+  ACTIVE_CATEGORY_OPTIONS,
   CATEGORY_OPTIONS,
   SEX_OPTIONS,
   slugifyName,
@@ -244,7 +249,7 @@ const CompanionPublicProfileTab: React.FC<CompanionPublicProfileTabProps> = ({
         <div className="space-y-1.5">
           <span className="text-xs font-medium text-[#5C5449]">Companion Pillar Group</span>
           <CustomSelect
-            value={draft.companion_group || 'everyday_companions'}
+            value={draft.companion_group || 'spiritual_guides'}
             onChange={(val) =>
               setDraft((prev) =>
                 prev ? { ...prev, companion_group: val as CompanionGroup } : prev
@@ -253,7 +258,15 @@ const CompanionPublicProfileTab: React.FC<CompanionPublicProfileTabProps> = ({
             ariaLabel="Companion pillar group"
             surface="canvas"
             className="w-full"
-            options={COMPANION_GROUP_OPTIONS.map((g) => ({
+            options={(() => {
+              const base = ACTIVE_COMPANION_GROUP_OPTIONS;
+              const current = draft.companion_group;
+              if (current && !base.some((g) => g.value === current)) {
+                const legacy = COMPANION_GROUP_OPTIONS.find((g) => g.value === current);
+                if (legacy) return [...base, legacy];
+              }
+              return base;
+            })().map((g) => ({
               value: g.value,
               label: g.label,
               description: g.description,
@@ -273,7 +286,15 @@ const CompanionPublicProfileTab: React.FC<CompanionPublicProfileTabProps> = ({
             ariaLabel="Companion hub category"
             surface="canvas"
             className="w-full"
-            options={CATEGORY_OPTIONS}
+            options={(() => {
+              const base = ACTIVE_CATEGORY_OPTIONS;
+              const current = draft.category_tag;
+              if (current && !base.some((c) => c.value === current)) {
+                const legacy = CATEGORY_OPTIONS.find((c) => c.value === current);
+                if (legacy) return [...base, legacy];
+              }
+              return base;
+            })()}
           />
         </div>
 
@@ -377,6 +398,17 @@ const CompanionPublicProfileTab: React.FC<CompanionPublicProfileTabProps> = ({
           ).map((section) => {
             const groupSpecs = specializations.filter((s) => s.group === section.key);
             if (groupSpecs.length === 0) return null;
+            const isArchivedSection =
+              CONSULTANTS_ONLY_MODE &&
+              (section.key === 'everyday_companions' || section.key === 'life_companions');
+            const hasSelectedInSection = groupSpecs.some((s) => selectedSpecs.includes(s.slug));
+            if (
+              isArchivedSection &&
+              draft.companion_group !== section.key &&
+              !hasSelectedInSection
+            ) {
+              return null;
+            }
             return (
               <div key={section.key} className="space-y-1.5">
                 <p className="text-[11px] font-medium text-[#8B8275]">

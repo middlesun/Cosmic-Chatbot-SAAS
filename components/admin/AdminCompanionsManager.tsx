@@ -29,17 +29,21 @@ import CompanionAvatar from '../app/CompanionAvatar';
 import CustomSelect from '../app/CustomSelect';
 import { speakMessageText, stopSpeaking } from '../app/chatUtilities';
 import {
+  ACTIVE_COMPANION_GROUP_OPTIONS,
   CHAT_STYLE_OPTIONS,
   COMPANION_GROUP_OPTIONS,
   type CompanionMonogramPalette,
 } from '../app/chatTypes';
 import {
+  CONSULTANTS_ONLY_MODE,
   computeCompanionFieldDiffs,
   type CompanionSpecializationTag,
   type CompanionVersionRecord,
 } from '../../lib/companionV2Schema';
 import type { ModelChoiceOption } from './PromptLibraryManager';
 import {
+  ACTIVE_CATEGORY_OPTIONS,
+  ACTIVE_SKILL_LEVEL_OPTIONS,
   CATEGORY_OPTIONS,
   SKILL_LEVEL_OPTIONS,
   createBlankCompanion,
@@ -115,7 +119,9 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [skillFilter, setSkillFilter] = useState<string>('all');
   const [sexFilter, setSexFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>(
+    CONSULTANTS_ONLY_MODE ? 'active' : 'all'
+  );
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorState, setEditorState] = useState<CompanionV2EditorState | null>(null);
@@ -218,6 +224,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
             (selectedId
               ? list.find((c) => c.id === selectedId || c.slug === selectedId)
               : null) ||
+            (CONSULTANTS_ONLY_MODE ? list.find((c) => c.is_active) : null) ||
             list[0];
           setSelectedId(target.id);
           await loadCompanionV2Detail(target.slug);
@@ -890,6 +897,76 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
     draft && !isCreating && defaultSlugs.includes(draft.slug.toLowerCase())
   );
 
+  const showArchivedFilterOptions =
+    !CONSULTANTS_ONLY_MODE ||
+    statusFilter === 'hidden' ||
+    statusFilter === 'all' ||
+    statusFilter === 'draft_pending';
+
+  const visibleGroupFilterOptions = useMemo(
+    () => (showArchivedFilterOptions ? COMPANION_GROUP_OPTIONS : ACTIVE_COMPANION_GROUP_OPTIONS),
+    [showArchivedFilterOptions]
+  );
+
+  const visibleSpecializationFilterOptions = useMemo(() => {
+    if (showArchivedFilterOptions) return specializations;
+    return specializations.filter(
+      (s) =>
+        s.is_active !== false &&
+        (s.group === 'spiritual_guides' || s.group === 'cross_cutting')
+    );
+  }, [showArchivedFilterOptions, specializations]);
+
+  const visibleCategoryFilterOptions = useMemo(
+    () => (showArchivedFilterOptions ? CATEGORY_OPTIONS : ACTIVE_CATEGORY_OPTIONS),
+    [showArchivedFilterOptions]
+  );
+
+  const visibleSkillFilterOptions = useMemo(
+    () => (showArchivedFilterOptions ? SKILL_LEVEL_OPTIONS : ACTIVE_SKILL_LEVEL_OPTIONS),
+    [showArchivedFilterOptions]
+  );
+
+  const handleStatusFilterChange = (nextStatus: string) => {
+    setStatusFilter(nextStatus);
+    if (CONSULTANTS_ONLY_MODE && nextStatus === 'active') {
+      if (
+        groupFilter !== 'all' &&
+        !ACTIVE_COMPANION_GROUP_OPTIONS.some((g) => g.value === groupFilter)
+      ) {
+        setGroupFilter('all');
+      }
+      if (
+        categoryFilter !== 'all' &&
+        !ACTIVE_CATEGORY_OPTIONS.some((c) => c.value === categoryFilter)
+      ) {
+        setCategoryFilter('all');
+      }
+      if (
+        skillFilter !== 'all' &&
+        (skillFilter === 'human_only' ||
+          skillFilter === 'none_emotional' ||
+          (skillFilter !== 'esoteric' &&
+            !ACTIVE_SKILL_LEVEL_OPTIONS.some((s) => s.value === skillFilter)))
+      ) {
+        setSkillFilter('all');
+      }
+      if (
+        specializationFilter !== 'all' &&
+        !specializations.some(
+          (s) =>
+            s.slug === specializationFilter &&
+            s.is_active !== false &&
+            (s.group === 'spiritual_guides' || s.group === 'cross_cutting')
+        )
+      ) {
+        setSpecializationFilter('all');
+      }
+    }
+  };
+
+  const defaultStatusFilter = CONSULTANTS_ONLY_MODE ? 'active' : 'all';
+
   const canReorder =
     searchQuery.trim() === '' &&
     groupFilter === 'all' &&
@@ -897,7 +974,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
     categoryFilter === 'all' &&
     skillFilter === 'all' &&
     sexFilter === 'all' &&
-    statusFilter === 'all';
+    (statusFilter === 'all' || statusFilter === 'active');
 
   const esotericCount = useMemo(
     () => companions.filter((c) => c.skill_level !== 'none_emotional').length,
@@ -1110,6 +1187,8 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
           setGroupFilter={setGroupFilter}
           skillFilter={skillFilter}
           setSkillFilter={setSkillFilter}
+          statusFilter={statusFilter}
+          onStatusFilterChange={handleStatusFilterChange}
           filteredCompanions={filteredCompanions}
           quickUpdatingId={quickUpdatingId}
           onQuickPatchCompanion={(item, patch, label) =>
@@ -1153,7 +1232,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                   className="w-full"
                   options={[
                     { value: 'all', label: 'All Pillars' },
-                    ...COMPANION_GROUP_OPTIONS.map((g) => ({
+                    ...visibleGroupFilterOptions.map((g) => ({
                       value: g.value,
                       label: g.label,
                     })),
@@ -1168,7 +1247,10 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                   className="w-full"
                   options={[
                     { value: 'all', label: 'All Specializations' },
-                    ...specializations.map((s) => ({ value: s.slug, label: s.label })),
+                    ...visibleSpecializationFilterOptions.map((s) => ({
+                      value: s.slug,
+                      label: s.label,
+                    })),
                   ]}
                 />
               </div>
@@ -1183,14 +1265,19 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                   className="w-full"
                   options={[
                     { value: 'all', label: 'All Skills' },
-                    { value: 'human_only', label: 'Human Only' },
+                    ...(showArchivedFilterOptions
+                      ? [{ value: 'human_only', label: 'Human Only' }]
+                      : []),
                     { value: 'esoteric', label: 'Chart / Esoteric' },
-                    ...SKILL_LEVEL_OPTIONS.map((s) => ({ value: s.value, label: s.label })),
+                    ...visibleSkillFilterOptions.map((s) => ({
+                      value: s.value,
+                      label: s.label,
+                    })),
                   ]}
                 />
                 <CustomSelect
                   value={statusFilter}
-                  onChange={setStatusFilter}
+                  onChange={handleStatusFilterChange}
                   ariaLabel="Filter companions by status"
                   surface="elevated"
                   size="sm"
@@ -1228,7 +1315,10 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                   className="w-full"
                   options={[
                     { value: 'all', label: 'All Categories' },
-                    ...CATEGORY_OPTIONS.map((c) => ({ value: c.value, label: c.label })),
+                    ...visibleCategoryFilterOptions.map((c) => ({
+                      value: c.value,
+                      label: c.label,
+                    })),
                   ]}
                 />
               </div>
@@ -1239,7 +1329,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                     ? 'Drag handle or ↑ ↓ to reorder.'
                     : `Showing ${filteredCompanions.length} of ${companions.length}`}
                 </span>
-                {!canReorder && (
+                {(!canReorder || statusFilter !== defaultStatusFilter) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1249,7 +1339,7 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                       setCategoryFilter('all');
                       setSkillFilter('all');
                       setSexFilter('all');
-                      setStatusFilter('all');
+                      setStatusFilter(defaultStatusFilter);
                     }}
                     className="text-[#4A453D] hover:underline cursor-pointer"
                   >
@@ -1265,11 +1355,23 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                   No companions match this filter.
                 </div>
               ) : (
-                filteredCompanions.map((item) => {
+                filteredCompanions.map((item, filteredIdx) => {
                   const isSelected =
                     !isCreating &&
                     (selectedId === item.id || draft?.slug === item.slug);
                   const globalIdx = companions.findIndex((c) => c.id === item.id);
+                  const prevVisibleItem =
+                    filteredIdx > 0 ? filteredCompanions[filteredIdx - 1] : null;
+                  const nextVisibleItem =
+                    filteredIdx < filteredCompanions.length - 1
+                      ? filteredCompanions[filteredIdx + 1]
+                      : null;
+                  const prevGlobalIdx = prevVisibleItem
+                    ? companions.findIndex((c) => c.id === prevVisibleItem.id)
+                    : -1;
+                  const nextGlobalIdx = nextVisibleItem
+                    ? companions.findIndex((c) => c.id === nextVisibleItem.id)
+                    : -1;
                   const isDragging = draggedIdx === globalIdx;
                   const isDragOver =
                     dragOverIdx === globalIdx &&
@@ -1375,9 +1477,9 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                           <>
                             <button
                               type="button"
-                              disabled={reordering || globalIdx <= 0}
+                              disabled={reordering || prevGlobalIdx < 0}
                               onClick={() =>
-                                void handleMoveCompanionToIndex(globalIdx, globalIdx - 1)
+                                void handleMoveCompanionToIndex(globalIdx, prevGlobalIdx)
                               }
                               aria-label={`Move ${item.name} up`}
                               className="p-1.5 rounded-lg border border-[#3D3830]/12 text-[#5C5449] hover:bg-[#FDFBF7] disabled:opacity-30 cursor-pointer"
@@ -1386,9 +1488,9 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                             </button>
                             <button
                               type="button"
-                              disabled={reordering || globalIdx >= companions.length - 1}
+                              disabled={reordering || nextGlobalIdx < 0}
                               onClick={() =>
-                                void handleMoveCompanionToIndex(globalIdx, globalIdx + 1)
+                                void handleMoveCompanionToIndex(globalIdx, nextGlobalIdx)
                               }
                               aria-label={`Move ${item.name} down`}
                               className="p-1.5 rounded-lg border border-[#3D3830]/12 text-[#5C5449] hover:bg-[#FDFBF7] disabled:opacity-30 cursor-pointer"

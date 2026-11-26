@@ -326,6 +326,10 @@ export const COMPANION_GROUP_OPTIONS: Array<{
   },
 ];
 
+export const ACTIVE_COMPANION_GROUP_OPTIONS = CONSULTANTS_ONLY_MODE
+  ? COMPANION_GROUP_OPTIONS.filter((g) => g.value === 'spiritual_guides')
+  : COMPANION_GROUP_OPTIONS;
+
 export type CompanionDiscoveryTabId = 'all' | CompanionGroup;
 
 export const COMPANION_CATEGORY_TABS: Array<{

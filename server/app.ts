@@ -17,6 +17,7 @@ import {
 } from './services/astrologyApi';
 import { getPublicCompanionsCatalogCached } from './services/companionPresets';
 import { getCompanionSpecializations } from './services/companionV2Service';
+import { getDynamicMiniAppsPublicCatalog } from './services/miniAppsRegistry';
 import { checkRateLimit, getClientIpHash } from './services/abuseGuard';
 import { fetchSanityBlogPosts, isSanityConfigured } from '../lib/sanity';
 import { normalizeCouncilSlug } from '../lib/vedicTypes';
@@ -73,6 +74,17 @@ export function createExpressApp(): Express {
       res.json({ companions, specializations });
     } catch {
       res.status(500).json({ error: 'Unable to load specialist companions right now.' });
+    }
+  });
+
+  // Public-safe mini-apps catalog for landing & preview dashboard (strips system prompts)
+  app.get('/api/public/apps', async (_req, res) => {
+    try {
+      const publicCatalog = await getDynamicMiniAppsPublicCatalog();
+      res.setHeader('Cache-Control', 'public, max-age=120');
+      res.json(publicCatalog);
+    } catch {
+      res.status(500).json({ error: 'Unable to load astrology apps right now.' });
     }
   });
 

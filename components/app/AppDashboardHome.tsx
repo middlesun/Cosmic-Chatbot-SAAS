@@ -80,7 +80,7 @@ const AppDashboardHome: React.FC = () => {
   const [showAllDashboardCompanions, setShowAllDashboardCompanions] = useState(false);
   const [activeAppCategory, setActiveAppCategory] = useState<
     'all' | 'popular' | MiniAppCategory | 'favorites'
-  >('popular');
+  >(() => (isPreviewMode ? 'all' : 'popular'));
   const [favoriteSlugs, setFavoriteSlugs] = useState<string[]>(() => {
     if (isPreviewMode) return PREVIEW_HOME_SUMMARY.favoriteAppSlugs;
     try {
@@ -92,12 +92,29 @@ const AppDashboardHome: React.FC = () => {
     return [];
   });
 
+  useEffect(() => {
+    if (isPreviewMode) {
+      setActiveAppCategory('all');
+    }
+  }, [isPreviewMode]);
+
   const loadHomeSummary = useCallback(async () => {
     if (isPreviewMode) {
       setSummary(PREVIEW_HOME_SUMMARY);
       setCatalogApps(CLIENT_MINI_APPS);
       setFavoriteSlugs(PREVIEW_HOME_SUMMARY.favoriteAppSlugs);
       setSummaryLoading(false);
+      fetch('/api/public/apps')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && Array.isArray(data.apps) && data.apps.length > 0) {
+            setCatalogApps(data.apps as MiniAppDefinition[]);
+          }
+          if (data && Array.isArray(data.categories) && data.categories.length > 0) {
+            setAppCategories(data.categories as MiniAppCategoryRecord[]);
+          }
+        })
+        .catch(() => {});
       return;
     }
     setSummaryLoading(true);
@@ -211,8 +228,7 @@ const AppDashboardHome: React.FC = () => {
 
   const displayedApps = useMemo(() => {
     if (activeAppCategory === 'all') {
-      const featured = catalogApps.filter((a) => a.featuredOnHome);
-      return featured.length > 0 ? featured : catalogApps.slice(0, 8);
+      return catalogApps;
     }
     if (activeAppCategory === 'popular') {
       return catalogApps.filter((a) => a.popular).slice(0, 8);
@@ -900,7 +916,7 @@ const AppDashboardHome: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
             {displayedApps.map((app) => {
               const isFav = favoriteSlugs.includes(app.slug);
               return (
@@ -915,12 +931,12 @@ const AppDashboardHome: React.FC = () => {
                       navigate(`/app/apps/${app.slug}`);
                     }
                   }}
-                  className="group flex flex-col justify-between gap-5 rounded-3xl bg-[#FDFBF7] border border-[#3D3830]/10 p-5 transition-colors hover:bg-[#F1ECE3]/65 hover:border-[#3D3830]/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A]"
+                  className="group rounded-2xl border border-[#3D3830]/12 bg-[#FDFBF7] p-6 sm:p-7 flex flex-col items-start gap-4 transition-all duration-200 hover:border-[#3D3830]/28 hover:-translate-y-0.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A]"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="h-10 w-10 rounded-2xl bg-[#F1ECE3] border border-[#3D3830]/8 flex items-center justify-center text-[#5C5449] group-hover:text-[#3D3830] transition-colors shrink-0">
-                      {renderMiniAppIcon(app.iconKey, 'h-4 w-4')}
-                    </div>
+                  <div className="flex items-start justify-between gap-3 w-full">
+                    <span className="h-11 w-11 rounded-xl bg-[#EAE3D7]/80 border border-[#3D3830]/10 flex items-center justify-center text-[#8B7355] shrink-0 transition-colors group-hover:bg-[#EAE3D7]">
+                      {renderMiniAppIcon(app.iconKey, 'h-5 w-5')}
+                    </span>
                     <button
                       type="button"
                       onClick={(e) => void handleToggleFavorite(e, app.slug)}
@@ -934,11 +950,13 @@ const AppDashboardHome: React.FC = () => {
                       <Heart className={`h-3.5 w-3.5 ${isFav ? 'fill-current' : ''}`} />
                     </button>
                   </div>
-                  <div className="flex items-center justify-between gap-2.5">
-                    <h3 className="font-serif text-xl font-medium text-[#3D3830] leading-snug">
-                      {app.shortTitle || app.title}
-                    </h3>
-                    <ArrowRight className="h-4 w-4 text-[#8B7355] group-hover:translate-x-0.5 transition-transform shrink-0" />
+                  <div className="space-y-1">
+                    <span className="block font-['Plus_Jakarta_Sans',sans-serif] text-base sm:text-[17px] font-medium tracking-[-0.015em] text-[#3D3830] leading-snug">
+                      {app.title}
+                    </span>
+                    <span className="block text-xs sm:text-[13px] text-[#6B6256] leading-relaxed">
+                      {app.tagline}
+                    </span>
                   </div>
                 </div>
               );

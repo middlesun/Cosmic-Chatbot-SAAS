@@ -20,6 +20,7 @@ import {
 import { getSupabaseAdmin } from '../lib/supabaseAdmin';
 import {
   BUILTIN_COMPANION_SPECIALIZATIONS,
+  CONSULTANTS_ONLY_MODE,
   DEFAULT_COMPANION_PERSONALITY_V2,
   detectCoreIdentityChanges,
   hasOnlyLegacySpecializationSlugs,
@@ -679,7 +680,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.95,"pitch":0.98},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 130,
   },
   {
@@ -720,7 +721,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.94,"pitch":0.92},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 140,
   },
   {
@@ -761,7 +762,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.93,"pitch":1},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 150,
   },
   {
@@ -802,7 +803,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.98,"pitch":0.9},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 160,
   },
   {
@@ -843,7 +844,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.95,"pitch":0.98},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 170,
   },
   {
@@ -884,7 +885,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.94,"pitch":0.94},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 180,
   },
   {
@@ -925,7 +926,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.03,"pitch":1.06},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 190,
   },
   {
@@ -966,7 +967,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.04,"pitch":1.08},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 200,
   },
   {
@@ -1007,7 +1008,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.96,"pitch":1.02},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 210,
   },
   {
@@ -1048,7 +1049,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.97,"pitch":1},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 220,
   },
   {
@@ -1089,7 +1090,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.02,"pitch":0.96},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 230,
   },
   {
@@ -1130,7 +1131,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.98,"pitch":0.94},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 240,
   },
   {
@@ -1171,7 +1172,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.01,"pitch":0.99},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 250,
   },
   {
@@ -1212,7 +1213,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.97,"pitch":1},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 260,
   },
   {
@@ -1253,7 +1254,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.09,"pitch":1.02},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 270,
   },
   {
@@ -1294,7 +1295,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.01,"pitch":1.04},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 280,
   },
   {
@@ -1335,7 +1336,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1,"pitch":0.95},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 290,
   },
   {
@@ -1376,7 +1377,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.97,"pitch":1},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 300,
   },
   {
@@ -1417,7 +1418,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.96,"pitch":0.9},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 310,
   },
   {
@@ -1458,7 +1459,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.01,"pitch":1.04},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 320,
   },
   {
@@ -1499,7 +1500,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.99,"pitch":0.94},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 330,
   },
   {
@@ -1540,7 +1541,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.97,"pitch":1},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 340,
   },
   {
@@ -1581,7 +1582,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.96,"pitch":0.92},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 350,
   },
   {
@@ -1622,7 +1623,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.01,"pitch":1.04},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 360,
   },
   {
@@ -1663,7 +1664,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.92,"pitch":0.9},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 370,
   },
   {
@@ -1704,7 +1705,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.97,"pitch":1},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 380,
   },
   {
@@ -1745,7 +1746,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.96,"pitch":0.94},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 390,
   },
   {
@@ -1786,7 +1787,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.94,"pitch":1.03},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 400,
   },
   {
@@ -1827,7 +1828,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.92,"pitch":0.92},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 410,
   },
   {
@@ -1868,7 +1869,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.94,"pitch":0.94},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 420,
   },
   {
@@ -1909,7 +1910,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.99,"pitch":1.02},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 430,
   },
   {
@@ -1950,7 +1951,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.01,"pitch":1.04},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 440,
   },
   {
@@ -1991,7 +1992,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.92,"pitch":0.94},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 450,
   },
   {
@@ -2032,7 +2033,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.97,"pitch":1},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 460,
   },
   {
@@ -2073,7 +2074,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.96,"pitch":0.92},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 470,
   },
   {
@@ -2114,7 +2115,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.01,"pitch":1.04},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 480,
   },
   {
@@ -2155,7 +2156,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.92,"pitch":0.9},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 490,
   },
   {
@@ -2196,7 +2197,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.97,"pitch":1},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 500,
   },
   {
@@ -2237,7 +2238,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.9,"pitch":0.88},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 510,
   },
   {
@@ -2278,7 +2279,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.01,"pitch":1.04},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 520,
   },
   {
@@ -2319,7 +2320,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.95,"pitch":0.98},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 530,
   },
   {
@@ -2360,7 +2361,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.94,"pitch":0.94},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 540,
   },
   {
@@ -2401,7 +2402,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.99,"pitch":1.02},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 550,
   },
   {
@@ -2442,7 +2443,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":1.01,"pitch":1.04},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 560,
   },
   {
@@ -2483,7 +2484,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.92,"pitch":0.94},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 570,
   },
   {
@@ -2524,7 +2525,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.97,"pitch":1},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 580,
   },
   {
@@ -2565,7 +2566,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.96,"pitch":0.92},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 590,
   },
   {
@@ -2606,7 +2607,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.98,"pitch":0.94},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 600,
   },
   {
@@ -2647,7 +2648,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.92,"pitch":0.9},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 610,
   },
   {
@@ -2688,7 +2689,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.97,"pitch":1},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 620,
   },
   {
@@ -2729,7 +2730,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.99,"pitch":1.02},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 630,
   },
   {
@@ -2770,7 +2771,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.98,"pitch":0.99},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 640,
   },
   {
@@ -2811,7 +2812,7 @@ export const DEFAULT_COMPANION_PRESETS: CompanionPresetRecord[] = [
     tts_voice_profile: {"rate":0.95,"pitch":0.98},
     supports_listening_cue: true,
     suggestions_enabled: true,
-    is_active: true,
+    is_active: false,
     sort_order: 650,
   }
 ];
@@ -4203,6 +4204,48 @@ export async function ensureCompanionsSeeded(force = false): Promise<void> {
       if (avatarUpdates.length > 0) {
         await Promise.all(avatarUpdates);
         invalidateCompanionsCache();
+      }
+    }
+
+    // One-time reversible deactivation for non-consultant presets (Everyday/Life Companions + Shanti & Omar)
+    if (CONSULTANTS_ONLY_MODE) {
+      const { data: syncSetting } = await supabaseAdmin
+        .from('platform_settings')
+        .select('value')
+        .eq('key', 'consultants_only_deactivated_v1')
+        .maybeSingle();
+
+      if (!syncSetting?.value) {
+        const nonConsultantSlugs = DEFAULT_COMPANION_PRESETS.filter((p) => {
+          const meta = resolveDefaultMetaForRecord(p);
+          return !isConsultantCatalogEntryAllowed({
+            slug: p.slug,
+            companion_group: meta.companion_group,
+          });
+        }).map((p) => p.slug);
+
+        if (nonConsultantSlugs.length > 0) {
+          const { error: deactivateErr } = await supabaseAdmin
+            .from('companions')
+            .update({ is_active: false })
+            .in('slug', nonConsultantSlugs);
+
+          if (!deactivateErr) {
+            await supabaseAdmin.from('platform_settings').upsert(
+              {
+                key: 'consultants_only_deactivated_v1',
+                value: {
+                  applied: true,
+                  applied_at: new Date().toISOString(),
+                  count: nonConsultantSlugs.length,
+                },
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'key' }
+            );
+            invalidateCompanionsCache();
+          }
+        }
       }
     }
   } catch {

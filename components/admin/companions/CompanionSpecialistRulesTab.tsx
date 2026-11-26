@@ -16,6 +16,7 @@ import {
   type CompanionPersonalityV2,
 } from '../../../lib/companionV2Schema';
 import {
+  ACTIVE_SKILL_LEVEL_OPTIONS,
   AI_DISCLOSURE_OPTIONS,
   ASTROLOGY_ENTRY_RULE_OPTIONS,
   CHART_ACCESS_TOGGLES,
@@ -213,7 +214,19 @@ const CompanionSpecialistRulesTab: React.FC<CompanionSpecialistRulesTabProps> = 
               ariaLabel="Companion skill level"
               surface="elevated"
               className="w-full"
-              options={SKILL_LEVEL_OPTIONS}
+              options={(() => {
+                const base = ACTIVE_SKILL_LEVEL_OPTIONS;
+                if (
+                  draft.skill_level &&
+                  !base.some((s) => s.value === draft.skill_level)
+                ) {
+                  const legacy = SKILL_LEVEL_OPTIONS.find(
+                    (s) => s.value === draft.skill_level
+                  );
+                  if (legacy) return [...base, legacy];
+                }
+                return base;
+              })()}
             />
             <p className="text-[11px] text-[#8B8275]">{selectedSkillMeta.description}</p>
           </div>
