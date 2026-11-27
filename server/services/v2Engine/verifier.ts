@@ -1133,6 +1133,8 @@ export function verifyMasterChartRecord(
   rawLayerA?: LayerARawProviderRecord | null
 ): MathematicalVerificationReport {
   const instant = master.canonicalBirthInstant;
+  const isAstroWay = (master.providerId || rawLayerA?.providerId) === 'astroway';
+  const providerDisplay = isAstroWay ? 'AstroWay V1' : 'FreeAstroAPI';
   const ref = computeIndependentAstronomicalReference(instant);
   const checks: VerificationCheckResult[] = [];
 
@@ -1172,8 +1174,14 @@ export function verifyMasterChartRecord(
       ? `Shadbala maxΔ=${eq.shadbalaComparison.maxTotalDeltaVirupas ?? 0}V`
       : 'Shadbala absent';
     const panNote = eq.panchangAudit?.available
-      ? `Panchang nonClockErr=${eq.panchangAudit.nonClockMismatches.length}`
+      ? eq.panchangAudit.requestTimePanchangAvailable
+        ? `BirthTimePanchang(request_time_panchang)=${String(eq.panchangAudit.requestTimePanchangEquivalent)} (dailyCalendarDiffs=${eq.panchangAudit.dailyCalendarDifferences.length})`
+        : `Panchang nonClockErr=${eq.panchangAudit.nonClockMismatches.length}`
       : 'Panchang absent';
+    const dashaNote = eq.dashaAudit?.available
+      ? `Dasha durErr=${eq.dashaAudit.durationMismatches.length}, remΔ=${eq.dashaAudit.birthBalanceRemainingYearsDelta ?? 0}y, rolloverShifts=${eq.dashaAudit.calendarDateRolloverShifts.length}`
+      : `DashaEq=${String(eq.dashaEquivalent)}`;
+
     checks.push({
       id: 'timezone_mode_a_vs_b',
       domain: 'Timezone Equivalence (Full Payload)',
@@ -1183,8 +1191,8 @@ export function verifyMasterChartRecord(
         ? 'internal_math_consistency_verified'
         : 'methodology_unresolved',
       verificationBasis: 'provider_self_consistency',
-      expected: 'Mode A (IANA) == Mode B (UTC) across coordinates, Shadbala, Bhava Chalit, Ashtakavarga, Vargas, Yogas, Dasha & non-clock Panchang',
-      observed: `coordsEq=${eq.coordinatesEquivalent} (ascΔ=${eq.ascendantDeltaDeg}°, maxPlΔ=${eq.maxPlanetDeltaDeg}°); ${sbNote}; bhavaChalitEq=${String(eq.bhavaChalitEquivalent)}; AV_Eq=${String(eq.ashtakavargaEquivalent)}; ${panNote}`,
+      expected: 'Mode A (IANA) == Mode B (UTC) across coordinates, Shadbala, Bhava Chalit, Ashtakavarga, Vargas, Yogas, Dasha durations & birth-time Panchang',
+      observed: `coordsEq=${eq.coordinatesEquivalent} (ascΔ=${eq.ascendantDeltaDeg}°, maxPlΔ=${eq.maxPlanetDeltaDeg}°); ${sbNote}; bhavaChalitEq=${String(eq.bhavaChalitEquivalent)}; AV_Eq=${String(eq.ashtakavargaEquivalent)}; ${dashaNote}; ${panNote}`,
       notes: eq.notes.join(' | '),
     });
     if (eq.equivalent) {
@@ -1205,6 +1213,66 @@ export function verifyMasterChartRecord(
         status: 'unresolved',
         detail: eq.notes.join(' | '),
       });
+    }
+
+    if (eq.panchangAudit?.available && eq.panchangAudit.requestTimePanchangAvailable) {
+      const rtOk = Boolean(eq.panchangAudit.requestTimePanchangEquivalent);
+      const panDetail = rtOk
+        ? `panchang.request_time_panchang identical across Mode A & Mode B (${eq.panchangAudit.dailyCalendarDifferences.length} daily sunrise-date fields separated as calendar-date differences).`
+        : `panchang.request_time_panchang mismatches: ${eq.panchangAudit.requestTimePanchangMismatches.join('; ')}`;
+      checks.push({
+        id: 'panchang_request_time_equivalence',
+        domain: 'Natal Birth-Instant Panchang',
+        passed: rtOk,
+        severity: 'major',
+        epistemicCategory: rtOk
+          ? 'internal_math_consistency_verified'
+          : 'methodology_unresolved',
+        verificationBasis: 'provider_self_consistency',
+        expected: 'panchang.request_time_panchang invariant across Mode A (IANA) and Mode B (UTC)',
+        observed: panDetail,
+      });
+      (rtOk ? internalMathConsistencyVerified : methodologyUnresolved).push({
+        key: 'panchang_request_time_equivalence',
+        label: 'Natal Birth-Instant Panchang (panchang.request_time_panchang) Timezone Equivalence',
+        category: rtOk ? 'internal_math_consistency_verified' : 'methodology_unresolved',
+        verificationBasis: 'provider_self_consistency',
+        status: rtOk ? 'verified' : 'unresolved',
+        detail: panDetail,
+      });
+    }
+
+    if (eq.dashaAudit?.available) {
+      const durOk =
+        eq.dashaAudit.durationMismatches.length === 0 &&
+        eq.dashaAudit.structuralMismatches.length === 0;
+      const balanceOk =
+        eq.dashaAudit.birthBalanceRemainingYearsDelta === null ||
+        eq.dashaAudit.birthBalanceRemainingYearsDelta <= 0.001;
+      const dashaDetail = `lordMatch=${eq.dashaAudit.birthBalanceLordMatch}, remaining_yearsΔ=${eq.dashaAudit.birthBalanceRemainingYearsDelta ?? 0}y (${eq.dashaAudit.isSingleCalendarDayRolloverBalanceArtifact ? '1-day calendar-date rollover balance artifact' : 'exact/other'}), rolloverShifts=${eq.dashaAudit.calendarDateRolloverShifts.length}, durationMismatches=${eq.dashaAudit.durationMismatches.length}.`;
+      checks.push({
+        id: 'vimshottari_dasha_timezone_audit',
+        domain: 'Vimshottari Dasha Timezone Audit',
+        passed: durOk && balanceOk,
+        severity: 'info',
+        epistemicCategory: durOk && balanceOk
+          ? 'internal_math_consistency_verified'
+          : 'methodology_unresolved',
+        verificationBasis: 'provider_self_consistency',
+        expected: 'Mahadasha durations and birth_balance identical across Mode A & Mode B',
+        observed: dashaDetail,
+        notes: eq.dashaAudit.notes.join(' | ') || undefined,
+      });
+      if (durOk && !balanceOk) {
+        methodologyUnresolved.push({
+          key: 'vimshottari_birth_balance_rollover_artifact',
+          label: 'Vimshottari Birth Balance ~1-Day Calendar Rollover Discrepancy',
+          category: 'methodology_unresolved',
+          verificationBasis: 'provider_self_consistency',
+          status: 'partial',
+          detail: dashaDetail,
+        });
+      }
     }
   }
 
@@ -1239,7 +1307,9 @@ export function verifyMasterChartRecord(
   if (vedicData) {
     providerDataAcquired.push({
       key: 'provider_vedic_calculate',
-      label: 'FreeAstroAPI V2 Vedic Lahiri (/api/v2/vedic/calculate)',
+      label: isAstroWay
+        ? 'AstroWay V1 Vedic Lahiri (/chart + /vedic/kundli + Vargas)'
+        : 'FreeAstroAPI V2 Vedic Lahiri (/api/v2/vedic/calculate)',
       category: 'provider_data_acquired',
       verificationBasis: 'provider_payload',
       status: master.frames.vedicLahiri.completeness === 'complete' ? 'verified' : 'partial',
@@ -1289,7 +1359,7 @@ export function verifyMasterChartRecord(
     // 5. Vargas completeness + D4 alternate longitudes & D5 calibrated:false audit
     const vargaKeys = vedicData.vargas?.divisionsReturned || [];
     const hasD5 = vargaKeys.some((k) => k.toUpperCase() === 'D5' || k === '5');
-    const vargasOk = vargaKeys.length >= 17 && hasD5;
+    const vargasOk = isAstroWay ? vargaKeys.length >= 16 : vargaKeys.length >= 17 && hasD5;
     checks.push({
       id: 'vargas_17_completeness',
       domain: 'Divisional Charts',
@@ -1297,7 +1367,9 @@ export function verifyMasterChartRecord(
       severity: 'major',
       epistemicCategory: 'provider_data_acquired',
       verificationBasis: 'provider_payload',
-      expected: '17 Vargas including D5',
+      expected: isAstroWay
+        ? '16 BPHS Shodashavarga Vargas (D1–D60; D5 absent in AstroWay v2.383.19)'
+        : '17 Vargas including D5',
       observed: `${vargaKeys.length} Vargas (${vargaKeys.join(',')})`,
     });
 
@@ -1446,9 +1518,13 @@ export function verifyMasterChartRecord(
       });
     }
 
-    // 8. Panchang sunrise/sunset & weekday check
+    // 8. Panchang sunrise/sunset & natal request_time_panchang presence check
     if (vedicData.panchang) {
       const hasSunTimes = Boolean(vedicData.panchang.sunrise && vedicData.panchang.sunset);
+      const hasRequestTimePanchang = Boolean(
+        vedicData.panchang.request_time_panchang &&
+          typeof vedicData.panchang.request_time_panchang === 'object'
+      );
       checks.push({
         id: 'panchang_sunrise_sunset_present',
         domain: 'Panchang',
@@ -1456,8 +1532,8 @@ export function verifyMasterChartRecord(
         severity: 'major',
         epistemicCategory: 'provider_data_acquired',
         verificationBasis: 'provider_payload',
-        expected: 'Provider sunrise/sunset + tithi/nakshatra/yoga/karana present',
-        observed: `sunrise=${vedicData.panchang.sunrise}, sunset=${vedicData.panchang.sunset}`,
+        expected: 'Provider daily sunrise/sunset + natal request_time_panchang present',
+        observed: `sunrise=${vedicData.panchang.sunrise}, sunset=${vedicData.panchang.sunset}, request_time_panchang=${hasRequestTimePanchang ? 'present' : 'absent'}`,
       });
     }
   } else {
@@ -1476,7 +1552,9 @@ export function verifyMasterChartRecord(
   if (kpData) {
     providerDataAcquired.push({
       key: 'provider_vedic_kp',
-      label: 'FreeAstroAPI V2 Dedicated KP (/api/v2/vedic/kp)',
+      label: isAstroWay
+        ? 'AstroWay V1 KP Placidus (/vedic/kp/*)'
+        : 'FreeAstroAPI V2 Dedicated KP (/api/v2/vedic/kp)',
       category: 'provider_data_acquired',
       verificationBasis: 'provider_payload',
       status: master.frames.kpPlacidus.completeness === 'complete' ? 'verified' : 'partial',
@@ -1561,7 +1639,7 @@ export function verifyMasterChartRecord(
   if (bcData) {
     providerDataAcquired.push({
       key: 'provider_bhava_chalit',
-      label: 'FreeAstroAPI V2 Bhava Chalit Frame',
+      label: `${providerDisplay} Bhava Chalit Frame`,
       category: 'provider_data_acquired',
       verificationBasis: 'provider_payload',
       status: bcData.houses.length === 12 ? 'verified' : 'partial',
@@ -1616,7 +1694,9 @@ export function verifyMasterChartRecord(
   if (westData) {
     providerDataAcquired.push({
       key: 'provider_western_natal',
-      label: 'FreeAstroAPI V1 Western Tropical (/api/v1/natal/calculate)',
+      label: isAstroWay
+        ? 'AstroWay V1 Western Tropical (/chart zodiacType=tropical)'
+        : 'FreeAstroAPI V1 Western Tropical (/api/v1/natal/calculate)',
       category: 'provider_data_acquired',
       verificationBasis: 'provider_payload',
       status: master.frames.westernTropical.completeness === 'complete' ? 'verified' : 'partial',
@@ -1696,7 +1776,9 @@ export function verifyMasterChartRecord(
   if (ephData) {
     providerDataAcquired.push({
       key: 'provider_ephemeris',
-      label: 'FreeAstroAPI V1 Ephemeris (/api/v1/ephemeris/calculate)',
+      label: isAstroWay
+        ? 'AstroWay V1 Astronomical Telemetry (/chart sidereal fields)'
+        : 'FreeAstroAPI V1 Ephemeris (/api/v1/ephemeris/calculate)',
       category: 'provider_data_acquired',
       verificationBasis: 'provider_payload',
       status: master.frames.astronomicalTelemetry.completeness === 'complete' ? 'verified' : 'partial',
@@ -1772,8 +1854,128 @@ export function verifyMasterChartRecord(
       category: 'methodology_unresolved',
       verificationBasis: 'pending_external_validation',
       status: 'unresolved',
-      detail: `Designation remains "${sb.authoritativeDesignation}". Provider omits subcomponents; Sun 5.0 vs 6.5 threshold (${sb.sunThresholdInvestigation.flipsPassFailStatus ? 'flips pass/fail' : 'investigated'}) and Legacy Local vs Provider Virupa deltas require independent JHora/PyJHora cross-check.`,
+      detail: isAstroWay
+        ? `Designation remains "${sb.authoritativeDesignation}". AstroWay provides all 6 Shadbala subcomponent modules, Ishta/Kashta (x-quality=yellow), and Bhavabala (x-quality=yellow), while Vimshopaka Bala & Panchadha Maitri remain absent; external JHora/PyJHora validation remains pending.`
+        : `Designation remains "${sb.authoritativeDesignation}". Provider omits subcomponents; Sun 5.0 vs 6.5 threshold (${sb.sunThresholdInvestigation.flipsPassFailStatus ? 'flips pass/fail' : 'investigated'}) and Legacy Local vs Provider Virupa deltas require independent JHora/PyJHora cross-check.`,
     });
+  }
+
+  // AstroWay extended classical datasets epistemic classification
+  if (isAstroWay && rawLayerA?.calls) {
+    const awCalls = Object.values(rawLayerA.calls).filter(
+      (c) => c.category !== 'timezone_probe'
+    );
+    const byCat = new Map<string, { ok: number; total: number }>();
+    for (const c of awCalls) {
+      const cat = c.category || 'other';
+      const entry = byCat.get(cat) || { ok: 0, total: 0 };
+      entry.total++;
+      if (c.ok) entry.ok++;
+      byCat.set(cat, entry);
+    }
+
+    const catLabels: Record<string, string> = {
+      shadbala: 'AstroWay Shadbala + 6 Subcomponents + Ishta/Kashta',
+      bhavabala: 'AstroWay Bhavabala (/vedic/bhavabala)',
+      ashtakavarga: 'AstroWay Ashtakavarga + Prastara + Shodhana',
+      jaimini: 'AstroWay Jaimini System (Karakas, Padas, Upapada, Aspects, Argala, Yogas)',
+      yoga_dosha: 'AstroWay Parashara/Jaimini/KP Yogas & Doshas',
+      upagraha: 'AstroWay Upagrahas (/vedic/upagrahas)',
+      dasha: 'AstroWay 6 Dasha Systems (Vimshottari Prana, Chara, Yogini, Ashtottari, Kalachakra, Tribhagi)',
+      hellenistic_traditional: 'AstroWay Western Traditional & Hellenistic (Dignities, Firdaria, Profections, Lots, ZR)',
+    };
+
+    for (const [cat, label] of Object.entries(catLabels)) {
+      const counts = byCat.get(cat);
+      if (counts && counts.ok > 0) {
+        providerDataAcquired.push({
+          key: `astroway_cat_${cat}`,
+          label,
+          category: 'provider_data_acquired',
+          verificationBasis: 'provider_payload',
+          status: counts.ok === counts.total ? 'verified' : 'partial',
+          detail: `${counts.ok}/${counts.total} endpoint(s) returned HTTP 200.`,
+        });
+      }
+    }
+
+    // Verify Kala Bala subcomponent sum against Kala Bala total if both acquired
+    const kalaCall = rawLayerA.calls.shadbala_kala;
+    const fullCall = rawLayerA.calls.shadbala_full;
+    if (kalaCall?.ok && fullCall?.ok) {
+      const kData = (kalaCall.rawResponse as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+      const fData = (fullCall.rawResponse as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+      const kItems = Array.isArray(kData?.items) ? (kData!.items as Array<Record<string, unknown>>) : [];
+      const fItems = Array.isArray(fData?.items) ? (fData!.items as Array<Record<string, unknown>>) : [];
+      let mismatches = 0;
+      for (const kRow of kItems) {
+        const subSum =
+          Number(kRow.nathonnatha ?? 0) +
+          Number(kRow.paksha ?? 0) +
+          Number(kRow.tribhaga ?? 0) +
+          Number(kRow.abdaMasaVaraHora ?? 0) +
+          Number(kRow.ayana ?? 0) +
+          Number(kRow.yuddha ?? 0);
+        const fRow = fItems.find(
+          (f) => String(f.planetName || '').toLowerCase() === String(kRow.planetName || '').toLowerCase()
+        );
+        const targetKala = Number(fRow?.kala ?? kRow.total ?? 0);
+        if (Math.abs(subSum - targetKala) > 0.25) mismatches++;
+      }
+      const kalaSumOk = kItems.length >= 7 && mismatches === 0;
+      checks.push({
+        id: 'astroway_kala_subcomponents_sum',
+        domain: 'Shadbala Kala Subcomponents',
+        passed: kalaSumOk,
+        severity: 'major',
+        epistemicCategory: kalaSumOk ? 'internal_math_consistency_verified' : 'methodology_unresolved',
+        verificationBasis: 'provider_self_consistency',
+        expected: 'nathonnatha+paksha+tribhaga+abdaMasaVaraHora+ayana+yuddha == shadbala.kala',
+        observed: `${kItems.length - mismatches}/${kItems.length} planets sum cleanly within 0.25V`,
+      });
+      (kalaSumOk ? internalMathConsistencyVerified : methodologyUnresolved).push({
+        key: 'astroway_kala_subcomponents_sum',
+        label: 'AstroWay Kala Bala 6-Subcomponent Sum vs Full Kala Bala',
+        category: kalaSumOk ? 'internal_math_consistency_verified' : 'methodology_unresolved',
+        verificationBasis: 'provider_self_consistency',
+        status: kalaSumOk ? 'verified' : 'unresolved',
+        detail: `${kItems.length - mismatches}/${kItems.length} planets match within 0.25V.`,
+      });
+    }
+
+    // Methodology caveats: missing nodeType toggle + x-quality='yellow' endpoints
+    methodologyUnresolved.push({
+      key: 'astroway_missing_node_type_parameter',
+      label: 'AstroWay ChartInput Omits nodeType (Mean vs True Node)',
+      category: 'methodology_unresolved',
+      verificationBasis: 'provider_payload',
+      status: 'partial',
+      detail:
+        'AstroWay OpenAPI v2.383.19 ChartInput does not expose a Mean vs True Rahu/Ketu parameter. Verify Rahu/Ketu longitudes against Mean vs True Node conventions.',
+    });
+
+    for (const c of awCalls) {
+      if (c.ok && c.declaredQuality === 'yellow') {
+        methodologyUnresolved.push({
+          key: `astroway_yellow_${c.id}`,
+          label: `OpenAPI x-quality=yellow: ${c.endpoint}`,
+          category: 'methodology_unresolved',
+          verificationBasis: 'pending_external_validation',
+          status: 'partial',
+          detail: c.qualityCaveat || 'Marked yellow in AstroWay OpenAPI spec; verify against external JHora/PyJHora.',
+        });
+      }
+      if (!c.ok) {
+        datasetUnavailable.push({
+          key: `astroway_failed_${c.id}`,
+          label: `${c.accessRestricted ? '[TIER RESTRICTED] ' : ''}${c.endpoint}`,
+          category: 'dataset_unavailable',
+          verificationBasis: 'none',
+          status: 'unavailable',
+          detail: c.errorMessage || `HTTP ${c.httpStatus}`,
+        });
+      }
+    }
   }
 
   // Explicit epistemic marker: Bucket 3 stays empty unless an external JHora / PyJHora / SwissEph benchmark runs
@@ -1788,13 +1990,22 @@ export function verifyMasterChartRecord(
   });
 
   for (const gap of master.remainingClassicalGaps) {
+    const effectiveStatus = isAstroWay
+      ? gap.selectedProviderStatus || 'unavailable'
+      : gap.freeAstroApiStatus;
+    if (
+      isAstroWay &&
+      (effectiveStatus === 'available_green' || effectiveStatus === 'available_yellow')
+    ) {
+      continue;
+    }
     datasetUnavailable.push({
       key: `gap:${gap.capability.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 48)}`,
       label: gap.capability,
       category: 'dataset_unavailable',
       verificationBasis: 'none',
       status: 'unavailable',
-      detail: `FreeAstroAPI=${gap.freeAstroApiStatus}; local=${gap.localDerivedStatus}. ${gap.notes}`,
+      detail: `${providerDisplay}=${effectiveStatus}; local=${gap.localDerivedStatus}. ${gap.notes}`,
     });
   }
 

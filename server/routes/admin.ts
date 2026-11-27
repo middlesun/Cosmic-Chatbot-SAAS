@@ -27,19 +27,25 @@ import {
 import { runFreeAstroApiPocBenchmark } from '../services/freeAstroApiPocRunner';
 import { checkRateLimit } from '../services/abuseGuard';
 import {
+  acquireAstroWayV2Bundle,
   acquireV2NatalBundle,
   BirthInstantTimezoneError,
   BirthInstantValidationError,
   buildLayerBMasterChartRecord,
   buildLayerCAnalyticalShell,
   buildLegacyVsV2ComparisonReport,
+  getAstroWayApiKey,
+  getAstroWayApiSecretStatus,
   getFreeAstroApiKey,
   getFreeAstroApiSecretStatus,
+  readRuntimeHeapBytes,
   redactSecretsDeep,
   resolveCanonicalBirthInstant,
+  summarizeRuntimeHeapTelemetry,
   verifyMasterChartRecord,
   type BirthTimePrecision,
   type DstFoldDisambiguation,
+  type V2DiagnosticProviderId,
 } from '../services/v2Engine';
 import { sendClientInviteEmail, sendSupportReplyEmail } from '../services/email';
 import {
@@ -3364,21 +3370,6 @@ function setPrivateNoStoreHeaders(res: import('express').Response): void {
   res.setHeader('Vary', 'Authorization');
 }
 
-function readRuntimeHeapBytes(): number | null {
-  try {
-    if (
-      typeof process !== 'undefined' &&
-      typeof process.memoryUsage === 'function'
-    ) {
-      const mem = process.memoryUsage();
-      return typeof mem?.heapUsed === 'number' ? mem.heapUsed : null;
-    }
-  } catch {
-    // Isolate runtimes without process.memoryUsage return null safely
-  }
-  return null;
-}
-
 async function resolveNonProviderIanaTimezone(params: {
   latitude: number;
   longitude: number;
@@ -3458,6 +3449,7 @@ router.get('/v2-diagnostics/profiles', async (req: AuthenticatedRequest, res) =>
       redactSecretsDeep({
         profiles: data || [],
         secretStatus: getFreeAstroApiSecretStatus(),
+        astroWaySecretStatus: getAstroWayApiSecretStatus(),
       })
     );
   } catch {
@@ -3488,11 +3480,17 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const apiKey = getFreeAstroApiKey();
+  const provider: V2DiagnosticProviderId =
+    body.provider === 'astroway' ? 'astroway' : 'freeastroapi';
+  const apiKey =
+    provider === 'astroway' ? getAstroWayApiKey() : getFreeAstroApiKey();
   if (!apiKey) {
+    const envVarName =
+      provider === 'astroway' ? 'ASTROWAY_API_KEY' : 'FREE_ASTRO_API_KEY';
     res.status(503).json({
-      error:
-        'FREE_ASTRO_API_KEY is not configured in the server runtime. Configure it as a Cloudflare Worker Secret before running live V2 diagnostics.',
+      error: `${envVarName} is not configured in the server runtime. Configure it as a Cloudflare Worker Secret before running live ${
+        provider === 'astroway' ? 'AstroWay' : 'FreeAstroAPI'
+      } V2 diagnostics.`,
     });
     return;
   }
@@ -3626,11 +3624,18 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
       throw err;
     }
 
-    const layerA = await acquireV2NatalBundle(instant, {
-      apiKey,
-      timeMode: instant.timezone.ianaTimezone ? 'local_iana' : 'utc',
-      includeTimezoneEquivalenceProbe,
-    });
+    const layerA =
+      provider === 'astroway'
+        ? await acquireAstroWayV2Bundle(instant, {
+            apiKey,
+            timeMode: instant.timezone.ianaTimezone ? 'local_iana' : 'utc',
+            includeTimezoneEquivalenceProbe,
+          })
+        : await acquireV2NatalBundle(instant, {
+            apiKey,
+            timeMode: instant.timezone.ianaTimezone ? 'local_iana' : 'utc',
+            includeTimezoneEquivalenceProbe,
+          });
     const layerB = buildLayerBMasterChartRecord({ instant, rawLayerA: layerA });
     const layerC = buildLayerCAnalyticalShell(layerB);
     const verificationReport = verifyMasterChartRecord(layerB, layerA);
@@ -3645,6 +3650,7 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
     const sanitizedPayload = redactSecretsDeep({
       bundleMetadata: {
         laboratory: 'Chart Engine Laboratory — Foundational Calculation Engine V2',
+        provider,
         generatedAtUtc: new Date().toISOString(),
         runtimeEnvironment:
           typeof (globalThis as { WebSocketPair?: unknown }).WebSocketPair !== 'undefined' ||
@@ -3693,18 +3699,12 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
       totalResponseBytes: 0,
     };
 
-    const heapMeasured = heapBeforeBytes !== null && heapAfterBytes !== null;
+    const heapTelemetry = summarizeRuntimeHeapTelemetry(heapBeforeBytes, heapAfterBytes);
     const fullResponse = {
       ...sanitizedPayload,
       runtimeTelemetry: {
         executionDurationMs,
-        heapMemoryStatus: heapMeasured ? 'measured' : 'unavailable_in_worker_isolate',
-        heapMeasurementNote: heapMeasured
-          ? 'Measured via Node.js process.memoryUsage().heapUsed before and after execution.'
-          : 'process.memoryUsage() is not exposed inside Cloudflare Worker isolates; heap metrics are reported as unavailable rather than 0.',
-        heapBeforeBytes,
-        heapAfterBytes,
-        heapDeltaBytes: heapMeasured ? heapAfterBytes - heapBeforeBytes : null,
+        ...heapTelemetry,
         artifactSizesBytes,
       },
     };

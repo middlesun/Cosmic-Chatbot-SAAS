@@ -19,17 +19,24 @@ import {
   auditVargasMethodology,
   BirthInstantTimezoneError,
   buildAndValidateV2Requests,
+  buildAstroWayChris4EvaluationPlan,
   buildLayerBMasterChartRecord,
   buildLayerCAnalyticalShell,
   buildLegacyVsV2ComparisonReport,
+  compareAstroWayModeAVsModeBResponses,
   compareModeAVsModeBResponses,
   computeIndependentAstronomicalReference,
+  executeAstroWayEvaluationBundle,
+  getAstroWayApiKey,
+  getAstroWayApiSecretStatus,
   getFreeAstroApiKey,
   getFreeAstroApiSecretStatus,
+  normalizePositiveHeapBytes,
   READ_ONLY_SUPABASE_DIAGNOSTIC_SQL,
   redactSecretsDeep,
   resolveCanonicalBirthInstant,
   summarizeObservedQuotaHeaders,
+  summarizeRuntimeHeapTelemetry,
   verify12CuspSequence,
   verifyKpFrameDetailed,
   verifyMasterChartRecord,
@@ -183,13 +190,22 @@ function assert(cond: boolean, msg: string): void {
 
 async function main() {
   const requireLive = process.argv.includes('--require-live');
+  const evalAstroWay = process.argv.includes('--eval-astroway');
   const envLoad = loadLocalEnvFilesForCli();
   const secretStatus = getFreeAstroApiSecretStatus();
+  const astroWaySecretStatus = getAstroWayApiSecretStatus();
 
   console.log('====================================================================');
   console.log('CosmicCouncil — Foundational Calculation Engine V2 Verification CLI');
   console.log('====================================================================');
-  console.log('Secret Status:', JSON.stringify({ ...secretStatus, loadedEnvFiles: envLoad.loadedFiles }));
+  console.log(
+    'Secret Status:',
+    JSON.stringify({
+      freeAstroApi: secretStatus,
+      astroWay: astroWaySecretStatus,
+      loadedEnvFiles: envLoad.loadedFiles,
+    })
+  );
 
   const outDir = path.join(os.tmpdir(), 'v2-engine-verification');
   fs.mkdirSync(outDir, { recursive: true });
@@ -771,6 +787,408 @@ async function main() {
     rateLimit: quotaSummary.rateLimitObserved,
   });
 
+  // 3i. Panchang request_time_panchang vs daily sunrise calendar Panchang + Vimshottari rollover vs 0.0027y balance artifact
+  const panchangDashaModeB = makeProbeCall('timezone_probe_mode_b', {
+    chart: {
+      ascendant: { degree: sampleRef.lahiriAscendantDeg },
+      planets: [
+        { name: 'Sun', absolute_degree: sampleRef.lahiriSunLonDeg },
+        { name: 'Moon', absolute_degree: sampleRef.lahiriMoonLonDeg },
+      ],
+    },
+    panchang: {
+      tithi: { name: 'Shukla Chaturdashi' },
+      nakshatra: { name: 'Rohini' },
+      vara: 'Tuesday',
+      sunrise: '06:17:00',
+      sunset: '16:56:00',
+      request_time_panchang: {
+        tithi: { name: 'Shukla Chaturdashi', paksha: 'Shukla' },
+        nakshatra: { name: 'Rohini', pada: 2 },
+        yoga: { name: 'Shubha' },
+        karana: { name: 'Vanija' },
+        sun_longitude: sampleRef.lahiriSunLonDeg,
+        moon_longitude: sampleRef.lahiriMoonLonDeg,
+      },
+    },
+    vimshottari_dasha: {
+      birth_balance: { lord: 'Moon', remaining_years: 7.4329, full_duration_years: 10 },
+      mahadashas: [
+        { lord: 'Moon', start_date: '1985-12-24', end_date: '1993-05-31' },
+        { lord: 'Mars', start_date: '1993-05-31', end_date: '2000-05-31' },
+        { lord: 'Rahu', start_date: '2000-05-31', end_date: '2018-05-31' },
+      ],
+    },
+  });
+  const panchangDashaModeA = makeProbeCall('timezone_probe_mode_a', {
+    chart: {
+      ascendant: { degree: sampleRef.lahiriAscendantDeg },
+      planets: [
+        { name: 'Sun', absolute_degree: sampleRef.lahiriSunLonDeg },
+        { name: 'Moon', absolute_degree: sampleRef.lahiriMoonLonDeg },
+      ],
+    },
+    panchang: {
+      tithi: { name: 'Purnima' },
+      nakshatra: { name: 'Mrigashira' },
+      vara: 'Wednesday',
+      sunrise: '11:47:30',
+      sunset: '22:26:30',
+      request_time_panchang: {
+        tithi: { name: 'Shukla Chaturdashi', paksha: 'Shukla' },
+        nakshatra: { name: 'Rohini', pada: 2 },
+        yoga: { name: 'Shubha' },
+        karana: { name: 'Vanija' },
+        sun_longitude: sampleRef.lahiriSunLonDeg,
+        moon_longitude: sampleRef.lahiriMoonLonDeg,
+      },
+    },
+    vimshottari_dasha: {
+      birth_balance: { lord: 'Moon', remaining_years: 7.4356, full_duration_years: 10 },
+      mahadashas: [
+        { lord: 'Moon', start_date: '1985-12-25', end_date: '1993-06-01' },
+        { lord: 'Mars', start_date: '1993-06-01', end_date: '2000-06-01' },
+        { lord: 'Rahu', start_date: '2000-06-01', end_date: '2018-06-01' },
+      ],
+    },
+  });
+  const panDashaCmp = compareModeAVsModeBResponses(
+    panchangDashaModeA,
+    panchangDashaModeB,
+    sampleInstant
+  );
+  assert(
+    panDashaCmp.panchangAudit?.birthInstantSource === 'request_time_panchang' &&
+      panDashaCmp.panchangAudit?.requestTimePanchangEquivalent === true &&
+      panDashaCmp.panchangAudit?.equivalent === true &&
+      panDashaCmp.panchangAudit?.dailyCalendarDifferences.length === 3 &&
+      panDashaCmp.dashaAudit?.isSingleCalendarDayRolloverBalanceArtifact === true &&
+      panDashaCmp.dashaAudit?.durationMismatches.length === 0 &&
+      panDashaCmp.dashaAudit?.calendarDateRolloverShifts.length === 3 &&
+      panDashaCmp.dashaEquivalent === false,
+    `Panchang request_time_panchang / Vimshottari rollover test failed: ${JSON.stringify(panDashaCmp)}`
+  );
+  const partialWithPanProbe: LayerARawProviderRecord = {
+    ...syntheticPartialLayerA,
+    timezoneEquivalenceCheck: panDashaCmp,
+  };
+  const panVerificationReport = verifyMasterChartRecord(partialMaster, partialWithPanProbe);
+  assert(
+    panVerificationReport.epistemicClassification.internalMathConsistencyVerified.some(
+      (i) => i.key === 'panchang_request_time_equivalence' && i.status === 'verified'
+    ) &&
+      panVerificationReport.epistemicClassification.methodologyUnresolved.some(
+        (i) => i.key === 'vimshottari_birth_balance_rollover_artifact'
+      ),
+    'Epistemic classification for request_time_panchang and Vimshottari 0.0027y rollover artifact failed.'
+  );
+  regressionResults.push({
+    id: 'panchang_request_time_and_vimshottari_rollover_audit',
+    status: 'PASSED',
+    requestTimePanchangEquivalent: panDashaCmp.panchangAudit?.requestTimePanchangEquivalent,
+    dailyCalendarDifferencesSeparated: panDashaCmp.panchangAudit?.dailyCalendarDifferences.length,
+    dashaRolloverShiftsSeparated: panDashaCmp.dashaAudit?.calendarDateRolloverShifts.length,
+    dashaRemainingYearsDelta: panDashaCmp.dashaAudit?.birthBalanceRemainingYearsDelta,
+  });
+
+  // 3j. Zero-byte Worker isolate heap rejection test
+  assert(normalizePositiveHeapBytes(0) === null, '0 heap bytes must normalize to null');
+  assert(normalizePositiveHeapBytes(-5) === null, 'Negative heap bytes must normalize to null');
+  const zeroHeapTelemetry = summarizeRuntimeHeapTelemetry(0, 0);
+  const validHeapTelemetry = summarizeRuntimeHeapTelemetry(10_000_000, 12_500_000);
+  assert(
+    zeroHeapTelemetry.heapMemoryStatus === 'unavailable_in_worker_isolate' &&
+      zeroHeapTelemetry.heapBeforeBytes === null &&
+      zeroHeapTelemetry.heapAfterBytes === null &&
+      zeroHeapTelemetry.heapDeltaBytes === null &&
+      validHeapTelemetry.heapMemoryStatus === 'measured' &&
+      validHeapTelemetry.heapDeltaBytes === 2_500_000,
+    `Heap telemetry guard failed: zero=${JSON.stringify(zeroHeapTelemetry)} valid=${JSON.stringify(validHeapTelemetry)}`
+  );
+  regressionResults.push({
+    id: 'worker_zero_byte_heap_rejection',
+    status: 'PASSED',
+    zeroBytesStatus: zeroHeapTelemetry.heapMemoryStatus,
+    positiveBytesStatus: validHeapTelemetry.heapMemoryStatus,
+  });
+
+  // 3k. Isolated AstroWay Chris 4 evaluation preflight & secret redaction test
+  const astroWayPlan = buildAstroWayChris4EvaluationPlan(sampleInstant);
+  const blockedAstroWayBundle = await executeAstroWayEvaluationBundle(sampleInstant, { apiKey: '' });
+  const fakeAwKey = 'aw_live_secret_preflight_token';
+  const redactedCheck = redactSecretsDeep(
+    { headers: { 'x-api-key': fakeAwKey }, text: `Bearer ${fakeAwKey}` },
+    [fakeAwKey]
+  );
+  assert(
+    astroWayPlan.validationErrors.length === 0 &&
+      astroWayPlan.requests.length === 67 &&
+      astroWayPlan.requests.some((r) => r.path === '/vedic/shadbala/kala') &&
+      astroWayPlan.requests.some((r) => r.path === '/vedic/bhavabala' && r.declaredQuality === 'yellow') &&
+      astroWayPlan.requests.some((r) => r.path === '/vedic/ashtakavarga/shodhana' && r.declaredQuality === 'yellow') &&
+      astroWayPlan.requests.some((r) => r.path === '/vedic/varga/D60') &&
+      astroWayPlan.requests.some((r) => r.path === '/hellenistic/brennan/lots-15') &&
+      blockedAstroWayBundle.status === 'blocked_missing_api_key' &&
+      redactedCheck.headers['x-api-key'] === '[REDACTED]' &&
+      !JSON.stringify(redactedCheck).includes(fakeAwKey),
+    'AstroWay Chris 4 evaluation preflight or redaction test failed.'
+  );
+  regressionResults.push({
+    id: 'astroway_chris4_evaluation_preflight',
+    status: 'PASSED',
+    plannedEndpoints: astroWayPlan.requests.length,
+    freeTierCredits: astroWayPlan.accessRequirements.freeTierCreditsPerMonth,
+    blockedStatusWithoutKey: blockedAstroWayBundle.status,
+  });
+
+  // 3l. AstroWay Layer A -> Layer B normalization, partial 402 preservation, Kala Mode A/B & epistemic audit
+  const makeAwCall = (
+    id: string,
+    endpoint: string,
+    category: string,
+    rawData: unknown,
+    opts?: { ok?: boolean; httpStatus?: number; accessRestricted?: boolean; declaredQuality?: 'green' | 'yellow' }
+  ): SanitizedProviderCallRecord => ({
+    id,
+    endpoint,
+    method: 'POST',
+    timestampUtc: new Date().toISOString(),
+    sanitizedRequest: { latitude: sampleInstant.input.latitude, longitude: sampleInstant.input.longitude },
+    httpStatus: opts?.httpStatus ?? 200,
+    ok: opts?.ok ?? true,
+    attempts: 1,
+    rateWaitMs: 0,
+    coordinationMode: 'isolate_memory_only',
+    latencyMs: 55,
+    payloadBytes: 800,
+    category,
+    declaredQuality: opts?.declaredQuality ?? 'green',
+    accessRestricted: opts?.accessRestricted ?? false,
+    creditsUsed: opts?.ok === false ? 0 : 1,
+    quotaAndMetaHeaders: { 'x-credits-used': '1', 'x-credits-remaining': '9950' },
+    errorMessage: opts?.ok === false ? `HTTP ${opts.httpStatus ?? 402}` : null,
+    rawResponse: opts?.ok === false ? { error: 'tier_restricted' } : { ok: true, data: rawData },
+  });
+
+  const awTropCusps = sampleRef.tropicalPlacidusCusps;
+  const awKpCusps = sampleRef.kpPlacidusCuspsDeg.map((deg, idx) => {
+    const nak = getNakshatraAndSubs(deg);
+    return {
+      house: idx + 1,
+      longitude: deg,
+      signName: SIGNS[Math.floor(deg / 30) % 12],
+      starLordName: nak.nakshatraLord,
+      subName: nak.subLord,
+      subSubName: nak.subSubLord,
+    };
+  });
+  const awSunKp = normalizeDeg(sampleRef.tropicalSunLonDeg - kpAyRef);
+  const awMoonKp = normalizeDeg(sampleRef.tropicalMoonLonDeg - kpAyRef);
+  const awSunKpH = findKpHouse(awSunKp);
+  const awMoonKpH = findKpHouse(awMoonKp);
+
+  const mockAwLayerA: LayerARawProviderRecord = {
+    schemaVersion: 'v2.raw.1.0',
+    capturedAtUtc: new Date().toISOString(),
+    providerId: 'astroway',
+    providerLabel: 'AstroWay V1 API',
+    providerBaseUrl: 'https://api.astroway.info/v1',
+    inputFingerprint: sampleInstant.inputFingerprint,
+    canonicalUtcIso: sampleInstant.utc.iso,
+    canonicalJulianDayUt: sampleInstant.utc.julianDayUt,
+    acquisitionStatus: 'partial',
+    missingDatasets: ['jaimini_yogas (/vedic/jaimini/yogas): [TIER_RESTRICTED] HTTP 402'],
+    validationFailures: [],
+    calls: {
+      chart_sidereal: makeAwCall('chart_sidereal', '/chart', 'natal_core', {
+        julianDay: sampleInstant.utc.julianDayUt,
+        siderealTime: 5.5,
+        houses: { system: 'W', ascendant: sampleRef.lahiriAscendantDeg, mc: sampleRef.lahiriMcDeg, cusps: Array.from({ length: 12 }, (_, i) => normalizeDeg(Math.floor(sampleRef.lahiriAscendantDeg / 30) * 30 + i * 30)) },
+        planets: [
+          { name: 'Sun', longitude: sampleRef.lahiriSunLonDeg, latitude: 0, distance: 0.983, speedLong: 1.01, isRetrograde: false, declination: -23.4, rightAscension: 270 },
+          { name: 'Moon', longitude: sampleRef.lahiriMoonLonDeg, latitude: 1.2, distance: 0.0025, speedLong: 13.1, isRetrograde: false, declination: 21.1, rightAscension: 68 },
+          { name: 'Mars', longitude: 185, isRetrograde: false },
+          { name: 'Mercury', longitude: 230, isRetrograde: false },
+          { name: 'Jupiter', longitude: 295, isRetrograde: false },
+          { name: 'Venus', longitude: 245, isRetrograde: false },
+          { name: 'Saturn', longitude: 221, isRetrograde: false },
+          { name: 'Mean Node', longitude: 11.5, isRetrograde: true },
+          { name: 'South Node', longitude: 191.5, isRetrograde: true },
+        ],
+      }),
+      chart_tropical: makeAwCall('chart_tropical', '/chart', 'natal_core', {
+        julianDay: sampleInstant.utc.julianDayUt,
+        houses: { system: 'P', ascendant: sampleRef.tropicalAscendantDeg, mc: sampleRef.tropicalMcDeg, cusps: awTropCusps },
+        planets: [
+          { name: 'Sun', longitude: sampleRef.tropicalSunLonDeg },
+          { name: 'Moon', longitude: sampleRef.tropicalMoonLonDeg },
+          { name: 'Mars', longitude: 209 },
+          { name: 'Mercury', longitude: 254 },
+          { name: 'Jupiter', longitude: 319 },
+          { name: 'Venus', longitude: 269 },
+          { name: 'Saturn', longitude: 245 },
+          { name: 'Uranus', longitude: 259 },
+          { name: 'Neptune', longitude: 273 },
+          { name: 'Pluto', longitude: 216 },
+        ],
+        aspects: [],
+      }),
+      vedic_kundli: makeAwCall('vedic_kundli', '/vedic/kundli', 'natal_core', {
+        ayanamsa: 'lahiri',
+        lagna: { longitude: sampleRef.lahiriAscendantDeg, signName: SIGNS[Math.floor(sampleRef.lahiriAscendantDeg / 30) % 12] },
+        grahas: [
+          { name: 'Sun', longitude: sampleRef.lahiriSunLonDeg },
+          { name: 'Moon', longitude: sampleRef.lahiriMoonLonDeg },
+          { name: 'Mars', longitude: 185 },
+          { name: 'Mercury', longitude: 230 },
+          { name: 'Jupiter', longitude: 295 },
+          { name: 'Venus', longitude: 245 },
+          { name: 'Saturn', longitude: 221 },
+          { name: 'Rahu', longitude: 11.5, isRetrograde: true },
+          { name: 'Ketu', longitude: 191.5, isRetrograde: true },
+        ],
+      }),
+      shadbala_full: makeAwCall('shadbala_full', '/vedic/shadbala/full', 'shadbala', {
+        items: [
+          { planetName: 'Sun', sthana: 220, dig: 24, kala: 105, cheshta: 1, naisargika: 60, drik: 8, totalVirupa: 418, totalRupa: 6.97 },
+          { planetName: 'Moon', sthana: 210, dig: 33, kala: 123, cheshta: 51, naisargika: 51.43, drik: -30, totalVirupa: 438.43, totalRupa: 7.31 },
+          { planetName: 'Mars', sthana: 190, dig: 43, kala: 165, cheshta: 23, naisargika: 17.14, drik: 12, totalVirupa: 450.14, totalRupa: 7.5 },
+          { planetName: 'Mercury', sthana: 256, dig: 58, kala: 127, cheshta: 27, naisargika: 25.71, drik: 14, totalVirupa: 507.71, totalRupa: 8.46 },
+          { planetName: 'Jupiter', sthana: 126, dig: 37, kala: 142, cheshta: 17, naisargika: 34.29, drik: -29, totalVirupa: 327.29, totalRupa: 5.45 },
+          { planetName: 'Venus', sthana: 151, dig: 34, kala: 72, cheshta: 3, naisargika: 42.86, drik: 10, totalVirupa: 312.86, totalRupa: 5.21 },
+          { planetName: 'Saturn', sthana: 214, dig: 2, kala: 104, cheshta: 11, naisargika: 8.57, drik: 15, totalVirupa: 354.57, totalRupa: 5.91 },
+        ],
+      }),
+      shadbala_kala: makeAwCall('shadbala_kala', '/vedic/shadbala/kala', 'shadbala', {
+        items: [
+          { planetName: 'Sun', nathonnatha: 20, paksha: 30, tribhaga: 10, abdaMasaVaraHora: 15, ayana: 30, yuddha: 0, total: 105 },
+          { planetName: 'Moon', nathonnatha: 40, paksha: 45, tribhaga: 8, abdaMasaVaraHora: 15, ayana: 15, yuddha: 0, total: 123 },
+          { planetName: 'Mars', nathonnatha: 50, paksha: 30, tribhaga: 20, abdaMasaVaraHora: 45, ayana: 20, yuddha: 0, total: 165 },
+          { planetName: 'Mercury', nathonnatha: 60, paksha: 20, tribhaga: 10, abdaMasaVaraHora: 20, ayana: 17, yuddha: 0, total: 127 },
+          { planetName: 'Jupiter', nathonnatha: 50, paksha: 40, tribhaga: 15, abdaMasaVaraHora: 15, ayana: 22, yuddha: 0, total: 142 },
+          { planetName: 'Venus', nathonnatha: 20, paksha: 20, tribhaga: 10, abdaMasaVaraHora: 12, ayana: 10, yuddha: 0, total: 72 },
+          { planetName: 'Saturn', nathonnatha: 40, paksha: 30, tribhaga: 10, abdaMasaVaraHora: 12, ayana: 12, yuddha: 0, total: 104 },
+        ],
+      }),
+      bhavabala: makeAwCall('bhavabala', '/vedic/bhavabala', 'bhavabala', { houses: [] }, { declaredQuality: 'yellow' }),
+      kp_sub_lords: makeAwCall('kp_sub_lords', '/vedic/kp/sub-lords', 'kp', {
+        cusps: awKpCusps,
+        planets: [
+          { grahaName: 'Sun', longitude: awSunKp },
+          { grahaName: 'Moon', longitude: awMoonKp },
+          { grahaName: 'Mean Node', longitude: 11.5 },
+        ],
+      }),
+      kp_cusps: makeAwCall('kp_cusps', '/vedic/kp/cusps', 'kp', { ayanamsa: 23.56, method: 'placidus', cusps: awKpCusps }),
+      kp_planet_cuspal_position: makeAwCall('kp_planet_cuspal_position', '/vedic/kp/planet-cuspal-position', 'kp', {
+        planets: [
+          { grahaName: 'Sun', house: awSunKpH },
+          { grahaName: 'Moon', house: awMoonKpH },
+        ],
+      }),
+      kp_significators: makeAwCall('kp_significators', '/vedic/kp/significators', 'kp', {
+        significators: [
+          { grahaName: 'Sun', levels: { l1: [], l2: [awSunKpH], l3: [], l4: sunOwned } },
+          { grahaName: 'Moon', levels: { l1: [], l2: [awMoonKpH], l3: [], l4: moonOwned } },
+        ],
+      }),
+      jaimini_yogas: makeAwCall('jaimini_yogas', '/vedic/jaimini/yogas', 'jaimini', null, { ok: false, httpStatus: 402, accessRestricted: true }),
+      dashas_vimshottari_prana: makeAwCall('dashas_vimshottari_prana', '/vedic/dashas/vimshottari/prana', 'dasha', {
+        initial: { initialPlanetName: 'Moon', balanceYears: 7.435, elapsedYears: 2.565 },
+        periods: [{ planetName: 'Moon', startDate: '1985-12-25', endDate: '1993-06-01', durationYears: 7.435 }],
+      }),
+    },
+    timezoneEquivalenceCheck: null,
+    ephemerisTimestampCheck: null,
+    quotaAndPerformanceSummary: {
+      plannedRequestsCount: 12,
+      totalCalls: 12,
+      actualHttpRequestsSent: 12,
+      retryCount: 0,
+      successfulCalls: 11,
+      failedCalls: 1,
+      tierRestrictedCalls: 1,
+      totalLatencyMs: 660,
+      totalRateWaitMs: 0,
+      totalPayloadBytes: 9600,
+      coordinationModesObserved: ['isolate_memory_only'],
+      quotaHeadersObserved: {
+        status: 'measured_from_headers',
+        observedHeadersByEndpoint: {},
+        remainingQuotaObserved: 'x-credits-remaining: 9950',
+        rateLimitObserved: null,
+        creditsUsedTotal: 11,
+        creditsRemainingFinal: '9950',
+        tierRestrictedEndpoints: ['jaimini_yogas (/vedic/jaimini/yogas: HTTP 402)'],
+        note: 'Mocked AstroWay test',
+      },
+    },
+  };
+
+  const awMaster = buildLayerBMasterChartRecord({ instant: sampleInstant, rawLayerA: mockAwLayerA });
+  const awVerif = verifyMasterChartRecord(awMaster, mockAwLayerA);
+  const awCmp = buildLegacyVsV2ComparisonReport({
+    profileId: 'chris-4-aw',
+    profileName: 'Chris 4 AstroWay',
+    legacyChartJson: null,
+    instant: sampleInstant,
+    layerB: awMaster,
+  });
+
+  // Kala subcomponent Mode A vs Mode B delta detection test
+  const awKalaProbe = compareAstroWayModeAVsModeBResponses({
+    instant: sampleInstant,
+    chartA: { id: 'a', path: '/chart', category: 'natal_core', declaredQuality: 'green', qualityCaveat: null, httpStatus: 200, ok: true, attempts: 1, accessRestricted: false, creditsUsed: 1, latencyMs: 10, payloadBytes: 10, creditAndMetaHeaders: {}, sanitizedRequest: {}, errorMessage: null, rawResponse: mockAwLayerA.calls.chart_sidereal.rawResponse },
+    chartB: { id: 'b', path: '/chart', category: 'timezone_probe', declaredQuality: 'green', qualityCaveat: null, httpStatus: 200, ok: true, attempts: 1, accessRestricted: false, creditsUsed: 1, latencyMs: 10, payloadBytes: 10, creditAndMetaHeaders: {}, sanitizedRequest: {}, errorMessage: null, rawResponse: mockAwLayerA.calls.chart_sidereal.rawResponse },
+    shadbalaFullA: { id: 'sfa', path: '/vedic/shadbala/full', category: 'shadbala', declaredQuality: 'green', qualityCaveat: null, httpStatus: 200, ok: true, attempts: 1, accessRestricted: false, creditsUsed: 1, latencyMs: 10, payloadBytes: 10, creditAndMetaHeaders: {}, sanitizedRequest: {}, errorMessage: null, rawResponse: mockAwLayerA.calls.shadbala_full.rawResponse },
+    shadbalaFullB: {
+      id: 'sfb', path: '/vedic/shadbala/full', category: 'timezone_probe', declaredQuality: 'green', qualityCaveat: null, httpStatus: 200, ok: true, attempts: 1, accessRestricted: false, creditsUsed: 1, latencyMs: 10, payloadBytes: 10, creditAndMetaHeaders: {}, sanitizedRequest: {}, errorMessage: null,
+      rawResponse: {
+        ok: true,
+        data: {
+          items: [
+            { planetName: 'Sun', sthana: 220, dig: 24, kala: 120, cheshta: 1, naisargika: 60, drik: 8, totalVirupa: 433, totalRupa: 7.22 },
+          ],
+        },
+      },
+    },
+    shadbalaKalaA: { id: 'ska', path: '/vedic/shadbala/kala', category: 'shadbala', declaredQuality: 'green', qualityCaveat: null, httpStatus: 200, ok: true, attempts: 1, accessRestricted: false, creditsUsed: 1, latencyMs: 10, payloadBytes: 10, creditAndMetaHeaders: {}, sanitizedRequest: {}, errorMessage: null, rawResponse: mockAwLayerA.calls.shadbala_kala.rawResponse },
+    shadbalaKalaB: {
+      id: 'skb', path: '/vedic/shadbala/kala', category: 'timezone_probe', declaredQuality: 'green', qualityCaveat: null, httpStatus: 200, ok: true, attempts: 1, accessRestricted: false, creditsUsed: 1, latencyMs: 10, payloadBytes: 10, creditAndMetaHeaders: {}, sanitizedRequest: {}, errorMessage: null,
+      rawResponse: {
+        ok: true,
+        data: {
+          items: [
+            { planetName: 'Sun', nathonnatha: 20, paksha: 30, tribhaga: 10, abdaMasaVaraHora: 30, ayana: 30, yuddha: 0, total: 120 },
+          ],
+        },
+      },
+    },
+  });
+
+  assert(
+    awMaster.providerId === 'astroway' &&
+      awMaster.frames.vedicLahiri.data?.planets.some((p) => p.name === 'Rahu') &&
+      awMaster.frames.kpPlacidus.data?.cusps.length === 12 &&
+      awMaster.frames.westernTropical.data?.houses.length === 12 &&
+      awMaster.frames.astronomicalTelemetry.data?.bodies.Sun !== undefined &&
+      awMaster.shadbalaReconciliation.data?.authoritativeDesignation === 'unassigned_pending_reconciliation' &&
+      awVerif.mode === 'live_and_offline' &&
+      awVerif.epistemicClassification.independentlyValidatedAgainstExternalReference.length === 0 &&
+      awVerif.epistemicClassification.methodologyUnresolved.some((i) => i.key === 'astroway_yellow_bhavabala') &&
+      awVerif.epistemicClassification.datasetUnavailable.some((i) => i.key === 'astroway_failed_jaimini_yogas') &&
+      awCmp.primaryCoordinatesComparison.ascendant.v2ProviderDeg !== null &&
+      awKalaProbe.shadbalaComparison?.perPlanet[0]?.subcomponentDeltas?.abdaMasaVaraHora === -15,
+    'AstroWay normalization, epistemic audit, and Kala Mode A/B probe test failed.'
+  );
+  regressionResults.push({
+    id: 'astroway_normalization_epistemic_and_kala_probe',
+    status: 'PASSED',
+    verificationMode: awVerif.mode,
+    externalBucketCount: awVerif.epistemicClassification.independentlyValidatedAgainstExternalReference.length,
+    detectedSunAbdaMasaVaraHoraDelta: awKalaProbe.shadbalaComparison?.perPlanet[0]?.subcomponentDeltas?.abdaMasaVaraHora,
+  });
+
   // 4. Read-Only Existing Profile Defect Audit + Legacy vs V2 Comparison on Local Fixtures
   const profileAudits: unknown[] = [];
   for (const [id, filePath] of [
@@ -888,6 +1306,27 @@ async function main() {
   console.log('\n--- LIVE VERIFICATION SUMMARY ---');
   console.log(JSON.stringify(liveSummaries, null, 2));
   console.log(`Sanitized live artifacts written to: ${outDir}`);
+
+  if (evalAstroWay) {
+    const astroKey = getAstroWayApiKey();
+    if (!astroKey) {
+      console.log(
+        '\n[ASTROWAY LIVE EVAL BLOCKED] ASTROWAY_API_KEY is unset (Free tier: 10,000 credits/mo, no card required).'
+      );
+    } else {
+      console.log('\n>>> Running LIVE Isolated AstroWay Chris 4 Evaluation...');
+      const chris4Instant = resolveCanonicalBirthInstant(FIXTURES[0].input);
+      const astroResult = await executeAstroWayEvaluationBundle(chris4Instant, { apiKey: astroKey });
+      fs.writeFileSync(
+        path.join(outDir, 'astroway-chris4-eval.json'),
+        JSON.stringify(redactSecretsDeep(astroResult), null, 2),
+        'utf8'
+      );
+      console.log(
+        `AstroWay Evaluation finished: status=${astroResult.status}, ok=${astroResult.successfulCallsCount}/${astroResult.plannedRequestsCount}`
+      );
+    }
+  }
 }
 
 main().catch((err) => {

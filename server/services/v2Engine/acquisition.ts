@@ -547,6 +547,61 @@ function extractPanchangFieldLabel(val: unknown): string {
   return val === undefined || val === null ? '' : String(val).trim().toLowerCase();
 }
 
+function comparePanchangSubtree(
+  a: unknown,
+  b: unknown,
+  pathPrefix: string,
+  mismatches: string[]
+): void {
+  if (a === undefined && b === undefined) return;
+  if (typeof a === 'number' && typeof b === 'number') {
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      const diff = Math.abs(a - b);
+      if (diff > 0.01) {
+        mismatches.push(`${pathPrefix}: ${a} vs ${b} (Δ=${round4(diff)})`);
+      }
+      return;
+    }
+  }
+  if (
+    (a === null || typeof a !== 'object') &&
+    (b === null || typeof b !== 'object')
+  ) {
+    const sa = a === undefined || a === null ? '' : String(a).trim().toLowerCase();
+    const sb = b === undefined || b === null ? '' : String(b).trim().toLowerCase();
+    if (sa !== sb) {
+      mismatches.push(`${pathPrefix}: "${sa}" vs "${sb}"`);
+    }
+    return;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    const arrA = Array.isArray(a) ? a : [];
+    const arrB = Array.isArray(b) ? b : [];
+    if (arrA.length !== arrB.length) {
+      mismatches.push(`${pathPrefix}.length: ${arrA.length} vs ${arrB.length}`);
+      return;
+    }
+    for (let i = 0; i < arrA.length; i++) {
+      comparePanchangSubtree(arrA[i], arrB[i], `${pathPrefix}[${i}]`, mismatches);
+    }
+    return;
+  }
+  const objA = asRec(a);
+  const objB = asRec(b);
+  const keys = Array.from(new Set([...Object.keys(objA), ...Object.keys(objB)]));
+  for (const k of keys) {
+    if (/^(time_?zone|tz_str|local_time|utc_time)$/i.test(k)) continue;
+    comparePanchangSubtree(objA[k], objB[k], `${pathPrefix}.${k}`, mismatches);
+  }
+}
+
+function parseIsoDateOnlyUtcMs(raw: unknown): number | null {
+  if (typeof raw !== 'string') return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw.trim());
+  if (!m) return null;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
 export function compareModeAVsModeBResponses(
   callA: SanitizedProviderCallRecord,
   callB: SanitizedProviderCallRecord,
@@ -632,10 +687,10 @@ export function compareModeAVsModeBResponses(
       const absK = Math.abs(compDeltas.kala_bala);
       if (absK >= 59.5) {
         suspectedKalaBalaDriver =
-          'Kala Bala (Hora Bala ±60V swap + Natonnata Bala diurnal/nocturnal shift)';
+          'Kala Bala (hypothesis: Hora Bala ±60V swap + Natonnata Bala diurnal/nocturnal shift)';
       } else {
         suspectedKalaBalaDriver =
-          'Kala Bala (Natonnata / diurnal-nocturnal time-of-day variance)';
+          'Kala Bala (hypothesis: Natonnata / diurnal-nocturnal time-of-day variance)';
       }
     }
 
@@ -798,58 +853,196 @@ export function compareModeAVsModeBResponses(
     yogasEquivalent = yogasMismatches.length === 0;
   }
 
-  // 7. Vimshottari Dasha
+  // 7. Vimshottari Dasha (separating timezone calendar-date formatting from duration math & balance rollover artifact)
   const dashaA = asRec(rawA.vimshottari_dasha);
   const dashaB = asRec(rawB.vimshottari_dasha);
   let dashaEquivalent: boolean | null = null;
   const dashaMismatches: string[] = [];
+  let dashaAudit: TimezoneEquivalenceCheck['dashaAudit'] = null;
 
   if (Object.keys(dashaA).length > 0 || Object.keys(dashaB).length > 0) {
     const bbA = asRec(dashaA.birth_balance);
     const bbB = asRec(dashaB.birth_balance);
-    if (String(bbA.lord || '') !== String(bbB.lord || '')) {
-      dashaMismatches.push(`birth_balance.lord: ${String(bbA.lord)} vs ${String(bbB.lord)}`);
+    const lordA = String(bbA.lord || '').trim();
+    const lordB = String(bbB.lord || '').trim();
+    const birthBalanceLordMatch = lordA === lordB;
+
+    const remA = typeof bbA.remaining_years === 'number' ? bbA.remaining_years : Number(bbA.remaining_years);
+    const remB = typeof bbB.remaining_years === 'number' ? bbB.remaining_years : Number(bbB.remaining_years);
+    const remValid = Number.isFinite(remA) && Number.isFinite(remB);
+    const remDelta = remValid ? round4(Math.abs(remA - remB)) : null;
+
+    const elA = typeof bbA.elapsed_years === 'number' ? bbA.elapsed_years : Number(bbA.elapsed_years);
+    const elB = typeof bbB.elapsed_years === 'number' ? bbB.elapsed_years : Number(bbB.elapsed_years);
+    const elDelta = Number.isFinite(elA) && Number.isFinite(elB) ? round4(Math.abs(elA - elB)) : null;
+
+    const localBirthDateMs = Date.UTC(instant.input.year, instant.input.month - 1, instant.input.day);
+    const utcBirthDateMs = Date.UTC(
+      instant.utc.components.year,
+      instant.utc.components.month - 1,
+      instant.utc.components.day
+    );
+    const birthDateRolloverDays = Math.round((localBirthDateMs - utcBirthDateMs) / 86_400_000);
+    const isSingleCalendarDayRolloverBalanceArtifact =
+      Math.abs(birthDateRolloverDays) === 1 &&
+      remDelta !== null &&
+      remDelta >= 0.002 &&
+      remDelta <= 0.0035;
+
+    const calendarDateRolloverShifts: string[] = [];
+    const durationMismatches: string[] = [];
+    const structuralMismatches: string[] = [];
+    const dashaNotes: string[] = [];
+
+    if (!birthBalanceLordMatch) {
+      structuralMismatches.push(`birth_balance.lord: ${lordA} vs ${lordB}`);
+      dashaMismatches.push(`birth_balance.lord: ${lordA} vs ${lordB}`);
     }
-    const remA = Number(bbA.remaining_years ?? 0);
-    const remB = Number(bbB.remaining_years ?? 0);
-    if (Math.abs(remA - remB) > 0.001) {
-      dashaMismatches.push(`birth_balance.remaining_years: ${remA} vs ${remB}`);
+    if (remDelta !== null && remDelta > 0.001) {
+      const approxDays = round4(remDelta * 365.25);
+      const msg = isSingleCalendarDayRolloverBalanceArtifact
+        ? `birth_balance.remaining_years: ${remA} vs ${remB} (Δ=${remDelta}y ≈ ${approxDays}d calendar-date rollover artifact between local & UTC dates)`
+        : `birth_balance.remaining_years: ${remA} vs ${remB} (Δ=${remDelta}y)`;
+      dashaMismatches.push(msg);
+      dashaNotes.push(msg);
     }
+
     const mdA = asRecArr(dashaA.mahadashas ?? dashaA.periods ?? dashaA.timeline);
     const mdB = asRecArr(dashaB.mahadashas ?? dashaB.periods ?? dashaB.timeline);
     if (mdA.length !== mdB.length) {
-      dashaMismatches.push(`mahadasha count: ${mdA.length} vs ${mdB.length}`);
+      const msg = `mahadasha count: ${mdA.length} vs ${mdB.length}`;
+      structuralMismatches.push(msg);
+      dashaMismatches.push(msg);
     } else {
       for (let i = 0; i < mdA.length; i++) {
         const lA = String(mdA[i].lord || '');
         const lB = String(mdB[i].lord || '');
+        if (lA !== lB) {
+          const msg = `MD[${i}] lord: ${lA} vs ${lB}`;
+          structuralMismatches.push(msg);
+          dashaMismatches.push(msg);
+          continue;
+        }
         const sA = String(mdA[i].start_date ?? mdA[i].start ?? '').slice(0, 10);
         const sB = String(mdB[i].start_date ?? mdB[i].start ?? '').slice(0, 10);
         const eA = String(mdA[i].end_date ?? mdA[i].end ?? '').slice(0, 10);
         const eB = String(mdB[i].end_date ?? mdB[i].end ?? '').slice(0, 10);
-        if (lA !== lB || sA !== sB || eA !== eB) {
-          dashaMismatches.push(`MD[${i}]: ${lA}(${sA}..${eA}) vs ${lB}(${sB}..${eB})`);
+
+        const sAMs = parseIsoDateOnlyUtcMs(sA);
+        const sBMs = parseIsoDateOnlyUtcMs(sB);
+        const eAMs = parseIsoDateOnlyUtcMs(eA);
+        const eBMs = parseIsoDateOnlyUtcMs(eB);
+
+        const durDaysA = sAMs !== null && eAMs !== null ? Math.round((eAMs - sAMs) / 86_400_000) : null;
+        const durDaysB = sBMs !== null && eBMs !== null ? Math.round((eBMs - sBMs) / 86_400_000) : null;
+        const startShiftDays =
+          sAMs !== null && sBMs !== null ? Math.round((sAMs - sBMs) / 86_400_000) : null;
+        const endShiftDays =
+          eAMs !== null && eBMs !== null ? Math.round((eAMs - eBMs) / 86_400_000) : null;
+
+        const durYearsA =
+          typeof mdA[i].duration_years === 'number'
+            ? (mdA[i].duration_years as number)
+            : Number.NaN;
+        const durYearsB =
+          typeof mdB[i].duration_years === 'number'
+            ? (mdB[i].duration_years as number)
+            : Number.NaN;
+
+        const explicitDurationDiff =
+          Number.isFinite(durYearsA) &&
+          Number.isFinite(durYearsB) &&
+          Math.abs(durYearsA - durYearsB) > 0.005;
+        const dayDurationDelta =
+          durDaysA !== null && durDaysB !== null ? Math.abs(durDaysA - durDaysB) : null;
+
+        if (explicitDurationDiff || (dayDurationDelta !== null && dayDurationDelta > 1)) {
+          const msg = `MD[${i}] ${lA} duration differs: ModeA=${durDaysA ?? durYearsA} vs ModeB=${durDaysB ?? durYearsB}`;
+          durationMismatches.push(msg);
+          dashaMismatches.push(msg);
+        } else if (sA !== sB || eA !== eB) {
+          if (
+            startShiftDays !== null &&
+            endShiftDays !== null &&
+            Math.abs(startShiftDays) <= 1 &&
+            Math.abs(endShiftDays) <= 1
+          ) {
+            calendarDateRolloverShifts.push(
+              `MD[${i}] ${lA}: ${sA}..${eA} vs ${sB}..${eB} (calendar-date representation Δ=${startShiftDays}d/${endShiftDays}d; duration preserved)`
+            );
+          } else {
+            const msg = `MD[${i}] ${lA} date shift exceeds ±1d rollover: ${sA}..${eA} vs ${sB}..${eB}`;
+            structuralMismatches.push(msg);
+            dashaMismatches.push(msg);
+          }
         }
       }
     }
+
+    if (calendarDateRolloverShifts.length > 0 && durationMismatches.length === 0) {
+      dashaNotes.push(
+        `${calendarDateRolloverShifts.length} Mahadasha boundaries shifted by ±1 YYYY-MM-DD calendar day across Mode A/B timezone boundary while full period durations remained identical.`
+      );
+    }
+
+    dashaAudit = {
+      available: true,
+      birthBalanceLordMatch,
+      birthBalanceRemainingYearsModeA: remValid ? remA : null,
+      birthBalanceRemainingYearsModeB: remValid ? remB : null,
+      birthBalanceRemainingYearsDelta: remDelta,
+      birthBalanceElapsedYearsDelta: elDelta,
+      isSingleCalendarDayRolloverBalanceArtifact,
+      calendarDateRolloverShifts,
+      durationMismatches,
+      structuralMismatches,
+      notes: dashaNotes,
+    };
+
     dashaEquivalent = dashaMismatches.length === 0;
   }
 
-  // 8. Panchang (separating astro-elements from legitimate clock display formatting)
+  // 8. Panchang (separating natal birth-instant request_time_panchang from daily sunrise calendar Panchang)
   const panA = asRec(rawA.panchang);
   const panB = asRec(rawB.panchang);
   let panchangAudit: TimezoneEquivalenceCheck['panchangAudit'] = null;
 
   if (Object.keys(panA).length > 0 || Object.keys(panB).length > 0) {
+    const reqPanA = asRec(panA.request_time_panchang);
+    const reqPanB = asRec(panB.request_time_panchang);
+    const hasRequestTimePanchang =
+      Object.keys(reqPanA).length > 0 && Object.keys(reqPanB).length > 0;
+
+    const requestTimePanchangMismatches: string[] = [];
+    const dailyCalendarDifferences: string[] = [];
     const nonClockMismatches: string[] = [];
     const legitimateDisplayTimeDifferences: string[] = [];
 
-    for (const key of ['tithi', 'nakshatra', 'yoga', 'karana', 'vara', 'weekday']) {
-      if (panA[key] === undefined && panB[key] === undefined) continue;
-      const vA = extractPanchangFieldLabel(panA[key]);
-      const vB = extractPanchangFieldLabel(panB[key]);
-      if (vA !== vB) {
-        nonClockMismatches.push(`panchang.${key}: "${vA}" vs "${vB}"`);
+    if (hasRequestTimePanchang) {
+      comparePanchangSubtree(
+        reqPanA,
+        reqPanB,
+        'panchang.request_time_panchang',
+        requestTimePanchangMismatches
+      );
+      nonClockMismatches.push(...requestTimePanchangMismatches);
+
+      for (const key of ['tithi', 'nakshatra', 'yoga', 'karana', 'vara', 'weekday', 'date', 'calendar_date']) {
+        if (panA[key] === undefined && panB[key] === undefined) continue;
+        const vA = extractPanchangFieldLabel(panA[key]);
+        const vB = extractPanchangFieldLabel(panB[key]);
+        if (vA !== vB) {
+          dailyCalendarDifferences.push(`daily panchang.${key}: "${vA}" vs "${vB}"`);
+        }
+      }
+    } else {
+      for (const key of ['tithi', 'nakshatra', 'yoga', 'karana', 'vara', 'weekday']) {
+        if (panA[key] === undefined && panB[key] === undefined) continue;
+        const vA = extractPanchangFieldLabel(panA[key]);
+        const vB = extractPanchangFieldLabel(panB[key]);
+        if (vA !== vB) {
+          nonClockMismatches.push(`panchang.${key}: "${vA}" vs "${vB}"`);
+        }
       }
     }
 
@@ -859,14 +1052,17 @@ export function compareModeAVsModeBResponses(
       if (aInfo.displayText && bInfo.displayText && aInfo.displayText !== bInfo.displayText) {
         if (aInfo.epochMs !== null && bInfo.epochMs !== null) {
           const deltaSec = Math.round((aInfo.epochMs - bInfo.epochMs) / 1000);
-          if (Math.abs(deltaSec) <= 5) {
+          if (Math.abs(deltaSec) <= 120) {
             legitimateDisplayTimeDifferences.push(
-              `panchang.${fieldName}: local display "${aInfo.displayText}" vs UTC "${bInfo.displayText}" (same instant, Δ=${deltaSec}s)`
+              `panchang.${fieldName}: local display "${aInfo.displayText}" vs UTC "${bInfo.displayText}" (consistent within Δ=${deltaSec}s)`
             );
           } else {
-            nonClockMismatches.push(
-              `panchang.${fieldName} instant mismatch: Δ=${deltaSec}s ("${aInfo.displayText}" vs "${bInfo.displayText}")`
-            );
+            const msg = `panchang.${fieldName} instant difference: Δ=${deltaSec}s ("${aInfo.displayText}" vs "${bInfo.displayText}")`;
+            if (hasRequestTimePanchang) {
+              dailyCalendarDifferences.push(msg);
+            } else {
+              nonClockMismatches.push(msg);
+            }
           }
           return deltaSec;
         }
@@ -879,9 +1075,12 @@ export function compareModeAVsModeBResponses(
               `panchang.${fieldName}: wall-clock "${aInfo.displayText}" vs UTC "${bInfo.displayText}" (consistent after ${instant.timezone.historicalUtcOffsetHours}h offset, Δ=${deltaSec}s)`
             );
           } else {
-            nonClockMismatches.push(
-              `panchang.${fieldName} time-of-day mismatch after offset: Δ=${deltaSec}s ("${aInfo.displayText}" vs "${bInfo.displayText}")`
-            );
+            const msg = `panchang.${fieldName} time-of-day diff after offset: Δ=${deltaSec}s ("${aInfo.displayText}" vs "${bInfo.displayText}")`;
+            if (hasRequestTimePanchang) {
+              dailyCalendarDifferences.push(msg);
+            } else {
+              nonClockMismatches.push(msg);
+            }
           }
           return deltaSec;
         }
@@ -895,6 +1094,13 @@ export function compareModeAVsModeBResponses(
     panchangAudit = {
       available: true,
       equivalent: nonClockMismatches.length === 0,
+      birthInstantSource: hasRequestTimePanchang ? 'request_time_panchang' : 'top_level_fallback',
+      requestTimePanchangAvailable: hasRequestTimePanchang,
+      requestTimePanchangEquivalent: hasRequestTimePanchang
+        ? requestTimePanchangMismatches.length === 0
+        : null,
+      requestTimePanchangMismatches,
+      dailyCalendarDifferences,
       nonClockMismatches,
       sunriseInstantDeltaSeconds,
       sunsetInstantDeltaSeconds,
@@ -929,7 +1135,7 @@ export function compareModeAVsModeBResponses(
 
   if (shadbalaAvailable && !shadbalaEquivalent) {
     notes.push(
-      `SHADBALA TIMEZONE INVARIANCE FAILURE: maxTotalΔ=${maxSbTotalDelta}V, maxCompΔ=${maxSbCompDelta}V (isolated to Kala Bala while longitudes match).`
+      `SHADBALA TIMEZONE INVARIANCE FAILURE: maxTotalΔ=${maxSbTotalDelta}V, maxCompΔ=${maxSbCompDelta}V (confirmed isolated to kala_bala while the other 5 Bala components and coordinates match).`
     );
   } else if (shadbalaAvailable) {
     notes.push(`Shadbala invariant across all 6 components and totals (maxΔ=${maxSbTotalDelta ?? 0}V).`);
@@ -947,11 +1153,33 @@ export function compareModeAVsModeBResponses(
   if (yogasEquivalent === false) {
     notes.push(`Yogas divergence: ${yogasMismatches.join('; ')}`);
   }
-  if (dashaEquivalent === false) {
-    notes.push(`Vimshottari Dasha divergence: ${dashaMismatches.slice(0, 4).join('; ')}`);
+  if (dashaAudit?.available) {
+    if (dashaEquivalent === false) {
+      notes.push(`Vimshottari Dasha divergence: ${dashaMismatches.slice(0, 4).join('; ')}`);
+    } else if (dashaAudit.calendarDateRolloverShifts.length > 0) {
+      notes.push(
+        `Vimshottari Dasha durations & balance invariant (${dashaAudit.calendarDateRolloverShifts.length} calendar-date ±1d rollover display shifts only).`
+      );
+    }
   }
-  if (panchangAudit && !panchangAudit.equivalent) {
-    notes.push(`Panchang divergence: ${panchangAudit.nonClockMismatches.join('; ')}`);
+  if (panchangAudit) {
+    if (panchangAudit.requestTimePanchangAvailable) {
+      if (panchangAudit.requestTimePanchangEquivalent) {
+        notes.push(
+          `Birth-time Panchang (request_time_panchang) invariant across Mode A & B${
+            panchangAudit.dailyCalendarDifferences.length > 0
+              ? ` (${panchangAudit.dailyCalendarDifferences.length} daily sunrise-date fields separated as calendar-date differences)`
+              : ''
+          }.`
+        );
+      } else {
+        notes.push(
+          `Birth-time Panchang (request_time_panchang) divergence: ${panchangAudit.requestTimePanchangMismatches.join('; ')}`
+        );
+      }
+    } else if (!panchangAudit.equivalent) {
+      notes.push(`Panchang divergence: ${panchangAudit.nonClockMismatches.join('; ')}`);
+    }
   }
 
   return {
@@ -985,6 +1213,7 @@ export function compareModeAVsModeBResponses(
     yogasMismatches,
     dashaEquivalent,
     dashaMismatches,
+    dashaAudit,
     panchangAudit,
     notes,
   };

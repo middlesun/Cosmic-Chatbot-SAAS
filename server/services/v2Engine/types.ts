@@ -89,13 +89,16 @@ export interface CanonicalBirthInstant {
   inputFingerprint: string;
 }
 
+export type V2DiagnosticProviderId = 'freeastroapi' | 'astroway';
+
 export type V2EndpointId =
   | 'vedic_calculate'
   | 'vedic_kp'
   | 'western_natal'
   | 'ephemeris'
   | 'timezone_probe_mode_a'
-  | 'timezone_probe_mode_b';
+  | 'timezone_probe_mode_b'
+  | (string & {});
 
 export interface SanitizedProviderCallRecord {
   id: V2EndpointId;
@@ -112,6 +115,11 @@ export interface SanitizedProviderCallRecord {
   payloadBytes: number;
   quotaAndMetaHeaders: Record<string, string>;
   errorMessage?: string | null;
+  category?: string;
+  declaredQuality?: 'green' | 'yellow' | 'red';
+  qualityCaveat?: string | null;
+  accessRestricted?: boolean;
+  creditsUsed?: number | null;
   rawResponse: unknown;
 }
 
@@ -130,6 +138,7 @@ export interface ShadbalaModeDeltaRow {
     naisargika_bala: number;
     drik_bala: number;
   };
+  subcomponentDeltas?: Record<string, number>;
   suspectedKalaBalaDriver: string | null;
 }
 
@@ -164,9 +173,27 @@ export interface TimezoneEquivalenceCheck {
   yogasMismatches?: string[];
   dashaEquivalent?: boolean | null;
   dashaMismatches?: string[];
+  dashaAudit?: {
+    available: boolean;
+    birthBalanceLordMatch: boolean;
+    birthBalanceRemainingYearsModeA: number | null;
+    birthBalanceRemainingYearsModeB: number | null;
+    birthBalanceRemainingYearsDelta: number | null;
+    birthBalanceElapsedYearsDelta: number | null;
+    isSingleCalendarDayRolloverBalanceArtifact: boolean;
+    calendarDateRolloverShifts: string[];
+    durationMismatches: string[];
+    structuralMismatches: string[];
+    notes: string[];
+  } | null;
   panchangAudit?: {
     available: boolean;
     equivalent: boolean;
+    birthInstantSource: 'request_time_panchang' | 'top_level_fallback';
+    requestTimePanchangAvailable: boolean;
+    requestTimePanchangEquivalent: boolean | null;
+    requestTimePanchangMismatches: string[];
+    dailyCalendarDifferences: string[];
     nonClockMismatches: string[];
     sunriseInstantDeltaSeconds: number | null;
     sunsetInstantDeltaSeconds: number | null;
@@ -195,6 +222,11 @@ export interface ObservedQuotaHeadersSummary {
   initialRemainingQuotaObserved?: string | null;
   rateLimitObserved: string | null;
   bodyQuotaMetadataObserved?: Record<string, unknown> | null;
+  creditsUsedTotal?: number | null;
+  creditsRemainingFinal?: string | null;
+  creditsLimitObserved?: string | null;
+  creditsResetObserved?: string | null;
+  tierRestrictedEndpoints?: string[];
   note: string;
 }
 
@@ -206,7 +238,8 @@ export interface ObservedQuotaHeadersSummary {
 export interface LayerARawProviderRecord {
   schemaVersion: 'v2.raw.1.0';
   capturedAtUtc: string;
-  providerId: 'freeastroapi';
+  providerId: V2DiagnosticProviderId;
+  providerLabel?: string;
   providerBaseUrl: string;
   inputFingerprint: string;
   canonicalUtcIso: string;
@@ -224,6 +257,7 @@ export interface LayerARawProviderRecord {
     retryCount: number;
     successfulCalls: number;
     failedCalls: number;
+    tierRestrictedCalls?: number;
     totalLatencyMs: number;
     totalRateWaitMs: number;
     totalPayloadBytes: number;
@@ -435,6 +469,12 @@ export interface RemainingClassicalGapItem {
   capability: string;
   category: string;
   freeAstroApiStatus: 'unavailable' | 'partial_only';
+  selectedProviderStatus?:
+    | 'available_green'
+    | 'available_yellow'
+    | 'partial_only'
+    | 'unavailable'
+    | 'tier_restricted';
   localDerivedStatus: 'verified_deterministic' | 'approximation_only' | 'unavailable';
   candidateProviders: Array<'AstroWay' | 'Astrology-API.io' | 'RoxyAPI'>;
   notes: string;
@@ -446,6 +486,7 @@ export interface RemainingClassicalGapItem {
  */
 export interface LayerBMasterChartRecord {
   schemaVersion: 'v2.master.1.0';
+  providerId?: V2DiagnosticProviderId;
   generatedAtUtc: string;
   canonicalBirthInstant: CanonicalBirthInstant;
   frames: {
@@ -456,6 +497,7 @@ export interface LayerBMasterChartRecord {
     astronomicalTelemetry: DatasetEnvelope<AstronomicalTelemetryFrame>;
   };
   shadbalaReconciliation: DatasetEnvelope<ShadbalaReconciliationReport>;
+  providerExtendedDatasets?: Record<string, unknown> | null;
   remainingClassicalGaps: RemainingClassicalGapItem[];
 }
 

@@ -10,6 +10,7 @@
  */
 
 export const FREE_ASTRO_API_ENV_VAR = 'FREE_ASTRO_API_KEY';
+export const ASTROWAY_API_ENV_VAR = 'ASTROWAY_API_KEY';
 
 const SECRET_HEADER_KEYS = new Set([
   'x-api-key',
@@ -46,6 +47,31 @@ export function getFreeAstroApiSecretStatus(): {
   };
 }
 
+export function getAstroWayApiKey(): string | null {
+  const raw =
+    typeof process !== 'undefined' && process.env
+      ? process.env[ASTROWAY_API_ENV_VAR]
+      : undefined;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function getAstroWayApiSecretStatus(): {
+  envVarName: typeof ASTROWAY_API_ENV_VAR;
+  configured: boolean;
+  configuredViaMechanismHint: string;
+} {
+  const key = getAstroWayApiKey();
+  return {
+    envVarName: ASTROWAY_API_ENV_VAR,
+    configured: Boolean(key),
+    configuredViaMechanismHint: key
+      ? 'Detected in runtime process.env.ASTROWAY_API_KEY (value redacted).'
+      : 'Unset. Configure ASTROWAY_API_KEY in runtime Secrets / .env.local (local CLI) or Cloudflare Worker Secrets before running live AstroWay evaluation.',
+  };
+}
+
 export function redactHeaders(headers: Headers | Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   if (headers instanceof Headers) {
@@ -66,6 +92,8 @@ function collectSecrets(extraSecrets?: Array<string | null | undefined>): string
   const out: string[] = [];
   const envKey = getFreeAstroApiKey();
   if (envKey) out.push(envKey);
+  const astroWayKey = getAstroWayApiKey();
+  if (astroWayKey && !out.includes(astroWayKey)) out.push(astroWayKey);
   if (Array.isArray(extraSecrets)) {
     for (const s of extraSecrets) {
       if (typeof s === 'string') {

@@ -50,9 +50,12 @@ interface EpistemicItem {
   detail: string;
 }
 
+type V2DiagnosticProvider = 'freeastroapi' | 'astroway';
+
 interface V2DiagnosticRunResult {
   bundleMetadata: {
     laboratory: string;
+    provider?: V2DiagnosticProvider;
     generatedAtUtc: string;
     runtimeEnvironment: string;
     readOnlyProfileSource: boolean;
@@ -93,7 +96,8 @@ interface V2DiagnosticRunResult {
   layerA: {
     schemaVersion: string;
     capturedAtUtc: string;
-    providerId: string;
+    providerId: V2DiagnosticProvider | string;
+    providerLabel?: string;
     providerBaseUrl: string;
     inputFingerprint: string;
     canonicalUtcIso: string;
@@ -116,6 +120,11 @@ interface V2DiagnosticRunResult {
         latencyMs: number;
         payloadBytes: number;
         errorMessage?: string | null;
+        category?: string;
+        declaredQuality?: 'green' | 'yellow' | 'red';
+        qualityCaveat?: string | null;
+        accessRestricted?: boolean;
+        creditsUsed?: number | null;
         quotaAndMetaHeaders: Record<string, string>;
         sanitizedRequest: Record<string, unknown>;
         rawResponse: unknown;
@@ -124,10 +133,33 @@ interface V2DiagnosticRunResult {
     timezoneEquivalenceCheck?: {
       executed: boolean;
       equivalent: boolean;
+      coordinatesEquivalent?: boolean;
       modeAStatus: number;
       modeBStatus: number;
       ascendantDeltaDeg: number | null;
       maxPlanetDeltaDeg: number | null;
+      shadbalaComparison?: {
+        available: boolean;
+        equivalent: boolean;
+        maxTotalDeltaVirupas: number | null;
+        maxComponentDeltaVirupas: number | null;
+        perPlanet: Array<{
+          planet: string;
+          modeATotal: number;
+          modeBTotal: number;
+          totalDelta: number;
+          componentDeltas: {
+            sthana_bala: number;
+            dig_bala: number;
+            kala_bala: number;
+            cheshta_bala: number;
+            naisargika_bala: number;
+            drik_bala: number;
+          };
+          subcomponentDeltas?: Record<string, number>;
+          suspectedKalaBalaDriver: string | null;
+        }>;
+      };
       notes: string[];
     } | null;
     ephemerisTimestampCheck?: {
@@ -144,6 +176,7 @@ interface V2DiagnosticRunResult {
       retryCount: number;
       successfulCalls: number;
       failedCalls: number;
+      tierRestrictedCalls?: number;
       totalLatencyMs: number;
       totalRateWaitMs: number;
       totalPayloadBytes: number;
@@ -155,12 +188,18 @@ interface V2DiagnosticRunResult {
         initialRemainingQuotaObserved?: string | null;
         rateLimitObserved: string | null;
         bodyQuotaMetadataObserved?: Record<string, unknown> | null;
+        creditsUsedTotal?: number | null;
+        creditsRemainingFinal?: string | null;
+        creditsLimitObserved?: string | null;
+        creditsResetObserved?: string | null;
+        tierRestrictedEndpoints?: string[];
         note: string;
       };
     };
   };
   layerB: {
     schemaVersion: string;
+    providerId?: V2DiagnosticProvider;
     canonicalBirthInstant: {
       inputFingerprint: string;
       utc: { iso: string; julianDayUt: number };
@@ -193,9 +232,11 @@ interface V2DiagnosticRunResult {
         };
       } | null;
     };
+    providerExtendedDatasets?: Record<string, unknown> | null;
     remainingClassicalGaps: Array<{
       capability: string;
       freeAstroApiStatus: string;
+      selectedProviderStatus?: string;
       localDerivedStatus: string;
     }>;
   };
@@ -325,11 +366,13 @@ function triggerJsonDownload(filename: string, data: unknown): void {
 }
 
 const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAccessToken }) => {
+  const [provider, setProvider] = useState<V2DiagnosticProvider>('freeastroapi');
   const [searchQuery, setSearchQuery] = useState('');
   const [profiles, setProfiles] = useState<V2DiagnosticProfileSummary[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [secretStatus, setSecretStatus] = useState<SecretStatusInfo | null>(null);
+  const [astroWaySecretStatus, setAstroWaySecretStatus] = useState<SecretStatusInfo | null>(null);
 
   const [ianaTimezoneOverride, setIanaTimezoneOverride] = useState('');
   const [birthTimePrecision, setBirthTimePrecision] = useState<
@@ -369,6 +412,7 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
           : [];
         setProfiles(list);
         if (data.secretStatus) setSecretStatus(data.secretStatus);
+        if (data.astroWaySecretStatus) setAstroWaySecretStatus(data.astroWaySecretStatus);
 
         setSelectedProfileId((prev) => {
           if (prev && list.some((p) => p.id === prev)) return prev;
@@ -387,6 +431,11 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
   useEffect(() => {
     void loadProfiles('');
   }, [loadProfiles]);
+
+  const activeSecretConfigured =
+    provider === 'astroway'
+      ? Boolean(astroWaySecretStatus?.configured)
+      : Boolean(secretStatus?.configured);
 
   const selectedProfile = useMemo(
     () => profiles.find((p) => p.id === selectedProfileId) || null,
@@ -413,11 +462,19 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
     setRunning(true);
     setError(null);
     setAmbiguousCandidates([]);
-    setProgressStage(
-      includeTimezoneProbe
-        ? 'Coordinating rate-limited 4-request acquisition + Mode A/B probe (~8–11s)...'
-        : 'Coordinating rate-limited 4-request FreeAstroAPI V2 bundle (~5–7s)...'
-    );
+    if (provider === 'astroway') {
+      setProgressStage(
+        includeTimezoneProbe
+          ? 'Executing AstroWay classical suite (67 endpoints + 5 Mode A/B probes)...'
+          : 'Executing AstroWay maximum classical suite (67 endpoints)...'
+      );
+    } else {
+      setProgressStage(
+        includeTimezoneProbe
+          ? 'Coordinating rate-limited 4-request acquisition + Mode A/B probe (~8–11s)...'
+          : 'Coordinating rate-limited 4-request FreeAstroAPI V2 bundle (~5–7s)...'
+      );
+    }
 
     try {
       const token = await getAccessToken();
@@ -429,6 +486,7 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
         },
         cache: 'no-store',
         body: JSON.stringify({
+          provider,
           profileId: selectedProfileId,
           ianaTimezoneOverride: ianaTimezoneOverride.trim() || null,
           dstFoldDisambiguation: dstFoldDisambiguation || null,
@@ -505,7 +563,7 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
   }, [result]);
 
   const filePrefix = result
-    ? `v2-diag-${slugifyFilePart(result.profileSummary.name)}-${result.bundleMetadata.generatedAtUtc.slice(0, 10)}`
+    ? `v2-diag-${slugifyFilePart(String(result.layerA.providerId || 'freeastroapi'))}-${slugifyFilePart(result.profileSummary.name)}-${result.bundleMetadata.generatedAtUtc.slice(0, 10)}`
     : 'v2-diag';
 
   return (
@@ -520,13 +578,14 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
             </h3>
           </div>
           <p className="text-xs text-[#5C5449] mt-1 max-w-3xl">
-            Isolated, read-only diagnostic workbench reusing the server&apos;s{' '}
-            <span className="font-mono">FREE_ASTRO_API_KEY</span> under provider-wide 1 req/sec rate
-            coordination. Never overwrites existing profiles, charts, Council, Companion, or Reports.
+            Isolated, read-only diagnostic workbench reusing server Worker Secrets (
+            <span className="font-mono">FREE_ASTRO_API_KEY</span> &amp;{' '}
+            <span className="font-mono">ASTROWAY_API_KEY</span>). Never overwrites existing profiles,
+            charts, Council, Companion, or Reports.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span
             className={`rounded-lg border px-2.5 py-1 font-mono text-[11px] ${
               secretStatus?.configured
@@ -536,12 +595,48 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
           >
             FREE_ASTRO_API_KEY: {secretStatus?.configured ? 'Configured' : 'Unset in runtime'}
           </span>
+          <span
+            className={`rounded-lg border px-2.5 py-1 font-mono text-[11px] ${
+              astroWaySecretStatus?.configured
+                ? 'border-[#2D6A4F]/25 bg-[#2D6A4F]/8 text-[#2D6A4F]'
+                : 'border-[#7A3E36]/25 bg-[#7A3E36]/8 text-[#7A3E36]'
+            }`}
+          >
+            ASTROWAY_API_KEY: {astroWaySecretStatus?.configured ? 'Configured' : 'Unset in runtime'}
+          </span>
         </div>
       </div>
 
       {/* Profile Selector + Configuration Controls */}
       <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-4">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
+          <div className="lg:col-span-3 space-y-1.5">
+            <label className="block text-xs font-medium text-[#5C5449]">
+              Diagnostic Provider
+            </label>
+            <CustomSelect
+              value={provider}
+              onChange={(val) =>
+                setProvider(val === 'astroway' ? 'astroway' : 'freeastroapi')
+              }
+              ariaLabel="Select diagnostic provider"
+              surface="canvas"
+              className="w-full"
+              options={[
+                {
+                  value: 'freeastroapi',
+                  label: 'FreeAstroAPI',
+                  hint: '4-request V2/V1 bundle (1 req/s CAS)',
+                },
+                {
+                  value: 'astroway',
+                  label: 'AstroWay',
+                  hint: 'Maximum 67-endpoint classical V1 suite',
+                },
+              ]}
+            />
+          </div>
+
           <div className="lg:col-span-4 space-y-1.5">
             <label className="block text-xs font-medium text-[#5C5449]">
               Search Existing Profiles
@@ -572,7 +667,7 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
             </div>
           </div>
 
-          <div className="lg:col-span-8 space-y-1.5">
+          <div className="lg:col-span-5 space-y-1.5">
             <label className="block text-xs font-medium text-[#5C5449]">
               Target Birth Profile (Read-Only)
             </label>
@@ -739,19 +834,21 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <div className="text-xs text-[#8B8275]">
             {progressStage ||
-              'Executes 4 isolated endpoints (/vedic/calculate, /vedic/kp, /natal/calculate, /ephemeris/calculate).'}
+              (provider === 'astroway'
+                ? 'Executes 67 AstroWay classical endpoints (16 Vargas, Shadbala + 6 subcomponents, Ishta/Kashta, Bhavabala, Ashtakavarga + Shodhana, KP, Jaimini, Yogas/Doshas, Upagrahas, 6 Dashas, Western/Hellenistic).'
+                : 'Executes 4 isolated endpoints (/vedic/calculate, /vedic/kp, /natal/calculate, /ephemeris/calculate).')}
           </div>
           <button
             type="button"
-            disabled={running || !selectedProfileId || !secretStatus?.configured}
+            disabled={running || !selectedProfileId || !activeSecretConfigured}
             onClick={() => void handleRunV2Diagnostic()}
             className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-45 transition-colors cursor-pointer"
           >
             <FlaskConical className={`h-3.5 w-3.5 ${running ? 'animate-pulse' : ''}`} />
             <span>
               {running
-                ? 'Running Isolated V2 Acquisition...'
-                : 'Generate Isolated V2 Diagnostic Bundle'}
+                ? `Running Isolated ${provider === 'astroway' ? 'AstroWay' : 'V2'} Acquisition...`
+                : `Generate Isolated ${provider === 'astroway' ? 'AstroWay' : 'FreeAstroAPI'} V2 Bundle`}
             </span>
           </button>
         </div>
@@ -800,7 +897,7 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-medium text-[#3D3830]">
-                  Diagnostic Export Artifacts — {result.profileSummary.name}
+                  Diagnostic Export Artifacts — {result.profileSummary.name} ({result.layerA.providerLabel || result.layerA.providerId})
                 </div>
                 <div className="font-mono text-[11px] text-[#8B8275] mt-0.5">
                   Canonical UTC: {result.layerA.canonicalUtcIso} · JD {result.layerA.canonicalJulianDayUt} ·{' '}
@@ -956,15 +1053,19 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
             </div>
 
             <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-3.5">
-              <div className="text-[11px] text-[#8B8275]">Provider Quota Headers</div>
+              <div className="text-[11px] text-[#8B8275]">Provider Quota &amp; Credits</div>
               <div className="font-mono text-xs font-medium text-[#3D3830] mt-0.5">
                 {result.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.status ===
                 'measured_from_headers'
-                  ? 'Measured from headers'
+                  ? result.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.creditsUsedTotal != null
+                    ? `${result.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.creditsUsedTotal} credits used`
+                    : 'Measured from headers'
                   : 'Not provided by provider'}
               </div>
               <div className="font-mono text-[10px] text-[#8B8275] mt-0.5">
-                Coord: {result.layerA.quotaAndPerformanceSummary.coordinationModesObserved.join(', ')}
+                {result.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.creditsRemainingFinal != null
+                  ? `Rem: ${result.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.creditsRemainingFinal} · Tier restricted: ${result.layerA.quotaAndPerformanceSummary.tierRestrictedCalls ?? 0}`
+                  : `Coord: ${result.layerA.quotaAndPerformanceSummary.coordinationModesObserved.join(', ')}`}
               </div>
             </div>
           </div>
@@ -973,14 +1074,15 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
           <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-2">
             <div className="flex items-center gap-2 text-xs font-medium text-[#3D3830]">
               <Database className="h-3.5 w-3.5 text-[#8B7355]" />
-              <span>Per-Endpoint Measured HTTP Calls &amp; Quota Observation</span>
+              <span>Per-Endpoint Measured HTTP Calls &amp; Quota Observation ({Object.keys(result.layerA.calls).length} calls)</span>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
               <table className="w-full text-left font-mono text-[11px] tabular-nums">
                 <thead>
                   <tr className="border-b border-[#3D3830]/12 text-[#8B8275]">
                     <th className="py-1.5 pr-3">Endpoint</th>
                     <th className="py-1.5 pr-3">Status</th>
+                    <th className="py-1.5 pr-3">Quality / Note</th>
                     <th className="py-1.5 pr-3">Attempts</th>
                     <th className="py-1.5 pr-3">HTTP Latency</th>
                     <th className="py-1.5 pr-3">Rate Wait</th>
@@ -991,13 +1093,35 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
                 <tbody className="divide-y divide-[#3D3830]/8 text-[#3D3830]">
                   {Object.values(result.layerA.calls).map((call) => (
                     <tr key={call.id}>
-                      <td className="py-1.5 pr-3">{call.endpoint}</td>
+                      <td className="py-1.5 pr-3">
+                        <span>{call.endpoint}</span>
+                        {call.category && (
+                          <span className="ml-1.5 text-[10px] text-[#8B8275]">[{call.category}]</span>
+                        )}
+                      </td>
                       <td
                         className={`py-1.5 pr-3 ${
                           call.ok ? 'text-[#2D6A4F]' : 'text-[#7A3E36]'
                         }`}
                       >
                         HTTP {call.httpStatus}
+                        {call.accessRestricted ? ' (Tier Restricted)' : ''}
+                      </td>
+                      <td className="py-1.5 pr-3 text-[10px]">
+                        {call.declaredQuality ? (
+                          <span
+                            className={
+                              call.declaredQuality === 'yellow'
+                                ? 'text-[#8B6B2E]'
+                                : 'text-[#2D6A4F]'
+                            }
+                          >
+                            {call.declaredQuality}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                        {call.creditsUsed != null ? ` · ${call.creditsUsed}cr` : ''}
                       </td>
                       <td className="py-1.5 pr-3">{call.attempts}</td>
                       <td className="py-1.5 pr-3">{call.latencyMs}ms</td>
@@ -1013,6 +1137,95 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
               {result.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.note}
             </p>
           </div>
+
+          {/* Mode A vs Mode B Shadbala & Kala Subcomponents Probe Snapshot */}
+          {result.layerA.timezoneEquivalenceCheck?.shadbalaComparison?.available && (
+            <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-medium text-[#3D3830]">
+                  Mode A (IANA) vs Mode B (UTC) Shadbala &amp; Kala Invariance Probe
+                </span>
+                <span
+                  className={`font-mono text-[11px] ${
+                    result.layerA.timezoneEquivalenceCheck.shadbalaComparison.equivalent
+                      ? 'text-[#2D6A4F]'
+                      : 'text-[#7A3E36]'
+                  }`}
+                >
+                  {result.layerA.timezoneEquivalenceCheck.shadbalaComparison.equivalent
+                    ? 'INVARIANT'
+                    : `DIVERGED (maxTotalΔ=${result.layerA.timezoneEquivalenceCheck.shadbalaComparison.maxTotalDeltaVirupas ?? 0}V)`}
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left font-mono text-[11px] tabular-nums">
+                  <thead>
+                    <tr className="border-b border-[#3D3830]/12 text-[#8B8275]">
+                      <th className="py-1.5 pr-3">Planet</th>
+                      <th className="py-1.5 pr-3">Mode A (IANA)</th>
+                      <th className="py-1.5 pr-3">Mode B (UTC)</th>
+                      <th className="py-1.5 pr-3">Total Δ</th>
+                      <th className="py-1.5 pr-3">Kala Δ</th>
+                      <th className="py-1.5">Driver / Subcomponents</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#3D3830]/8 text-[#3D3830]">
+                    {result.layerA.timezoneEquivalenceCheck.shadbalaComparison.perPlanet.map((row) => (
+                      <tr key={row.planet}>
+                        <td className="py-1.5 pr-3 font-medium">{row.planet}</td>
+                        <td className="py-1.5 pr-3">{row.modeATotal.toFixed(2)}V</td>
+                        <td className="py-1.5 pr-3">{row.modeBTotal.toFixed(2)}V</td>
+                        <td
+                          className={`py-1.5 pr-3 ${
+                            Math.abs(row.totalDelta) > 0.02 ? 'text-[#7A3E36]' : 'text-[#2D6A4F]'
+                          }`}
+                        >
+                          {row.totalDelta}V
+                        </td>
+                        <td className="py-1.5 pr-3">{row.componentDeltas.kala_bala}V</td>
+                        <td className="py-1.5 text-[10px] text-[#5C5449]">
+                          {row.suspectedKalaBalaDriver ||
+                            (row.subcomponentDeltas ? 'All 6 Kala subcomponents 0.00V' : '—')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* AstroWay Extended Classical Coverage Snapshot */}
+          {result.layerB.providerExtendedDatasets && (
+            <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-2">
+              <div className="text-xs font-medium text-[#3D3830]">
+                Extended Classical Datasets Coverage ({result.layerA.providerLabel || result.layerA.providerId})
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 font-mono text-[11px]">
+                {result.layerB.remainingClassicalGaps.map((gap) => (
+                  <div
+                    key={gap.capability}
+                    className="rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] px-3 py-2"
+                  >
+                    <div className="font-sans text-[11px] font-medium text-[#3D3830]">
+                      {gap.capability}
+                    </div>
+                    <div
+                      className={`mt-0.5 text-[10px] ${
+                        gap.selectedProviderStatus === 'available_green'
+                          ? 'text-[#2D6A4F]'
+                          : gap.selectedProviderStatus === 'available_yellow'
+                          ? 'text-[#8B6B2E]'
+                          : 'text-[#7A3E36]'
+                      }`}
+                    >
+                      Status: {gap.selectedProviderStatus || gap.freeAstroApiStatus}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 5-Category Epistemic Classification */}
           <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-3">
