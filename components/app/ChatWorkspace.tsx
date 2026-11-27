@@ -548,10 +548,13 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         supports_listening_cue: persona.supports_listening_cue ?? true,
         suggestions_enabled: true,
         sort_order: 999,
+        ...(activeConversation?.is_admin_preview || activeConversation?.companion_is_active === false
+          ? { is_active: false, is_admin_preview: true }
+          : {}),
         last_conversation_id: activeConversation?.id || null,
       };
     },
-    [activeConversation?.id]
+    [activeConversation?.id, activeConversation?.is_admin_preview, activeConversation?.companion_is_active]
   );
 
   // Persist active tabs locally (for non-preview reloads and pre-migration 006 fallback)
@@ -685,7 +688,9 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
         const data = await res.json().catch(() => ({}));
         if (Array.isArray(data.companions)) {
           setCompanionCatalog(
-            (data.companions as PublicCompanionCard[]).filter(isConsultantCatalogEntryAllowed)
+            (data.companions as PublicCompanionCard[]).filter(
+              (c) => isConsultantCatalogEntryAllowed(c) || Boolean(c.is_admin_preview)
+            )
           );
         }
       }
@@ -873,6 +878,10 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
           }
         }
         return loadedConv;
+      }
+      if (res.status === 403) {
+        const errData = await res.json().catch(() => ({}));
+        setErrorBanner(errData.error || 'This consultant is currently unavailable.');
       }
       return null;
     },
@@ -2912,6 +2921,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.conversation) {
+        setErrorBanner(data.error || 'This consultant is currently unavailable.');
         handleOpenNewCompanionSetup(null);
         return;
       }
@@ -5007,7 +5017,7 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                       size="sm"
                       shape="circle"
                     />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex items-center gap-2">
                       <h1 className="font-serif text-[15px] sm:text-base font-medium text-[#3D3830] truncate">
                         <span className="font-semibold text-[#3D3830] group-hover:underline underline-offset-2">
                           {activeCompanionPersona.name}
@@ -5018,6 +5028,14 @@ const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({ embeddedPreview = false }
                             activeCompanionPersona.role_label}
                         </span>
                       </h1>
+                      {(activeCompanionCard?.is_admin_preview ||
+                        activeCompanionCard?.is_active === false ||
+                        activeConversation?.is_admin_preview ||
+                        activeConversation?.companion_is_active === false) && (
+                        <span className="inline-flex items-center rounded-md border border-[#8B7355]/30 bg-[#EAE3D7] px-2 py-0.5 text-[10px] font-medium text-[#8B7355] shrink-0">
+                          Admin Preview · Inactive
+                        </span>
+                      )}
                     </div>
                   </button>
                 ) : (

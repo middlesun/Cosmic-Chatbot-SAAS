@@ -846,11 +846,18 @@ export function formatHumanTimeAndGapContext(
 ${parts.join(' ')}`;
 }
 
+interface LightweightContextMeta {
+  externalNotesInjectedCount: number;
+  externalNotesInjectedChars: number;
+  externalNotesOmittedCount: number;
+}
+
 function formatLightweightLifeStageSummary(
   profile: CompanionPromptProfileContext,
   options?: {
     activeCompanionSlug?: string | null;
     astrologicalMemoryMode?: CompanionAstrologicalMemoryMode;
+    outMeta?: LightweightContextMeta;
   }
 ): string {
   const mode: CompanionAstrologicalMemoryMode = options?.astrologicalMemoryMode || 'independent';
@@ -1035,12 +1042,20 @@ function formatLightweightLifeStageSummary(
     }
   }
 
-  if (mode === 'shared' && externalNoteLines.length > 0) {
+  const cappedExternalNotes = externalNoteLines.slice(0, 8);
+  if (mode === 'shared' && cappedExternalNotes.length > 0) {
     lines.push(
-      `NOTES FROM ANOTHER ASTROLOGER / PRIOR READING (Non-authoritative external perspective — evaluate independently against the raw chart data and feel free to disagree):\n${externalNoteLines
-        .slice(0, 8)
-        .join('\n')}`
+      `NOTES FROM ANOTHER ASTROLOGER / PRIOR READING (Non-authoritative external perspective — evaluate independently against the raw chart data and feel free to disagree):\n${cappedExternalNotes.join('\n')}`
     );
+  }
+
+  if (options?.outMeta) {
+    options.outMeta.externalNotesInjectedCount =
+      mode === 'shared' ? cappedExternalNotes.length : 0;
+    options.outMeta.externalNotesInjectedChars =
+      mode === 'shared' ? cappedExternalNotes.join('\n').length : 0;
+    options.outMeta.externalNotesOmittedCount =
+      mode === 'independent' ? excludedFromFactualDeep.size : 0;
   }
 
   return lines.join('\n');
@@ -1119,6 +1134,66 @@ export interface CompanionAssemblyManifest {
   totalEstimatedTokens: number;
   assembledPromptPreview: string;
   fullAssembledPrompt?: string;
+}
+
+export interface CompanionDiagnosticTelemetry {
+  companionSlug: string;
+  companionName: string;
+  v2PublishedVersion: number;
+  isActive: boolean;
+  adminPreview: boolean;
+  verificationMode: CompanionVerificationMode;
+  astrologicalMemoryMode: CompanionAstrologicalMemoryMode;
+  greetingMode: CompanionGreetingMode;
+  familiarityMode: CompanionFamiliarityMode;
+  familiarityCeiling: CompanionFamiliarityCeiling;
+  chatStyle: ChatStyle;
+  temperature: number;
+  chartSystemsInjected: {
+    vedic_sidereal: boolean;
+    western_tropical: boolean;
+    vedic_transits: boolean;
+    western_transits: boolean;
+    numerology: boolean;
+    tarot: boolean;
+    missing_or_incomplete: boolean;
+  };
+  chartCharCounts: {
+    vedic_sidereal_chars: number;
+    western_tropical_chars: number;
+    vedic_transits_chars: number;
+    western_transits_chars: number;
+    total_chart_block_chars: number;
+  };
+  memorySources: {
+    factual_life_context: { injected: boolean; chars: number; omitted_reason?: string };
+    companion_bond: {
+      injected: boolean;
+      chars: number;
+      total_turns?: number;
+      omitted_reason?: string;
+    };
+    thread_summary: { injected: boolean; chars: number; omitted_reason?: string };
+    shared_external_notes: {
+      injected: boolean;
+      chars: number;
+      count: number;
+      omitted_reason?: string;
+    };
+    council_analyst_notes: {
+      injected: boolean;
+      chars: number;
+      count: number;
+      omitted_reason?: string;
+    };
+  };
+  activePromptSections: Array<{
+    key: string;
+    label: string;
+    charCount: number;
+    estimatedTokens: number;
+  }>;
+  systemPromptChars: number;
 }
 
 const TOPIC_KEYWORD_BUCKETS: Array<{ topic: string; pattern: RegExp }> = [
@@ -1485,6 +1560,20 @@ function buildCompanionSkillAndProfileBlock(params: {
   chartInjected: boolean;
   transitsInjected: boolean;
   tarotDrawn: boolean;
+  chartTelemetry: {
+    vedic_sidereal: boolean;
+    western_tropical: boolean;
+    vedic_transits: boolean;
+    western_transits: boolean;
+    numerology: boolean;
+    tarot: boolean;
+    missing_or_incomplete: boolean;
+    vedic_sidereal_chars: number;
+    western_tropical_chars: number;
+    vedic_transits_chars: number;
+    western_transits_chars: number;
+    total_chart_block_chars: number;
+  };
 } {
   const {
     preset,
@@ -1539,6 +1628,16 @@ function buildCompanionSkillAndProfileBlock(params: {
   let drawnTarot: DrawnTarotSpread | null = null;
   let chartInjected = false;
   let transitsInjected = false;
+  let vedicSiderealInjected = false;
+  let vedicSiderealChars = 0;
+  let westernTropicalInjected = false;
+  let westernTropicalChars = 0;
+  let vedicTransitsInjected = false;
+  let vedicTransitsChars = 0;
+  let westernTransitsInjected = false;
+  let westernTransitsChars = 0;
+  let numerologyInjected = false;
+  let missingOrIncompleteChart = false;
 
   // ── 1. AVAILABLE REFERENCE CHART DATA (Continuous Dual-Tradition Delivery) ─
   const chartDataSections: string[] = [
@@ -1583,14 +1682,23 @@ function buildCompanionSkillAndProfileBlock(params: {
       const fullVedicContext = formatChartForLLM(userDefaultProfile.chart_json, 'vedic');
       if (fullVedicContext) {
         chartInjected = true;
+        vedicSiderealInjected = true;
+        vedicSiderealChars += fullVedicContext.length;
         vedicSubParts.push(fullVedicContext);
+      } else {
+        missingOrIncompleteChart = true;
       }
     } else if (userDefaultProfile.chart_text_context?.trim()) {
+      const partialText = userDefaultProfile.chart_text_context.trim();
       chartInjected = true;
+      vedicSiderealInjected = true;
+      vedicSiderealChars += partialText.length;
+      missingOrIncompleteChart = true;
       vedicSubParts.push(
-        `${userDefaultProfile.chart_text_context.trim()}\n\nPARTIAL TELEMETRY NOTICE: Full compiled chart_json (16 Vargas, Shadbala, SAV, KP Sub-Lords, complete Vimshottari stack) is not attached for this profile. Work strictly from the verified summary above and NEVER invent missing degrees or divisional placements.`
+        `${partialText}\n\nPARTIAL TELEMETRY NOTICE: Full compiled chart_json (16 Vargas, Shadbala, SAV, KP Sub-Lords, complete Vimshottari stack) is not attached for this profile. Work strictly from the verified summary above and NEVER invent missing degrees or divisional placements.`
       );
     } else {
+      missingOrIncompleteChart = true;
       const missingFields = [
         !userDefaultProfile.birth_date?.trim() ? 'birth date' : '',
         missingBirthTime ? 'birth time' : '',
@@ -1607,6 +1715,8 @@ function buildCompanionSkillAndProfileBlock(params: {
 
     if (params.dailyTransits?.transitsText) {
       transitsInjected = true;
+      vedicTransitsInjected = true;
+      vedicTransitsChars += params.dailyTransits.transitsText.length;
       vedicSubParts.push(
         `CURRENT SIDEREAL TRANSITS (VEDIC GOCHAR):\n${params.dailyTransits.transitsText}`
       );
@@ -1645,15 +1755,19 @@ function buildCompanionSkillAndProfileBlock(params: {
 
       if (westernPayload) {
         chartInjected = true;
+        westernTropicalInjected = true;
+        westernTropicalChars += westernPayload.length;
         westernSubParts.push(westernPayload);
       }
       if (westernTiming) {
+        westernTropicalChars += westernTiming.length;
         westernSubParts.push(westernTiming);
       }
       if (locationLabel && hasFullWesternJson) {
         westernSubParts.push(`CURRENT RESIDENCE / LOCATION: ${locationLabel}`);
       }
     } else {
+      missingOrIncompleteChart = true;
       const missingFields = [
         !userDefaultProfile.birth_date?.trim() ? 'birth date' : '',
         missingBirthTime ? 'birth time' : '',
@@ -1670,23 +1784,30 @@ function buildCompanionSkillAndProfileBlock(params: {
 
     if (params.dailyTransits?.westernTransitsText) {
       transitsInjected = true;
+      westernTransitsInjected = true;
+      westernTransitsChars += params.dailyTransits.westernTransitsText.length;
       westernSubParts.push(
         `CURRENT TROPICAL WESTERN TRANSITS:\n${params.dailyTransits.westernTransitsText}`
       );
     }
     chartDataSections.push(westernSubParts.join('\n\n'));
   } else {
+    missingOrIncompleteChart = true;
     chartDataSections.push(
       'NO PERSONAL BIRTH CHART ATTACHED: No user birth profile is compiled yet. NEVER fabricate or guess personal Sun, Moon, Rising, house, or Dasha placements. If they explicitly ask for a personal natal reading, invite their birth date, birth time, and birth city.'
     );
     if (params.dailyTransits?.transitsText) {
       transitsInjected = true;
+      vedicTransitsInjected = true;
+      vedicTransitsChars += params.dailyTransits.transitsText.length;
       chartDataSections.push(
         `${vedicHeader}\n\nPersonal Natal Vedic Chart: NOT ATTACHED.\n\nCURRENT SIDEREAL TRANSITS (VEDIC GOCHAR):\n${params.dailyTransits.transitsText}`
       );
     }
     if (params.dailyTransits?.westernTransitsText) {
       transitsInjected = true;
+      westernTransitsInjected = true;
+      westernTransitsChars += params.dailyTransits.westernTransitsText.length;
       chartDataSections.push(
         `${westernHeader}\n\nPersonal Natal Western Chart: NOT ATTACHED.\n\nCURRENT TROPICAL WESTERN TRANSITS:\n${params.dailyTransits.westernTransitsText}`
       );
@@ -1813,6 +1934,7 @@ function buildCompanionSkillAndProfileBlock(params: {
       });
       if (numBlock) {
         chartInjected = true;
+        numerologyInjected = true;
         judgmentSections.push(`ATTACHED FULL NUMEROLOGY PROFILE:\n${numBlock}`);
       }
     } else if (turnAnalysis.esoteric_relevance === 'explicit_invite') {
@@ -1832,6 +1954,7 @@ function buildCompanionSkillAndProfileBlock(params: {
         });
         if (numBlock) {
           chartInjected = true;
+          numerologyInjected = true;
           judgmentSections.push(numBlock);
         }
       }
@@ -1864,6 +1987,20 @@ function buildCompanionSkillAndProfileBlock(params: {
     chartInjected,
     transitsInjected,
     tarotDrawn: Boolean(drawnTarot),
+    chartTelemetry: {
+      vedic_sidereal: vedicSiderealInjected,
+      western_tropical: westernTropicalInjected,
+      vedic_transits: vedicTransitsInjected,
+      western_transits: westernTransitsInjected,
+      numerology: numerologyInjected,
+      tarot: Boolean(drawnTarot),
+      missing_or_incomplete: missingOrIncompleteChart,
+      vedic_sidereal_chars: vedicSiderealChars,
+      western_tropical_chars: westernTropicalChars,
+      vedic_transits_chars: vedicTransitsChars,
+      western_transits_chars: westernTransitsChars,
+      total_chart_block_chars: chartDataSections.join('\n\n').length,
+    },
   };
 }
 
@@ -2234,6 +2371,7 @@ export function buildPresetCompanionSystemPrompt(params: {
   } | null;
   formulaCartridges?: Record<string, ResolvedInternalRuleRecord> | null;
   turnAnalysisOverride?: CompanionTurnAnalysis | null;
+  adminPreview?: boolean;
 }): {
   systemInstruction: string;
   chatStyle: ChatStyle;
@@ -2244,6 +2382,7 @@ export function buildPresetCompanionSystemPrompt(params: {
   temperature: number;
   turnAnalysis: CompanionTurnAnalysis;
   assemblyManifest: CompanionAssemblyManifest;
+  telemetry: CompanionDiagnosticTelemetry;
 } {
   const { preset, persona } = params;
   // Unify both preset companions and user_custom_companions cleanly under V2
@@ -2296,10 +2435,16 @@ export function buildPresetCompanionSystemPrompt(params: {
   );
 
   const astrologicalMemoryMode = resolveCompanionAstrologicalMemoryMode(effectivePreset, v2);
+  const lightContextMeta: LightweightContextMeta = {
+    externalNotesInjectedCount: 0,
+    externalNotesInjectedChars: 0,
+    externalNotesOmittedCount: 0,
+  };
   const lightUserContext = params.userDefaultProfile
     ? formatLightweightLifeStageSummary(params.userDefaultProfile, {
         activeCompanionSlug: effectivePreset?.slug || persona?.slug || null,
         astrologicalMemoryMode,
+        outMeta: lightContextMeta,
       })
     : '';
 
@@ -2542,14 +2687,17 @@ Autonomy guidance: ${autonomyNote}`);
   }
 
   const bond = params.bond;
+  const familiarityPolicy = resolveCompanionFamiliarityPolicy(effectivePreset, v2);
+  let bondContinuityText = '';
   if (bond) {
-    const familiarityPolicy = resolveCompanionFamiliarityPolicy(effectivePreset, v2);
-    layer4Parts.push(buildCompanionBondContinuityBlock(bond, familiarityPolicy));
+    bondContinuityText = buildCompanionBondContinuityBlock(bond, familiarityPolicy);
+    layer4Parts.push(bondContinuityText);
   }
 
-  if (params.crossThreadSnippets?.trim()) {
+  const trimmedCrossThreadSnippets = params.crossThreadSnippets?.trim() || '';
+  if (trimmedCrossThreadSnippets) {
     layer4Parts.push(
-      `RECENT MOMENTS FROM EARLIER THREADS WITH YOU (Recall naturally as shared memory only if relevant):\n${params.crossThreadSnippets.trim()}`
+      `RECENT MOMENTS FROM EARLIER THREADS WITH YOU (Recall naturally as shared memory only if relevant):\n${trimmedCrossThreadSnippets}`
     );
   }
   pushLayer('layer4_user_context_and_bond', 'Layer 4 · Living Context & Bond Continuity', layer4Parts);
@@ -2577,7 +2725,9 @@ Autonomy guidance: ${autonomyNote}`);
     turnAnalysis.should_load_notes
       ? formatAnalystNotesForCompanion(params.userDefaultProfile?.analyst_notes_json, 6)
       : '';
-  const sharedNotesText = params.councilReadingNotesText?.trim() || '';
+  const rawSharedNotesText = params.councilReadingNotesText?.trim() || '';
+  const sharedNotesText =
+    astrologicalMemoryMode === 'shared' ? rawSharedNotesText : '';
   const analystNotesInjected = Boolean(autoAnalystNotesText);
 
   if ((sharedNotesText || autoAnalystNotesText) && canReadCouncilNotes) {
@@ -2742,6 +2892,111 @@ If the user explicitly asks for a discipline outside yours (e.g., asking an emot
 
   const verificationMode = resolveCompanionVerificationMode(effectivePreset, v2);
   const temperature = resolveCompanionTemperature(effectivePreset);
+  const greetingCfg = resolveCompanionGreetingConfig(effectivePreset, v2);
+  const analystNotesRawCount = Array.isArray(params.userDefaultProfile?.analyst_notes_json)
+    ? params.userDefaultProfile!.analyst_notes_json!.length
+    : 0;
+
+  const telemetry: CompanionDiagnosticTelemetry = {
+    companionSlug: effectivePreset?.slug || persona?.slug || 'companion',
+    companionName: effectivePreset?.name || persona?.name || 'Companion',
+    v2PublishedVersion: effectivePreset?.published_version || 1,
+    isActive: effectivePreset ? effectivePreset.is_active !== false : true,
+    adminPreview: Boolean(params.adminPreview),
+    verificationMode,
+    astrologicalMemoryMode,
+    greetingMode: greetingCfg.mode,
+    familiarityMode: familiarityPolicy.mode,
+    familiarityCeiling: familiarityPolicy.max_familiarity,
+    chatStyle,
+    temperature,
+    chartSystemsInjected: {
+      vedic_sidereal: skillProfileResult.chartTelemetry.vedic_sidereal,
+      western_tropical: skillProfileResult.chartTelemetry.western_tropical,
+      vedic_transits: skillProfileResult.chartTelemetry.vedic_transits,
+      western_transits: skillProfileResult.chartTelemetry.western_transits,
+      numerology: skillProfileResult.chartTelemetry.numerology,
+      tarot: skillProfileResult.chartTelemetry.tarot,
+      missing_or_incomplete: skillProfileResult.chartTelemetry.missing_or_incomplete,
+    },
+    chartCharCounts: {
+      vedic_sidereal_chars: skillProfileResult.chartTelemetry.vedic_sidereal_chars,
+      western_tropical_chars: skillProfileResult.chartTelemetry.western_tropical_chars,
+      vedic_transits_chars: skillProfileResult.chartTelemetry.vedic_transits_chars,
+      western_transits_chars: skillProfileResult.chartTelemetry.western_transits_chars,
+      total_chart_block_chars: skillProfileResult.chartTelemetry.total_chart_block_chars,
+    },
+    memorySources: {
+      factual_life_context: lightUserContext
+        ? { injected: true, chars: lightUserContext.length }
+        : {
+            injected: false,
+            chars: 0,
+            omitted_reason: params.userDefaultProfile
+              ? 'no_living_context_fields'
+              : 'no_profile_attached',
+          },
+      companion_bond: bond
+        ? {
+            injected: true,
+            chars: bondContinuityText.length,
+            total_turns: bond.relationship_state?.total_turns || 0,
+          }
+        : { injected: false, chars: 0, total_turns: 0, omitted_reason: 'no_prior_bond' },
+      thread_summary: trimmedCrossThreadSnippets
+        ? { injected: true, chars: trimmedCrossThreadSnippets.length }
+        : { injected: false, chars: 0, omitted_reason: 'none_present' },
+      shared_external_notes: sharedNotesText
+        ? {
+            injected: true,
+            chars: sharedNotesText.length + lightContextMeta.externalNotesInjectedChars,
+            count: 1 + lightContextMeta.externalNotesInjectedCount,
+          }
+        : lightContextMeta.externalNotesInjectedCount > 0
+        ? {
+            injected: true,
+            chars: lightContextMeta.externalNotesInjectedChars,
+            count: lightContextMeta.externalNotesInjectedCount,
+          }
+        : {
+            injected: false,
+            chars: 0,
+            count:
+              lightContextMeta.externalNotesOmittedCount +
+              (astrologicalMemoryMode === 'independent' && rawSharedNotesText ? 1 : 0),
+            omitted_reason:
+              astrologicalMemoryMode === 'independent'
+                ? 'isolated_by_independent_memory_mode'
+                : 'none_present',
+          },
+      council_analyst_notes: analystNotesInjected
+        ? {
+            injected: true,
+            chars: autoAnalystNotesText.length,
+            count: analystNotesRawCount,
+          }
+        : {
+            injected: false,
+            chars: 0,
+            count: 0,
+            omitted_reason:
+              astrologicalMemoryMode === 'independent'
+                ? 'isolated_by_independent_memory_mode'
+                : !canReadCouncilNotes
+                ? 'capability_disabled'
+                : !turnAnalysis.should_load_notes
+                ? 'turn_did_not_load_notes'
+                : 'none_present',
+          },
+    },
+    activePromptSections: orderedSections.map((sec) => ({
+      key: sec.key,
+      label: sec.label,
+      charCount: sec.charCount,
+      estimatedTokens: sec.estimatedTokens,
+    })),
+    systemPromptChars: systemInstruction.length,
+  };
 
   return {
     systemInstruction,
@@ -2753,6 +3008,7 @@ If the user explicitly asks for a discipline outside yours (e.g., asking an emot
     temperature,
     turnAnalysis,
     assemblyManifest,
+    telemetry,
   };
 }
 
@@ -2796,6 +3052,7 @@ export async function buildCompanionSystemPromptAsync(params: {
   chatStyleOverride?: ChatStyle | null;
   referrableCompanions?: ReferrableCompanionSummary[];
   clientLocalHour?: number | null;
+  adminPreview?: boolean;
 }): Promise<{
   systemInstruction: string;
   modelOverride: string | null;
@@ -2809,6 +3066,7 @@ export async function buildCompanionSystemPromptAsync(params: {
   engineOverrides: EnginePromptOverrides;
   turnAnalysis: CompanionTurnAnalysis;
   assemblyManifest: CompanionAssemblyManifest;
+  telemetry: CompanionDiagnosticTelemetry;
 }> {
   const [engineOverrides, guideCfg] = await Promise.all([
     getEnginePromptOverrides(),
@@ -2891,6 +3149,7 @@ export async function buildCompanionSystemPromptAsync(params: {
     dailyTransits,
     formulaCartridges,
     turnAnalysisOverride: turnAnalysis,
+    adminPreview: params.adminPreview,
   });
 
   const modelOverride = effectivePreset?.model_id?.trim() || guideCfg.model_id || null;
@@ -2911,6 +3170,7 @@ export async function buildCompanionSystemPromptAsync(params: {
     engineOverrides,
     turnAnalysis: built.turnAnalysis,
     assemblyManifest: built.assemblyManifest,
+    telemetry: built.telemetry,
   };
 }
 

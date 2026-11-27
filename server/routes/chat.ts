@@ -63,7 +63,9 @@ import {
 } from '../services/companionV2Mapper';
 import { getCompanionSpecializations } from '../services/companionV2Service';
 import {
+  getAllCompanionsServerCached,
   getCompanionBySlug,
+  getCompanionsCatalogForUser,
   getPublicCompanionsCatalogCached,
   normalizeCompanionSlug,
   resolveCompanionCapabilities,
@@ -228,6 +230,27 @@ function stripSensitivePersonaFields(persona: unknown): Record<string, unknown> 
     ...safe
   } = persona as Record<string, unknown>;
   return safe;
+}
+
+function extractNormalizedCompanionSlugFromRow(row: Record<string, unknown>): string {
+  const directSlug = typeof row.companion_slug === 'string' ? row.companion_slug : '';
+  const personaObj =
+    row.companion_persona_json && typeof row.companion_persona_json === 'object'
+      ? (row.companion_persona_json as Record<string, unknown>)
+      : null;
+  const personaSlug = typeof personaObj?.slug === 'string' ? personaObj.slug : '';
+  return normalizeCompanionSlug(directSlug || personaSlug);
+}
+
+function buildPresetLookupBySlug(
+  allPresets: CompanionPresetRecord[]
+): Map<string, CompanionPresetRecord> {
+  const bySlug = new Map<string, CompanionPresetRecord>();
+  for (const preset of allPresets) {
+    if (preset.slug) bySlug.set(preset.slug.toLowerCase(), preset);
+    if (preset.legacy_id) bySlug.set(preset.legacy_id.toLowerCase(), preset);
+  }
+  return bySlug;
 }
 
 const COUNCIL_EXPERT_FALLBACK_NAMES: Record<string, string> = {
@@ -416,6 +439,54 @@ router.get('/conversations', requireAuth, async (req: AuthenticatedRequest, res)
     return (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0);
   });
 
+  const isAdminUser = Boolean(req.appUser.is_admin);
+  const hasCompanionConvs = convRows.some(
+    (c) => c.pillar === 'companion' || Boolean(c.companion_persona_json)
+  );
+  if (hasCompanionConvs) {
+    const allPresets = await getAllCompanionsServerCached();
+    const presetBySlug = buildPresetLookupBySlug(allPresets);
+    convRows = convRows.reduce<Array<Record<string, unknown>>>((acc, conv) => {
+      const isCompanion = conv.pillar === 'companion' || Boolean(conv.companion_persona_json);
+      if (!isCompanion) {
+        acc.push(conv);
+        return acc;
+      }
+      const slug = extractNormalizedCompanionSlugFromRow(conv);
+      if (!slug || slug.startsWith('custom_')) {
+        acc.push(conv);
+        return acc;
+      }
+      const preset = presetBySlug.get(slug);
+      if (!preset) {
+        if (isAdminUser) {
+          acc.push({
+            ...conv,
+            companion_is_active: false,
+            is_admin_preview: true,
+          });
+        }
+        return acc;
+      }
+      if (!preset.is_active) {
+        if (!isAdminUser) {
+          return acc;
+        }
+        acc.push({
+          ...conv,
+          companion_is_active: false,
+          is_admin_preview: true,
+        });
+        return acc;
+      }
+      acc.push({
+        ...conv,
+        companion_is_active: true,
+      });
+      return acc;
+    }, []);
+  }
+
   // Fetch lightweight single-line last-message snippet strictly for past companion conversations
   const companionIds = convRows
     .filter((c) => c.pillar === 'companion' || Boolean(c.companion_persona_json))
@@ -527,6 +598,21 @@ router.post('/conversations', requireAuth, async (req: AuthenticatedRequest, res
   if (normalizedPillar === 'clarity') {
     defaultTitle = 'Clarity';
   } else if (normalizedPillar === 'companion') {
+    const requestedPersonaSlug = normalizeCompanionSlug(
+      typeof companion_persona_json?.slug === 'string' ? companion_persona_json.slug : ''
+    );
+    if (requestedPersonaSlug && !requestedPersonaSlug.startsWith('custom_')) {
+      const preset = await getCompanionBySlug(requestedPersonaSlug, {
+        includeInactive: Boolean(req.appUser.is_admin),
+      });
+      if (!preset) {
+        res.status(403).json({
+          error: 'This companion is currently unavailable.',
+          code: 'COMPANION_UNAVAILABLE',
+        });
+        return;
+      }
+    }
     defaultTitle =
       typeof companion_persona_json?.name === 'string' && companion_persona_json.name.trim()
         ? companion_persona_json.name.trim()
@@ -720,10 +806,28 @@ router.patch('/conversations/:id', requireAuth, async (req: AuthenticatedRequest
     v6Updates.pillar = pillar;
   }
   if (companion_persona_json !== undefined) {
-    v6Updates.companion_persona_json =
-      companion_persona_json && typeof companion_persona_json === 'object'
-        ? companion_persona_json
-        : null;
+    if (companion_persona_json && typeof companion_persona_json === 'object') {
+      const requestedPersonaSlug = normalizeCompanionSlug(
+        typeof (companion_persona_json as Record<string, unknown>).slug === 'string'
+          ? String((companion_persona_json as Record<string, unknown>).slug)
+          : ''
+      );
+      if (requestedPersonaSlug && !requestedPersonaSlug.startsWith('custom_')) {
+        const preset = await getCompanionBySlug(requestedPersonaSlug, {
+          includeInactive: Boolean(req.appUser.is_admin),
+        });
+        if (!preset) {
+          res.status(403).json({
+            error: 'This companion is currently unavailable.',
+            code: 'COMPANION_UNAVAILABLE',
+          });
+          return;
+        }
+      }
+      v6Updates.companion_persona_json = companion_persona_json;
+    } else {
+      v6Updates.companion_persona_json = null;
+    }
   }
   if (companion_chat_mode !== undefined) {
     v7Updates.companion_chat_mode = isValidCompanionChatCue(companion_chat_mode)
@@ -855,7 +959,7 @@ router.get('/companions', requireAuth, async (req: AuthenticatedRequest, res) =>
   }
 
   const [catalog, specializations] = await Promise.all([
-    getPublicCompanionsCatalogCached(),
+    getCompanionsCatalogForUser({ includeInactive: Boolean(req.appUser.is_admin) }),
     getCompanionSpecializations(),
   ]);
 
@@ -998,6 +1102,16 @@ router.get('/companions/:slug/threads', requireAuth, async (req: AuthenticatedRe
     return;
   }
 
+  const includeInactive = Boolean(req.appUser.is_admin);
+  let presetRecord: CompanionPresetRecord | null = null;
+  if (!normalizedSlug.startsWith('custom_')) {
+    presetRecord = await getCompanionBySlug(normalizedSlug, { includeInactive });
+    if (!presetRecord) {
+      res.status(404).json({ error: 'Companion not found or currently unavailable' });
+      return;
+    }
+  }
+
   let threads: Array<Record<string, unknown>> = [];
   const primaryRes = await supabaseAdmin
     .from('conversations')
@@ -1058,6 +1172,16 @@ router.get('/companions/:slug/threads', requireAuth, async (req: AuthenticatedRe
         return preview ? { ...t, last_message_preview: preview } : t;
       });
     }
+  }
+
+  if (presetRecord) {
+    threads = threads.map((t) => ({
+      ...t,
+      companion_is_active: presetRecord!.is_active !== false,
+      ...(presetRecord!.is_active === false && includeInactive
+        ? { is_admin_preview: true }
+        : {}),
+    }));
   }
 
   res.json({ threads });
@@ -1329,7 +1453,9 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
 
   // ── FLOW A: Preset Admin-Governed Companion ────────────────────────────────
   if (rawCompanionSlug && !rawCompanionSlug.startsWith('custom_')) {
-    const preset = await getCompanionBySlug(rawCompanionSlug);
+    const preset = await getCompanionBySlug(rawCompanionSlug, {
+      includeInactive: Boolean(req.appUser.is_admin),
+    });
     if (!preset) {
       res.status(404).json({ error: 'Companion not found or currently unavailable' });
       return;
@@ -1460,7 +1586,13 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
         }
 
         res.status(200).json({
-          conversation: normalizeConversationDefaults(existingConv),
+          conversation: {
+            ...normalizeConversationDefaults(existingConv),
+            companion_is_active: preset.is_active !== false,
+            ...(preset.is_active === false && req.appUser.is_admin
+              ? { is_admin_preview: true }
+              : {}),
+          },
           companionCard: toPublicCompanionCard(preset),
           ...(handoffMsgRecord ? { openingMessage: handoffMsgRecord, handoffAppended: true } : {}),
           resumed: true,
@@ -1708,7 +1840,13 @@ router.post('/companions/start', requireAuth, async (req: AuthenticatedRequest, 
     }
 
     res.status(201).json({
-      conversation: createdConv,
+      conversation: {
+        ...createdConv,
+        companion_is_active: preset.is_active !== false,
+        ...(preset.is_active === false && req.appUser.is_admin
+          ? { is_admin_preview: true }
+          : {}),
+      },
       openingMessage: openingMsgRecord,
       companionCard: toPublicCompanionCard(preset),
       resumed: false,
@@ -2173,6 +2311,29 @@ router.get('/conversations/:id/messages', requireAuth, async (req: Authenticated
     return;
   }
 
+  if (conversation.pillar === 'companion') {
+    const companionSlug = extractNormalizedCompanionSlugFromRow(conversation);
+    if (companionSlug && !companionSlug.startsWith('custom_')) {
+      const preset = await getCompanionBySlug(companionSlug, {
+        includeInactive: Boolean(req.appUser.is_admin),
+      });
+      if (!preset) {
+        res.status(403).json({
+          error: 'This companion is currently unavailable.',
+          code: 'COMPANION_UNAVAILABLE',
+        });
+        return;
+      }
+      conversation = {
+        ...conversation,
+        companion_is_active: preset.is_active !== false,
+        ...(preset.is_active === false && req.appUser.is_admin
+          ? { is_admin_preview: true }
+          : {}),
+      };
+    }
+  }
+
   const parsedLimit = Number(req.query.limit);
   const limit = Number.isFinite(parsedLimit)
     ? Math.min(Math.max(Math.trunc(parsedLimit), 10), 100)
@@ -2611,10 +2772,25 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         )
       : '';
 
+  const includeInactiveCompanions = Boolean(req.appUser.is_admin);
   const presetCompanion: CompanionPresetRecord | null =
     activePillar === 'companion' && effectiveCompanionSlug && !effectiveCompanionSlug.startsWith('custom_')
-      ? await getCompanionBySlug(effectiveCompanionSlug)
+      ? await getCompanionBySlug(effectiveCompanionSlug, {
+          includeInactive: includeInactiveCompanions,
+        })
       : null;
+
+  if (
+    activePillar === 'companion' &&
+    !effectiveCompanionSlug.startsWith('custom_') &&
+    !presetCompanion
+  ) {
+    res.status(403).json({
+      error: 'This companion is currently unavailable.',
+      code: 'COMPANION_UNAVAILABLE',
+    });
+    return;
+  }
 
   if (
     activePillar === 'companion' &&
@@ -3481,12 +3657,29 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         user_id: req.appUser!.id,
         conversation_id: conversation.id,
         profile_id: conversation.profile_id,
+        pillar: activePillar,
         expert_slug: expertSlug,
         mode_slug: modeSlug,
         response_length: normalizedResponseLength,
         user_prompt_preview: promptText,
         action_taken: 'refuse_extraction',
-        stage1_json: { provider_used: 'rule_guard', is_prompt_extraction: true },
+        stage1_json: {
+          pillar: activePillar,
+          provider_used: 'rule_guard',
+          is_prompt_extraction: true,
+          ...(activePillar === 'companion'
+            ? {
+                companion_slug:
+                  presetCompanion?.slug || effectiveCompanionSlug || 'companion',
+                companion_name:
+                  presetCompanion?.name || activeCompanionPersona?.name || 'Companion',
+                is_active: presetCompanion ? presetCompanion.is_active !== false : true,
+                admin_preview: Boolean(
+                  presetCompanion && presetCompanion.is_active === false && req.appUser?.is_admin
+                ),
+              }
+            : {}),
+        },
         total_latency_ms: Date.now() - turnStartedAt,
       })
     );
@@ -3778,14 +3971,25 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         user_id: req.appUser!.id,
         conversation_id: conversation.id,
         profile_id: conversation.profile_id,
+        pillar: activePillar,
         expert_slug: expertSlug,
         mode_slug: modeSlug,
         response_length: normalizedResponseLength,
         user_prompt_preview: promptText,
         action_taken: 'aborted',
         stage1_json: stage1Decision
-          ? (stage1Decision.routerResult as unknown as Record<string, unknown>)
-          : null,
+          ? ({ pillar: activePillar, ...stage1Decision.routerResult } as unknown as Record<string, unknown>)
+          : activePillar === 'companion'
+          ? {
+              pillar: 'companion',
+              companion_slug: presetCompanion?.slug || effectiveCompanionSlug || 'companion',
+              companion_name: presetCompanion?.name || activeCompanionPersona?.name || 'Companion',
+              is_active: presetCompanion ? presetCompanion.is_active !== false : true,
+              admin_preview: Boolean(
+                presetCompanion && presetCompanion.is_active === false && req.appUser?.is_admin
+              ),
+            }
+          : { pillar: activePillar },
         total_latency_ms: Date.now() - turnStartedAt,
       })
     );
@@ -3808,6 +4012,9 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       councilReadingNotesText: activePillar === 'companion' ? councilReadingNotesText : null,
       referrableCompanions: activePillar === 'companion' ? referrableCompanions : undefined,
       clientLocalHour,
+      adminPreview: Boolean(
+        activePillar === 'companion' && presetCompanion?.is_active === false && req.appUser.is_admin
+      ),
       conversation: {
         ...conversation,
         pillar: activePillar,
@@ -3859,18 +4066,59 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
     req.off('close', handleDisconnect);
 
     if (streamResult.aborted && !streamResult.fullText.trim()) {
+      const compTele = streamResult.companionTelemetry;
       scheduleBackgroundTask(() =>
         recordChatbotPipelineLog({
           user_id: req.appUser!.id,
           conversation_id: conversation.id,
           profile_id: conversation.profile_id,
+          pillar: activePillar,
           expert_slug: expertSlug,
           mode_slug: modeSlug,
           response_length: normalizedResponseLength,
           user_prompt_preview: promptText,
           action_taken: 'aborted',
           stage1_json: stage1Decision
-            ? (stage1Decision.routerResult as unknown as Record<string, unknown>)
+            ? ({ pillar: activePillar, ...stage1Decision.routerResult } as unknown as Record<string, unknown>)
+            : compTele
+            ? {
+                pillar: 'companion',
+                execution_mode: compTele.executionMode,
+                companion_slug: compTele.companionSlug,
+                companion_name: compTele.companionName,
+                v2_published_version: compTele.v2PublishedVersion,
+                is_active: compTele.isActive,
+                admin_preview: compTele.adminPreview,
+                verification_mode: compTele.verificationMode,
+                applied_verification_mode: compTele.appliedVerificationMode || 'skipped',
+                astrological_memory_mode: compTele.astrologicalMemoryMode,
+                greeting_mode: compTele.greetingMode,
+                familiarity_mode: compTele.familiarityMode,
+                familiarity_ceiling: compTele.familiarityCeiling,
+                chat_style: compTele.chatStyle,
+              }
+            : { pillar: activePillar },
+          stage2_json: compTele
+            ? {
+                pillar: 'companion',
+                chart_systems_injected: compTele.chartSystemsInjected,
+                chart_char_counts: compTele.chartCharCounts,
+                memory_sources: compTele.memorySources,
+              }
+            : null,
+          stage3_json: compTele
+            ? {
+                pillar: 'companion',
+                model_id: compTele.modelId,
+                resolved_temperature: compTele.temperature,
+                max_output_tokens: compTele.maxOutputTokens,
+                tokens_in: streamResult.tokensIn,
+                tokens_out: streamResult.tokensOut,
+                system_prompt_chars: compTele.systemPromptChars,
+                active_prompt_sections: compTele.activePromptSections,
+                system_prompt_preview: compTele.systemPromptPreview || null,
+                analytical_stages: compTele.analyticalStages,
+              }
             : null,
           total_latency_ms: Date.now() - turnStartedAt,
         })
@@ -4274,6 +4522,10 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       pillar: activePillar,
       companion_slug: effectiveCompanionSlug || conversation.companion_slug || null,
       companion_chat_mode: effectiveCompanionChatMode,
+      companion_is_active: presetCompanion ? presetCompanion.is_active !== false : undefined,
+      ...(presetCompanion && presetCompanion.is_active === false && req.appUser?.is_admin
+        ? { is_admin_preview: true }
+        : {}),
       companion_persona_json: presetCompanion
         ? buildPublicCompanionPersonaSnapshot(presetCompanion)
         : stripSensitivePersonaFields(activeCompanionPersona),
@@ -4370,47 +4622,107 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
       }
     }
 
+    const compTele = streamResult.companionTelemetry;
+    const isCompanionTurn = activePillar === 'companion';
     scheduleBackgroundTask(() =>
       recordChatbotPipelineLog({
         user_id: req.appUser!.id,
         conversation_id: conversation.id,
         profile_id: conversation.profile_id,
+        pillar: activePillar,
         expert_slug: expertSlug,
         mode_slug: modeSlug,
         response_length: normalizedResponseLength,
         user_prompt_preview: promptText,
         action_taken: streamResult.aborted ? 'aborted' : 'proceed',
-        stage1_json: stage1Decision
-          ? {
-              ...stage1Decision.routerResult,
-              trap_id: stage1Decision.trapCheck.trapId,
-              bypass_clarification: Boolean(bypassClarification),
-              is_curated_starter: Boolean(curatedStarter),
-            }
-          : null,
-        stage2_json: streamResult.stage2Pkg
-          ? {
-              playbook_id: streamResult.stage2Pkg.playbookId,
-              domain: streamResult.stage2Pkg.domain,
-              intent: streamResult.stage2Pkg.intent,
-              ...streamResult.stage2Pkg.metrics,
-            }
-          : null,
-        stage3_json: {
-          tokens_in: streamResult.tokensIn,
-          tokens_out: streamResult.tokensOut,
-          credits_charged: chargeTarget,
-          has_tech_breakdown: Boolean(streamResult.techBreakdown),
-          tech_breakdown_chars: streamResult.techBreakdown?.length || 0,
-          leak_intercepted: wasLeakIntercepted,
-          first_done_latency_ms: firstDoneLatencyMs,
-          ...(streamResult.vedicMeta || {}),
-        },
-        stage4_json: {
-          followups_count: finalStructuredSuggestions.followups.length,
-          deeper_analysis_count: finalStructuredSuggestions.deeper_analysis.length,
-          decoupled_stage4: useStage4AlignedSuggestions,
-        },
+        stage1_json:
+          isCompanionTurn && compTele
+            ? {
+                pillar: 'companion',
+                execution_mode: compTele.executionMode,
+                companion_slug: compTele.companionSlug,
+                companion_name: compTele.companionName,
+                v2_published_version: compTele.v2PublishedVersion,
+                is_active: compTele.isActive,
+                admin_preview: compTele.adminPreview,
+                verification_mode: compTele.verificationMode,
+                applied_verification_mode: compTele.appliedVerificationMode || 'skipped',
+                astrological_memory_mode: compTele.astrologicalMemoryMode,
+                greeting_mode: compTele.greetingMode,
+                familiarity_mode: compTele.familiarityMode,
+                familiarity_ceiling: compTele.familiarityCeiling,
+                chat_style: compTele.chatStyle,
+              }
+            : stage1Decision
+            ? {
+                pillar: activePillar,
+                ...stage1Decision.routerResult,
+                trap_id: stage1Decision.trapCheck.trapId,
+                bypass_clarification: Boolean(bypassClarification),
+                is_curated_starter: Boolean(curatedStarter),
+              }
+            : { pillar: activePillar },
+        stage2_json:
+          isCompanionTurn && compTele
+            ? {
+                pillar: 'companion',
+                chart_systems_injected: compTele.chartSystemsInjected,
+                chart_char_counts: compTele.chartCharCounts,
+                memory_sources: compTele.memorySources,
+              }
+            : streamResult.stage2Pkg
+            ? {
+                playbook_id: streamResult.stage2Pkg.playbookId,
+                domain: streamResult.stage2Pkg.domain,
+                intent: streamResult.stage2Pkg.intent,
+                ...streamResult.stage2Pkg.metrics,
+              }
+            : null,
+        stage3_json:
+          isCompanionTurn && compTele
+            ? {
+                pillar: 'companion',
+                model_id: compTele.modelId,
+                resolved_temperature: compTele.temperature,
+                max_output_tokens: compTele.maxOutputTokens,
+                tokens_in: streamResult.tokensIn,
+                tokens_out: streamResult.tokensOut,
+                credits_charged: chargeTarget,
+                system_prompt_chars: compTele.systemPromptChars,
+                active_prompt_sections: compTele.activePromptSections,
+                system_prompt_preview: compTele.systemPromptPreview || null,
+                leak_intercepted: wasLeakIntercepted,
+                first_done_latency_ms: firstDoneLatencyMs,
+                analytical_stages: compTele.analyticalStages,
+              }
+            : {
+                tokens_in: streamResult.tokensIn,
+                tokens_out: streamResult.tokensOut,
+                credits_charged: chargeTarget,
+                has_tech_breakdown: Boolean(streamResult.techBreakdown),
+                tech_breakdown_chars: streamResult.techBreakdown?.length || 0,
+                leak_intercepted: wasLeakIntercepted,
+                first_done_latency_ms: firstDoneLatencyMs,
+                ...(streamResult.vedicMeta || {}),
+              },
+        stage4_json:
+          isCompanionTurn && compTele
+            ? {
+                pillar: 'companion',
+                followups_count: finalStructuredSuggestions.followups.length,
+                deeper_analysis_count: finalStructuredSuggestions.deeper_analysis.length,
+                post_turn_bond_update: !streamResult.aborted && !wasLeakIntercepted,
+                post_turn_profile_memory_update:
+                  !streamResult.aborted &&
+                  !wasLeakIntercepted &&
+                  conversation.use_full_profile_memory !== false,
+                retention_schema: 'v2_companion_extensible',
+              }
+            : {
+                followups_count: finalStructuredSuggestions.followups.length,
+                deeper_analysis_count: finalStructuredSuggestions.deeper_analysis.length,
+                decoupled_stage4: useStage4AlignedSuggestions,
+              },
         total_latency_ms: Date.now() - turnStartedAt,
       })
     );
@@ -4426,14 +4738,25 @@ router.post('/conversations/:id/messages', requireAuth, async (req: Authenticate
         user_id: req.appUser!.id,
         conversation_id: conversation.id,
         profile_id: conversation.profile_id,
+        pillar: activePillar,
         expert_slug: expertSlug,
         mode_slug: modeSlug,
         response_length: normalizedResponseLength,
         user_prompt_preview: promptText,
         action_taken: 'error',
         stage1_json: stage1Decision
-          ? (stage1Decision.routerResult as unknown as Record<string, unknown>)
-          : null,
+          ? ({ pillar: activePillar, ...stage1Decision.routerResult } as unknown as Record<string, unknown>)
+          : activePillar === 'companion'
+          ? {
+              pillar: 'companion',
+              companion_slug: presetCompanion?.slug || effectiveCompanionSlug || 'companion',
+              companion_name: presetCompanion?.name || activeCompanionPersona?.name || 'Companion',
+              is_active: presetCompanion ? presetCompanion.is_active !== false : true,
+              admin_preview: Boolean(
+                presetCompanion && presetCompanion.is_active === false && req.appUser?.is_admin
+              ),
+            }
+          : { pillar: activePillar },
         total_latency_ms: Date.now() - turnStartedAt,
         error_message: message,
       })
@@ -5086,9 +5409,9 @@ router.get('/memory', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 
   try {
-    const companionsCatalog = await getPublicCompanionsCatalogCached().catch(
-      (): PublicCompanionCard[] => []
-    );
+    const companionsCatalog = await getCompanionsCatalogForUser({
+      includeInactive: Boolean(req.appUser.is_admin),
+    }).catch((): PublicCompanionCard[] => []);
     const companionNames: Record<string, string> = {};
     for (const c of companionsCatalog) {
       companionNames[c.slug] = c.name;

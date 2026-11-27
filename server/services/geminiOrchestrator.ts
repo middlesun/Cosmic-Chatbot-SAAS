@@ -27,9 +27,11 @@ import {
   buildCompanionSystemPromptAsync,
   resolveCompanionTemperature,
   type ChatPillar,
+  type CompanionDiagnosticTelemetry,
   type CompanionPersona,
   type ReferrableCompanionSummary,
 } from './companionEngine';
+import { capTelemetryPreview, isPipelineLoggingEnabled } from './pipelineLogger';
 import type { CompanionVerificationMode } from '../../lib/companionV2Schema';
 import type { CompanionBondState } from './memoryArchivist';
 import {
@@ -186,6 +188,7 @@ export interface StreamConsultationParams {
   councilReadingNotesText?: string | null;
   referrableCompanions?: ReferrableCompanionSummary[];
   clientLocalHour?: number | null;
+  adminPreview?: boolean;
   conversation: {
     id: string;
     profile_id: string | null;
@@ -249,6 +252,23 @@ export interface PendingBirthProfileDraft {
   original_question?: string;
 }
 
+export interface CompanionAnalyticalStageSlot {
+  stage: number;
+  key: string;
+  label: string;
+  status: 'executed' | 'skipped' | 'reserved_future';
+  notes?: string;
+}
+
+export interface CompanionPipelineTelemetryPayload extends CompanionDiagnosticTelemetry {
+  appliedVerificationMode?: CompanionVerificationMode | 'skipped';
+  executionMode: 'single_pass';
+  modelId: string;
+  maxOutputTokens: number;
+  systemPromptPreview?: string | null;
+  analyticalStages: CompanionAnalyticalStageSlot[];
+}
+
 export interface StreamConsultationResult {
   fullText: string;
   techBreakdown?: string | null;
@@ -265,6 +285,7 @@ export interface StreamConsultationResult {
   stage2Pkg?: Stage2ContextPackage | null;
   timingWidgets?: TimingProgressWidget[];
   tarotSpread?: DrawnTarotSpread | null;
+  companionTelemetry?: CompanionPipelineTelemetryPayload | null;
 }
 
 function normalizeDraftBirthTime(raw: string): string | null {
@@ -1382,6 +1403,7 @@ User's specific question: ${finalUserText}`;
   let companionInvitedEsoteric = false;
   let companionVerificationMode: CompanionVerificationMode = 'neutral';
   let companionTemperature: number = resolveCompanionTemperature(params.companionPreset);
+  let companionRawTelemetry: CompanionDiagnosticTelemetry | null = null;
 
   if (activePillar === 'companion') {
     const builtComp = await buildCompanionSystemPromptAsync({
@@ -1403,6 +1425,7 @@ User's specific question: ${finalUserText}`;
         params.companionChatMode ?? params.conversation.companion_chat_mode ?? null,
       referrableCompanions: params.referrableCompanions,
       clientLocalHour: params.clientLocalHour,
+      adminPreview: params.adminPreview,
     });
     systemInstructionWithDynamic = builtComp.systemInstruction;
     modelOverride = builtComp.modelOverride;
@@ -1412,6 +1435,7 @@ User's specific question: ${finalUserText}`;
     companionInvitedEsoteric = builtComp.invitedEsoteric;
     companionVerificationMode = builtComp.verificationMode;
     companionTemperature = builtComp.temperature;
+    companionRawTelemetry = builtComp.telemetry;
     wantsSuggestions = false;
   } else if (activePillar === 'clarity') {
     const builtClarity = await buildClaritySystemPromptAsync({
@@ -1545,6 +1569,7 @@ User's specific question: ${finalUserText}`;
   const maxOutputTokens = wantsSuggestions ? baseOutputTokens + 420 : baseOutputTokens;
 
   let requestUserText = finalUserText;
+  let companionAppliedVerificationMode: CompanionVerificationMode | 'skipped' = 'skipped';
   if (activePillar === 'companion') {
     const hasChartData = Boolean(
       params.profile?.chart_json || params.profile?.chart_text_context?.trim()
@@ -1558,6 +1583,66 @@ User's specific question: ${finalUserText}`;
       engineOverrides,
     });
     requestUserText = verifiedTurn.userText;
+    companionAppliedVerificationMode = verifiedTurn.appliedMode;
+  }
+
+  let companionTelemetryPayload: CompanionPipelineTelemetryPayload | null = null;
+  if (activePillar === 'companion' && companionRawTelemetry && (await isPipelineLoggingEnabled())) {
+    companionTelemetryPayload = {
+      ...companionRawTelemetry,
+      appliedVerificationMode: companionAppliedVerificationMode,
+      executionMode: 'single_pass',
+      modelId: model,
+      maxOutputTokens,
+      systemPromptPreview: capTelemetryPreview(systemInstructionWithDynamic),
+      analyticalStages: [
+        {
+          stage: 1,
+          key: 'turn_context_and_intent',
+          label: 'Turn Context & Esoteric Relevance',
+          status: 'executed',
+          notes: `verification=${companionAppliedVerificationMode}`,
+        },
+        {
+          stage: 2,
+          key: 'chart_and_memory_assembly',
+          label: 'Dual-Tradition Chart & Memory Isolation Assembly',
+          status: 'executed',
+          notes: `memory_mode=${companionRawTelemetry.astrologicalMemoryMode}`,
+        },
+        {
+          stage: 3,
+          key: 'single_pass_synthesis',
+          label: 'Single-Pass Companion Synthesis',
+          status: 'executed',
+          notes: `model=${model} temp=${companionTemperature}`,
+        },
+        {
+          stage: 4,
+          key: 'future_chart_prepass',
+          label: 'Stage 4 · Reserved Multi-Pass Slot',
+          status: 'reserved_future',
+        },
+        {
+          stage: 5,
+          key: 'future_verification_pass',
+          label: 'Stage 5 · Reserved Multi-Pass Slot',
+          status: 'reserved_future',
+        },
+        {
+          stage: 6,
+          key: 'future_refinement_pass',
+          label: 'Stage 6 · Reserved Multi-Pass Slot',
+          status: 'reserved_future',
+        },
+        {
+          stage: 7,
+          key: 'future_post_audit_pass',
+          label: 'Stage 7 · Reserved Multi-Pass Slot',
+          status: 'reserved_future',
+        },
+      ],
+    };
   }
 
   // Filter out messages excluded from context (already filtered above)
@@ -1723,6 +1808,7 @@ User's specific question: ${finalUserText}`;
         leakIntercepted: true,
         pendingProfile: null,
         suggestions: null,
+        companionTelemetry: companionTelemetryPayload,
       };
     }
 
@@ -1754,6 +1840,7 @@ User's specific question: ${finalUserText}`;
         suggestions: null,
         referral: null,
         renderStyle: resolvedRenderStyle,
+        companionTelemetry: companionTelemetryPayload,
       };
     }
 
@@ -1785,6 +1872,7 @@ User's specific question: ${finalUserText}`;
       suggestions: streamResult.aborted || contAborted ? null : extractedFinal.suggestions,
       referral: streamResult.aborted || contAborted ? null : extractedFinal.referral,
       renderStyle: resolvedRenderStyle,
+      companionTelemetry: companionTelemetryPayload,
     };
   } finally {
     params.abortSignal.removeEventListener('abort', forwardAbort);

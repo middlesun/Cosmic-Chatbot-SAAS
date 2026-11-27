@@ -123,7 +123,7 @@ const CompanionChatAiSettingsTab: React.FC<CompanionChatAiSettingsTabProps> = ({
               className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] px-3.5 py-2.5 font-mono text-xs tabular-nums text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none"
             />
             <p className="text-[11px] text-[#8B8275]">
-              Leave blank for platform default (0.45). Range 0.00–2.00. Stored in Phase 1; runtime temperature wiring arrives in a later phase.
+              Leave blank for platform default (0.45). Range 0.00–2.00. Applied to live companion responses, contextual greetings, and Studio tests.
             </p>
           </label>
 

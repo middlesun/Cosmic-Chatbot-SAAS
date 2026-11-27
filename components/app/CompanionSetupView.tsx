@@ -252,9 +252,12 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
   );
 
   // Preset hub catalog + saved custom companions
+  const allowCatalogEntryForHub = (c: PublicCompanionCard): boolean =>
+    isConsultantCatalogEntryAllowed(c) || Boolean(!isPreviewMode && c.is_admin_preview);
+
   const [presets, setPresets] = useState<PublicCompanionCard[]>(() =>
     companionCatalog && companionCatalog.length > 0
-      ? companionCatalog.filter(isConsultantCatalogEntryAllowed)
+      ? companionCatalog.filter(allowCatalogEntryForHub)
       : isPreviewMode
       ? PREVIEW_PUBLIC_COMPANIONS.filter(isConsultantCatalogEntryAllowed)
       : []
@@ -291,10 +294,10 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
 
   useEffect(() => {
     if (companionCatalog && companionCatalog.length > 0) {
-      setPresets(companionCatalog.filter(isConsultantCatalogEntryAllowed));
+      setPresets(companionCatalog.filter(allowCatalogEntryForHub));
       setLoadingHub(false);
     }
-  }, [companionCatalog]);
+  }, [companionCatalog, isPreviewMode]);
 
   useEffect(() => {
     if (isPreviewMode) {
@@ -321,7 +324,9 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
         const loadedCards = Array.isArray(data.companions)
-          ? (data.companions as PublicCompanionCard[]).filter(isConsultantCatalogEntryAllowed)
+          ? (data.companions as PublicCompanionCard[]).filter(
+              (c) => isConsultantCatalogEntryAllowed(c) || Boolean(c.is_admin_preview)
+            )
           : [];
         const loadedCustom = Array.isArray(data.customCompanions)
           ? (data.customCompanions as CustomCompanionSummary[])
@@ -372,7 +377,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
 
   // Merge live thread counts from pastCompanionConversations for snappy UI updates
   const enrichedPresets = useMemo(() => {
-    const allowed = presets.filter(isConsultantCatalogEntryAllowed);
+    const allowed = presets.filter(allowCatalogEntryForHub);
     if (pastCompanionConversations.length === 0) return allowed;
     const bySlug = new Map<string, ConversationRecord>();
     for (const conv of pastCompanionConversations) {
@@ -390,11 +395,31 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
         last_interaction_at: card.last_interaction_at || localLatest.updated_at,
       };
     });
-  }, [presets, pastCompanionConversations]);
+  }, [presets, pastCompanionConversations, isPreviewMode]);
+
+  const activePresets = useMemo(
+    () =>
+      enrichedPresets.filter(
+        (c) => !c.is_admin_preview && c.is_active !== false && isConsultantCatalogEntryAllowed(c)
+      ),
+    [enrichedPresets]
+  );
+
+  const adminPreviewInactivePresets = useMemo(() => {
+    if (isPreviewMode) return [];
+    const inactive = enrichedPresets.filter((c) => Boolean(c.is_admin_preview || c.is_active === false));
+    if (!searchQuery.trim()) return inactive;
+    return inactive.filter((c) =>
+      matchesCompanionDiscoveryFilter(c, {
+        groupTab: 'all',
+        searchQuery,
+      })
+    );
+  }, [enrichedPresets, isPreviewMode, searchQuery]);
 
   const filteredPresets = useMemo(
     () =>
-      enrichedPresets.filter((c) =>
+      activePresets.filter((c) =>
         matchesCompanionDiscoveryFilter(c, {
           groupTab: activeGroup,
           situationChipId: activeSituationChip,
@@ -402,7 +427,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
           searchQuery,
         })
       ),
-    [enrichedPresets, activeGroup, activeSituationChip, activeSpecialization, searchQuery]
+    [activePresets, activeGroup, activeSituationChip, activeSpecialization, searchQuery]
   );
 
   const isDefaultDirectoryView =
@@ -625,7 +650,7 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
 
             {/* Category Tabs, Contextual Sub-Filters & Search */}
             <CompanionDiscoveryControls
-              cards={enrichedPresets}
+              cards={activePresets}
               activeGroup={activeGroup}
               onChangeGroup={setActiveGroup}
               activeSituationChip={activeSituationChip}
@@ -906,6 +931,126 @@ const CompanionSetupView: React.FC<CompanionSetupViewProps> = ({
                       </div>
                     );
                   })
+                )}
+
+                {/* ADMIN-ONLY: Inactive Experimental Companions (strictly hidden from non-admins) */}
+                {!loadingHub && adminPreviewInactivePresets.length > 0 && (
+                  <div className="md:col-span-2 rounded-3xl border border-[#8B7355]/25 bg-[#EAE3D7]/40 p-4 sm:p-5 space-y-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-md border border-[#8B7355]/30 bg-[#EAE3D7] px-2 py-0.5 text-[10px] font-medium text-[#8B7355]">
+                          Admin Preview · Inactive
+                        </span>
+                        <span className="text-xs text-[#5C5449]">
+                          Hidden from all non-admin users — test privately in live Chat
+                        </span>
+                      </div>
+                      <span className="font-mono text-[11px] tabular-nums text-[#8B8275]">
+                        {adminPreviewInactivePresets.length} inactive
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                      {adminPreviewInactivePresets.map((card) => {
+                        const isStarting = startingId === card.slug;
+                        const hasHistory = Boolean(card.last_conversation_id);
+                        return (
+                          <div
+                            key={card.slug}
+                            className="flex flex-col justify-between rounded-3xl border border-[#8B7355]/25 bg-[#FDFBF7] p-4 sm:p-5 gap-4 hover:border-[#8B7355]/45 transition-colors"
+                          >
+                            <div className="flex items-start gap-3.5 min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => setSheetCompanion(card)}
+                                aria-label={`View ${card.name}'s profile`}
+                                className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8965A] cursor-pointer"
+                              >
+                                <CompanionAvatar
+                                  name={card.name}
+                                  avatarUrl={card.avatar_url}
+                                  palette={card.monogram_palette}
+                                  size="lg"
+                                  shape="circle"
+                                />
+                              </button>
+
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center justify-between gap-2 min-w-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSheetCompanion(card)}
+                                    className="flex items-baseline gap-2 min-w-0 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                                  >
+                                    <h3 className="font-['Cormorant_Garamond',serif] text-[21px] font-semibold text-[#3D3830] leading-tight truncate">
+                                      {card.name}
+                                    </h3>
+                                    <span className="text-xs font-['DM_Sans',sans-serif] tabular-nums text-[#8B8275] shrink-0">
+                                      {card.age}
+                                    </span>
+                                  </button>
+
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    {hasHistory && (
+                                      <span className="text-[11px] font-medium text-[#2D6A4F]">
+                                        Active chat
+                                      </span>
+                                    )}
+                                    <span className="inline-flex items-center rounded-md border border-[#8B7355]/30 bg-[#EAE3D7] px-1.5 py-0.5 text-[10px] font-medium text-[#8B7355]">
+                                      Admin Preview · Inactive
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <p className="text-xs text-[#8B8275] truncate">
+                                  {card.card_subtitle ||
+                                    `${card.primary_expertise}${
+                                      card.secondary_expertise?.[0] &&
+                                      card.secondary_expertise[0].toLowerCase() !==
+                                        card.primary_expertise.toLowerCase()
+                                        ? ` · ${card.secondary_expertise[0]}`
+                                        : ''
+                                    }`}
+                                </p>
+
+                                <p className="text-xs text-[#5C5449] leading-relaxed line-clamp-2 pt-0.5">
+                                  {card.short_bio || card.tagline}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 items-center gap-1.5 pt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => setSheetCompanion(card)}
+                                className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] transition-colors cursor-pointer truncate"
+                              >
+                                About
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={startingId !== null}
+                                onClick={() => void handleStartPreset(card, { forceNew: true })}
+                                className="min-h-[36px] rounded-xl border border-[#3D3830]/10 bg-[#F5F1EA] px-2.5 py-1.5 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#EBE4D8] disabled:opacity-50 transition-colors cursor-pointer truncate"
+                              >
+                                Start new
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={startingId !== null}
+                                onClick={() => void handleStartPreset(card)}
+                                className="min-h-[36px] rounded-xl border border-[#3D3830]/14 bg-[#EDE6DA] px-2.5 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#E4DCCD] disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer truncate"
+                              >
+                                {isStarting ? 'Connecting…' : 'Continue Chat'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
 
                 {/* LAST OPTION ON THE LIST: Find someone new (preserved custom matcher) */}

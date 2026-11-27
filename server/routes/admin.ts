@@ -146,9 +146,12 @@ import { clearMiniAppsMemoryCache } from './apps';
 import { ensureReportCatalogSeeded } from '../services/reportDefaults';
 import { isSanityConfigured } from '../../lib/sanity';
 import {
+  PIPELINE_LOGS_MAX_ROWS,
+  PIPELINE_LOGS_RETENTION_DAYS,
   clearChatbotPipelineLogs,
   getChatbotPipelineLogs,
   isPipelineLogsTableReady,
+  pruneChatbotPipelineLogs,
 } from '../services/pipelineLogger';
 
 const router = Router();
@@ -5614,11 +5617,16 @@ router.get('/platform/health', async (_req: AuthenticatedRequest, res) => {
 router.get('/chatbot-logs', async (req: AuthenticatedRequest, res) => {
   const limitRaw = Number(req.query.limit || 60);
   const actionFilter = typeof req.query.action === 'string' ? req.query.action : 'all';
+  const pillarFilter = typeof req.query.pillar === 'string' ? req.query.pillar : 'all';
+  const companionSlug =
+    typeof req.query.companion === 'string' ? req.query.companion.trim() : '';
   const [ai, result] = await Promise.all([
     getAiSettings(),
     getChatbotPipelineLogs({
       limit: Number.isFinite(limitRaw) ? limitRaw : 60,
       actionFilter,
+      pillarFilter,
+      companionSlug,
     }),
   ]);
   res.json({
@@ -5630,6 +5638,10 @@ router.get('/chatbot-logs', async (req: AuthenticatedRequest, res) => {
     tableMissing: result.tableMissing,
     schemaCacheStale: result.schemaCacheStale,
     schemaErrorDetail: result.schemaErrorDetail,
+    retention: {
+      maxRows: PIPELINE_LOGS_MAX_ROWS,
+      retentionDays: PIPELINE_LOGS_RETENTION_DAYS,
+    },
   });
 });
 
@@ -5659,7 +5671,21 @@ router.post('/chatbot-logs/toggle', async (req: AuthenticatedRequest, res) => {
   res.json({ enabled });
 });
 
-router.delete('/chatbot-logs', async (_req: AuthenticatedRequest, res) => {
+router.post('/chatbot-logs/prune', async (req: AuthenticatedRequest, res) => {
+  const rawDays = req.body?.olderThanDays ?? req.query?.olderThanDays ?? 7;
+  const days = Math.max(0, Math.min(365, Number(rawDays) || 0));
+  const result = await pruneChatbotPipelineLogs(days);
+  res.json({ pruned: true, olderThanDays: days, ...result });
+});
+
+router.delete('/chatbot-logs', async (req: AuthenticatedRequest, res) => {
+  const rawOlderThan = req.query?.olderThanDays;
+  if (typeof rawOlderThan === 'string' && rawOlderThan.trim() !== '' && Number.isFinite(Number(rawOlderThan))) {
+    const days = Math.max(0, Math.min(365, Number(rawOlderThan)));
+    const result = await pruneChatbotPipelineLogs(days);
+    res.json({ pruned: true, olderThanDays: days, ...result });
+    return;
+  }
   const result = await clearChatbotPipelineLogs();
   res.json({ cleared: true, ...result });
 });

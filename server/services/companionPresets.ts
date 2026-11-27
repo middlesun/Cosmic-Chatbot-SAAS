@@ -3271,6 +3271,8 @@ export function toPublicCompanionCard(record: CompanionPresetRecord): PublicComp
     supports_listening_cue: record.supports_listening_cue !== false,
     suggestions_enabled: record.suggestions_enabled !== false,
     sort_order: record.sort_order ?? 0,
+    is_active: record.is_active !== false,
+    ...(record.is_active === false ? { is_admin_preview: true } : {}),
   };
 }
 
@@ -4549,15 +4551,34 @@ export async function getAllCompanionsServerCached(): Promise<CompanionPresetRec
 }
 
 /**
+ * User-aware catalog list.
+ * When includeInactive is false (default / all non-admins / public endpoints), strictly excludes
+ * inactive companions and Consultants-only excluded entries.
+ * When includeInactive is true (admin-only), includes inactive experimental companions flagged
+ * with is_active: false and is_admin_preview: true.
+ */
+export async function getCompanionsCatalogForUser(options?: {
+  includeInactive?: boolean;
+}): Promise<PublicCompanionCard[]> {
+  const includeInactive = Boolean(options?.includeInactive);
+  const all = await getAllCompanionsServerCached();
+  return all
+    .filter((c) => {
+      if (includeInactive) {
+        return c.is_active ? isConsultantCatalogEntryAllowed(c) : true;
+      }
+      return c.is_active && isConsultantCatalogEntryAllowed(c);
+    })
+    .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
+    .map(toPublicCompanionCard);
+}
+
+/**
  * Public-safe catalog list (active companions only, sorted cleanly).
  * Strips system_prompt, hard_rules, soft_rules, autonomy_level, and model_id.
  */
 export async function getPublicCompanionsCatalogCached(): Promise<PublicCompanionCard[]> {
-  const all = await getAllCompanionsServerCached();
-  return all
-    .filter((c) => c.is_active && isConsultantCatalogEntryAllowed(c))
-    .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
-    .map(toPublicCompanionCard);
+  return getCompanionsCatalogForUser({ includeInactive: false });
 }
 
 /**

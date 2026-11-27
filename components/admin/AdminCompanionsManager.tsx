@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
   Check,
   Download,
+  ExternalLink,
   Eye,
   EyeOff,
   GitBranch,
@@ -1614,6 +1616,15 @@ const AdminCompanionsManager: React.FC<AdminCompanionsManagerProps> = ({
                         <MessageSquare className="h-3.5 w-3.5 text-[#8B7355]" />
                         <span>Test in Studio</span>
                       </button>
+                    )}
+                    {!isCreating && draft.slug && !draft.is_active && (
+                      <Link
+                        to={`/app/chat?pillar=companion&companion=${encodeURIComponent(draft.slug)}`}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[#8B7355]/35 bg-[#EAE3D7]/80 px-3 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#EAE3D7] transition-colors whitespace-nowrap shrink-0"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 text-[#8B7355]" />
+                        <span>Open in Production Chat (Admin Preview)</span>
+                      </Link>
                     )}
                     {isBuiltinDefault && (
                       <button

@@ -87,12 +87,19 @@ const CompanionProfileSheet: React.FC<CompanionProfileSheetProps> = ({
               shape="circle"
             />
             <div className="min-w-0">
-              <h2
-                id="companion-sheet-name"
-                className="font-['Cormorant_Garamond',serif] text-2xl sm:text-[28px] font-semibold text-[#3D3830] leading-tight truncate"
-              >
-                {companion.name}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                <h2
+                  id="companion-sheet-name"
+                  className="font-['Cormorant_Garamond',serif] text-2xl sm:text-[28px] font-semibold text-[#3D3830] leading-tight truncate"
+                >
+                  {companion.name}
+                </h2>
+                {(companion.is_admin_preview || companion.is_active === false) && (
+                  <span className="inline-flex items-center rounded-md border border-[#8B7355]/30 bg-[#EAE3D7] px-2 py-0.5 text-[10px] font-medium text-[#8B7355] shrink-0">
+                    Admin Preview · Inactive
+                  </span>
+                )}
+              </div>
               <p className="mt-1 text-xs text-[#8B8275] leading-relaxed">
                 <span>{companion.age}</span>
                 <span aria-hidden="true"> · </span>

@@ -799,6 +799,8 @@ export interface PublicCompanionCard {
   supports_listening_cue: boolean;
   suggestions_enabled: boolean;
   sort_order: number;
+  is_active?: boolean;
+  is_admin_preview?: boolean;
   last_conversation_id?: string | null;
   last_interaction_at?: string | null;
   thread_count?: number;
@@ -866,6 +868,8 @@ export interface ConversationRecord {
   active_tab_order?: number;
   companion_type?: CompanionArchetypeSlug | null;
   companion_slug?: string | null;
+  companion_is_active?: boolean;
+  is_admin_preview?: boolean;
   selected_gender?: CompanionSex | null;
   companion_chat_mode?: CompanionChatCue | null;
   companion_persona_json?: CompanionPersona | null;

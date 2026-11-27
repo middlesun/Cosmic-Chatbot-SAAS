@@ -68,6 +68,7 @@ interface SandboxResult {
   assembledSystemPrompt: string;
   chatStyle: ChatStyle;
   modelUsed: string;
+  temperatureUsed?: number;
   invitedEsoteric: boolean;
   openrouterConfigured: boolean;
   assemblyManifest: CompanionAssemblyManifest;
@@ -1153,6 +1154,14 @@ const CompanionTestingStudio: React.FC<CompanionTestingStudioProps> = ({
                     {inspectedResult.assemblyManifest.conversationIntent}
                   </span>
                 </div>
+                {typeof inspectedResult.temperatureUsed === 'number' && (
+                  <div className="flex items-center justify-between">
+                    <span>Temperature</span>
+                    <span className="font-mono tabular-nums text-[#3D3830]">
+                      {inspectedResult.temperatureUsed.toFixed(2)}
+                    </span>
+                  </div>
+                )}
                 {inspectedResult.assemblyManifest.aiIdentityQuestion && (
                   <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#8B7355] pt-0.5">
                     <UserCheck className="h-3.5 w-3.5" />
