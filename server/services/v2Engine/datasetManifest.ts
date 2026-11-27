@@ -640,6 +640,7 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
       evaluate: (m) => {
         const planets = asObjArr(m.frames.vedicLahiri?.data?.planets);
         const condExt = asObj(m.providerExtendedDatasets?.planetaryConditions);
+        const localCond = asObj(m.providerExtendedDatasets?.localVedicConditions);
         const hasVedicDignity =
           planets.length >= 9 &&
           (planets.some(
@@ -649,11 +650,12 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
               typeof p.is_combust === 'boolean'
           ) ||
             condExt?.hasAnyVedicCondition === true);
+        const hasLocalVedicConditions = localCond?.valid === true;
         const hasWesternDignities =
           hasNonEmptyKeys(asObj(m.providerExtendedDatasets?.westernAndHellenistic)?.essentialDignities) ||
           hasNonEmptyKeys(asObj(m.frames.westernTropical?.data?.tables)?.essentialDignities) ||
           condExt?.hasWesternEssentialDignities === true;
-        if (!hasVedicDignity && !hasWesternDignities) {
+        if (!hasVedicDignity && !hasLocalVedicConditions && !hasWesternDignities) {
           return {
             status: 'unavailable',
             source: 'unavailable',
@@ -663,15 +665,37 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
             limitations: ['Explicit Vedic planetary dignity/combustion/avastha tags absent on provider D1 payload.'],
           };
         }
+        if (hasVedicDignity) {
+          return {
+            status: 'available',
+            source: m.frames.vedicLahiri.source,
+            acquiredAtUtc: m.frames.vedicLahiri?.acquiredAtUtc ?? null,
+            version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
+            referenceDateIso: null,
+            limitations: [],
+          };
+        }
+        if (hasLocalVedicConditions) {
+          return {
+            status: 'internally_verified',
+            source: 'local:vedicDignityConditions',
+            acquiredAtUtc: m.generatedAtUtc ?? null,
+            version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
+            referenceDateIso: null,
+            limitations: [
+              'Provider Vedic dignity/combustion tags absent; deterministic local BPHS dignity, combustion, Vargottama & Graha Yuddha computed cleanly.',
+            ],
+          };
+        }
         return {
-          status: hasVedicDignity ? 'available' : 'provisional',
+          status: 'provisional',
           source: m.frames.vedicLahiri.source,
           acquiredAtUtc: m.frames.vedicLahiri?.acquiredAtUtc ?? null,
           version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
           referenceDateIso: null,
-          limitations: hasVedicDignity
-            ? []
-            : ['Only Western essential dignities present; Vedic dignity matrix awaits deterministic/local derivation.'],
+          limitations: [
+            'Only Western essential dignities present; Vedic dignity matrix awaits deterministic/local derivation.',
+          ],
         };
       },
     },
@@ -733,6 +757,17 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
             limitations: [`Ashtakavarga SAV total (${savSum}/${av.totalPoints}) failed 337-bindu classical invariant.`],
           };
         }
+        const localPreferred = m.providerExtendedDatasets?.localAshtakavargaPreferred === true;
+        if (localPreferred && prastaraKeys.length >= 7) {
+          return {
+            status: 'independently_validated',
+            source: 'local:localAshtakavarga (preferred_canonical)',
+            acquiredAtUtc: m.generatedAtUtc ?? null,
+            version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
+            referenceDateIso: null,
+            limitations: [],
+          };
+        }
         const suppAv = m.supplementaryIntegration?.ashtakavarga;
         if (suppAv && suppAv.outcome === 'accepted') {
           return {
@@ -747,9 +782,19 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
                 : [`Prastara contributor matrices incomplete (${prastaraKeys.length}/7 planets).`],
           };
         }
+        const localAudit = asObj(m.providerExtendedDatasets?.localAshtakavargaAudit);
+        const cmpProvider = asObj(localAudit?.comparisonWithProvider);
+        const crossValidated =
+          cmpProvider?.exactAllCellsMatch === true &&
+          cmpProvider?.prastaraMatched === true &&
+          prastaraKeys.length >= 7;
         return {
-          status: prastaraKeys.length >= 7 ? 'available' : 'provisional',
-          source: env.source,
+          status: crossValidated
+            ? 'independently_validated'
+            : prastaraKeys.length >= 7
+            ? 'available'
+            : 'provisional',
+          source: crossValidated ? `${env.source} + local:localAshtakavarga` : env.source,
           acquiredAtUtc: env.acquiredAtUtc ?? null,
           version: env.version,
           referenceDateIso: null,
@@ -1099,8 +1144,8 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
       dependencies: ['vedic_d1_positions'],
       blockingForDownstream: ['phi_planetary_health'],
       evaluate: (m) => {
-        const pm = m.providerExtendedDatasets?.panchadhaMaitri;
-        const valid = hasNonEmptyKeys(pm);
+        const pm = asObj(m.providerExtendedDatasets?.panchadhaMaitri);
+        const valid = pm !== null && pm.valid === true && hasNonEmptyKeys(pm.matrix);
         return {
           status: valid ? 'internally_verified' : 'unavailable',
           source: valid ? 'local:panchadhaMaitri' : 'unavailable',
@@ -1109,7 +1154,7 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
           referenceDateIso: null,
           limitations: valid
             ? []
-            : ['Panchadha Maitri absent in AstroWay/FreeAstroAPI; scheduled for deterministic local BPHS implementation.'],
+            : ['Panchadha Maitri absent; requires complete D1 7 classical planet positions.'],
         };
       },
     },
@@ -1121,17 +1166,36 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
       dependencies: ['vedic_shodashavarga_16'],
       blockingForDownstream: ['phi_planetary_health'],
       evaluate: (m) => {
-        const vb = m.providerExtendedDatasets?.vimshopakaBala;
-        const valid = hasNonEmptyKeys(vb);
+        const vb = asObj(m.providerExtendedDatasets?.vimshopakaBala);
+        if (!vb || vb.valid !== true) {
+          return {
+            status: 'unavailable',
+            source: 'unavailable',
+            acquiredAtUtc: null,
+            version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
+            referenceDateIso: null,
+            limitations: [
+              'Vimshopaka Bala unavailable (requires D1 Panchadha Maitri and complete scheme Vargas).',
+            ],
+          };
+        }
+        const shodashavargaComplete = vb.shodashavargaComplete === true;
+        const completeCount = Number(vb.completeSchemesCount ?? 0);
         return {
-          status: valid ? 'internally_verified' : 'unavailable',
-          source: valid ? 'local:vimshopakaBala' : 'unavailable',
-          acquiredAtUtc: valid ? m.generatedAtUtc ?? null : null,
+          status: shodashavargaComplete
+            ? 'internally_verified'
+            : completeCount > 0
+            ? 'provisional'
+            : 'unavailable',
+          source: 'local:vimshopakaBala',
+          acquiredAtUtc: m.generatedAtUtc ?? null,
           version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
           referenceDateIso: null,
-          limitations: valid
+          limitations: shodashavargaComplete
             ? []
-            : ['Vimshopaka Bala absent in AstroWay/FreeAstroAPI; scheduled for deterministic local implementation.'],
+            : [
+                `Only ${completeCount}/4 Vimshopaka schemes complete; 16-Varga Shodashavarga incomplete.`,
+              ],
         };
       },
     },
@@ -1143,8 +1207,11 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
       dependencies: ['vedic_d1_positions'],
       blockingForDownstream: [],
       evaluate: (m) => {
-        const disp = m.providerExtendedDatasets?.dispositorRelationships;
-        const valid = hasNonEmptyKeys(disp);
+        const disp = asObj(m.providerExtendedDatasets?.dispositorRelationships);
+        const valid =
+          disp !== null &&
+          disp.valid === true &&
+          hasNonEmptyKeys(asObj(disp.d1)?.planets);
         return {
           status: valid ? 'internally_verified' : 'unavailable',
           source: valid ? 'local:dispositorGraph' : 'unavailable',
@@ -1153,7 +1220,7 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
           referenceDateIso: null,
           limitations: valid
             ? []
-            : ['Dispositor graph awaiting Phase 4 deterministic local derivation.'],
+            : ['Dispositor graph unavailable (requires canonical D1 Ascendant and 9 Vedic bodies).'],
         };
       },
     },

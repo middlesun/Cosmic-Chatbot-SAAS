@@ -17,8 +17,10 @@ import {
   acquireAstroWayFoundationalBundle,
   acquireFreeAstroApiSupplementaryVedicCalculate,
   acquireV2NatalBundle,
+  adoptPreferredLocalAshtakavarga,
   assessChartJsonDefects,
   ASTROWAY_PRUNED_REDUNDANT_ENDPOINTS,
+  auditLegacyJyotishMathAshtakavarga,
   auditVargasMethodology,
   BirthInstantTimezoneError,
   buildAndValidateV2Requests,
@@ -31,16 +33,25 @@ import {
   buildAstroWayProbeSpecs,
   buildShadbalaReconciliationReport,
   compareAstroWayModeAVsModeBResponses,
+  compareAshtakavargaMatrices,
   compareModeAVsModeBResponses,
   computeCompletedAgeYears,
+  computeDispositorRelationships,
   computeIndependentAstronomicalReference,
+  computeLocalAshtakavarga,
+  computeLocalVedicConditions,
+  computePanchadhaMaitri,
+  computeVimshopakaBala,
   deleteAstroWayBatchSession,
+  enrichMasterWithPhase4LocalCalculations,
   evaluateAshtakavargaCompatibility,
+  evaluateAshtakavargaSignBoundaryCase,
   evaluateAstroWayJulianDayCheck,
   evaluateBhavaChalitCompatibility,
   evaluateD5DivisionalCompatibility,
   executeAstroWayBatchedBundle,
   executeAstroWayEvaluationBundle,
+  extractCanonicalAshtakavargaSignInput,
   getAstroWayApiKey,
   getAstroWayApiSecretStatus,
   getFreeAstroApiKey,
@@ -65,6 +76,7 @@ import {
   summarizeObservedQuotaHeaders,
   summarizeRuntimeHeapTelemetry,
   verify12CuspSequence,
+  verifyClassicalAshtakavargaRulesTable,
   verifyKpFrameDetailed,
   verifyMasterChartRecord,
   verifyWesternFrameDetailed,
@@ -2880,6 +2892,454 @@ async function main() {
     calibratedD5Status: d5AcceptedHybrid.datasetManifest?.entries.find((e) => e.key === 'vedic_d5_panchamsha')?.canonicalStatus,
     totalsOnlyRejectionVerified: signMismatchAvEval.audit.totalsAloneRejectedNotice,
     kpPlacidusConfusionRejected: rejectedBcMaster.supplementaryIntegration?.bhavaChalit.kpPlacidusConfusionDetected,
+  });
+
+  // 3ac. Phase 4 — Local Mathematical Calculations & Independent Ashtakavarga Validation
+  // A. Classical BPHS Rules Table Verification
+  const avRulesAudit = verifyClassicalAshtakavargaRulesTable();
+  assert(
+    avRulesAudit.valid === true &&
+      avRulesAudit.totalTargets === 7 &&
+      avRulesAudit.totalContributorsPerTarget === 8 &&
+      avRulesAudit.ascendantContributionSum === 45 &&
+      avRulesAudit.grandTotal === 337 &&
+      avRulesAudit.perPlanetSums.Sun === 48 &&
+      avRulesAudit.perPlanetSums.Moon === 49 &&
+      avRulesAudit.perPlanetSums.Mars === 39 &&
+      avRulesAudit.perPlanetSums.Mercury === 54 &&
+      avRulesAudit.perPlanetSums.Jupiter === 56 &&
+      avRulesAudit.perPlanetSums.Venus === 52 &&
+      avRulesAudit.perPlanetSums.Saturn === 39,
+    `Phase 4 classical BPHS rules table validation failed: ${JSON.stringify(avRulesAudit)}`
+  );
+
+  // B. Independent Local Ashtakavarga + Legacy jyotishMath Audit across Multiple Charts & Boundary Cases
+  const chart1AvInput = extractCanonicalAshtakavargaSignInput(prunedMaster.frames.vedicLahiri.data);
+  assert(chart1AvInput !== null, 'Failed to extract canonical Ashtakavarga input from prunedMaster.');
+  const chart1LocalAv = computeLocalAshtakavarga(chart1AvInput!);
+  const chart1LegacyAudit = auditLegacyJyotishMathAshtakavarga(chart1AvInput!);
+
+  // Second independent chart (mixed signs across hemisphere & dual signs)
+  const chart2AvInput = {
+    ascendantSignIndex: 3, // Cancer
+    planetSignIndices: {
+      Sun: 11,     // Pisces
+      Moon: 1,     // Taurus
+      Mars: 9,     // Capricorn
+      Mercury: 0,  // Aries
+      Jupiter: 6,  // Libra
+      Venus: 10,   // Aquarius
+      Saturn: 7,   // Scorpio
+    },
+  };
+  const chart2LocalAv = computeLocalAshtakavarga(chart2AvInput);
+  const chart2LegacyAudit = auditLegacyJyotishMathAshtakavarga(chart2AvInput);
+
+  // Third chart: crowded conjunction boundary test
+  const chart3AvInput = {
+    ascendantSignIndex: 11, // Pisces
+    planetSignIndices: {
+      Sun: 0,
+      Moon: 0,
+      Mars: 0,
+      Mercury: 0,
+      Jupiter: 5,
+      Venus: 11,
+      Saturn: 6,
+    },
+  };
+  const chart3LocalAv = computeLocalAshtakavarga(chart3AvInput);
+  const chart3LegacyAudit = auditLegacyJyotishMathAshtakavarga(chart3AvInput);
+
+  assert(
+    chart1LocalAv !== null &&
+      chart1LocalAv.selfConsistencyPassed === true &&
+      chart1LocalAv.totalPoints === 337 &&
+      chart1LegacyAudit !== null &&
+      chart1LegacyAudit.withAscendantMatchedAll84BavCells === true &&
+      chart1LegacyAudit.withAscendantMatchedAll12SavCells === true &&
+      chart1LegacyAudit.withAscendantTotalBindus === 337 &&
+      chart1LegacyAudit.withoutAscendantTotalBindus === 292 &&
+      chart1LegacyAudit.withoutAscendantDroppedBindus === 45 &&
+      chart1LegacyAudit.legacyEmitsPrastara === false &&
+      chart2LocalAv?.selfConsistencyPassed === true &&
+      chart2LegacyAudit?.withAscendantMatchedAll84BavCells === true &&
+      chart2LegacyAudit?.withAscendantMatchedAll12SavCells === true &&
+      chart3LocalAv?.selfConsistencyPassed === true &&
+      chart3LegacyAudit?.withAscendantMatchedAll84BavCells === true &&
+      chart3LegacyAudit?.withAscendantMatchedAll12SavCells === true,
+    'Phase 4 multi-chart Ashtakavarga & legacy jyotishMath audit failed.'
+  );
+
+  // Verify Mean vs True Node invariance for local Ashtakavarga & single-cell Prastara sensitivity
+  const nodeVariantFrame: VedicLahiriFrame = {
+    ...prunedMaster.frames.vedicLahiri.data!,
+    planets: prunedMaster.frames.vedicLahiri.data!.planets.map((p) =>
+      p.name === 'Rahu'
+        ? { ...p, degree: 29.8, absolute_degree: 29.8, sign: 'Aries', signIndex: 0 }
+        : p.name === 'Ketu'
+        ? { ...p, degree: 209.8, absolute_degree: 209.8, sign: 'Libra', signIndex: 6 }
+        : p
+    ),
+  };
+  const nodeVariantAv = computeLocalAshtakavarga(
+    extractCanonicalAshtakavargaSignInput(nodeVariantFrame)!
+  )!;
+  const nodeInvarianceCmp = compareAshtakavargaMatrices(
+    chart1LocalAv!,
+    nodeVariantAv,
+    'node_variant_chart'
+  );
+  assert(
+    nodeInvarianceCmp.exactAllCellsMatch === true &&
+      nodeInvarianceCmp.prastaraCompared === true &&
+      nodeInvarianceCmp.prastaraMatched === true,
+    'Mean vs True Node shifts must not alter 7-planet Ashtakavarga.'
+  );
+
+  // Corrupt 1 Prastara cell while preserving exact 337 SAV & BAV rows? -> catches Prastara cell drift!
+  const corruptedLocalPrastara = structuredClone(chart1LocalAv!.prastharashtakavarga);
+  corruptedLocalPrastara.Sun.Sun[0] = corruptedLocalPrastara.Sun.Sun[0] === 1 ? 0 : 1;
+  const singlePrastaraCorruptionCmp = compareAshtakavargaMatrices(
+    chart1LocalAv!,
+    {
+      sarvashtakavarga: chart1LocalAv!.sarvashtakavarga,
+      bhinnashtakavarga: chart1LocalAv!.bhinnashtakavarga,
+      prastharashtakavarga: corruptedLocalPrastara,
+    },
+    'corrupted_1_prastara_cell'
+  );
+  assert(
+    singlePrastaraCorruptionCmp.savMatched === true &&
+      singlePrastaraCorruptionCmp.bavMatched === true &&
+      singlePrastaraCorruptionCmp.prastaraMatched === false &&
+      singlePrastaraCorruptionCmp.exactAllCellsMatch === false &&
+      singlePrastaraCorruptionCmp.prastaraDiffs.length === 1,
+    'compareAshtakavargaMatrices must catch a single corrupted Prastara contributor cell even when BAV/SAV match.'
+  );
+
+  // Sign boundary test: 29.99° -> 0.01° across Aries/Taurus for Saturn & Pisces/Aries for Ascendant
+  const saturnBoundary = evaluateAshtakavargaSignBoundaryCase(chart2AvInput, 'Saturn', 29.99, 30.01);
+  const ascBoundary = evaluateAshtakavargaSignBoundaryCase(chart2AvInput, 'Ascendant', 359.99, 0.01);
+  assert(
+    saturnBoundary.beforeSign === 'Aries' &&
+      saturnBoundary.afterSign === 'Taurus' &&
+      saturnBoundary.invariant337Preserved === true &&
+      saturnBoundary.savShiftedSignCount > 0 &&
+      saturnBoundary.bavShiftedCellCount > 0 &&
+      saturnBoundary.prastaraShiftedCellCount > 0 &&
+      ascBoundary.beforeSign === 'Pisces' &&
+      ascBoundary.afterSign === 'Aries' &&
+      ascBoundary.invariant337Preserved === true &&
+      ascBoundary.prastaraShiftedCellCount > 0,
+    'Ashtakavarga 29.99° -> 0.01° boundary shift check failed.'
+  );
+
+  // C. Promoting Validated Local Ashtakavarga as Preferred Implementation (and preserving backups)
+  const preferredOnMissingAv = adoptPreferredLocalAshtakavarga(awBaseForSupp);
+  const preferredOnHybrid = adoptPreferredLocalAshtakavarga(hybridMaster);
+  const directPreferredMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: prunedAwLayerA,
+    referenceDateIso: '2026-11-27',
+    preferLocalAshtakavarga: true,
+  });
+  assert(
+    preferredOnMissingAv.frames.vedicLahiri.data?.ashtakavarga?.totalPoints === 337 &&
+      Object.keys(
+        preferredOnMissingAv.frames.vedicLahiri.data?.ashtakavarga?.prastharashtakavarga ?? {}
+      ).length === 7 &&
+      preferredOnMissingAv.providerExtendedDatasets?.localAshtakavargaPreferred === true &&
+      preferredOnMissingAv.datasetManifest?.entries.find(
+        (e) => e.key === 'ashtakavarga_bav_sav_prastara'
+      )?.canonicalStatus === 'independently_validated' &&
+      Boolean(preferredOnHybrid.providerExtendedDatasets?.providerOriginalAshtakavargaBackup) &&
+      preferredOnHybrid.datasetManifest?.entries.find(
+        (e) => e.key === 'ashtakavarga_bav_sav_prastara'
+      )?.canonicalStatus === 'independently_validated' &&
+      directPreferredMaster.providerExtendedDatasets?.localAshtakavargaPreferred === true &&
+      directPreferredMaster.datasetManifest?.entries.find(
+        (e) => e.key === 'ashtakavarga_bav_sav_prastara'
+      )?.canonicalStatus === 'independently_validated',
+    'Local Ashtakavarga preferred adoption / backup preservation failed.'
+  );
+
+  // D. Zero-Coercion on Partial Vargas (prunedMaster has only 2 planets per varga -> must NOT fabricate Vimshopaka)
+  const pmManifest = prunedMaster.datasetManifest!;
+  const pmExt = prunedMaster.providerExtendedDatasets as Record<string, unknown>;
+  const pmPanchadha = pmExt.panchadhaMaitri as ReturnType<typeof computePanchadhaMaitri>;
+  const pmVimshopakaPartial = pmExt.vimshopakaBala as ReturnType<typeof computeVimshopakaBala>;
+  const pmDispositorPartial = pmExt.dispositorRelationships as ReturnType<
+    typeof computeDispositorRelationships
+  >;
+
+  assert(
+    pmPanchadha?.valid === true &&
+      pmVimshopakaPartial !== null &&
+      pmVimshopakaPartial.completeSchemesCount === 0 &&
+      pmVimshopakaPartial.schemes.shodashavarga.scoresByPlanet === null &&
+      pmManifest.entries.find((e) => e.key === 'panchadha_maitri')?.canonicalStatus ===
+        'internally_verified' &&
+      pmManifest.entries.find((e) => e.key === 'vimshopaka_bala')?.canonicalStatus ===
+        'unavailable' &&
+      pmDispositorPartial?.valid === true &&
+      pmDispositorPartial.d9.available === false,
+    'Zero-coercion guard failed on partial 2-planet Varga mock chart.'
+  );
+
+  // Build Full 9-planet Shodashavarga (16-Varga) AstroWay Master Record & verify Vimshopaka + Dispositors + PHI Unlock
+  const all9VargaBodies = [
+    { name: 'Sun', longitude: sampleRef.lahiriSunLonDeg },
+    { name: 'Moon', longitude: sampleRef.lahiriMoonLonDeg },
+    { name: 'Mars', longitude: 185 },
+    { name: 'Mercury', longitude: 230 },
+    { name: 'Jupiter', longitude: 295 },
+    { name: 'Venus', longitude: 245 },
+    { name: 'Saturn', longitude: 221 },
+    { name: 'Rahu', longitude: 12.5352 },
+    { name: 'Ketu', longitude: 192.5352 },
+  ];
+  const full16VargaAwLayerA: LayerARawProviderRecord = {
+    ...prunedAwLayerA,
+    calls: {
+      ...prunedAwLayerA.calls,
+      ...Object.fromEntries(
+        [1, 2, 3, 4, 7, 9, 10, 12, 16, 20, 24, 27, 30, 40, 45, 60]
+          .filter((div) => div !== 1) // verify D1 mirror still supplies D1!
+          .map((div) => [
+            `varga_D${div}`,
+            makeAwCall(`varga_D${div}`, `/vedic/varga/D${div}`, 'varga', {
+              varga: `D${div}`,
+              ayanamsa: 23.66,
+              lagna: { signName: SIGNS[getVargaSignIndex(sampleRef.lahiriAscendantDeg, div)] },
+              planets: all9VargaBodies.map((b) => ({
+                name: b.name,
+                signName: SIGNS[getVargaSignIndex(b.longitude, div)],
+                longitude: b.longitude,
+              })),
+            }),
+          ])
+      ),
+    },
+  };
+  const full16VargaMasterRaw = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: full16VargaAwLayerA,
+    referenceDateIso: '2026-11-27',
+  });
+  const full16VargaMaster = enrichMasterWithPhase4LocalCalculations({
+    ...full16VargaMasterRaw,
+    shadbalaReconciliation: {
+      ...full16VargaMasterRaw.shadbalaReconciliation,
+      canonicalStatus: 'internally_verified',
+      verificationStatus: 'internally_verified',
+    },
+  });
+
+  const f16Manifest = full16VargaMaster.datasetManifest!;
+  const f16Ext = full16VargaMaster.providerExtendedDatasets as Record<string, unknown>;
+  const f16Panchadha = f16Ext.panchadhaMaitri as ReturnType<typeof computePanchadhaMaitri>;
+  const f16Vimshopaka = f16Ext.vimshopakaBala as ReturnType<typeof computeVimshopakaBala>;
+  const f16Dispositor = f16Ext.dispositorRelationships as ReturnType<
+    typeof computeDispositorRelationships
+  >;
+
+  assert(
+    f16Panchadha?.valid === true &&
+      f16Vimshopaka?.valid === true &&
+      f16Vimshopaka.shodashavargaComplete === true &&
+      f16Vimshopaka.completeSchemesCount === 4 &&
+      f16Vimshopaka.schemes.shadvarga.complete === true &&
+      f16Vimshopaka.schemes.saptavarga.complete === true &&
+      f16Vimshopaka.schemes.dashavarga.complete === true &&
+      f16Vimshopaka.schemes.shodashavarga.complete === true &&
+      Object.values(f16Vimshopaka.schemes.shodashavarga.scoresByPlanet ?? {}).every(
+        (s) => s.scoreOutOf20 > 0 && s.scoreOutOf20 <= 20
+      ) &&
+      f16Dispositor?.valid === true &&
+      f16Dispositor.d9.available === true &&
+      f16Manifest.entries.find((e) => e.key === 'panchadha_maitri')?.canonicalStatus ===
+        'internally_verified' &&
+      f16Manifest.entries.find((e) => e.key === 'vimshopaka_bala')?.canonicalStatus ===
+        'internally_verified' &&
+      f16Manifest.entries.find((e) => e.key === 'dispositor_relationships')?.canonicalStatus ===
+        'internally_verified' &&
+      f16Manifest.downstreamGuardSummary.phi_planetary_health?.ready === true,
+    `Phase 4 local Vedic enrichment / PHI readiness check failed: missing=${JSON.stringify(f16Manifest.downstreamGuardSummary.phi_planetary_health?.missingPrerequisites)}`
+  );
+
+  // E. Zero-Coercion Vimshopaka Guard (omitting D60 keeps Shadvarga/Saptavarga complete, marks Dashavarga/Shodashavarga incomplete & manifest 'provisional')
+  const vargaWithoutD60 = { ...full16VargaMaster.frames.vedicLahiri.data!.vargas! };
+  const clonedDivsNoD60 = { ...(vargaWithoutD60.chartsByDivision ?? {}) };
+  delete clonedDivsNoD60.D60;
+  const masterNoD60 = enrichMasterWithPhase4LocalCalculations({
+    ...full16VargaMaster,
+    frames: {
+      ...full16VargaMaster.frames,
+      vedicLahiri: {
+        ...full16VargaMaster.frames.vedicLahiri,
+        data: {
+          ...full16VargaMaster.frames.vedicLahiri.data!,
+          vargas: {
+            ...vargaWithoutD60,
+            chartsByDivision: clonedDivsNoD60,
+          },
+        },
+      },
+    },
+  });
+  const noD60Vim = (masterNoD60.providerExtendedDatasets as Record<string, unknown>)
+    .vimshopakaBala as ReturnType<typeof computeVimshopakaBala>;
+  assert(
+    noD60Vim !== null &&
+      noD60Vim.schemes.shadvarga.complete === true &&
+      noD60Vim.schemes.saptavarga.complete === true &&
+      noD60Vim.schemes.dashavarga.complete === false &&
+      noD60Vim.schemes.dashavarga.scoresByPlanet === null &&
+      noD60Vim.schemes.dashavarga.missingDivisions.includes('D60') &&
+      noD60Vim.schemes.shodashavarga.complete === false &&
+      noD60Vim.schemes.shodashavarga.scoresByPlanet === null &&
+      masterNoD60.datasetManifest?.entries.find((e) => e.key === 'vimshopaka_bala')
+        ?.canonicalStatus === 'provisional',
+    'Zero-coercion Vimshopaka guard failed when D60 is absent.'
+  );
+
+  // F. Dispositor Cycle Termination (2-planet Maha Parivartana + 3-planet loop) & Local Vedic Conditions fallback (Dignity, Combustion, Vargottama, Gandanta, Graha Yuddha)
+  const cycleAndCondFrame: VedicLahiriFrame = {
+    ayanamshaLabel: 'lahiri',
+    houseSystem: 'whole_sign',
+    nodeType: 'mean',
+    timezoneUsed: 'Asia/Kolkata',
+    ascendant: { degree: 10, sign: 'Aries', signIndex: 0 },
+    planets: [
+      { name: 'Sun', degree: 185, absolute_degree: 185, sign: 'Libra', signIndex: 6, is_retrograde: false },       // Libra -> Venus (H7)
+      { name: 'Venus', degree: 125, absolute_degree: 125, sign: 'Leo', signIndex: 4, is_retrograde: false },     // Leo -> Sun (H5) => Maha Parivartana (5/7)
+      { name: 'Moon', degree: 32, absolute_degree: 32, sign: 'Taurus', signIndex: 1, is_retrograde: false },     // Taurus 2° => Exalted
+      { name: 'Mercury', degree: 173.5, absolute_degree: 173.5, sign: 'Virgo', signIndex: 5, is_retrograde: true }, // Virgo 23.5° retro => Own Sign + Combust (11.5° <= 12° retro orb)
+      { name: 'Mars', degree: 358.8, absolute_degree: 358.8, sign: 'Pisces', signIndex: 11, is_retrograde: false }, // Pisces 28.8° => Gandanta (1.2° <= 3°20') -> Jupiter
+      { name: 'Jupiter', degree: 285.0, absolute_degree: 285.0, sign: 'Capricorn', signIndex: 9, is_retrograde: false }, // Cap -> Saturn
+      { name: 'Saturn', degree: 15.0, absolute_degree: 15.0, sign: 'Aries', signIndex: 0, is_retrograde: false }, // Aries -> Mars (closes 3-node loop Mars->Jupiter->Saturn->Mars)
+      { name: 'Rahu', degree: 50, absolute_degree: 50, sign: 'Taurus', signIndex: 1, is_retrograde: true },
+      { name: 'Ketu', degree: 230, absolute_degree: 230, sign: 'Scorpio', signIndex: 7, is_retrograde: true },
+    ],
+    houses: [],
+    sadeSati: null,
+    vargas: {
+      supportedCount: 1,
+      divisionsReturned: ['D9'],
+      chartsByDivision: {
+        D9: {
+          ascendant: { sign: 'Aries' },
+          planets: [
+            { name: 'Sun', sign: 'Libra' }, // Vargottama!
+            { name: 'Moon', sign: 'Aries' },
+            { name: 'Mars', sign: 'Pisces' }, // Vargottama!
+            { name: 'Mercury', sign: 'Leo' },
+            { name: 'Jupiter', sign: 'Taurus' },
+            { name: 'Venus', sign: 'Taurus' },
+            { name: 'Saturn', sign: 'Leo' },
+          ],
+        },
+      },
+    },
+    ashtakavarga: null,
+    yogas: null,
+    panchang: null,
+    vimshottariDasha: null,
+    providerMetadata: null,
+  };
+
+  const customPanchadha = computePanchadhaMaitri(cycleAndCondFrame);
+  const customDispositor = computeDispositorRelationships(cycleAndCondFrame);
+  const customLocalCond = computeLocalVedicConditions(cycleAndCondFrame, customPanchadha);
+
+  // Also check Graha Yuddha within 1.0° (Mars 40.2° vs Jupiter 40.65°)
+  const yuddhaFrame: VedicLahiriFrame = {
+    ...cycleAndCondFrame,
+    planets: cycleAndCondFrame.planets.map((p) =>
+      p.name === 'Mars'
+        ? { ...p, degree: 40.2, absolute_degree: 40.2, sign: 'Taurus', signIndex: 1 }
+        : p.name === 'Jupiter'
+        ? { ...p, degree: 40.65, absolute_degree: 40.65, sign: 'Taurus', signIndex: 1 }
+        : p
+    ),
+  };
+  const yuddhaCond = computeLocalVedicConditions(yuddhaFrame, computePanchadhaMaitri(yuddhaFrame));
+
+  // Verify planetary_dignity_conditions unlocks on FreeAstroAPI chart when provider dignity/combustion flags absent
+  const faWithoutDignityTags = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: {
+      ...syntheticPartialLayerA,
+      calls: {
+        ...syntheticPartialLayerA.calls,
+        vedic_calculate: {
+          ...syntheticPartialLayerA.calls.vedic_calculate,
+          rawResponse: {
+            ayanamsha: 'lahiri',
+            timezone_used: 'Asia/Kolkata',
+            chart: {
+              ascendant: validSupplPayload.chart.ascendant,
+              planets: faSuppAllPlanets.map((p) => ({
+                name: p.name,
+                absolute_degree: p.absolute_degree,
+                sign: p.sign,
+              })),
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const faDigStatus = faWithoutDignityTags.datasetManifest?.entries.find(
+    (e) => e.key === 'planetary_dignity_conditions'
+  )?.canonicalStatus;
+
+  assert(
+    customDispositor !== null &&
+      customDispositor.d1.mutualExchanges.length === 1 &&
+      customDispositor.d1.mutualExchanges[0].planetA === 'Sun' &&
+      customDispositor.d1.mutualExchanges[0].planetB === 'Venus' &&
+      customDispositor.d1.mutualExchanges[0].parivartanaType === 'Maha' &&
+      customDispositor.d1.planets.Sun.terminationType === 'mutual_exchange_loop' &&
+      customDispositor.d1.planets.Mars.terminationType === 'multi_node_cycle' &&
+      customDispositor.d1.planets.Mars.cycleNodes.length === 3 &&
+      customLocalCond !== null &&
+      customLocalCond.byPlanet.Sun.dignity === 'Debilitated' &&
+      customLocalCond.byPlanet.Sun.isVargottama === true &&
+      customLocalCond.byPlanet.Moon.dignity === 'Exalted' &&
+      customLocalCond.byPlanet.Mercury.dignity === 'Own Sign' &&
+      customLocalCond.byPlanet.Mercury.isCombust === true &&
+      customLocalCond.byPlanet.Mars.isGandanta === true &&
+      customLocalCond.byPlanet.Mars.isVargottama === true &&
+      yuddhaCond !== null &&
+      yuddhaCond.grahaYuddhaPairs.length === 1 &&
+      yuddhaCond.grahaYuddhaPairs[0].planetA === 'Mars' &&
+      yuddhaCond.grahaYuddhaPairs[0].planetB === 'Jupiter' &&
+      yuddhaCond.byPlanet.Mars.inGrahaYuddha === true &&
+      faDigStatus === 'internally_verified',
+    `Phase 4 Dispositor/Conditions/Fallback check failed: parivartana=${JSON.stringify(customDispositor?.d1.mutualExchanges)}, sunTerm=${customDispositor?.d1.planets.Sun.terminationType}, marsCycle=${JSON.stringify(customDispositor?.d1.planets.Mars.cycleNodes)}, sunDignity=${customLocalCond?.byPlanet.Sun.dignity}, sunVarg=${customLocalCond?.byPlanet.Sun.isVargottama}, moon=${customLocalCond?.byPlanet.Moon.dignity}, merc=${customLocalCond?.byPlanet.Mercury.dignity}/combust=${customLocalCond?.byPlanet.Mercury.isCombust}, marsGandanta=${customLocalCond?.byPlanet.Mars.isGandanta}/varg=${customLocalCond?.byPlanet.Mars.isVargottama}, yuddha=${JSON.stringify(yuddhaCond?.grahaYuddhaPairs)}, faDigStatus=${faDigStatus}`
+  );
+
+  regressionResults.push({
+    id: 'phase4_local_mathematical_calculations',
+    status: 'PASSED',
+    bphsRulesTableValid: avRulesAudit.valid,
+    multiChartLegacyAshtakavargaMatched: true,
+    legacyDroppedAscendantBindus: chart1LegacyAudit!.withoutAscendantDroppedBindus,
+    boundaryShift337Preserved:
+      saturnBoundary.invariant337Preserved && ascBoundary.invariant337Preserved,
+    preferredLocalAshtakavargaStatus:
+      preferredOnMissingAv.datasetManifest?.entries.find(
+        (e) => e.key === 'ashtakavarga_bav_sav_prastara'
+      )?.canonicalStatus,
+    partialVargaZeroCoercionBlocked: pmVimshopakaPartial?.completeSchemesCount === 0,
+    shodashavargaVimshopakaReady: f16Vimshopaka?.shodashavargaComplete,
+    phiDownstreamUnlockedOnFullChart:
+      f16Manifest.downstreamGuardSummary.phi_planetary_health?.ready,
+    zeroCoercionNoD60Status:
+      masterNoD60.datasetManifest?.entries.find((e) => e.key === 'vimshopaka_bala')?.canonicalStatus,
   });
 
   // 4. Read-Only Existing Profile Defect Audit + Legacy vs V2 Comparison on Local Fixtures

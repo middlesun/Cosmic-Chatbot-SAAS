@@ -17,3 +17,5 @@ export * from './astrowayCoordinator';
 export * from './astrowayNormalizer';
 export * from './astrowayEval';
 export * from './supplementaryCompatibility';
+export * from './localAshtakavarga';
+export * from './localVedicMath';

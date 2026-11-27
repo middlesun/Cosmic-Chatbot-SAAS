@@ -19,7 +19,7 @@
  */
 
 import { normalizeDeg, SIGNS } from '../jyotishMath';
-import { evaluateDatasetCompleteness } from './datasetManifest';
+import { enrichMasterWithPhase4LocalCalculations } from './localVedicMath';
 import type {
   AshtakavargaCompatibilityAudit,
   BhavaChalitCompatibilityAudit,
@@ -1497,6 +1497,8 @@ export function integrateFreeAstroApiSupplementaryIntoMaster(
     supplementaryIntegration: report,
   };
 
-  updatedMaster.datasetManifest = evaluateDatasetCompleteness(updatedMaster);
-  return updatedMaster;
+  return enrichMasterWithPhase4LocalCalculations(updatedMaster, {
+    preferLocalAshtakavarga:
+      primaryMaster.providerExtendedDatasets?.localAshtakavargaPreferred === true,
+  });
 }

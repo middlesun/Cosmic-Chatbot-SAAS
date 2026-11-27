@@ -28,8 +28,8 @@ import {
 import {
   V2_RECALCULATION_VERSION,
   deriveCanonicalDatasetState,
-  evaluateDatasetCompleteness,
 } from './datasetManifest';
+import { enrichMasterWithPhase4LocalCalculations } from './localVedicMath';
 import { buildShadbalaReconciliationReport } from './shadbalaReconciliation';
 import { integrateFreeAstroApiSupplementaryIntoMaster } from './supplementaryCompatibility';
 import {
@@ -548,8 +548,9 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
   rawLayerA: LayerARawProviderRecord;
   cachedVerifiedRecord?: LayerBMasterChartRecord | null;
   referenceDateIso?: string | null;
+  preferLocalAshtakavarga?: boolean;
 }): LayerBMasterChartRecord {
-  const { instant, rawLayerA, referenceDateIso } = params;
+  const { instant, rawLayerA, referenceDateIso, preferLocalAshtakavarga } = params;
   const fp = instant.inputFingerprint;
   const indepRef = computeIndependentAstronomicalReference(instant);
   const calls = rawLayerA.calls || {};
@@ -1804,8 +1805,9 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     providerExtendedDatasets,
     remainingClassicalGaps,
   };
-  master.datasetManifest = evaluateDatasetCompleteness(master);
-  return master;
+  return enrichMasterWithPhase4LocalCalculations(master, {
+    preferLocalAshtakavarga,
+  });
 }
 
 export function buildLayerBMasterChartRecord(params: {
@@ -1814,6 +1816,7 @@ export function buildLayerBMasterChartRecord(params: {
   cachedVerifiedRecord?: LayerBMasterChartRecord | null;
   referenceDateIso?: string | null;
   supplementaryFreeAstroApiVedicCall?: SanitizedProviderCallRecord | null;
+  preferLocalAshtakavarga?: boolean;
 }): LayerBMasterChartRecord {
   const {
     instant,
@@ -1821,6 +1824,7 @@ export function buildLayerBMasterChartRecord(params: {
     cachedVerifiedRecord,
     referenceDateIso,
     supplementaryFreeAstroApiVedicCall,
+    preferLocalAshtakavarga,
   } = params;
   if (rawLayerA?.providerId === 'astroway') {
     const awMaster = normalizeAstroWayLayerBMasterChartRecord({
@@ -1828,6 +1832,7 @@ export function buildLayerBMasterChartRecord(params: {
       rawLayerA,
       cachedVerifiedRecord,
       referenceDateIso,
+      preferLocalAshtakavarga,
     });
     if (supplementaryFreeAstroApiVedicCall) {
       return integrateFreeAstroApiSupplementaryIntoMaster(
@@ -2395,8 +2400,9 @@ export function buildLayerBMasterChartRecord(params: {
     referenceDateTiming,
     remainingClassicalGaps: REMAINING_CLASSICAL_GAPS_INVENTORY,
   };
-  master.datasetManifest = evaluateDatasetCompleteness(master);
-  return master;
+  return enrichMasterWithPhase4LocalCalculations(master, {
+    preferLocalAshtakavarga,
+  });
 }
 
 export function buildLayerCAnalyticalShell(
