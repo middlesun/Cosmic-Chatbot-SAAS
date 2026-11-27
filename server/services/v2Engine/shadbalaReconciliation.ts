@@ -356,18 +356,33 @@ export function buildShadbalaReconciliationReport(params: {
     const pObj = canonicalLahiriPlanets.find((p) => p.name === planet);
     const pLon = pObj?.longitude ?? 0;
 
+    const finiteOrNull = (val: unknown): number | null => {
+      if (val === null || val === undefined || val === '') return null;
+      const n = Number(val);
+      return Number.isFinite(n) ? n : null;
+    };
     const rawRow = providerShadbalaRaw?.[planet];
+    const rawTotal = rawRow ? finiteOrNull(rawRow.total) : null;
     const provider =
-      rawRow && typeof rawRow.total === 'number'
+      rawRow && rawTotal !== null
         ? (() => {
-            const sthana = Number(rawRow.sthana_bala ?? 0);
-            const dig = Number(rawRow.dig_bala ?? 0);
-            const kala = Number(rawRow.kala_bala ?? 0);
-            const cheshta = Number(rawRow.cheshta_bala ?? 0);
-            const naisargika = Number(rawRow.naisargika_bala ?? 0);
-            const drik = Number(rawRow.drik_bala ?? 0);
-            const total = Number(rawRow.total);
-            const sum = sthana + dig + kala + cheshta + naisargika + drik;
+            const sthana = finiteOrNull(rawRow.sthana_bala);
+            const dig = finiteOrNull(rawRow.dig_bala);
+            const kala = finiteOrNull(rawRow.kala_bala);
+            const cheshta = finiteOrNull(rawRow.cheshta_bala);
+            const naisargika = finiteOrNull(rawRow.naisargika_bala);
+            const drik = finiteOrNull(rawRow.drik_bala);
+            const allSixPresent =
+              sthana !== null &&
+              dig !== null &&
+              kala !== null &&
+              cheshta !== null &&
+              naisargika !== null &&
+              drik !== null;
+            const sum = allSixPresent
+              ? sthana + dig + kala + cheshta + naisargika + drik
+              : null;
+            const total = rawTotal;
             return {
               sthanaBala: sthana,
               digBala: dig,
@@ -379,7 +394,8 @@ export function buildShadbalaReconciliationReport(params: {
               rupas: Number(rawRow.shadbala_in_rupas ?? (total / 60).toFixed(2)),
               requiredRupas: Number(rawRow.minimum_requirements ?? 0),
               ratio: Number(rawRow.ratio ?? 0),
-              componentSumCheckDelta: Number((total - sum).toFixed(4)),
+              componentSumCheckDelta:
+                sum !== null ? Number((total - sum).toFixed(4)) : null,
               rank: providerRankMap.get(planet) ?? 0,
             };
           })()
@@ -499,7 +515,7 @@ export function buildShadbalaReconciliationReport(params: {
         `Saptavargaja Panchadha vs Natural friendship delta=${saptDiff > 0 ? '+' : ''}${saptDiff}V`
       );
     }
-    if (provider && legacyLocal) {
+    if (provider && legacyLocal && provider.sthanaBala !== null) {
       const obsDelta = round2(provider.sthanaBala - legacyLocal.sthanaBala);
       sthanaNotes.push(`Observed Provider − Legacy Local Sthana=${obsDelta > 0 ? '+' : ''}${obsDelta}V`);
     }
@@ -521,16 +537,13 @@ export function buildShadbalaReconciliationReport(params: {
 
     // Collect Kala Bala comparison details
     const rawKalaRow = findRowByPlanet(providerKalaRaw, planet);
-    const kalaSubMap: Record<string, number> | null = rawKalaRow
-      ? {
-          nathonnatha: Number(rawKalaRow.nathonnatha ?? 0),
-          paksha: Number(rawKalaRow.paksha ?? 0),
-          tribhaga: Number(rawKalaRow.tribhaga ?? 0),
-          abdaMasaVaraHora: Number(rawKalaRow.abdaMasaVaraHora ?? 0),
-          ayana: Number(rawKalaRow.ayana ?? 0),
-          yuddha: Number(rawKalaRow.yuddha ?? 0),
-        }
-      : null;
+    const kalaSubEntries = rawKalaRow
+      ? (['nathonnatha', 'paksha', 'tribhaga', 'abdaMasaVaraHora', 'ayana', 'yuddha'] as const)
+          .map((k) => [k, finiteOrNull(rawKalaRow[k])] as const)
+          .filter((pair): pair is [typeof pair[0], number] => pair[1] !== null)
+      : [];
+    const kalaSubMap: Record<string, number> | null =
+      kalaSubEntries.length > 0 ? Object.fromEntries(kalaSubEntries) : null;
 
     const independentNatonnataApprox =
       planet === 'Mercury'
@@ -539,9 +552,10 @@ export function buildShadbalaReconciliationReport(params: {
         ? round2(dayFraction * 60)
         : round2((1 - dayFraction) * 60);
 
+    const rawKalaTotal = rawKalaRow ? finiteOrNull(rawKalaRow.total) : null;
     perPlanetKalaComparison.push({
       planet,
-      providerKalaTotal: provider?.kalaBala ?? (rawKalaRow ? Number(rawKalaRow.total ?? 0) : null),
+      providerKalaTotal: provider?.kalaBala ?? rawKalaTotal,
       providerSubcomponents: kalaSubMap,
       independentPakshaBala: pakshaBalaBphs,
       independentNatonnataApprox,
@@ -619,20 +633,30 @@ export function buildShadbalaReconciliationReport(params: {
             : null,
         ratioProviderMinusLocal:
           provider && legacyLocal ? round2(provider.ratio - legacyLocal.ratio) : null,
-        digBalaProviderVsPlacidus: provider ? round2(provider.digBala - digBalaPlacidus) : null,
-        digBalaProviderVsEqual90: provider ? round2(provider.digBala - digBalaEqual90) : null,
+        digBalaProviderVsPlacidus:
+          provider && provider.digBala !== null ? round2(provider.digBala - digBalaPlacidus) : null,
+        digBalaProviderVsEqual90:
+          provider && provider.digBala !== null ? round2(provider.digBala - digBalaEqual90) : null,
         sthanaBalaProviderMinusLocal:
-          provider && legacyLocal ? round2(provider.sthanaBala - legacyLocal.sthanaBala) : null,
+          provider && provider.sthanaBala !== null && legacyLocal
+            ? round2(provider.sthanaBala - legacyLocal.sthanaBala)
+            : null,
         kalaBalaProviderMinusLocal:
-          provider && legacyLocal ? round2(provider.kalaBala - legacyLocal.kalaBala) : null,
+          provider && provider.kalaBala !== null && legacyLocal
+            ? round2(provider.kalaBala - legacyLocal.kalaBala)
+            : null,
         cheshtaBalaProviderMinusLocal:
-          provider && legacyLocal ? round2(provider.cheshtaBala - legacyLocal.chestaBala) : null,
+          provider && provider.cheshtaBala !== null && legacyLocal
+            ? round2(provider.cheshtaBala - legacyLocal.chestaBala)
+            : null,
         naisargikaBalaProviderMinusLocal:
-          provider && legacyLocal
+          provider && provider.naisargikaBala !== null && legacyLocal
             ? round2(provider.naisargikaBala - legacyLocal.naisargikaBala)
             : null,
         drikBalaProviderMinusLocal:
-          provider && legacyLocal ? round2(provider.drikBala - legacyLocal.drikBala) : null,
+          provider && provider.drikBala !== null && legacyLocal
+            ? round2(provider.drikBala - legacyLocal.drikBala)
+            : null,
       },
     };
   });

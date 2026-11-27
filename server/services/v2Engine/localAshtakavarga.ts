@@ -23,7 +23,13 @@ import {
   SIGNS,
   type PlanetPosition,
 } from '../jyotishMath';
-import type { CanonicalBirthInstant, LayerBMasterChartRecord, VedicLahiriFrame } from './types';
+import type {
+  AshtakavargaReductionPlanetEntry,
+  AshtakavargaReductionsResult,
+  CanonicalBirthInstant,
+  LayerBMasterChartRecord,
+  VedicLahiriFrame,
+} from './types';
 
 export const CLASSICAL_7_PLANETS = [
   'Sun',
@@ -806,3 +812,163 @@ export function isPreferredLocalAshtakavargaRecord(master: LayerBMasterChartReco
 export function resolveCanonicalBirthSummaryForAv(instant: CanonicalBirthInstant): string {
   return `${instant.input.birthDate} ${instant.input.birthTime} (${instant.utc.iso})`;
 }
+
+/**
+ * Classical BPHS Ch. 71 Rasi Mana (Aries..Pisces) & Graha Mana constants.
+ */
+export const BPHS_RASI_MANA_CONSTANTS = [7, 10, 8, 4, 10, 5, 7, 8, 9, 5, 11, 12] as const;
+
+export const BPHS_GRAHA_MANA_CONSTANTS: Record<Classical7Planet, number> = {
+  Sun: 5,
+  Moon: 5,
+  Mars: 8,
+  Mercury: 5,
+  Jupiter: 10,
+  Venus: 7,
+  Saturn: 5,
+};
+
+const TRIKONA_GROUPS: ReadonlyArray<readonly [number, number, number]> = [
+  [0, 4, 8], // Fire: Aries, Leo, Sagittarius
+  [1, 5, 9], // Earth: Taurus, Virgo, Capricorn
+  [2, 6, 10], // Air: Gemini, Libra, Aquarius
+  [3, 7, 11], // Water: Cancer, Scorpio, Pisces
+];
+
+const DUAL_LORD_SIGN_PAIRS: Partial<Record<Classical7Planet, readonly [number, number]>> = {
+  Mars: [0, 7], // Aries, Scorpio
+  Venus: [1, 6], // Taurus, Libra
+  Mercury: [2, 5], // Gemini, Virgo
+  Jupiter: [8, 11], // Sagittarius, Pisces
+  Saturn: [9, 10], // Capricorn, Aquarius
+};
+
+function applyTrikonaShodhanaRow(row: number[]): number[] {
+  const out = [...row];
+  for (const [a, b, c] of TRIKONA_GROUPS) {
+    const minVal = Math.min(out[a], out[b], out[c]);
+    if (minVal > 0) {
+      out[a] -= minVal;
+      out[b] -= minVal;
+      out[c] -= minVal;
+    }
+  }
+  return out;
+}
+
+function applyEkadhipatyaShodhanaRow(
+  planet: Classical7Planet,
+  trikonaRow: number[],
+  occupiedSignIndices: Set<number>
+): number[] {
+  const out = [...trikonaRow];
+  const pair = DUAL_LORD_SIGN_PAIRS[planet];
+  if (!pair) return out;
+
+  const [s1, s2] = pair;
+  const v1 = out[s1];
+  const v2 = out[s2];
+  const occ1 = occupiedSignIndices.has(s1);
+  const occ2 = occupiedSignIndices.has(s2);
+
+  if (v1 === 0 || v2 === 0 || (occ1 && occ2)) {
+    return out;
+  }
+
+  if (!occ1 && !occ2) {
+    if (v1 === v2) {
+      out[s1] = 0;
+      out[s2] = 0;
+    } else {
+      const m = Math.min(v1, v2);
+      out[s1] = m;
+      out[s2] = m;
+    }
+    return out;
+  }
+
+  // Exactly one sign occupied by a classical planet and the other empty
+  const [occVal, emptySign, emptyVal] = occ1 ? [v1, s2, v2] : [v2, s1, v1];
+  if (emptyVal <= occVal) {
+    out[emptySign] = 0;
+  } else {
+    out[emptySign] = occVal;
+  }
+  return out;
+}
+
+/**
+ * Computes deterministic BPHS Ashtakavarga Reductions:
+ * 1) Trikona Shodhana
+ * 2) Ekadhipatya Shodhana (dual-lord sign pair reduction with 7-planet occupancy)
+ * 3) Rasi Pinda, Graha Pinda, and Shodhya Pinda
+ * Zero-coercion: returns null when validated local Ashtakavarga is unavailable.
+ */
+export function computeAshtakavargaReductions(
+  localAv: LocalAshtakavargaResult | null | undefined
+): AshtakavargaReductionsResult | null {
+  if (!localAv || !localAv.selfConsistencyPassed) return null;
+
+  const occupiedSignIndices = new Set<number>(
+    CLASSICAL_7_PLANETS.map((pl) => localAv.planetSignIndices[pl])
+  );
+  const occupiedSigns = Array.from(occupiedSignIndices)
+    .sort((a, b) => a - b)
+    .map((idx) => SIGNS[idx]);
+
+  const perPlanet: Record<string, AshtakavargaReductionPlanetEntry> = {};
+
+  for (const targetPlanet of CLASSICAL_7_PLANETS) {
+    const orig = [...localAv.bhinnashtakavarga[targetPlanet]];
+    const afterTrikona = applyTrikonaShodhanaRow(orig);
+    const afterEkadhipatya = applyEkadhipatyaShodhanaRow(
+      targetPlanet,
+      afterTrikona,
+      occupiedSignIndices
+    );
+
+    let rasiPinda = 0;
+    for (let s = 0; s < 12; s++) {
+      rasiPinda += afterEkadhipatya[s] * BPHS_RASI_MANA_CONSTANTS[s];
+    }
+
+    let grahaPinda = 0;
+    for (const occupier of CLASSICAL_7_PLANETS) {
+      const occSign = localAv.planetSignIndices[occupier];
+      grahaPinda += afterEkadhipatya[occSign] * BPHS_GRAHA_MANA_CONSTANTS[occupier];
+    }
+
+    perPlanet[targetPlanet] = {
+      planet: targetPlanet,
+      originalBav: orig,
+      afterTrikonaShodhana: afterTrikona,
+      afterEkadhipatyaShodhana: afterEkadhipatya,
+      rasiPinda,
+      grahaPinda,
+      shodhyaPinda: rasiPinda + grahaPinda,
+    };
+  }
+
+  const savOriginal = [...localAv.sarvashtakavarga];
+  const savAfterTrikonaShodhana = applyTrikonaShodhanaRow(savOriginal);
+  const savAfterTrikonaTotal = savAfterTrikonaShodhana.reduce((a, b) => a + b, 0);
+
+  return {
+    valid: true,
+    source: 'local:ashtakavargaReductions',
+    methodology: 'bphs_trikona_ekadhipatya_shodhya_pinda',
+    occupancyMode: 'seven_classical_planets',
+    occupiedSigns,
+    perPlanet,
+    savOriginal,
+    savAfterTrikonaShodhana,
+    savAfterTrikonaTotal,
+    rasiManaConstants: [...BPHS_RASI_MANA_CONSTANTS],
+    grahaManaConstants: { ...BPHS_GRAHA_MANA_CONSTANTS },
+    notes: [
+      'Trikona Shodhana applied across all 4 trine triads; Ekadhipatya Shodhana applied across Mars/Venus/Mercury/Jupiter/Saturn dual signs using 7-classical-planet D1 occupancy.',
+      'Rasi Pinda and Graha Pinda summed using standard BPHS Ch. 71 Rasi Mana and Graha Mana constants.',
+    ],
+  };
+}
+

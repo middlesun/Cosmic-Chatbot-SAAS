@@ -1,0 +1,368 @@
+Objective Brief
+We are completing the Foundational Birth Chart Engine (V2) inside our existing isolated V2 infrastructure (server/services/v2Engine/). The goal is to produce a single, versioned, mathematically credible, provider-independent Canonical Foundational Birth Chart Dataset that feeds CosmicCouncil’s upcoming proprietary analytical intelligence (PHI, YSI, DSI, etc. — not implemented yet).
+Architecture Locked for This Implementation:
+AstroWay (Primary Foundation): Supplies core astronomical telemetry, sidereal D1 + 16 Shodashavarga charts, Nakshatras, Shadbala + detailed subcomponents, Ishta/Kashta Phala, Bhavabala, Parashari Yogas/Doshas, Jaimini suite, KP cusps/sub-lords/significators, 5-level Vimshottari + alternative Dashas, Panchang, and Western natal + essential dignities.
+FreeAstroAPI (Targeted Supplementary): Single targeted /api/v2/vedic/calculate acquisition ONLY for missing datasets (BAV/SAV/Prastara Ashtakavarga where needed, Bhava Chalit, D5 Panchamsha, etc.), accepted only after passing dataset-specific mathematical compatibility gates. Never overwrites AstroWay primary data.
+FreeAstrologyAPI (server/services/astrologyApi.ts): Retain existing production integration untouched; do not expand its role.
+Local Mathematics: Only for independently validated deterministic modules (starting with Ashtakavarga audit/validation, then modular Panchadha Maitri, Vimshopaka Bala, Sripati Bhava Chalit, Dispositor trees, Advanced Avasthas, Ashtakavarga reductions).
+Strict Non-Goals & Guardrails: Zero multi-provider coordinator/marketplace/key-rotation/new admin lab, zero production cutover or customer profile mutation, zero changes to Council/Companion/Reports/customer UI, zero proprietary scoring weights (Layer C remains deferred_by_scope), and Cloudflare Worker compatibility (no Node fs/path in server/services/v2Engine/ runtime modules).
+Files Involved
+Isolated V2 Engine (Core Target Directory):
+server/services/v2Engine/index.ts — Barrel exports for V2 Engine modules
+server/services/v2Engine/types.ts — Canonical Birth Instant, Layer A/B/C contracts, DatasetEnvelopes, Manifest, Verification & Compatibility types
+server/services/v2Engine/birthInstant.ts — Authoritative UTC/Julian Day/Sidereal Time/Ayanamsa birth instant solver
+server/services/v2Engine/astrowayEval.ts — AstroWay endpoint plan, execution, credit/quality tracking, and raw capture
+server/services/v2Engine/astrowayCoordinator.ts — Resumable AstroWay batch session & rate-limit state store
+server/services/v2Engine/acquisition.ts — FreeAstroAPI request builder/executor & Mode A/B equivalence tooling
+server/services/v2Engine/normalizer.ts — Layer A → Layer B canonical normalization & classical gaps inventory
+server/services/v2Engine/verifier.ts — Independent astronomical reference (Meeus/Placidus/Sripati), frame verification & epistemic classification
+server/services/v2Engine/shadbalaReconciliation.ts — Side-by-side Shadbala reconciliation (provider vs. legacy local vs. BPHS reference)
+server/services/v2Engine/legacyComparison.ts — Read-only comparison against legacy chart_json
+server/services/v2Engine/secretEnv.ts & server/services/v2Engine/runtimeTelemetry.ts — Env status/redaction & Worker-safe telemetry
+Reference / Legacy / Verification / Harness Files:
+server/services/jyotishMath.ts — Legacy local math (audit computeAshtakavarga, computeShadbala, computeBhavaChalitShifts, etc. without breaking production)
+server/services/astrologyProviders/freeAstroApiAdapter.ts & freeAstroApiRateLimiter.ts — Existing FreeAstroAPI rate limiter & slot coordinator
+server/services/astrologyApi.ts — Existing FreeAstrologyAPI service (keep untouched)
+server/routes/admin.ts & components/admin/V2ChartEngineLaboratory.tsx — Existing V2 diagnostic endpoints & admin lab (reuse minimally only if needed for inspection; do not build a new lab)
+scripts/verifyV2Engine.ts — CLI regression, live verification, and Chris 4 benchmark harness
+public/assets/aistudio/chris-4-birth-chart_8e64429a.json — Chris 4 legacy reference fixture
+worker.ts, wrangler.jsonc, server.ts, tsconfig.json — Build & Cloudflare Worker runtime compatibility targets
+Phased Development Prompts
+Phase 1: Canonical Dataset Contract, Completeness Manifest & Reference-Date Separation
+Text
+You are implementing Phase 1 of CosmicCouncil's Foundational Birth Chart Engine (V2) inside `server/services/v2Engine/`.
+
+READ FIRST:
+- `server/services/v2Engine/types.ts`
+- `server/services/v2Engine/normalizer.ts`
+- `server/services/v2Engine/verifier.ts`
+- `server/services/v2Engine/birthInstant.ts`
+- `scripts/verifyV2Engine.ts`
+
+STRICT GUARDRAILS:
+- Work ONLY inside `server/services/v2Engine/` and `scripts/verifyV2Engine.ts`.
+- Do NOT touch production `chartCompiler.ts`, `astrologyApi.ts`, Council, Companion, Reports, database schemas/migrations, or customer-facing UI.
+- Do NOT implement proprietary analytical weights (PHI, YSI, DSI, etc.) — `LayerCAnalyticalShell` must remain `deferred_by_scope`.
+- Keep all `server/services/v2Engine/` modules Cloudflare Worker safe (zero Node `fs`/`path`/`process.exit` imports).
+
+OBJECTIVES FOR PHASE 1:
+1. Strengthen Dataset Envelope Provenance & Status Taxonomy in `server/services/v2Engine/types.ts`:
+   - Ensure every canonical dataset envelope explicitly preserves:
+     - Normalized mathematical values (`data: T | null`)
+     - Source provider (`source`)
+     - Calculation conventions (`conventions`: ayanamsa, node convention, house system, divisional method, dasha year length, shadbala methodology, etc.)
+     - Upstream dependencies (`dependencies?: string[]`, e.g., `["canonicalBirthInstant", "vedicLahiri.planets"]`)
+     - Acquisition timestamp (`acquiredAtUtc: string | null`)
+     - Calculation / schema version (`version`)
+     - Clear verification/epistemic state distinguishing:
+       `available` | `internally_verified` | `independently_validated` | `provisional` | `incompatible` | `unavailable`
+       (Map or co-support cleanly alongside existing `DatasetVerificationStatus` without breaking existing tests, or upgrade cleanly and update `scripts/verifyV2Engine.ts`).
+     - Known limitations (`limitations: string[]`)
+   - Enforce strictly: missing mathematical information must NEVER be represented as `0`, an empty successful array/object, or an invented approximation. When absent or failed, `data` (or the specific sub-dataset) must be `null` with explicit status (`unavailable` or `incompatible`) and reason.
+
+2. Create the Definitive Birth Chart Dataset Manifest (`server/services/v2Engine/datasetManifest.ts` and export via `index.ts`):
+   - Define the complete inventory of every foundational mathematical dataset required by CosmicCouncil, grouped into 3 readiness tiers:
+     1. `minimum_chart_readiness` (e.g., canonicalBirthInstant, D1 Sidereal Lahiri positions/Ascendant, D9 Navamsa, Vimshottari Mahadasha/Antardasha)
+     2. `comprehensive_foundational_completeness` (full 16+ Vargas including D5 status, astronomical telemetry/speeds/declinations, Shadbala + detailed subcomponents, Ishta/Kashta, Bhavabala, BAV/SAV/Prastara + Shodhana, Bhava Chalit, Parashari Yogas/Doshas, Jaimini Karakas/Arudhas/Upapada/Argala/aspects, KP cusps/sub-lords/4-level significators, 5-level Vimshottari + alternative Dashas, Panchang, Panchadha Maitri, Vimshopaka Bala, Advanced Avasthas, Western tropical natal + essential dignities)
+     3. `specialized_on_demand` (e.g., targetDate-dependent active Dasha snapshots, ruling planets at query time, annual profections/varshaphala for a specific reference date)
+   - Write a deterministic manifest evaluator function `evaluateDatasetCompleteness(master: LayerBMasterChartRecord)` that inspects the consolidated chart and returns:
+     - Readiness summary (`minimumReady`, `comprehensiveScore`, missing prerequisites per tier)
+     - Per-dataset status row (`key`, `tier`, `status`, `source`, `isReferenceDateDependent`, `blockingForDownstream: string[]`, `limitations`)
+   - Ensure downstream consumers can programmatically inspect missing prerequisites so they never produce misleading results when a prerequisite is `unavailable` or `incompatible`.
+
+3. Separate Complete Natal Timelines vs. Reference-Date-Specific Timing Results:
+   - Update `types.ts` and `normalizer.ts` so every timing/reference-date-dependent dataset (e.g., `referenceDateUsed` / `targetDateUsed`, current active Vimshottari/Chara/Yogini/Ashtottari/Kalachakra/Tribhagi period snapshot, Profections, KP Ruling Planets at query moment) is explicitly tagged with `temporalScope: 'natal_invariant' | 'reference_date_dependent'` and `referenceDateIso?: string | null`, distinct from invariant natal lifetime timelines (birth-to-death Mahadasha/Antardasha tree, natal placements, natal strengths).
+
+4. Explicit Calculation Convention & Recalculation Metadata:
+   - Ensure `LayerBMasterChartRecord` preserves an explicit `calculationConventions` block recording: `ayanamsa`, `nodeConvention`, `houseSystems` (Parashari Whole Sign, KP Placidus, Sripati Bhava Chalit, Western Tropical Placidus), `divisionalChartMethods`, `dashaYearLength`, `shadbalaMethodology`, and `recalculationVersion` so future user chart-convention preferences and recalculations are supported without building any UI now.
+
+VERIFICATION REQUIRED BEFORE FINISHING PHASE 1:
+- Update/add offline regression assertions in `scripts/verifyV2Engine.ts` verifying:
+  - Missing data never coerces to `0` or empty success.
+  - All 6 dataset states (`available`, `internally_verified`, `independently_validated`, `provisional`, `incompatible`, `unavailable`) and all 3 manifest tiers are represented and testable.
+  - Natal-invariant vs. `reference_date_dependent` separation is enforced.
+- Run `npm run lint` (`tsc --noEmit`) and `npx tsx scripts/verifyV2Engine.ts`. Fix any errors before finishing.
+Phase 2: AstroWay Primary Acquisition Pruning & Complete Classical Normalization
+Text
+You are implementing Phase 2 of CosmicCouncil's Foundational Birth Chart Engine (V2) inside `server/services/v2Engine/`.
+
+READ FIRST:
+- `server/services/v2Engine/astrowayEval.ts`
+- `server/services/v2Engine/astrowayCoordinator.ts`
+- `server/services/v2Engine/normalizer.ts`
+- `server/services/v2Engine/types.ts`
+- `scripts/verifyV2Engine.ts`
+
+STRICT GUARDRAILS:
+- AstroWay is our PRIMARY foundational calculation provider.
+- Remove ONLY genuinely redundant endpoint calls (e.g., calls whose entire mathematical payload is already returned identically by another AstroWay call in the plan). Do NOT drop unique mathematical intelligence (such as detailed Shadbala subcomponents, Ishta/Kashta, Bhavabala, Prastara/Shodhana, Jaimini suite, KP suite, 5-level Vimshottari, alternative Dashas, 16 Vargas, or Western/traditional datasets) just to save credits.
+- Do NOT replace provider-backed calculations with unverified local implementations.
+- Do NOT build a multi-provider coordinator, marketplace, or key rotation system.
+- Reuse previously captured AstroWay diagnostic responses/sessions wherever available; do NOT unnecessarily repeat the full 72-call evaluation if cached/captured payloads already exist.
+
+OBJECTIVES FOR PHASE 2:
+1. Audit & Prune Redundant Endpoints in `server/services/v2Engine/astrowayEval.ts`:
+   - Review `buildAstroWayChris4EvaluationPlan` and `buildAstroWayProbeSpecs`:
+     - Keep `chart_sidereal`, `chart_tropical`, `vedic_kundli`, `vedic_panchang_full`, `shadbala_full` + all 6 subcomponent endpoints (`sthana`, `dig`, `kala`, `cheshta`, `naisargika`, `drik`) if any subcomponent fields are absent from `/vedic/shadbala/full` (document exact justification in code comments; prune only proven 100%-subset duplicates).
+     - Check overlaps such as:
+       - `varga_D1` vs `chart_sidereal`/`vedic_kundli` (keep `varga_D1` only if it provides distinct varga metadata; otherwise prune if 100% redundant).
+       - `kp_cusps` vs `kp_sub_lords` (inspect whether `kp_sub_lords` already returns identical 12 cusps + lords + planets; prune only if strictly redundant).
+       - `jaimini_karakas` vs `jaimini_chara_karakas` (verify whether one is a strict subset of the other; keep both if 7- vs 8-karaka schemes differ, prune if identical).
+       - `yogas_jaimini_full` vs `jaimini_yogas` (keep distinct items; prune only proven identical overlap).
+       - `western_profections` vs `hellenistic_brennan_profections_detail` (keep `profections_detail` if it supersedes `western_profections`, or document distinct fields).
+     - Separate the **foundational natal acquisition plan** from optional diagnostic timezone probes (`includeTimezoneEquivalenceProbe: false` by default in production-style V2 foundational compilation, while keeping probe capability available for diagnostic verification).
+   - Maintain exact endpoint inventory, `creditsUsed`, `declaredQuality`, and `acquisitionClassification` tracking.
+
+2. Expand Complete AstroWay Normalization in `server/services/v2Engine/normalizer.ts`:
+   - Audit `normalizeAstroWayLayerBMasterChartRecord` so ZERO acquired AstroWay mathematical datasets are left buried only in raw `LayerA` or unstructured `providerExtendedDatasets`:
+     - **Vedic Lahiri Frame (`vedicLahiri`):**
+       - Normalize astronomical positions, precise degrees, speeds (`speed_deg_per_day`, `speed_lat_deg_per_day`, `speed_dist_au_per_day`), retrogression, declination, right ascension, distance AU.
+       - Normalize Nakshatras, padas, and stellar subdivisions (sign lord, nakshatra lord, sub-lord, sub-sub-lord).
+       - Normalize D1 + all 16 AstroWay Shodashavarga charts (`D1, D2, D3, D4, D7, D9, D10, D12, D16, D20, D24, D27, D30, D40, D45, D60`).
+       - Normalize planetary dignity & condition (exaltation, debilitation, own sign, moolatrikona, combustion/avasthas if returned).
+       - Normalize Panchang (`at: "moment"` birth-instant Panchang separated from sunrise daily calendar Panchang).
+       - Normalize Parashari Yogas & Doshas (`yogas_parashara_full`, `doshas_parashara_full`).
+       - Normalize Ashtakavarga (`ashtakavarga_basic`, `ashtakavarga_prastara`, and `ashtakavarga_shodhana` reductions/Pindas into structured normalized fields).
+     - **Shadbala, Ishta/Kashta & Bhavabala:**
+       - Normalize all 6 Shadbala totals + detailed subcomponents from `/vedic/shadbala/sthana`, `/dig`, `/kala`, `/cheshta`, `/naisargika`, `/drik`, plus `/vedic/shadbala/ishta-kashta` (preserving both BPHS ray-scale and B.V. Raman forms if returned), plus `/vedic/bhavabala` (explicitly preserving `declaredQuality: 'yellow'` caveat).
+     - **Jaimini Frame / Sub-frame:**
+       - Normalize `jaimini_karakas`, `jaimini_chara_karakas` (preserving 7 vs 8 karaka convention), `jaimini_padas` (all 12 Bhava Arudhas A1..A12), `jaimini_upapada` (UL), `jaimini_aspects` / `drishti_rasi` / `drishti_graha`, `jaimini_atmakaraka_navamsa` (Karakamsha), `jaimini_argala_analysis`, and `jaimini_yogas` / `yogas_jaimini_full` into a first-class structured Jaimini dataset envelope (not just loose raw dump).
+     - **KP Placidus Frame (`kpPlacidus`):**
+       - Normalize `kp_cusps`, `kp_sub_lords`, `kp_planet_cuspal_position`, `kp_significators` (4-level), `kp_ruling_planets` (tagged `reference_date_dependent`), `kp_asc_sub`, `kp_fortuna`, and `doshas_kp_full`.
+     - **Timing / Dashas (Natal vs. Reference-Date Separated):**
+       - Normalize 5-level Vimshottari Dasha (`/vedic/dashas/vimshottari/prana`) preserving full natal Mahadasha/Antardasha hierarchy separately from the `targetDate`-specific active Pratyantardasha/Sookshma/Prana snapshot.
+       - Normalize alternative Dasha systems (`Chara`, `Yogini`, `Ashtottari`, `Kalachakra`, `Tribhagi`), tagging Yogini's `yellow` convention note `(nakshatraIndex - 1) mod 8`.
+     - **Upagrahas & Western/Traditional Frame (`westernTropical`):**
+       - Normalize `/vedic/upagrahas` (preserving `yellow` convention caveat).
+       - Normalize `/chart (tropical)` + `/essential-dignities` + `/firdaria` + `/profections` / `hellenistic/brennan/*` (explicitly separating natal invariant Western positions/essential dignities from `targetDate`/`targetAge`-dependent timing outputs).
+
+3. Support Offline Re-Normalization of Captured Raw Records:
+   - Ensure `buildLayerBMasterChartRecord` works deterministically from any saved `LayerARawProviderRecord` (or resumable `AstroWayBatchSessionRecord` via `reconstructAstroWayLayerAFromSession`) with zero network calls.
+
+VERIFICATION REQUIRED BEFORE FINISHING PHASE 2:
+- Add comprehensive unit/regression tests in `scripts/verifyV2Engine.ts` covering:
+  - Pruned AstroWay plan validity (no lost mathematical coverage; exact endpoint count and justification logged).
+  - Full AstroWay Layer A → Layer B normalization across all frames (Vedic, Shadbala subcomponents + Ishta/Kashta + Bhavabala, Ashtakavarga + Shodhana, Jaimini, KP, 5-level Vimshottari + 5 alternative Dashas, Upagrahas, Western + Essential Dignities).
+- Run `npm run lint` (`tsc --noEmit`) and `npx tsx scripts/verifyV2Engine.ts`. Fix any errors before finishing.
+Phase 3: Targeted FreeAstroAPI Supplementary Acquisition & Mandatory Dataset Compatibility Gates
+Text
+You are implementing Phase 3 of CosmicCouncil's Foundational Birth Chart Engine (V2) inside `server/services/v2Engine/`.
+
+READ FIRST:
+- `server/services/v2Engine/acquisition.ts`
+- `server/services/v2Engine/normalizer.ts`
+- `server/services/v2Engine/verifier.ts`
+- `server/services/v2Engine/types.ts`
+
+STRICT GUARDRAILS:
+- AstroWay remains the PRIMARY foundational provider.
+- Use FreeAstroAPI's existing `POST /api/v2/vedic/calculate` integration ONLY as a targeted supplementary acquisition (single API call wherever possible) for genuinely missing mathematical datasets:
+  1. Bhinnashtakavarga (BAV), Sarvashtakavarga (SAV), and Prastara Ashtakavarga (if missing or incomplete from AstroWay, or for cross-verification).
+  2. Bhava Chalit (since AstroWay v2.383.19 has no dedicated Bhava Chalit planet-shift endpoint).
+  3. D5 Panchamsha (since AstroWay v2.383.19 supports 16 Shodashavarga divisions and omits D5).
+  4. Any other genuinely missing mathematical fields ONLY where compatibility can be established.
+- NEVER overwrite AstroWay's primary planetary positions, Shadbala, divisional charts (D1, D2, D3, D4, D7..D60), Dasha calculations, Yogas, or Panchang with FreeAstroAPI data.
+- NEVER blindly merge two provider responses. Every supplementary dataset MUST pass its dataset-specific compatibility validator before acceptance.
+
+OBJECTIVES FOR PHASE 3:
+1. Implement Targeted Single-Call FreeAstroAPI Supplementary Request in `server/services/v2Engine/acquisition.ts`:
+   - Add `buildFreeAstroApiSupplementaryRequest(instant: CanonicalBirthInstant, options?: ...)` and `acquireFreeAstroApiSupplementaryCall(...)`:
+     - Uses existing `coordinateFreeAstroApiSlot` rate limiter (`>= 1100ms`) and `getFreeAstroApiKey()`.
+     - Calls `/api/v2/vedic/calculate` once with `ayanamsha: 'lahiri'`, `house_system: 'whole_sign'`, `node_type: instant.input.nodeConvention`, `vargas: [1, 5]` (or full list only if explicitly requested, preferring minimal payload `[1, 5]` + `include_bhava_chalit: true`, `include_ashtakavarga: true`, and `include_avastha: true` if needed, avoiding unnecessary heavy extras), keeping `D1` solely as the compatibility anchor to verify against AstroWay!
+     - Store the raw supplementary call inside `LayerA` (or a combined `LayerARawProviderRecord` supplementary slot) with full secret redaction and exact credit/quota header capture.
+
+2. Implement Mandatory Dataset Compatibility Gates (`server/services/v2Engine/compatibility.ts`, exported via `index.ts`):
+   Implement strict, non-bypassable validators for each supplementary dataset:
+
+   a) **Ashtakavarga Compatibility Validator (`validateSupplementaryAshtakavarga`):**
+      - Confirm identical sign placements for ALL seven classical planets (Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn) between AstroWay canonical D1 and FreeAstroAPI D1.
+      - Confirm identical Ascendant sign.
+      - Confirm compatible Ashtakavarga calculation conventions (classical 8-source BAV: 7 planets + Ascendant).
+      - Verify individual planetary bindu totals against classical BPHS totals (`Sun=48, Moon=49, Mars=39, Mercury=54, Jupiter=56, Venus=52, Saturn=39`).
+      - Verify standard unreduced SAV total equals `337`.
+      - Verify BAV-to-SAV reconciliation for every single sign `0..11` (`sum(BAV_p[s]) === SAV[s]`).
+      - Where Prastara is available, verify contributor-level matrix reconciliation (`sum(Prastara[p][source][s]) === BAV[p][s]` for every target planet `p` and sign `s`).
+      - Explicitly encode the rule: Mean vs. True Node (`Rahu`/`Ketu`) differences do NOT independently invalidate standard 7-planet Ashtakavarga because Rahu and Ketu are not contributors; however, matching totals alone MUST NOT be treated as sufficient proof if sign placements, BAV-to-SAV, or Prastara reconciliation fail.
+
+   b) **Bhava Chalit Compatibility Validator (`validateSupplementaryBhavaChalit`):**
+      - Confirm compatibility of:
+        - Canonical birth instant (UTC / JD match)
+        - Birth coordinates (lat/lng match)
+        - Ayanamsa (Lahiri)
+        - Planetary longitudes (compare FreeAstroAPI D1 classical & lunar node longitudes against AstroWay primary longitudes within strict tolerance, flagging Mean vs True Node discrepancy explicitly if Rahu/Ketu differ!)
+        - Ascendant and MC longitudes (against canonical/AstroWay and independent astronomical reference)
+        - Sripati house calculation conventions: `verifyBhavaChalitMethodology` (`degree_cusp` is Bhava Madhya straddled by `[boundary_start, boundary_end]`, matches classical Sripati within tolerance, and every planet's `chalit_house` matches boundary containment).
+      - Explicitly verify it is NOT confusing KP Placidus cusp starts with Sripati Bhava Madhya.
+      - If incompatible (e.g., cusp-start Placidus disguised as Bhava Chalit, or Asc/MC/planet mismatch), REJECT (`incompatible`) — never force into the primary chart.
+
+   c) **D5 Panchamsha & Other Divisional Data Compatibility Validator (`validateSupplementaryDivisionalChart`):**
+      - Confirm compatibility of:
+        - Planetary longitudes & Ascendant longitude (D1 anchor match against AstroWay primary)
+        - Ayanamsa (`lahiri`)
+        - Node convention (check Rahu/Ketu longitude delta between AstroWay and FreeAstroAPI — if node conventions differ, flag node-dependent placements separately rather than silently merging!)
+        - Divisional calculation formula & provider calibration flag (`calibrated === false` must NOT be silently promoted to `verified`)
+        - Boundary sensitivity check: detect any planet or Ascendant within e.g. `0.15°` of a D5 (`6°`) or D1 (`30°`) division boundary where small ephemeris/node differences flip the D5 sign.
+      - General Rule: If the supplementary dataset uses an uncalibrated or differing method, mark it `provisional` or `incompatible` (preserving the methodological distinction) rather than silently combining results. If compatibility cannot be established, mark `unavailable` or `provisional`.
+
+3. Integrate Supplementary Merging into `normalizer.ts`:
+   - In `buildLayerBMasterChartRecord`, support a consolidated `astroWayPrimary + freeAstroApiSupplementary` input:
+     - Keep all AstroWay primary datasets untouched.
+     - Attach accepted supplementary datasets ONLY when their compatibility gate passes (`accepted` -> `internally_verified` or `available`/`provisional` with explicit caveats), and mark failed gates as `incompatible` or `unavailable` with full audit trail in the envelope's `limitations` and `compatibilityResult`.
+
+VERIFICATION REQUIRED BEFORE FINISHING PHASE 3:
+- Add comprehensive tests in `scripts/verifyV2Engine.ts` covering:
+  - Ashtakavarga gate: passes when 7 planets + Asc signs match and Prastara/BAV/SAV reconcile; passes even when Rahu/Ketu differ (Mean vs True Node); FAILS (`incompatible`) when one planet sign shifts, when SAV != 337, when BAV-to-SAV mismatches, or when Prastara matrix disagrees even if total=337.
+  - Bhava Chalit gate: rejects Placidus cusp-start masquerading as Sripati Bhava Chalit; rejects mismatched Ascendant/coordinates; accepts valid Sripati midpoint chart.
+  - D5 gate: flags `calibrated: false` or node-convention mismatch or boundary-sensitive bodies accurately without silent merge.
+  - Non-overwrite invariant: verify AstroWay primary D1, Shadbala, D1-D60 (excl. D5), and Vimshottari are never overwritten by FreeAstroAPI supplementary values.
+- Run `npm run lint` (`tsc --noEmit`) and `npx tsx scripts/verifyV2Engine.ts`. Fix any errors before finishing.
+Phase 4: Local Ashtakavarga Audit & Independent Validation + Modular Local Calculations
+Text
+You are implementing Phase 4 of CosmicCouncil's Foundational Birth Chart Engine (V2) inside `server/services/v2Engine/` (auditing `server/services/jyotishMath.ts` without breaking production).
+
+READ FIRST:
+- `server/services/jyotishMath.ts` (around `ASHTAKAVARGA_RULES`, `computeAshtakavarga`, `computeBhavaChalitShifts`, `computeShadbala`, `computePlanetaryConditions`, `computeDispositorChain`)
+- `server/services/v2Engine/shadbalaReconciliation.ts`
+- `server/services/v2Engine/verifier.ts`
+- `public/assets/aistudio/chris-4-birth-chart_8e64429a.json`
+
+STRICT GUARDRAILS:
+- Do NOT designate any existing local calculation authoritative merely because it is deterministic.
+- Do NOT break or alter production exports in `server/services/jyotishMath.ts` used by legacy `chartCompiler.ts` / Council / Reports. Build validated V2 local modules cleanly inside `server/services/v2Engine/` (e.g. `localAshtakavarga.ts`, `localSupplementaryModules.ts`).
+- Do NOT let secondary supplementary local modules delay core Ashtakavarga validation or foundational compilation.
+
+OBJECTIVES FOR PHASE 4:
+1. Audit & Independently Validate Ashtakavarga (`server/services/v2Engine/localAshtakavarga.ts`):
+   - Audit every single benefic offset in `ASHTAKAVARGA_RULES` inside `server/services/jyotishMath.ts` (lines ~590-674) against **classical BPHS Chapter 66–72 tables** for all 7 planets (`Sun`, `Moon`, `Mars`, `Mercury`, `Jupiter`, `Venus`, `Saturn`) across all 8 contributors (`Sun..Saturn` + `Ascendant`):
+     - Check classical per-contributor counts and expected BPHS planet totals:
+       `Sun = 48`, `Moon = 49`, `Mars = 39`, `Mercury = 54`, `Jupiter = 56`, `Venus = 52`, `Saturn = 39` (sum = `337`).
+     - Report any discrepancy found in `jyotishMath.ts` explicitly (do not silently ignore a wrong offset if one exists!).
+   - Build a clean, V2-native deterministic solver `computeValidatedLocalAshtakavarga(input: { ascendantSignIndex: number; planetSignIndices: Record<'Sun'|'Moon'|'Mars'|'Mercury'|'Jupiter'|'Venus'|'Saturn', number> })` that produces:
+     - Full 7 × 8 × 12 **Prastara Ashtakavarga** contributor matrices (`prastharashtakavarga`)
+     - **Bhinnashtakavarga** (`bhinnashtakavarga`)
+     - **Sarvashtakavarga** (`sarvashtakavarga`) and `totalPoints` (verified `337`)
+     - **Ashtakavarga Reductions** (`trikonaShodhana`, `ekadhipatiShodhana`, `shodhyaPinda` — separated cleanly and tagged with its exact BPHS reduction rules & `verificationStatus`).
+   - Implement a multi-chart validation suite comparing `computeValidatedLocalAshtakavarga` (and auditing `jyotishMath.computeAshtakavarga`) at **contributor-matrix level (`Prastara`), per-planet `BAV` level, and `SAV` level** against:
+     1. Classical BPHS contribution tables (exact 337 + per-contributor sums)
+     2. Available FreeAstroAPI / AstroWay captured Ashtakavarga responses (including Chris 4 and `FIXTURES` in `verifyV2Engine.ts`)
+     3. Sign-boundary test charts (planets at `29.999°` vs `0.001°` across sign cusps) and independent JHora/PyJHora reference fixtures where provided (if JHora/PyJHora reference data for a specific chart is not yet supplied in the repo, explicitly distinguish internal/provider cross-validation vs pending external JHora/PyJHora certification — never fabricate a JHora certification!).
+   - Once validated against classical tables + provider Prastara/BAV/SAV reconciliation, wire local Ashtakavarga as a clean canonical option/cross-validator operating directly on canonical V2 planetary placements (preserving provenance and validation report).
+
+2. Prepare Clean, Isolated Local Supplementary Modules (`server/services/v2Engine/localModules.ts`):
+   Implement modular, pure TypeScript functions operating strictly on canonical V2 frames, each returning an explicit `DatasetEnvelope`-compatible payload with exact methodology notes and `verificationStatus` (`internally_verified` or `provisional` until externally validated against JHora/PyJHora):
+   - **Panchadha Maitri (5-fold Compound Friendship):** Combining classical BPHS Naisargika Maitri (natural) + Tatkalika Maitri (temporal: 2, 3, 4, 10, 11, 12 houses from planet) → `Adhi Mitra`, `Mitra`, `Sama`, `Shatru`, `Adhi Shatru`.
+   - **Vimshopaka Bala:** Deterministic BPHS weighted scoring across `Shadvarga`, `Saptavarga`, `Dashavarga`, and `Shodashavarga` using Panchadha Maitri and canonical V2 divisional charts (explicitly skipping or flagging `unavailable` if a required division is missing).
+   - **Sripati Bhava Chalit Solver (fallback/cross-check):** Pure deterministic Sripati quadrant trisection + Sandhi boundary containment from canonical Lahiri Ascendant, MC, and planetary longitudes (extending `computeIndependentAstronomicalReference` in `verifier.ts` into a full `BhavaChalitFrame` generator tagged `cosmiccouncil_local_sripati` so it is never confused with provider data or KP Placidus).
+   - **Dispositor Relationships:** Rashi dispositor chain, mutual receptions (`Parivartana`), self-dispositors, final dispositor(s), and loop detection.
+   - **Missing Planetary Condition Calculations & Advanced Avasthas:** Combustion orbs (classical Surya Siddhanta / BPHS orbs, direct vs retrograde Mercury/Venus), planetary war (`Graha Yuddha` using ecliptic longitude `<= 1°` + ecliptic latitude/brightness rules from AstroWay telemetry), Baladi Avastha, Jagradadi Avastha, and Deeptadi Avastha (explicitly tagging any convention variants as `provisional` pending JHora cross-check).
+
+VERIFICATION REQUIRED BEFORE FINISHING PHASE 4:
+- Add thorough verification tests in `scripts/verifyV2Engine.ts`:
+  - Audit `jyotishMath.ASHTAKAVARGA_RULES` vs `localAshtakavarga.ts` across all 7 × 8 entries and assert exact contributor counts (`48, 49, 39, 54, 56, 52, 39`, total `337`).
+  - Contributor-by-contributor Prastara comparison on multiple charts (including Chris 4 / Bardhaman, New Delhi, and sign-boundary cases).
+  - Unit tests for Panchadha Maitri, Vimshopaka Bala, Sripati Bhava Chalit, Dispositor tree, Planetary Conditions/Advanced Avasthas, and Ashtakavarga Shodhana reductions.
+- Run `npm run lint` (`tsc --noEmit`) and `npx tsx scripts/verifyV2Engine.ts`. Fix any errors before finishing.
+Phase 5: Consolidated Foundational Compiler, Verification Suite & Chris 4 Reference Build
+Text
+You are implementing Phase 5 of CosmicCouncil's Foundational Birth Chart Engine (V2) inside `server/services/v2Engine/` and `scripts/verifyV2Engine.ts`.
+
+READ FIRST:
+- `server/services/v2Engine/index.ts`
+- `server/services/v2Engine/normalizer.ts`
+- `server/services/v2Engine/verifier.ts`
+- `server/services/v2Engine/datasetManifest.ts` (from Phase 1)
+- `server/services/v2Engine/compatibility.ts` (from Phase 3)
+- `server/services/v2Engine/localAshtakavarga.ts` & `localModules.ts` (from Phase 4)
+- `scripts/verifyV2Engine.ts`
+- `public/assets/aistudio/chris-4-birth-chart_8e64429a.json`
+
+STRICT GUARDRAILS:
+- Keep this focused and pragmatic: NO multi-provider marketplace, NO key rotation, NO new admin lab, NO production cutover, NO customer profile mutations, NO proprietary analytical weights.
+- Reuse previously captured AstroWay and FreeAstroAPI diagnostic responses wherever available; do NOT unnecessarily repeat the full 72-call AstroWay evaluation.
+- Use dataset-specific tolerances and strictly separate:
+  1. Software regression tests
+  2. Internal mathematical consistency checks
+  3. Independent classical validation (JHora / PyJHora / Swiss Ephemeris) — if independent external validation cannot be run for any dataset (e.g., missing PyJHora runtime or JHora export), report the exact blocker honestly and NEVER claim external mathematical certification.
+
+OBJECTIVES FOR PHASE 5:
+1. Build Consolidated V2 Foundational Compiler (`server/services/v2Engine/compiler.ts`, exported via `index.ts`):
+   - Implement `compileV2FoundationalChart(params)` taking:
+     - `instant: CanonicalBirthInstant`
+     - `astroWayRaw?: LayerARawProviderRecord | null` (primary foundation)
+     - `freeAstroApiSupplementary?: SanitizedProviderCallRecord | null` (single supplementary `/api/v2/vedic/calculate` call)
+     - `externalReferenceData?: ...` (optional JHora/PyJHora reference fixture if supplied)
+     - `options?: { targetDateIso?: string; includeLocalModules?: boolean }`
+   - Execution pipeline inside `compileV2FoundationalChart`:
+     1. Normalize AstroWay primary datasets into `LayerBMasterChartRecord` (preserving raw responses separately in `LayerA`).
+     2. Run Phase 3 Compatibility Gates on FreeAstroAPI supplementary datasets (`Ashtakavarga`, `Bhava Chalit`, `D5 Panchamsha`, any genuinely missing field). Accept only compatible datasets without overwriting AstroWay primary data.
+     3. Run Phase 4 validated `localAshtakavarga` (compare against AstroWay & FreeAstroAPI at Prastara/BAV/SAV levels) and modular local derivations (`Panchadha Maitri`, `Vimshopaka Bala`, `Sripati Bhava Chalit` if needed, `Dispositor`, `Advanced Avasthas`, `Ashtakavarga reductions`), preserving each in its own provenance-tagged `DatasetEnvelope`.
+     4. Evaluate Phase 1 `evaluateDatasetCompleteness` Manifest so every chart reports `minimum_chart_readiness`, `comprehensive_foundational_completeness`, `specialized_on_demand`, and explicit missing-prerequisite flags.
+     5. Keep `LayerCAnalyticalShell` strictly `deferred_by_scope`.
+
+2. Upgrade `verifyMasterChartRecord` (`server/services/v2Engine/verifier.ts`) & Verification Harness:
+   - Ensure verification checks validate:
+     - Planetary longitudes & Ascendant (against Meeus/independent astronomical reference + Sidereal/Tropical/KP frame separation)
+     - Divisional charts (D1–D60 BPHS sign formulas + D4 quadrant-jump audit + D5 calibrated/compatibility status)
+     - Shadbala & subcomponents (`sthana`, `dig`, `kala`, `cheshta`, `naisargika`, `drik`, Ishta/Kashta Phala, and BPHS threshold differences)
+     - Bhavabala (flagging `yellow` / unverified externally if no JHora reference is present)
+     - Ashtakavarga (Prastara contributor sum, BAV totals, SAV=337, cross-provider + local reconciliation)
+     - KP cusps, sub-lords, Placidus containment, and 4-level significators
+     - Jaimini Karakas (7 vs 8 scheme consistency), Arudha Padas, Upapada
+     - Vimshottari Dasha (birth balance, Nakshatra arc alignment, 5-level duration sums)
+     - Sripati Bhava Chalit (midpoint straddling, Sandhi containment, non-conflation with KP)
+   - Clearly tag each check with its `verificationBasis` (`software_regression` vs `internal_math_consistency` vs `independent_classical_validation`) and report exact blockers when external JHora/PyJHora validation is unavailable.
+
+3. Add a Chris 4 Consolidated Compilation Command in `scripts/verifyV2Engine.ts` (e.g., `--compile-chris4` or integrated benchmark mode):
+   - Reuses cached/existing AstroWay session or saved diagnostic JSON if provided (`--astroway-cache <path>` or Supabase session via `loadAstroWayBatchSession`), or runs ONLY the pruned AstroWay foundational calls + 1 targeted FreeAstroAPI supplementary call if `--fetch-missing` and keys are present.
+   - Outputs a clean, redacted summary + consolidated Chris 4 Birth Chart JSON (written to `os.tmpdir()` or specified `--out <path>` without mutating production DB or customer charts) containing:
+     - Consolidated Chris 4 `LayerBMasterChartRecord` + Dataset Manifest
+     - Complete dataset inventory & dataset-level source attribution
+     - Compatibility verification results (Ashtakavarga, Bhava Chalit, D5)
+     - Mathematical verification results (with exact blockers if JHora/PyJHora is absent)
+     - Exact API endpoints used & actual credit consumption
+     - Local Ashtakavarga validation results
+     - Completeness table (`available`, `internally_verified`, `independently_validated`, `provisional`, `incompatible`, `unavailable`).
+
+VERIFICATION REQUIRED BEFORE FINISHING PHASE 5:
+- Run `npm run lint` (`tsc --noEmit`) and `npx tsx scripts/verifyV2Engine.ts` (and `--compile-chris4` if cached/live payloads are available).
+- Inspect the generated Chris 4 summary and verify zero secret leakage, zero `0`-coerced missing fields, and accurate epistemic status reporting.
+Phase 6: Cloudflare Worker Compatibility, Regression Hardening & Production Readiness Audit
+Text
+You are executing Phase 6 (Final Verification & Readiness Audit) of CosmicCouncil's Foundational Birth Chart Engine (V2).
+
+READ FIRST:
+- `worker.ts`
+- `wrangler.jsonc`
+- `server.ts`
+- `server/app.ts`
+- `server/services/v2Engine/index.ts`
+- `scripts/verifyV2Engine.ts`
+
+STRICT GUARDRAILS:
+- Do NOT perform production cutover.
+- Do NOT mutate existing customer charts or run destructive migrations.
+- Do NOT modify Council, Companion, Reports, or existing customer-facing functionality.
+- Report exact blockers honestly; do NOT claim external mathematical certification where JHora/PyJHora validation was not executed.
+
+OBJECTIVES FOR PHASE 6:
+1. Cloudflare Worker & Runtime Compatibility Audit:
+   - Scan all files under `server/services/v2Engine/` (except CLI-only scripts in `scripts/`) to confirm ZERO imports of Node-only built-ins (`node:fs`, `node:path`, `node:os`, `fs`, `path`, `child_process`) or `process.exit`.
+   - Confirm zero hardcoded secrets and verify `secretEnv.ts` redaction across all new Phase 1–5 modules.
+   - Verify `npm run lint` (`tsc --noEmit`) and `npm run build` (`vite build`) pass with zero errors.
+   - Verify Wrangler Worker dry-run / bundle compatibility (`npx wrangler deploy --dry-run` or local bundle check if Wrangler supports offline dry-run without account auth; report exact output).
+
+2. Isolation & Non-Regression Verification:
+   - Confirm via `git status` / `git diff` that `server/services/chartCompiler.ts`, `server/services/astrologyApi.ts`, `server/routes/chat.ts`, `server/routes/reports.ts`, `server/routes/profiles.ts`, and all customer-facing components are completely untouched.
+   - Re-run full `npx tsx scripts/verifyV2Engine.ts` regression suite and confirm 100% pass rate.
+
+3. Deliver Final Engineering Sign-Off Report (in chat):
+   Provide a crisp, factual summary covering all Phase 11 deliverables:
+   - Consolidated Chris 4 Birth Chart JSON summary & output location
+   - Complete dataset inventory & dataset-level source attribution
+   - Compatibility verification results (FreeAstroAPI Ashtakavarga, Bhava Chalit, D5)
+   - Mathematical verification results (distinguishing regression tests, internal consistency, and external JHora/PyJHora blockers)
+   - Exact API endpoints used & actual credit consumption
+   - Local Ashtakavarga validation results
+   - Build (`vite build`), TypeScript (`tsc --noEmit`), and Cloudflare Worker compatibility results
+   - Final Completeness Table classifying every dataset as `available`, `internally_verified`, `independently_validated`, `provisional`, `incompatible`, or `unavailable`
+   - Concise production readiness assessment & recommended boundary checks before Phase 2 (proprietary analytical indices: PHI, YSI, DSI, etc.).

@@ -15,16 +15,34 @@
  */
 
 import { normalizeDeg, SIGN_LORDS, SIGNS } from '../jyotishMath';
-import { evaluateDatasetCompleteness } from './datasetManifest';
+import { evaluateDatasetCompleteness, V2_RECALCULATION_VERSION } from './datasetManifest';
 import {
   auditMasterAshtakavargaWithLocal,
   buildPreferredLocalAshtakavargaFrame,
   CLASSICAL_7_PLANETS,
+  computeAshtakavargaReductions,
   type Classical7Planet,
   type LocalAshtakavargaMasterAudit,
   type LocalAshtakavargaResult,
 } from './localAshtakavarga';
-import type { LayerBMasterChartRecord, VedicLahiriFrame } from './types';
+import {
+  circularContainsLon,
+  computeIndependentAstronomicalReference,
+  verifyBhavaChalitMethodology,
+  type IndependentAstroReference,
+} from './verifier';
+import type {
+  AdvancedAvasthasResult,
+  AshtakavargaReductionsResult,
+  BhavaChalitFrame,
+  CanonicalDatasetState,
+  DatasetEnvelope,
+  DatasetVerificationStatus,
+  LayerBMasterChartRecord,
+  LocalModulesEnvelopeBundle,
+  PlanetAdvancedAvasthaEntry,
+  VedicLahiriFrame,
+} from './types';
 
 export type NaturalRelation = 'Friend' | 'Neutral' | 'Enemy';
 export type CompoundRelation =
@@ -318,6 +336,7 @@ export interface DispositorRelationshipsResult {
 export interface LocalVedicPlanetCondition {
   planet: string;
   longitudeDeg: number | null;
+  latitudeDeg: number | null;
   signIndex: number;
   sign: string;
   degreeInSign: number | null;
@@ -331,6 +350,7 @@ export interface LocalVedicPlanetCondition {
   isVargottama: boolean | null;
   isGandanta: boolean;
   inGrahaYuddha: boolean;
+  grahaYuddhaRole: 'winner' | 'loser' | 'undetermined' | null;
 }
 
 export interface LocalVedicConditionsResult {
@@ -342,6 +362,11 @@ export interface LocalVedicConditionsResult {
     planetA: string;
     planetB: string;
     separationDeg: number;
+    latitudeADeg: number | null;
+    latitudeBDeg: number | null;
+    winner: string | null;
+    loser: string | null;
+    determinationBasis: 'northern_latitude_brighter' | 'undetermined_missing_latitude';
   }>;
   combustPlanets: string[];
   vargottamaPlanets: string[];
@@ -351,9 +376,12 @@ export interface LocalVedicConditionsResult {
 export interface Phase4LocalCalculationsSummary {
   localAshtakavarga: LocalAshtakavargaResult | null;
   localAshtakavargaAudit: LocalAshtakavargaMasterAudit;
+  ashtakavargaReductions: AshtakavargaReductionsResult | null;
   panchadhaMaitri: PanchadhaMaitriResult | null;
   vimshopakaBala: VimshopakaBalaResult | null;
+  sripatiBhavaChalit: BhavaChalitFrame | null;
   dispositorRelationships: DispositorRelationshipsResult | null;
+  advancedAvasthas: AdvancedAvasthasResult | null;
   localVedicConditions: LocalVedicConditionsResult | null;
 }
 
@@ -434,17 +462,29 @@ function resolveBodySignIndex(body: Record<string, unknown> | null | undefined):
 
 function extractD1PlanetsMap(
   vedicData: VedicLahiriFrame | null | undefined
-): Map<string, { signIndex: number; lonDeg: number | null; isRetrograde: boolean }> | null {
+): Map<
+  string,
+  { signIndex: number; lonDeg: number | null; latitudeDeg: number | null; isRetrograde: boolean }
+> | null {
   if (!vedicData) return null;
-  const out = new Map<string, { signIndex: number; lonDeg: number | null; isRetrograde: boolean }>();
+  const out = new Map<
+    string,
+    { signIndex: number; lonDeg: number | null; latitudeDeg: number | null; isRetrograde: boolean }
+  >();
   for (const p of vedicData.planets || []) {
     const canon = normalizeBody9Name(p.name ?? p.planet ?? p.raw_name);
     if (!canon || out.has(canon)) continue;
     const res = resolveBodySignIndex(p);
     if (res.signIndex !== null) {
+      const rawLat = p.latitude_deg ?? p.latitude;
+      const latNum =
+        rawLat !== null && rawLat !== undefined && rawLat !== '' && Number.isFinite(Number(rawLat))
+          ? Number(rawLat)
+          : null;
       out.set(canon, {
         signIndex: res.signIndex,
         lonDeg: res.lonDeg,
+        latitudeDeg: latNum,
         isRetrograde: Boolean(p.is_retrograde ?? p.isRetrograde),
       });
     }
@@ -1040,19 +1080,49 @@ export function computeLocalVedicConditions(
   const taraGrahas = ['Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'] as const;
   const grahaYuddhaPairs: LocalVedicConditionsResult['grahaYuddhaPairs'] = [];
   const yuddhaSet = new Set<string>();
+  const yuddhaWinnerSet = new Set<string>();
+  const yuddhaLoserSet = new Set<string>();
   for (let i = 0; i < taraGrahas.length; i++) {
     for (let j = i + 1; j < taraGrahas.length; j++) {
       const a = taraGrahas[i];
       const b = taraGrahas[j];
-      const lonA = pMap.get(a)?.lonDeg ?? null;
-      const lonB = pMap.get(b)?.lonDeg ?? null;
+      const entryA = pMap.get(a);
+      const entryB = pMap.get(b);
+      const lonA = entryA?.lonDeg ?? null;
+      const lonB = entryB?.lonDeg ?? null;
       if (lonA !== null && lonB !== null) {
         const sep = circularDistDeg(lonA, lonB);
         if (sep <= 1.0) {
+          const latA = entryA?.latitudeDeg ?? null;
+          const latB = entryB?.latitudeDeg ?? null;
+          let winner: string | null = null;
+          let loser: string | null = null;
+          let determinationBasis: 'northern_latitude_brighter' | 'undetermined_missing_latitude' =
+            'undetermined_missing_latitude';
+          if (latA !== null && latB !== null) {
+            if (latA > latB) {
+              winner = a;
+              loser = b;
+              determinationBasis = 'northern_latitude_brighter';
+              yuddhaWinnerSet.add(a);
+              yuddhaLoserSet.add(b);
+            } else if (latB > latA) {
+              winner = b;
+              loser = a;
+              determinationBasis = 'northern_latitude_brighter';
+              yuddhaWinnerSet.add(b);
+              yuddhaLoserSet.add(a);
+            }
+          }
           grahaYuddhaPairs.push({
             planetA: a,
             planetB: b,
             separationDeg: Number(sep.toFixed(4)),
+            latitudeADeg: latA,
+            latitudeBDeg: latB,
+            winner,
+            loser,
+            determinationBasis,
           });
           yuddhaSet.add(a);
           yuddhaSet.add(b);
@@ -1131,9 +1201,19 @@ export function computeLocalVedicConditions(
     const isGandanta = lon !== null ? isGandantaLongitude(lon) : false;
     if (isGandanta) gandantaPlanets.push(body);
 
+    const inYuddha = yuddhaSet.has(body);
+    const yuddhaRole: LocalVedicPlanetCondition['grahaYuddhaRole'] = !inYuddha
+      ? null
+      : yuddhaWinnerSet.has(body) && !yuddhaLoserSet.has(body)
+      ? 'winner'
+      : yuddhaLoserSet.has(body) && !yuddhaWinnerSet.has(body)
+      ? 'loser'
+      : 'undetermined';
+
     byPlanet[body] = {
       planet: body,
       longitudeDeg: lon !== null ? Number(lon.toFixed(4)) : null,
+      latitudeDeg: entry.latitudeDeg,
       signIndex,
       sign: SIGNS[signIndex],
       degreeInSign: lon !== null ? Number((lon % 30).toFixed(4)) : null,
@@ -1146,7 +1226,8 @@ export function computeLocalVedicConditions(
       isCombust,
       isVargottama,
       isGandanta,
-      inGrahaYuddha: yuddhaSet.has(body),
+      inGrahaYuddha: inYuddha,
+      grahaYuddhaRole: yuddhaRole,
     };
   }
 
@@ -1163,35 +1244,461 @@ export function computeLocalVedicConditions(
 }
 
 /**
- * Pure Phase 4 enrichment pass for a LayerBMasterChartRecord.
+ * 5. Deterministic Local Sripati Bhava Chalit (Explicit Fallback Only)
+ * Computes 12 Sripati Bhava Madhyas + Sandhi intervals from independent reference angles
+ * and assigns canonical D1 planetary longitudes to Chalit houses.
+ * Never overwrites a valid provider/supplementary Bhava Chalit and never conflates with KP Placidus.
+ */
+export function computeLocalSripatiBhavaChalit(
+  vedicData: VedicLahiriFrame | null | undefined,
+  ref: IndependentAstroReference
+): BhavaChalitFrame | null {
+  if (!vedicData || !Array.isArray(vedicData.planets) || vedicData.planets.length < 7) {
+    return null;
+  }
+  const ascRes = resolveBodySignIndex(vedicData.ascendant);
+  const ascLonRaw = Number(
+    vedicData.ascendant?.degree ?? vedicData.ascendant?.absolute_degree ?? NaN
+  );
+  if (ascRes.signIndex === null || !Number.isFinite(ascLonRaw)) {
+    return null;
+  }
+  if (!Array.isArray(ref.sripatiLahiriSandhisDeg) || ref.sripatiLahiriSandhisDeg.length !== 12) {
+    return null;
+  }
+
+  const ascSignIdx = ascRes.signIndex;
+  const housesRaw = ref.sripatiLahiriSandhisDeg.map((s) => {
+    const cuspIdx = Math.floor(normalizeDeg(s.midpoint) / 30) % 12;
+    return {
+      house: s.house,
+      degree_cusp: Number(normalizeDeg(s.midpoint).toFixed(4)),
+      boundary_start: Number(normalizeDeg(s.start).toFixed(4)),
+      boundary_end: Number(normalizeDeg(s.end).toFixed(4)),
+      sign: SIGNS[cuspIdx],
+    };
+  });
+
+  const planetsRaw: Array<Record<string, unknown>> = [];
+  for (const p of vedicData.planets) {
+    const name = normalizeBody9Name(p.name ?? p.planet ?? p.raw_name);
+    if (!name) continue;
+    const lon = Number(p.absolute_degree ?? p.degree ?? p.longitude ?? NaN);
+    if (!Number.isFinite(lon)) continue;
+    const nLon = normalizeDeg(lon);
+    const rashiSignIdx = Math.floor(nLon / 30) % 12;
+    const rashiHouse = ((rashiSignIdx - ascSignIdx + 12) % 12) + 1;
+    const matchedSandhi = ref.sripatiLahiriSandhisDeg.find((s) =>
+      circularContainsLon(s.start, s.end, nLon)
+    );
+    const chalitHouse = matchedSandhi?.house ?? rashiHouse;
+    planetsRaw.push({
+      name,
+      absolute_degree: Number(nLon.toFixed(4)),
+      sign: SIGNS[rashiSignIdx],
+      rashi_house: rashiHouse,
+      chalit_house: chalitHouse,
+      shifted: chalitHouse !== rashiHouse,
+    });
+  }
+
+  if (planetsRaw.length < 7) return null;
+
+  const rawLike: Record<string, unknown> = {
+    chart_type: 'bhava_chalit',
+    name: 'Local Deterministic Sripati Bhava Chalit',
+    calibrated: true,
+    house_basis: 'sripati_midpoint_chalit_local',
+    houses: housesRaw,
+    planets: planetsRaw,
+  };
+  const methodologyAudit = verifyBhavaChalitMethodology(rawLike, ref);
+
+  return {
+    chartType: 'bhava_chalit',
+    name: 'Local Deterministic Sripati Bhava Chalit',
+    calibrated: true,
+    houseBasis: 'sripati_midpoint_chalit_local',
+    ascendant: {
+      degree: Number(normalizeDeg(ascLonRaw).toFixed(4)),
+      sign: SIGNS[ascSignIdx],
+    },
+    houses: housesRaw,
+    planets: planetsRaw,
+    methodologyAudit,
+  };
+}
+
+/**
+ * 6. Deterministic Advanced Avasthas (Baladi, Jagradadi, Deeptadi)
+ * Zero-coercion: returns null when canonical D1 planets or Panchadha Maitri/Conditions are missing.
+ */
+export function computeAdvancedAvasthas(
+  vedicData: VedicLahiriFrame | null | undefined,
+  panchadhaMaitri: PanchadhaMaitriResult | null,
+  localCond: LocalVedicConditionsResult | null
+): AdvancedAvasthasResult | null {
+  if (!vedicData || !panchadhaMaitri || !localCond) return null;
+
+  const byPlanet: Record<string, PlanetAdvancedAvasthaEntry> = {};
+  const baladiOrderOdd: Array<{ state: PlanetAdvancedAvasthaEntry['baladiAvastha']; pct: number }> = [
+    { state: 'Bala', pct: 25 },
+    { state: 'Kumara', pct: 50 },
+    { state: 'Yuva', pct: 100 },
+    { state: 'Vriddha', pct: 12.5 },
+    { state: 'Mrita', pct: 0 },
+  ];
+
+  for (const body of VIMSHOTTARI_BODY_NAMES_9) {
+    const cond = localCond.byPlanet[body];
+    if (!cond) return null;
+
+    const degInSign = cond.degreeInSign;
+    let baladiAvastha: PlanetAdvancedAvasthaEntry['baladiAvastha'] = null;
+    let baladiStrengthPercent: number | null = null;
+
+    if (degInSign !== null && Number.isFinite(degInSign)) {
+      const spanIdx = Math.min(4, Math.max(0, Math.floor(degInSign / 6)));
+      const isOddSign = cond.signIndex % 2 === 0; // Aries (0) is odd sign #1
+      const effectiveIdx = isOddSign ? spanIdx : 4 - spanIdx;
+      baladiAvastha = baladiOrderOdd[effectiveIdx].state;
+      baladiStrengthPercent = baladiOrderOdd[effectiveIdx].pct;
+    }
+
+    const dig = cond.dignity;
+    let jagradadiAvastha: PlanetAdvancedAvasthaEntry['jagradadiAvastha'] = null;
+    if (dig === 'Exalted' || dig === 'Moolatrikona' || dig === 'Own Sign') {
+      jagradadiAvastha = 'Jagrat';
+    } else if (dig === 'Adhi Mitra' || dig === 'Mitra' || dig === 'Sama' || dig.startsWith('Disposited by')) {
+      jagradadiAvastha = 'Swapna';
+    } else if (dig === 'Shatru' || dig === 'Adhi Shatru' || dig === 'Debilitated') {
+      jagradadiAvastha = 'Sushupta';
+    }
+
+    let deeptadiAvastha: PlanetAdvancedAvasthaEntry['deeptadiAvastha'] = null;
+    if (dig === 'Exalted') {
+      deeptadiAvastha = cond.isCombust ? 'Vikala' : 'Deepta';
+    } else if (dig === 'Debilitated') {
+      deeptadiAvastha = 'Kopita';
+    } else if (cond.isCombust || cond.inGrahaYuddha) {
+      deeptadiAvastha = 'Vikala';
+    } else if (dig === 'Own Sign' || dig === 'Moolatrikona') {
+      deeptadiAvastha = 'Swastha';
+    } else if (dig === 'Adhi Mitra') {
+      deeptadiAvastha = 'Mudita';
+    } else if (dig === 'Mitra') {
+      deeptadiAvastha = 'Shanta';
+    } else if (dig === 'Sama' || dig.startsWith('Disposited by')) {
+      deeptadiAvastha = 'Deena';
+    } else if (dig === 'Shatru') {
+      deeptadiAvastha = 'Dukha';
+    } else if (dig === 'Adhi Shatru') {
+      deeptadiAvastha = 'Khala';
+    }
+
+    byPlanet[body] = {
+      planet: body,
+      sign: cond.sign,
+      degreeInSign: cond.degreeInSign,
+      baladiAvastha,
+      baladiStrengthPercent,
+      jagradadiAvastha,
+      deeptadiAvastha,
+      basisNotes: `sign=${cond.sign}(${cond.signIndex % 2 === 0 ? 'odd' : 'even'}), dignity=${dig}, combust=${String(cond.isCombust)}, yuddha=${String(cond.inGrahaYuddha)}`,
+    };
+  }
+
+  return {
+    valid: true,
+    source: 'local:advancedAvasthas',
+    methodology: 'bphs_baladi_jagradadi_deeptadi',
+    byPlanet,
+    notes: [
+      'Baladi computed from 6-degree odd/even sign reversal spans; Jagradadi and Deeptadi derived deterministically from BPHS Panchadha dignity, combustion, and planetary war state.',
+    ],
+  };
+}
+
+function makeLocalModuleEnvelope<T>(params: {
+  source: string;
+  calculationMethod: string;
+  conventions: Record<string, unknown>;
+  dependencies: string[];
+  inputFingerprint: string;
+  canonicalStatus: CanonicalDatasetState;
+  verificationStatus?: DatasetVerificationStatus;
+  data: T | null;
+  limitations?: string[];
+  version?: string;
+}): DatasetEnvelope<T> {
+  const present = params.data !== null && params.data !== undefined;
+  return {
+    source: params.source,
+    calculationMethod: params.calculationMethod,
+    version: params.version || V2_RECALCULATION_VERSION,
+    conventions: params.conventions,
+    dependencies: params.dependencies,
+    acquiredAtUtc: null,
+    temporalScope: 'natal_invariant',
+    referenceDateIso: null,
+    inputFingerprint: params.inputFingerprint,
+    completeness: present ? 'complete' : 'unavailable',
+    verificationStatus: present
+      ? params.verificationStatus ?? 'internally_verified'
+      : 'unavailable',
+    canonicalStatus: present ? params.canonicalStatus : 'unavailable',
+    limitations: present
+      ? params.limitations || []
+      : params.limitations?.length
+      ? params.limitations
+      : ['Prerequisites unavailable for deterministic local derivation (zero-coercion guard).'],
+    data: params.data,
+  };
+}
+
+export function buildDisabledLocalModuleEnvelopes(
+  master: LayerBMasterChartRecord,
+  reason = 'Local mathematical modules disabled (options.includeLocalModules=false).'
+): LocalModulesEnvelopeBundle {
+  const fp = master.canonicalBirthInstant.inputFingerprint;
+  const ver = master.recalculationVersion || V2_RECALCULATION_VERSION;
+  const disabled = <T>(
+    source: string,
+    calculationMethod: string,
+    conventions: Record<string, unknown>,
+    dependencies: string[]
+  ): DatasetEnvelope<T> =>
+    makeLocalModuleEnvelope<T>({
+      source,
+      calculationMethod,
+      conventions,
+      dependencies,
+      inputFingerprint: fp,
+      version: ver,
+      canonicalStatus: 'unavailable',
+      data: null,
+      limitations: [reason],
+    });
+
+  return {
+    localAshtakavarga: disabled<Record<string, unknown>>(
+      'local:ashtakavarga',
+      'BPHS Ch. 66-72 Ashtakavarga + 7x8x12 Prastara (with Ascendant)',
+      { savExpectedTotal: 337, contributors: 8, occupancyRule: 'lahiri_whole_sign' },
+      ['canonical_birth_instant', 'vedic_d1_positions']
+    ),
+    ashtakavargaReductions: disabled<AshtakavargaReductionsResult>(
+      'local:ashtakavargaReductions',
+      'BPHS Ch. 71 Trikona Shodhana, Ekadhipatya Shodhana & Shodhya Pinda',
+      { occupancyMode: 'seven_classical_planets', constants: 'bphs_ch71' },
+      ['canonical_birth_instant', 'vedic_d1_positions', 'local:ashtakavarga']
+    ),
+    panchadhaMaitri: disabled<Record<string, unknown>>(
+      'local:panchadhaMaitri',
+      'BPHS Five-Fold Compound Planetary Friendship (Naisargika + Tatkalika)',
+      { tatkalikaRule: 'whole_sign_2_3_4_10_11_12', selfOwnSignAware: true },
+      ['canonical_birth_instant', 'vedic_d1_positions']
+    ),
+    vimshopakaBala: disabled<Record<string, unknown>>(
+      'local:vimshopakaBala',
+      'BPHS Ch. 6 Vimshopaka Bala (Shadvarga/Saptavarga/Dashavarga/Shodashavarga)',
+      { scaleMax: 20, missingDivisionsBehavior: 'zero_coercion_blocked' },
+      ['canonical_birth_instant', 'vedic_d1_positions', 'vedic_shodashavarga_16', 'local:panchadhaMaitri']
+    ),
+    sripatiBhavaChalit: disabled<BhavaChalitFrame>(
+      'local:sripatiBhavaChalit',
+      'Deterministic Sripati Bhava Madhya & Sandhi Midpoint House Division',
+      { ayanamsha: 'lahiri', basis: 'sripati_midpoint_chalit', role: 'explicit_fallback_only' },
+      ['canonical_birth_instant', 'vedic_d1_positions']
+    ),
+    dispositorRelationships: disabled<Record<string, unknown>>(
+      'local:dispositorGraph',
+      'Parashari Sign-Lord Dispositor Chains, Cycles & Parivartana (D1 & D9)',
+      { parivartanaTypes: ['Maha', 'Kahala', 'Dainya'] },
+      ['canonical_birth_instant', 'vedic_d1_positions']
+    ),
+    advancedAvasthas: disabled<AdvancedAvasthasResult>(
+      'local:advancedAvasthas',
+      'BPHS Baladi, Jagradadi & Deeptadi Avasthas',
+      { oddEvenBaladiReversal: true, deeptadiRule: 'bphs_dignity_combustion_yuddha' },
+      ['canonical_birth_instant', 'vedic_d1_positions', 'local:panchadhaMaitri', 'local:vedicDignityConditions']
+    ),
+    localVedicConditions: disabled<Record<string, unknown>>(
+      'local:vedicDignityConditions',
+      'BPHS Dignity, Surya Siddhanta Combustion, Vargottama, Gandanta & Graha Yuddha',
+      { combustionOrbs: 'bphs_surya_siddhanta', grahaYuddhaOrbDeg: 1.0 },
+      ['canonical_birth_instant', 'vedic_d1_positions', 'local:panchadhaMaitri']
+    ),
+  };
+}
+
+export function buildPhase4LocalModuleEnvelopes(
+  master: LayerBMasterChartRecord,
+  summary: Phase4LocalCalculationsSummary
+): LocalModulesEnvelopeBundle {
+  const fp = master.canonicalBirthInstant.inputFingerprint;
+  const ver = master.recalculationVersion || V2_RECALCULATION_VERSION;
+
+  const avStatus: CanonicalDatasetState =
+    summary.localAshtakavarga && summary.localAshtakavarga.selfConsistencyPassed
+      ? 'internally_verified'
+      : 'unavailable';
+
+  return {
+    localAshtakavarga: makeLocalModuleEnvelope<Record<string, unknown>>({
+      source: 'local:ashtakavarga',
+      calculationMethod: 'BPHS Ch. 66-72 Ashtakavarga + 7x8x12 Prastara (with Ascendant)',
+      conventions: { savExpectedTotal: 337, contributors: 8, occupancyRule: 'lahiri_whole_sign' },
+      dependencies: ['canonical_birth_instant', 'vedic_d1_positions'],
+      inputFingerprint: fp,
+      version: ver,
+      canonicalStatus: avStatus,
+      data: summary.localAshtakavarga
+        ? (summary.localAshtakavarga as unknown as Record<string, unknown>)
+        : null,
+    }),
+    ashtakavargaReductions: makeLocalModuleEnvelope<AshtakavargaReductionsResult>({
+      source: 'local:ashtakavargaReductions',
+      calculationMethod: 'BPHS Ch. 71 Trikona Shodhana, Ekadhipatya Shodhana & Shodhya Pinda',
+      conventions: { occupancyMode: 'seven_classical_planets', constants: 'bphs_ch71' },
+      dependencies: ['canonical_birth_instant', 'vedic_d1_positions', 'local:ashtakavarga'],
+      inputFingerprint: fp,
+      version: ver,
+      canonicalStatus: summary.ashtakavargaReductions ? 'internally_verified' : 'unavailable',
+      data: summary.ashtakavargaReductions,
+    }),
+    panchadhaMaitri: makeLocalModuleEnvelope<Record<string, unknown>>({
+      source: 'local:panchadhaMaitri',
+      calculationMethod: 'BPHS Five-Fold Compound Planetary Friendship (Naisargika + Tatkalika)',
+      conventions: { tatkalikaRule: 'whole_sign_2_3_4_10_11_12', selfOwnSignAware: true },
+      dependencies: ['canonical_birth_instant', 'vedic_d1_positions'],
+      inputFingerprint: fp,
+      version: ver,
+      canonicalStatus: summary.panchadhaMaitri ? 'internally_verified' : 'unavailable',
+      data: summary.panchadhaMaitri
+        ? (summary.panchadhaMaitri as unknown as Record<string, unknown>)
+        : null,
+    }),
+    vimshopakaBala: makeLocalModuleEnvelope<Record<string, unknown>>({
+      source: 'local:vimshopakaBala',
+      calculationMethod: 'BPHS Ch. 6 Vimshopaka Bala (Shadvarga/Saptavarga/Dashavarga/Shodashavarga)',
+      conventions: { scaleMax: 20, missingDivisionsBehavior: 'zero_coercion_blocked' },
+      dependencies: ['canonical_birth_instant', 'vedic_d1_positions', 'vedic_shodashavarga_16', 'local:panchadhaMaitri'],
+      inputFingerprint: fp,
+      version: ver,
+      canonicalStatus: summary.vimshopakaBala
+        ? summary.vimshopakaBala.completeSchemesCount === 4
+          ? 'internally_verified'
+          : 'provisional'
+        : 'unavailable',
+      data: summary.vimshopakaBala
+        ? (summary.vimshopakaBala as unknown as Record<string, unknown>)
+        : null,
+      limitations:
+        summary.vimshopakaBala && summary.vimshopakaBala.completeSchemesCount < 4
+          ? [summary.vimshopakaBala.note]
+          : [],
+    }),
+    sripatiBhavaChalit: makeLocalModuleEnvelope<BhavaChalitFrame>({
+      source: 'local:sripatiBhavaChalit',
+      calculationMethod: 'Deterministic Sripati Bhava Madhya & Sandhi Midpoint House Division',
+      conventions: { ayanamsha: 'lahiri', basis: 'sripati_midpoint_chalit', role: 'explicit_fallback_only' },
+      dependencies: ['canonical_birth_instant', 'vedic_d1_positions'],
+      inputFingerprint: fp,
+      version: ver,
+      canonicalStatus:
+        summary.sripatiBhavaChalit?.methodologyAudit.compatibleWithIntendedClassicalMethodology
+          ? 'internally_verified'
+          : 'unavailable',
+      data: summary.sripatiBhavaChalit,
+    }),
+    dispositorRelationships: makeLocalModuleEnvelope<Record<string, unknown>>({
+      source: 'local:dispositorGraph',
+      calculationMethod: 'Parashari Sign-Lord Dispositor Chains, Cycles & Parivartana (D1 & D9)',
+      conventions: { parivartanaTypes: ['Maha', 'Kahala', 'Dainya'] },
+      dependencies: ['canonical_birth_instant', 'vedic_d1_positions'],
+      inputFingerprint: fp,
+      version: ver,
+      canonicalStatus: summary.dispositorRelationships ? 'internally_verified' : 'unavailable',
+      data: summary.dispositorRelationships
+        ? (summary.dispositorRelationships as unknown as Record<string, unknown>)
+        : null,
+    }),
+    advancedAvasthas: makeLocalModuleEnvelope<AdvancedAvasthasResult>({
+      source: 'local:advancedAvasthas',
+      calculationMethod: 'BPHS Baladi, Jagradadi & Deeptadi Avasthas',
+      conventions: { oddEvenBaladiReversal: true, deeptadiRule: 'bphs_dignity_combustion_yuddha' },
+      dependencies: ['canonical_birth_instant', 'vedic_d1_positions', 'local:panchadhaMaitri', 'local:vedicDignityConditions'],
+      inputFingerprint: fp,
+      version: ver,
+      verificationStatus: summary.advancedAvasthas ? 'provisional' : 'unavailable',
+      canonicalStatus: summary.advancedAvasthas ? 'provisional' : 'unavailable',
+      data: summary.advancedAvasthas,
+      limitations: summary.advancedAvasthas
+        ? [
+            'Jagradadi and Deeptadi avastha mappings vary across classical commentaries (BPHS vs Saravali/JHora); held provisional pending external reference cross-check.',
+          ]
+        : undefined,
+    }),
+    localVedicConditions: makeLocalModuleEnvelope<Record<string, unknown>>({
+      source: 'local:vedicDignityConditions',
+      calculationMethod: 'BPHS Dignity, Surya Siddhanta Combustion, Vargottama, Gandanta & Graha Yuddha',
+      conventions: { combustionOrbs: 'bphs_surya_siddhanta', grahaYuddhaOrbDeg: 1.0 },
+      dependencies: ['canonical_birth_instant', 'vedic_d1_positions', 'local:panchadhaMaitri'],
+      inputFingerprint: fp,
+      version: ver,
+      canonicalStatus: summary.localVedicConditions ? 'internally_verified' : 'unavailable',
+      data: summary.localVedicConditions
+        ? (summary.localVedicConditions as unknown as Record<string, unknown>)
+        : null,
+    }),
+  };
+}
+
+/**
+ * Pure Phase 4/5 enrichment pass for a LayerBMasterChartRecord.
  * Computes Panchadha Maitri, Vimshopaka Bala, Dispositor Relationships,
- * Local Vedic Conditions, and Local Ashtakavarga + Matrix Audit without
- * mutating any primary provider D1/Shadbala/Varga/Dasha outputs.
+ * Local Vedic Conditions, Advanced Avasthas, Local Ashtakavarga + Reductions,
+ * and Local Sripati Bhava Chalit (held in localModules / providerExtendedDatasets
+ * as fallback-ready without mutating primary frames).
  */
 export function computePhase4LocalCalculationsForFrame(
   vedicData: VedicLahiriFrame | null | undefined,
-  providerSourceLabel: string
+  providerSourceLabel: string,
+  independentRef?: IndependentAstroReference | null
 ): Phase4LocalCalculationsSummary {
   const { localAshtakavarga, audit: localAshtakavargaAudit } =
     auditMasterAshtakavargaWithLocal(vedicData, providerSourceLabel);
+  const ashtakavargaReductions = computeAshtakavargaReductions(localAshtakavarga);
   const panchadhaMaitri = computePanchadhaMaitri(vedicData);
   const vimshopakaBala = computeVimshopakaBala(vedicData, panchadhaMaitri);
+  const sripatiBhavaChalit = independentRef
+    ? computeLocalSripatiBhavaChalit(vedicData, independentRef)
+    : null;
   const dispositorRelationships = computeDispositorRelationships(vedicData);
   const localVedicConditions = computeLocalVedicConditions(vedicData, panchadhaMaitri);
+  const advancedAvasthas = computeAdvancedAvasthas(
+    vedicData,
+    panchadhaMaitri,
+    localVedicConditions
+  );
 
   return {
     localAshtakavarga,
     localAshtakavargaAudit,
+    ashtakavargaReductions,
     panchadhaMaitri,
     vimshopakaBala,
+    sripatiBhavaChalit,
     dispositorRelationships,
+    advancedAvasthas,
     localVedicConditions,
   };
 }
 
 /**
- * Enriches a LayerBMasterChartRecord with Phase 4 deterministic local calculations
- * and refreshes `datasetManifest`.
+ * Enriches a LayerBMasterChartRecord with Phase 4/5 deterministic local calculations
+ * and refreshes `datasetManifest` + provenance-tagged `localModules`.
  *
  * When `preferLocalAshtakavarga: true` is supplied AND `localAshtakavarga.selfConsistencyPassed`
  * is verified, local Ashtakavarga becomes the canonical `vedicLahiri.data.ashtakavarga`
@@ -1206,10 +1713,12 @@ export function enrichMasterWithPhase4LocalCalculations(
 ): LayerBMasterChartRecord {
   const vedicEnv = master.frames.vedicLahiri;
   const vedicData = vedicEnv?.data ?? null;
+  const indepRef = computeIndependentAstronomicalReference(master.canonicalBirthInstant);
 
   const summary = computePhase4LocalCalculationsForFrame(
     vedicData,
-    vedicEnv?.source ?? 'provider'
+    vedicEnv?.source ?? 'provider',
+    indepRef
   );
 
   let nextVedicEnv = vedicEnv;
@@ -1219,8 +1728,11 @@ export function enrichMasterWithPhase4LocalCalculations(
     vimshopakaBala: summary.vimshopakaBala,
     dispositorRelationships: summary.dispositorRelationships,
     localVedicConditions: summary.localVedicConditions,
+    advancedAvasthas: summary.advancedAvasthas,
+    localSripatiBhavaChalit: summary.sripatiBhavaChalit,
     localAshtakavarga: summary.localAshtakavarga,
     localAshtakavargaAudit: summary.localAshtakavargaAudit,
+    ashtakavargaReductions: summary.ashtakavargaReductions,
   };
 
   if (
@@ -1250,6 +1762,7 @@ export function enrichMasterWithPhase4LocalCalculations(
     },
     providerExtendedDatasets: nextExt,
   };
+  enriched.localModules = buildPhase4LocalModuleEnvelopes(enriched, summary);
   enriched.datasetManifest = evaluateDatasetCompleteness(enriched);
   return enriched;
 }

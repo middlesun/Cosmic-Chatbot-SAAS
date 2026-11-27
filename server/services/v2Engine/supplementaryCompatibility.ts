@@ -19,6 +19,7 @@
  */
 
 import { normalizeDeg, SIGNS } from '../jyotishMath';
+import { evaluateDatasetCompleteness } from './datasetManifest';
 import { enrichMasterWithPhase4LocalCalculations } from './localVedicMath';
 import type {
   AshtakavargaCompatibilityAudit,
@@ -1250,6 +1251,7 @@ export function integrateFreeAstroApiSupplementaryIntoMaster(
   supplementaryCall: SanitizedProviderCallRecord | null | undefined,
   options?: {
     independentRef?: IndependentAstroReference;
+    includeLocalModules?: boolean;
   }
 ): LayerBMasterChartRecord {
   const indepRef =
@@ -1496,6 +1498,11 @@ export function integrateFreeAstroApiSupplementaryIntoMaster(
     },
     supplementaryIntegration: report,
   };
+
+  if (options?.includeLocalModules === false) {
+    updatedMaster.datasetManifest = evaluateDatasetCompleteness(updatedMaster);
+    return updatedMaster;
+  }
 
   return enrichMasterWithPhase4LocalCalculations(updatedMaster, {
     preferLocalAshtakavarga:

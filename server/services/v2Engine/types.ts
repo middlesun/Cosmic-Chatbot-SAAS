@@ -469,17 +469,17 @@ export interface AstronomicalTelemetryFrame {
 export interface ShadbalaPlanetComparison {
   planet: string;
   provider: {
-    sthanaBala: number;
-    digBala: number;
-    kalaBala: number;
-    cheshtaBala: number;
-    naisargikaBala: number;
-    drikBala: number;
+    sthanaBala: number | null;
+    digBala: number | null;
+    kalaBala: number | null;
+    cheshtaBala: number | null;
+    naisargikaBala: number | null;
+    drikBala: number | null;
     totalVirupas: number;
     rupas: number;
     requiredRupas: number;
     ratio: number;
-    componentSumCheckDelta: number;
+    componentSumCheckDelta: number | null;
     rank: number;
   } | null;
   legacyLocal: {
@@ -892,6 +892,7 @@ export interface LayerBMasterChartRecord {
   referenceDateTiming?: ReferenceDateTimingSnapshot | null;
   providerExtendedDatasets?: Record<string, unknown> | null;
   supplementaryIntegration?: SupplementaryIntegrationReport | null;
+  localModules?: LocalModulesEnvelopeBundle;
   datasetManifest?: DatasetCompletenessManifest;
   remainingClassicalGaps: RemainingClassicalGapItem[];
 }
@@ -924,11 +925,17 @@ export type VerificationBasis =
   | 'pending_external_validation'
   | 'none';
 
+export type VerificationTier =
+  | 'software_regression'
+  | 'internal_math_consistency'
+  | 'independent_classical_validation';
+
 export interface EpistemicClassificationItem {
   key: string;
   label: string;
   category: EpistemicCategory;
   verificationBasis?: VerificationBasis;
+  verificationTier?: VerificationTier;
   status: 'verified' | 'partial' | 'unresolved' | 'unavailable';
   detail: string;
 }
@@ -948,9 +955,51 @@ export interface VerificationCheckResult {
   severity: 'critical' | 'major' | 'info';
   epistemicCategory: EpistemicCategory;
   verificationBasis?: VerificationBasis;
+  verificationTier?: VerificationTier;
   expected: string;
   observed: string;
   notes?: string;
+}
+
+export interface ExternalReferenceInput {
+  referenceSourceLabel: string;
+  referenceRuntimeAvailable?: boolean;
+  ayanamsa?: string;
+  nodeConvention?: 'mean' | 'true';
+  d1AscendantDeg?: number | null;
+  d1PlanetLongitudesDeg?: Record<string, number>;
+  vargasByDivision?: Record<
+    string,
+    {
+      ascendantSign?: string | null;
+      planets?: Record<string, string>;
+    }
+  >;
+  shadbalaTotalVirupas?: Record<string, number>;
+  bhavabalaTotalRupas?: Record<number, number>;
+  ashtakavarga?: {
+    sarvashtakavarga?: number[];
+    bhinnashtakavarga?: Record<string, number[]>;
+  };
+  kpCuspsDeg?: number[];
+  vimshottariBirthBalance?: {
+    lord?: string;
+    remainingYears?: number;
+  };
+}
+
+export interface ExternalReferenceAudit {
+  status: 'reconciled' | 'blocked_no_external_reference';
+  referenceSourceLabel: string | null;
+  matchedDomainsCount: number;
+  mismatchedDomainsCount: number;
+  blockers: string[];
+  domainComparisons: Array<{
+    domain: string;
+    matched: boolean;
+    maxDelta: number | null;
+    notes: string;
+  }>;
 }
 
 export interface MathematicalVerificationReport {
@@ -959,6 +1008,11 @@ export interface MathematicalVerificationReport {
   mode: 'live_and_offline' | 'partial_live_and_offline' | 'offline_only';
   passedCount: number;
   failedCount: number;
+  verificationTierSummary?: Record<
+    VerificationTier,
+    { total: number; passed: number; failed: number }
+  >;
+  externalReferenceAudit?: ExternalReferenceAudit;
   epistemicClassification: EpistemicClassificationSummary;
   checks: VerificationCheckResult[];
 }
@@ -1078,3 +1132,135 @@ export interface LegacyVsV2ComparisonReport {
     v2HasNativeKp4LevelSignificators: boolean;
   };
 }
+
+export interface AshtakavargaReductionPlanetEntry {
+  planet: string;
+  originalBav: number[];
+  afterTrikonaShodhana: number[];
+  afterEkadhipatyaShodhana: number[];
+  rasiPinda: number;
+  grahaPinda: number;
+  shodhyaPinda: number;
+}
+
+export interface AshtakavargaReductionsResult {
+  valid: boolean;
+  source: 'local:ashtakavargaReductions';
+  methodology: 'bphs_trikona_ekadhipatya_shodhya_pinda';
+  occupancyMode: 'seven_classical_planets';
+  occupiedSigns: string[];
+  perPlanet: Record<string, AshtakavargaReductionPlanetEntry>;
+  savOriginal: number[];
+  savAfterTrikonaShodhana: number[];
+  savAfterTrikonaTotal: number;
+  rasiManaConstants: number[];
+  grahaManaConstants: Record<string, number>;
+  notes: string[];
+}
+
+export interface PlanetAdvancedAvasthaEntry {
+  planet: string;
+  sign: string;
+  degreeInSign: number | null;
+  baladiAvastha: 'Bala' | 'Kumara' | 'Yuva' | 'Vriddha' | 'Mrita' | null;
+  baladiStrengthPercent: number | null;
+  jagradadiAvastha: 'Jagrat' | 'Swapna' | 'Sushupta' | null;
+  deeptadiAvastha:
+    | 'Deepta'
+    | 'Swastha'
+    | 'Mudita'
+    | 'Shanta'
+    | 'Deena'
+    | 'Dukha'
+    | 'Vikala'
+    | 'Khala'
+    | 'Kopita'
+    | null;
+  basisNotes: string;
+}
+
+export interface AdvancedAvasthasResult {
+  valid: boolean;
+  source: 'local:advancedAvasthas';
+  methodology: 'bphs_baladi_jagradadi_deeptadi';
+  byPlanet: Record<string, PlanetAdvancedAvasthaEntry>;
+  notes: string[];
+}
+
+export interface LocalModulesEnvelopeBundle {
+  localAshtakavarga: DatasetEnvelope<Record<string, unknown>>;
+  ashtakavargaReductions: DatasetEnvelope<AshtakavargaReductionsResult>;
+  panchadhaMaitri: DatasetEnvelope<Record<string, unknown>>;
+  vimshopakaBala: DatasetEnvelope<Record<string, unknown>>;
+  sripatiBhavaChalit: DatasetEnvelope<BhavaChalitFrame>;
+  dispositorRelationships: DatasetEnvelope<Record<string, unknown>>;
+  advancedAvasthas: DatasetEnvelope<AdvancedAvasthasResult>;
+  localVedicConditions: DatasetEnvelope<Record<string, unknown>>;
+}
+
+export interface DatasetInventoryEntry {
+  key: string;
+  label: string;
+  domain: string;
+  canonicalStatus: CanonicalDatasetState;
+  temporalScope: TemporalScope;
+  sourceAttribution: string[];
+  notes: string;
+}
+
+export interface CompletenessStateSummaryRow {
+  state: CanonicalDatasetState;
+  count: number;
+  datasetKeys: string[];
+}
+
+export interface EndpointCreditConsumptionSummary {
+  astroWay: {
+    acquired: boolean;
+    totalCalls: number;
+    successfulCalls: number;
+    failedCalls: number;
+    tierRestrictedCalls: number;
+    rateLimitedCalls: number;
+    unexecutedCalls: number;
+    creditsUsedTotal: number | null;
+    creditsRemainingFinal: string | null;
+    endpointsCalled: Array<{
+      id: string;
+      endpoint: string;
+      ok: boolean;
+      httpStatus: number;
+      creditsUsed: number | null;
+      declaredQuality: string | null;
+    }>;
+  };
+  freeAstroApi: {
+    acquired: boolean;
+    singleCallOnly: boolean;
+    endpointsCalled: Array<{
+      id: string;
+      endpoint: string;
+      ok: boolean;
+      httpStatus: number;
+    }>;
+  };
+  localModulesComputedCount: number;
+}
+
+export interface CompiledV2FoundationalChartResult {
+  schemaVersion: 'v2.compiled_foundational_chart.1.0';
+  compiledAtUtc: string;
+  canonicalBirthInstant: CanonicalBirthInstant;
+  layerBMaster: LayerBMasterChartRecord;
+  layerCShell: LayerCAnalyticalShell;
+  localModules: LocalModulesEnvelopeBundle;
+  verification: MathematicalVerificationReport;
+  manifest: DatasetCompletenessManifest;
+  completenessTable: CompletenessStateSummaryRow[];
+  datasetInventory: DatasetInventoryEntry[];
+  compatibilityGates: SupplementaryIntegrationReport | null;
+  localAshtakavargaAudit: Record<string, unknown> | null;
+  endpointAndCreditSummary: EndpointCreditConsumptionSummary;
+  externalValidationBlockers: string[];
+}
+

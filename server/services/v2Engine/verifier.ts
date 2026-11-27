@@ -13,6 +13,7 @@ import {
   getVargaSignIndex,
   normalizeDeg,
   SIGNS,
+  VIMSHOTTARI_ORDER,
   type PlanetPosition,
 } from '../jyotishMath';
 import type {
@@ -20,12 +21,15 @@ import type {
   CanonicalBirthInstant,
   EpistemicClassificationItem,
   EpistemicClassificationSummary,
+  ExternalReferenceAudit,
+  ExternalReferenceInput,
   KpPlacidusFrame,
   LayerARawProviderRecord,
   LayerBMasterChartRecord,
   MathematicalVerificationReport,
   VedicLahiriFrame,
   VerificationCheckResult,
+  VerificationTier,
   WesternTropicalFrame,
 } from './types';
 
@@ -1142,9 +1146,38 @@ export function verifyWesternFrameDetailed(
   };
 }
 
+export interface VerifyMasterChartOptions {
+  externalReferenceData?: ExternalReferenceInput | null;
+}
+
+const BPHS_SHODASHAVARGA_NUMS = new Set([1, 2, 3, 4, 7, 9, 10, 12, 16, 20, 24, 27, 30, 40, 45, 60]);
+
+function inferCheckVerificationTier(c: VerificationCheckResult): VerificationTier {
+  if (c.verificationTier) return c.verificationTier;
+  if (
+    c.verificationBasis === 'external_jhora_pyjhora_swisseph' ||
+    c.epistemicCategory === 'independently_validated_against_external_reference'
+  ) {
+    return 'independent_classical_validation';
+  }
+  return 'internal_math_consistency';
+}
+
+function inferEpistemicVerificationTier(i: EpistemicClassificationItem): VerificationTier {
+  if (i.verificationTier) return i.verificationTier;
+  if (
+    i.verificationBasis === 'external_jhora_pyjhora_swisseph' ||
+    i.category === 'independently_validated_against_external_reference'
+  ) {
+    return 'independent_classical_validation';
+  }
+  return 'internal_math_consistency';
+}
+
 export function verifyMasterChartRecord(
   master: LayerBMasterChartRecord,
-  rawLayerA?: LayerARawProviderRecord | null
+  rawLayerA?: LayerARawProviderRecord | null,
+  options?: VerifyMasterChartOptions
 ): MathematicalVerificationReport {
   const instant = master.canonicalBirthInstant;
   const isAstroWay = (master.providerId || rawLayerA?.providerId) === 'astroway';
@@ -1169,6 +1202,7 @@ export function verifyMasterChartRecord(
     severity: 'critical',
     epistemicCategory: 'internal_math_consistency_verified',
     verificationBasis: 'cosmiccouncil_internal_solver',
+    verificationTier: 'internal_math_consistency',
     expected: `${instant.utc.iso} / JD=${ref.julianDayUt}`,
     observed: `${instant.utc.iso} / JD=${instant.utc.julianDayUt}`,
   });
@@ -1235,6 +1269,7 @@ export function verifyMasterChartRecord(
           ? 'internal_math_consistency_verified'
           : 'methodology_unresolved',
         verificationBasis: 'provider_self_consistency',
+        verificationTier: 'internal_math_consistency',
         expected: 'Mode A (IANA) == Mode B (UTC) across coordinates, Shadbala, Bhava Chalit, Ashtakavarga, Vargas, Yogas, Dasha durations & birth-time Panchang',
         observed: `coordsEq=${eq.coordinatesEquivalent} (ascΔ=${eq.ascendantDeltaDeg}°, maxPlΔ=${eq.maxPlanetDeltaDeg}°); ${sbNote}; bhavaChalitEq=${String(eq.bhavaChalitEquivalent)}; AV_Eq=${String(eq.ashtakavargaEquivalent)}; ${dashaNote}; ${panNote}`,
         notes: eq.notes.join(' | '),
@@ -1274,6 +1309,7 @@ export function verifyMasterChartRecord(
           ? 'internal_math_consistency_verified'
           : 'methodology_unresolved',
         verificationBasis: 'provider_self_consistency',
+        verificationTier: 'internal_math_consistency',
         expected: 'panchang.request_time_panchang invariant across Mode A (IANA) and Mode B (UTC)',
         observed: panDetail,
       });
@@ -1304,6 +1340,7 @@ export function verifyMasterChartRecord(
           ? 'internal_math_consistency_verified'
           : 'methodology_unresolved',
         verificationBasis: 'provider_self_consistency',
+        verificationTier: 'internal_math_consistency',
         expected: 'Mahadasha durations and birth_balance identical across Mode A & Mode B',
         observed: dashaDetail,
         notes: eq.dashaAudit.notes.join(' | ') || undefined,
@@ -1335,6 +1372,7 @@ export function verifyMasterChartRecord(
     severity: 'critical',
     epistemicCategory: 'internal_math_consistency_verified',
     verificationBasis: 'cosmiccouncil_internal_solver',
+    verificationTier: 'internal_math_consistency',
     expected: 'Monotonic 12 cusps summing to 360°, opposite cusps 180° ± 0.02°',
     observed: `KP span=${refKpSeq.totalSpanDeg}° oppErr=${refKpSeq.maxOppositionErrorDeg}°; Trop span=${refTropSeq.totalSpanDeg}°`,
   });
@@ -1402,6 +1440,7 @@ export function verifyMasterChartRecord(
         ? 'internal_math_consistency_verified'
         : 'methodology_unresolved',
       verificationBasis: 'cosmiccouncil_internal_solver',
+      verificationTier: 'internal_math_consistency',
       expected: `Asc~${ref.lahiriAscendantDeg}°, Sun~${ref.lahiriSunLonDeg}°, Moon~${ref.lahiriMoonLonDeg}°`,
       observed: `Asc=${ascDeg}° (Δ${ascErr.toFixed(3)}°), Sun=${sunDeg}° (Δ${sunErr.toFixed(3)}°), Moon=${moonDeg}° (Δ${moonErr.toFixed(3)}°)`,
     });
@@ -1425,6 +1464,7 @@ export function verifyMasterChartRecord(
       severity: 'major',
       epistemicCategory: 'provider_data_acquired',
       verificationBasis: 'provider_payload',
+      verificationTier: 'internal_math_consistency',
       expected: isAstroWay
         ? '16 BPHS Shodashavarga Vargas (D1–D60; D5 absent in AstroWay v2.383.19)'
         : '17 Vargas including D5',
@@ -1442,6 +1482,7 @@ export function verifyMasterChartRecord(
       severity: 'info',
       epistemicCategory: 'methodology_unresolved',
       verificationBasis: 'cosmiccouncil_internal_solver',
+      verificationTier: 'internal_math_consistency',
       expected: 'All divisions calibrated and matching BPHS quadrant rules',
       observed: `D4 BPHS matches=${vargaAudit.d4Audit.matchesBphsQuadrantJumpCount}/${vargaAudit.d4Audit.checkedBodiesCount}, D4 altSources=${vargaAudit.d4Audit.hasAlternateSourceLongitudes}, uncalibrated=[${vargaAudit.uncalibratedDivisions.map((u) => u.division).join(',')}]`,
       notes: [
@@ -1535,6 +1576,7 @@ export function verifyMasterChartRecord(
         severity: 'critical',
         epistemicCategory: 'internal_math_consistency_verified',
         verificationBasis: 'provider_self_consistency',
+        verificationTier: 'internal_math_consistency',
         expected: 'SAV=337, 0 BAV mismatches, 0 Prasthara mismatches',
         observed: `SAV=${savSum}, bavErrors=${bavErrors}, prastharaErrors=${prastharaErrors}`,
       });
@@ -1563,6 +1605,7 @@ export function verifyMasterChartRecord(
         severity: 'major',
         epistemicCategory: 'internal_math_consistency_verified',
         verificationBasis: 'provider_self_consistency',
+        verificationTier: 'internal_math_consistency',
         expected: 'elapsed_years + remaining_years == full_duration_years',
         observed: `${elY} + ${remY} vs ${fullY}`,
       });
@@ -1590,6 +1633,7 @@ export function verifyMasterChartRecord(
         severity: 'major',
         epistemicCategory: 'provider_data_acquired',
         verificationBasis: 'provider_payload',
+        verificationTier: 'internal_math_consistency',
         expected: isAstroWay
           ? 'AstroWay /vedic/panchang/full (at=moment) sunrise/sunset & natal Panchang elements present'
           : 'Provider daily sunrise/sunset + natal request_time_panchang present',
@@ -1631,6 +1675,7 @@ export function verifyMasterChartRecord(
             ? 'internal_math_consistency_verified'
             : 'methodology_unresolved',
           verificationBasis: 'provider_self_consistency',
+          verificationTier: 'internal_math_consistency',
           expected:
             'All AstroWay nested Parashara/Jaimini/Kundli Yoga detectors extracted; present===true Yogas preserved in vedicLahiri.data.yogas.items',
           observed: `normalizedActive=${normalizedActiveCount}, expectedPresent=${expectedPresentCount}, totalEvaluatedDetectors=${evalItems.length}`,
@@ -1679,6 +1724,7 @@ export function verifyMasterChartRecord(
       severity: 'critical',
       epistemicCategory: 'internal_math_consistency_verified',
       verificationBasis: 'provider_self_consistency',
+      verificationTier: 'internal_math_consistency',
       expected: '12 strictly monotonic KP Placidus cusps summing to 360°',
       observed: kpDetail.notes[0],
     });
@@ -1707,6 +1753,7 @@ export function verifyMasterChartRecord(
         ? 'internal_math_consistency_verified'
         : 'methodology_unresolved',
       verificationBasis: 'cosmiccouncil_internal_solver',
+      verificationTier: 'internal_math_consistency',
       expected: 'KP cusps/planets match internal Placidus KP ref; 100% cusp containment; 4-level significators consistent',
       observed: kpDetail.notes.join(' | '),
       notes: [
@@ -1766,6 +1813,7 @@ export function verifyMasterChartRecord(
         ? 'internal_math_consistency_verified'
         : 'methodology_unresolved',
       verificationBasis: 'cosmiccouncil_internal_solver',
+      verificationTier: 'internal_math_consistency',
       expected: 'Midpoint-straddled boundaries matching classical Sripati within 1°',
       observed: bcData.methodologyAudit.notes.join(' | '),
     });
@@ -1826,6 +1874,7 @@ export function verifyMasterChartRecord(
       severity: 'critical',
       epistemicCategory: 'internal_math_consistency_verified',
       verificationBasis: 'provider_self_consistency',
+      verificationTier: 'internal_math_consistency',
       expected: '12 monotonic Tropical Placidus cusps independent of KP',
       observed: westDetail.notes[0],
     });
@@ -1847,6 +1896,7 @@ export function verifyMasterChartRecord(
         ? 'internal_math_consistency_verified'
         : 'methodology_unresolved',
       verificationBasis: 'cosmiccouncil_internal_solver',
+      verificationTier: 'internal_math_consistency',
       expected: 'Tropical Sun/Moon/Asc/MC/Cusps match internal Placidus ref; Placidus occupancy & aspect orbs valid',
       observed: westDetail.notes.join(' | '),
       notes: [...westDetail.occupancyMismatches, ...westDetail.aspectMismatches].join('; ') || undefined,
@@ -1908,6 +1958,7 @@ export function verifyMasterChartRecord(
           ? 'internal_math_consistency_verified'
           : 'methodology_unresolved',
         verificationBasis: 'cosmiccouncil_internal_solver',
+        verificationTier: 'internal_math_consistency',
         expected: `${tv.expectedUtcIso} / JD=${tv.expectedJulianDayUt}`,
         observed: `${tv.returnedUtcInstant ?? 'missing (returnedUtcInstant=null)'} / JD=${tv.returnedJulianDay ?? 'N/A'} / Δ=${tv.deltaSecondsFromCanonical ?? 'N/A'}s`,
         notes: tv.limitationNotes.join(' | '),
@@ -1931,6 +1982,7 @@ export function verifyMasterChartRecord(
           severity: 'major',
           epistemicCategory: 'internal_math_consistency_verified',
           verificationBasis: 'cosmiccouncil_internal_solver',
+          verificationTier: 'internal_math_consistency',
           expected: `JD=${tv.expectedJulianDayUt}`,
           observed: `JD=${tv.returnedJulianDay} (Δ=${tv.deltaSecondsFromCanonical ?? 0}s)`,
         });
@@ -1961,7 +2013,10 @@ export function verifyMasterChartRecord(
   const sb = master.shadbalaReconciliation.data;
   if (sb) {
     const providerSumErr = sb.perPlanet.filter(
-      (r) => r.provider && Math.abs(r.provider.componentSumCheckDelta) > 0.2
+      (r) =>
+        r.provider &&
+        r.provider.componentSumCheckDelta !== null &&
+        Math.abs(r.provider.componentSumCheckDelta) > 0.2
     ).length;
     checks.push({
       id: 'shadbala_sum_integrity',
@@ -1970,17 +2025,21 @@ export function verifyMasterChartRecord(
       severity: 'major',
       epistemicCategory: 'internal_math_consistency_verified',
       verificationBasis: 'provider_self_consistency',
+      verificationTier: 'internal_math_consistency',
       expected: 'All provider Shadbala components sum to total Virupas',
       observed: `sumErrors=${providerSumErr}, authoritativeDesignation=${sb.authoritativeDesignation}`,
     });
-    if (sb.perPlanet.some((p) => p.provider)) {
+    const providerWithAllSix = sb.perPlanet.filter(
+      (p) => p.provider && p.provider.componentSumCheckDelta !== null
+    ).length;
+    if (providerWithAllSix > 0) {
       internalMathConsistencyVerified.push({
         key: 'shadbala_component_sum',
         label: 'Provider Shadbala 6-Bala Component Sum',
         category: 'internal_math_consistency_verified',
         verificationBasis: 'provider_self_consistency',
         status: providerSumErr === 0 ? 'verified' : 'unresolved',
-        detail: `${sb.perPlanet.length - providerSumErr}/${sb.perPlanet.length} planets sum cleanly within 0.2V.`,
+        detail: `${providerWithAllSix - providerSumErr}/${providerWithAllSix} planets sum cleanly within 0.2V.`,
       });
     }
     methodologyUnresolved.push({
@@ -2065,6 +2124,7 @@ export function verifyMasterChartRecord(
         severity: 'major',
         epistemicCategory: kalaSumOk ? 'internal_math_consistency_verified' : 'methodology_unresolved',
         verificationBasis: 'provider_self_consistency',
+        verificationTier: 'internal_math_consistency',
         expected: 'nathonnatha+paksha+tribhaga+abdaMasaVaraHora+ayana+yuddha == shadbala.kala',
         observed: `${kItems.length - mismatches}/${kItems.length} planets sum cleanly within 0.25V`,
       });
@@ -2163,6 +2223,633 @@ export function verifyMasterChartRecord(
     });
   }
 
+  // =========================================================================
+  // PHASE 5 EXPANDED MATHEMATICAL AUDITS (D1–D60, AV Reductions, Bhavabala,
+  // Jaimini, Vimshottari Nakshatra Arc & 5-Level Sums, Sripati/KP Split,
+  // and Optional External Reference Reconciliation)
+  // =========================================================================
+  const extObj = (master.providerExtendedDatasets ?? {}) as Record<string, unknown>;
+
+  // 13. BPHS Shodashavarga D1–D60 Formula Audit (excluding D5 which is audited separately)
+  if (vedicData?.vargas?.chartsByDivision) {
+    const d1CoordMap = new Map<string, number>();
+    const ascVedicLon = Number(
+      vedicData.ascendant?.degree ?? vedicData.ascendant?.absolute_degree ?? NaN
+    );
+    if (Number.isFinite(ascVedicLon)) d1CoordMap.set('ascendant', normalizeDeg(ascVedicLon));
+    for (const p of vedicData.planets) {
+      const pName = String(p.name || '').trim().toLowerCase();
+      const lon = Number(p.absolute_degree ?? p.degree ?? p.longitude ?? NaN);
+      if (pName && Number.isFinite(lon)) d1CoordMap.set(pName, normalizeDeg(lon));
+    }
+
+    let vargaCheckedDivs = 0;
+    let vargaBodiesChecked = 0;
+    const vargaFormulaMismatches: string[] = [];
+
+    for (const [divKey, chartVal] of Object.entries(vedicData.vargas.chartsByDivision)) {
+      const divMatch = divKey.toUpperCase().match(/^D?(\d+)$/);
+      if (!divMatch) continue;
+      const divNum = Number(divMatch[1]);
+      if (!BPHS_SHODASHAVARGA_NUMS.has(divNum) || divNum === 1) continue;
+      const chartObj = chartVal && typeof chartVal === 'object' ? (chartVal as Record<string, unknown>) : null;
+      if (!chartObj) continue;
+
+      vargaCheckedDivs++;
+      const ascObj = chartObj.ascendant && typeof chartObj.ascendant === 'object'
+        ? (chartObj.ascendant as Record<string, unknown>)
+        : null;
+      const d1Asc = d1CoordMap.get('ascendant');
+      if (ascObj && d1Asc !== undefined && typeof ascObj.sign === 'string') {
+        const idx = SIGNS.findIndex((s) => s.toLowerCase() === String(ascObj.sign).trim().toLowerCase());
+        if (idx >= 0) {
+          vargaBodiesChecked++;
+          const expIdx = getVargaSignIndex(d1Asc, divNum);
+          if (idx !== expIdx) {
+            vargaFormulaMismatches.push(`D${divNum}.Ascendant=${SIGNS[idx]}!=BPHS:${SIGNS[expIdx]}`);
+          }
+        }
+      }
+
+      const dPlanets = Array.isArray(chartObj.planets)
+        ? (chartObj.planets as Array<Record<string, unknown>>)
+        : [];
+      for (const dp of dPlanets) {
+        const pn = String(dp.name || '').trim().toLowerCase();
+        const d1Lon = d1CoordMap.get(pn);
+        const signStr = String(dp.sign || '').trim();
+        const idx = SIGNS.findIndex((s) => s.toLowerCase() === signStr.toLowerCase());
+        if (d1Lon !== undefined && idx >= 0) {
+          vargaBodiesChecked++;
+          const expIdx = getVargaSignIndex(d1Lon, divNum);
+          if (idx !== expIdx) {
+            vargaFormulaMismatches.push(`D${divNum}.${String(dp.name)}=${SIGNS[idx]}!=BPHS:${SIGNS[expIdx]}`);
+          }
+        }
+      }
+    }
+
+    if (vargaCheckedDivs > 0 && vargaBodiesChecked > 0) {
+      const vargaAllOk = vargaFormulaMismatches.length === 0;
+      checks.push({
+        id: 'varga_d1_d60_bphs_formulas',
+        domain: 'Divisional Charts (D1–D60 BPHS)',
+        passed: vargaAllOk,
+        severity: 'major',
+        epistemicCategory: vargaAllOk ? 'internal_math_consistency_verified' : 'methodology_unresolved',
+        verificationBasis: 'cosmiccouncil_internal_solver',
+        verificationTier: 'internal_math_consistency',
+        expected: 'All returned Shodashavarga D1–D60 signs match canonical BPHS formulas',
+        observed: `${vargaCheckedDivs} division(s), ${vargaBodiesChecked} placement(s) checked, mismatches=${vargaFormulaMismatches.length}`,
+        notes: vargaFormulaMismatches.slice(0, 6).join('; ') || undefined,
+      });
+      (vargaAllOk ? internalMathConsistencyVerified : methodologyUnresolved).push({
+        key: 'varga_d1_d60_bphs_formulas',
+        label: 'BPHS Shodashavarga (D1–D60) Sign Formula Audit',
+        category: vargaAllOk ? 'internal_math_consistency_verified' : 'methodology_unresolved',
+        verificationBasis: 'cosmiccouncil_internal_solver',
+        verificationTier: 'internal_math_consistency',
+        status: vargaAllOk ? 'verified' : 'unresolved',
+        detail: vargaAllOk
+          ? `${vargaCheckedDivs} division(s) and ${vargaBodiesChecked} placement(s) matched BPHS sign formulas.`
+          : `Mismatches: ${vargaFormulaMismatches.slice(0, 4).join('; ')}`,
+      });
+    }
+  }
+
+  // 14. Ashtakavarga Local vs Provider Reconciliation & Reductions Pinda Integrity
+  const localAvObj =
+    (master.localModules?.localAshtakavarga?.data as Record<string, unknown> | null) ??
+    (extObj.localAshtakavarga as Record<string, unknown> | null) ??
+    null;
+  const localAvAuditObj = extObj.localAshtakavargaAudit as Record<string, unknown> | null;
+  if (localAvObj && localAvObj.selfConsistencyPassed === true) {
+    const cmpProv =
+      localAvAuditObj?.comparisonWithProvider &&
+      typeof localAvAuditObj.comparisonWithProvider === 'object'
+        ? (localAvAuditObj.comparisonWithProvider as Record<string, unknown>)
+        : null;
+    const providerMatched = cmpProv ? cmpProv.exactAllCellsMatch === true : null;
+    const localTotal = Number(localAvObj.totalPoints ?? 0);
+    const providerTotalMatches337 =
+      !vedicData?.ashtakavarga || Number(vedicData.ashtakavarga.totalPoints) === 337;
+
+    checks.push({
+      id: 'ashtakavarga_local_reconciliation',
+      domain: 'Ashtakavarga Local Reconciliation',
+      passed: localTotal === 337 && providerTotalMatches337,
+      severity: 'major',
+      epistemicCategory: 'internal_math_consistency_verified',
+      verificationBasis: 'cosmiccouncil_internal_solver',
+      verificationTier: 'internal_math_consistency',
+      expected: 'Local 7x8x12 Prastara/BAV/SAV=337 verified; compared vs provider matrices when present',
+      observed: `localTotal=${localTotal}, providerPresent=${Boolean(vedicData?.ashtakavarga)}, exactCellMatch=${String(providerMatched)}`,
+      notes: cmpProv && typeof cmpProv.summary === 'string' ? cmpProv.summary : undefined,
+    });
+    if (providerMatched === false) {
+      methodologyUnresolved.push({
+        key: 'ashtakavarga_local_vs_provider_diff',
+        label: 'Ashtakavarga Local BPHS Matrix vs Provider Payload Difference',
+        category: 'methodology_unresolved',
+        verificationBasis: 'cosmiccouncil_internal_solver',
+        verificationTier: 'internal_math_consistency',
+        status: 'partial',
+        detail:
+          (typeof cmpProv?.summary === 'string' ? cmpProv.summary : null) ||
+          'Provider Ashtakavarga cell distribution differs from deterministic BPHS local matrix.',
+      });
+    }
+  }
+
+  const avReductions =
+    master.localModules?.ashtakavargaReductions?.data ??
+    (extObj.ashtakavargaReductions as Record<string, unknown> | null);
+  if (avReductions && typeof avReductions === 'object' && (avReductions as Record<string, unknown>).valid === true) {
+    const redPerPlanet = ((avReductions as Record<string, unknown>).perPlanet ?? {}) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    const planetEntries = Object.values(redPerPlanet);
+    const pindaConsistent =
+      planetEntries.length === 7 &&
+      planetEntries.every(
+        (row) =>
+          Number(row.rasiPinda) + Number(row.grahaPinda) === Number(row.shodhyaPinda) &&
+          Number(row.shodhyaPinda) >= 0
+      );
+    checks.push({
+      id: 'ashtakavarga_reductions_pinda',
+      domain: 'Ashtakavarga Reductions (Shodhana & Pinda)',
+      passed: pindaConsistent,
+      severity: 'major',
+      epistemicCategory: 'internal_math_consistency_verified',
+      verificationBasis: 'cosmiccouncil_internal_solver',
+      verificationTier: 'internal_math_consistency',
+      expected: 'Trikona/Ekadhipatya Shodhana & Rasi+Graha=Shodhya Pinda across 7 classical planets',
+      observed: `planets=${planetEntries.length}/7, pindaSumConsistent=${String(pindaConsistent)}`,
+    });
+    internalMathConsistencyVerified.push({
+      key: 'ashtakavarga_reductions_pinda',
+      label: 'Ashtakavarga Trikona/Ekadhipatya Shodhana & Shodhya Pinda',
+      category: 'internal_math_consistency_verified',
+      verificationBasis: 'cosmiccouncil_internal_solver',
+      verificationTier: 'internal_math_consistency',
+      status: pindaConsistent ? 'verified' : 'unresolved',
+      detail: `${planetEntries.length}/7 planets reduced with BPHS Ch. 71 Pinda multipliers.`,
+    });
+  }
+
+  // 15. Shadbala BPHS Threshold Delta + Bhavabala Yellow External Validation Flag
+  if (sb) {
+    const ikData = extObj.ishtaKashtaPhala as Record<string, unknown> | null;
+    const ikItems = Array.isArray(ikData?.items) ? ikData.items.length : 0;
+    checks.push({
+      id: 'shadbala_reconciliation_and_bphs_thresholds',
+      domain: 'Shadbala BPHS Threshold & Subcomponents',
+      passed: true,
+      severity: 'info',
+      epistemicCategory: 'methodology_unresolved',
+      verificationBasis: 'cosmiccouncil_internal_solver',
+      verificationTier: 'internal_math_consistency',
+      expected: 'BPHS minimum thresholds audited (Sun 6.5R vs provider 5.0R); Ishta/Kashta tracked',
+      observed: `designation=${sb.authoritativeDesignation}, sunThresholdFlips=${String(sb.sunThresholdInvestigation.flipsPassFailStatus)}, ishtaKashtaItems=${ikItems}`,
+    });
+  }
+
+  const bbData = extObj.bhavabala as Record<string, unknown> | null;
+  const bbHouses = Array.isArray(bbData?.houses)
+    ? (bbData!.houses as Array<Record<string, unknown>>)
+    : Array.isArray(bbData?.items)
+    ? (bbData!.items as Array<Record<string, unknown>>)
+    : [];
+  if (bbHouses.length > 0) {
+    const bbValid12 =
+      bbHouses.length === 12 &&
+      bbHouses.every((h) => Number.isFinite(Number(h.totalVirupa ?? h.totalRupa ?? h.total ?? NaN)));
+    const hasExtBhava = Boolean(
+      options?.externalReferenceData?.bhavabalaTotalRupas &&
+        Object.keys(options.externalReferenceData.bhavabalaTotalRupas).length >= 12
+    );
+    checks.push({
+      id: 'bhavabala_external_verification_status',
+      domain: 'Bhavabala',
+      passed: bbValid12,
+      severity: 'info',
+      epistemicCategory: hasExtBhava
+        ? 'independently_validated_against_external_reference'
+        : 'methodology_unresolved',
+      verificationBasis: hasExtBhava ? 'external_jhora_pyjhora_swisseph' : 'pending_external_validation',
+      verificationTier: 'internal_math_consistency',
+      expected: '12 house strengths normalized; OpenAPI x-quality=yellow flagged pending JHora check',
+      observed: `houses=${bbHouses.length}/12, externalRefPresent=${String(hasExtBhava)}`,
+    });
+  }
+
+  // 16. Jaimini Karakas (7 vs 8 scheme), Arudha Padas & Upapada Audit
+  const jaiminiExt = extObj.jaimini as Record<string, unknown> | null;
+  if (jaiminiExt) {
+    const karakaRaw =
+      (jaiminiExt.charaKarakas as Record<string, unknown> | undefined) ??
+      (jaiminiExt.karakas as Record<string, unknown> | undefined);
+    const karakaList = Array.isArray(karakaRaw?.karakas)
+      ? (karakaRaw!.karakas as Array<Record<string, unknown>>)
+      : Array.isArray(karakaRaw?.items)
+      ? (karakaRaw!.items as Array<Record<string, unknown>>)
+      : Array.isArray(karakaRaw)
+      ? (karakaRaw as Array<Record<string, unknown>>)
+      : [];
+    const arudhaRaw = jaiminiExt.arudhaPadas as Record<string, unknown> | null;
+    const arudhaList = Array.isArray(arudhaRaw?.padas)
+      ? (arudhaRaw!.padas as Array<Record<string, unknown>>)
+      : Array.isArray(arudhaRaw?.items)
+      ? (arudhaRaw!.items as Array<Record<string, unknown>>)
+      : [];
+    const upapadaRaw = jaiminiExt.upapada as Record<string, unknown> | null;
+
+    if (karakaList.length > 0 || arudhaList.length > 0 || upapadaRaw) {
+      const schemeCount = karakaList.length;
+      const schemeOk = schemeCount === 0 || schemeCount === 7 || schemeCount === 8;
+      // If degrees are reported, verify monotonic descending order AK -> DK
+      const degList = karakaList
+        .map((k) => Number(k.degreeInSign ?? k.degree ?? NaN))
+        .filter((n) => Number.isFinite(n));
+      let descendingOk = true;
+      for (let i = 1; i < degList.length; i++) {
+        if (degList[i] > degList[i - 1] + 0.01) {
+          descendingOk = false;
+          break;
+        }
+      }
+      const jaiminiPassed = schemeOk && descendingOk;
+      checks.push({
+        id: 'jaimini_karakas_arudhas_verification',
+        domain: 'Jaimini Karakas & Arudhas',
+        passed: jaiminiPassed,
+        severity: 'major',
+        epistemicCategory: jaiminiPassed
+          ? 'internal_math_consistency_verified'
+          : 'methodology_unresolved',
+        verificationBasis: 'provider_self_consistency',
+        verificationTier: 'internal_math_consistency',
+        expected: 'Chara Karakas follow 7 or 8-karaka descending sign-degree scheme; Arudhas/Upapada valid',
+        observed: `karakas=${schemeCount}, descendingOrder=${String(descendingOk)}, arudhas=${arudhaList.length}, upapada=${Boolean(upapadaRaw)}`,
+      });
+      (jaiminiPassed ? internalMathConsistencyVerified : methodologyUnresolved).push({
+        key: 'jaimini_karakas_arudhas_verification',
+        label: 'Jaimini Karaka Scheme (7 vs 8) & Arudha Padas',
+        category: jaiminiPassed ? 'internal_math_consistency_verified' : 'methodology_unresolved',
+        verificationBasis: 'provider_self_consistency',
+        verificationTier: 'internal_math_consistency',
+        status: jaiminiPassed ? 'verified' : 'unresolved',
+        detail: `karakas=${schemeCount}, descendingOrder=${String(descendingOk)}, arudhas=${arudhaList.length}`,
+      });
+    }
+  }
+
+  // 17. Vimshottari Moon Nakshatra Arc Alignment & 5-Level Duration Sums
+  if (vedicData?.vimshottariDasha) {
+    const vd = vedicData.vimshottariDasha;
+    const moonEntry = vedicData.planets.find((p) => String(p.name || '').toLowerCase() === 'moon');
+    const moonLon = moonEntry
+      ? Number(moonEntry.absolute_degree ?? moonEntry.degree ?? moonEntry.longitude ?? NaN)
+      : NaN;
+    const bb = vd.birth_balance && typeof vd.birth_balance === 'object'
+      ? (vd.birth_balance as Record<string, unknown>)
+      : null;
+    const bbLord = typeof bb?.lord === 'string' ? bb.lord.trim() : '';
+    const bbRemYears = Number(bb?.remaining_years ?? NaN);
+
+    if (Number.isFinite(moonLon) && bb && bbLord && Number.isFinite(bbRemYears)) {
+      const nakInfo = getNakshatraAndSubs(moonLon);
+      const nakSpan = 360 / 27; // 13.333333...
+      const posInNak = normalizeDeg(moonLon) % nakSpan;
+      const fracRemaining = Math.max(0, (nakSpan - posInNak) / nakSpan);
+      const lordFullYears =
+        VIMSHOTTARI_ORDER.find((o) => o.lord.toLowerCase() === nakInfo.nakshatraLord.toLowerCase())?.years ?? 0;
+      const expectedRemYears = Number((fracRemaining * lordFullYears).toFixed(4));
+      const lordMatch = bbLord.toLowerCase() === nakInfo.nakshatraLord.toLowerCase();
+      const remDeltaYears = Math.abs(bbRemYears - expectedRemYears);
+
+      // 5-level duration hierarchy check
+      const mahas = Array.isArray(vd.mahadashas)
+        ? (vd.mahadashas as Array<Record<string, unknown>>)
+        : [];
+      let sumViolations = 0;
+      let maxDepthSeen = 0;
+
+      const auditSubLevel = (parentDur: number | null, children: Array<Record<string, unknown>>, depth: number) => {
+        if (children.length === 0) return;
+        if (depth > maxDepthSeen) maxDepthSeen = depth;
+        const durs = children
+          .map((c) => Number(c.durationYears ?? c.duration_years ?? NaN))
+          .filter((n) => Number.isFinite(n));
+        if (parentDur !== null && Number.isFinite(parentDur) && durs.length > 0) {
+          const sumDurs = durs.reduce((a, b) => a + b, 0);
+          if (sumDurs > parentDur + 0.15) sumViolations++;
+          if (children.length === 9 && durs.length === 9 && Math.abs(sumDurs - parentDur) > 0.15) {
+            sumViolations++;
+          }
+        }
+        for (const c of children) {
+          const nested = Array.isArray(c.subPeriods)
+            ? (c.subPeriods as Array<Record<string, unknown>>)
+            : Array.isArray(c.antardashas)
+            ? (c.antardashas as Array<Record<string, unknown>>)
+            : [];
+          const cDur = Number(c.durationYears ?? c.duration_years ?? NaN);
+          if (nested.length > 0) {
+            auditSubLevel(Number.isFinite(cDur) ? cDur : null, nested, depth + 1);
+          }
+        }
+      };
+
+      if (mahas.length > 0) {
+        auditSubLevel(null, mahas, 1);
+      }
+
+      const arcAndSumsOk = lordMatch && remDeltaYears <= 0.15 && sumViolations === 0;
+      checks.push({
+        id: 'vimshottari_nakshatra_arc_and_5level_sums',
+        domain: 'Vimshottari Nakshatra Arc & 5-Level Hierarchy',
+        passed: arcAndSumsOk,
+        severity: 'major',
+        epistemicCategory: arcAndSumsOk
+          ? 'internal_math_consistency_verified'
+          : 'methodology_unresolved',
+        verificationBasis: 'cosmiccouncil_internal_solver',
+        verificationTier: 'internal_math_consistency',
+        expected: `Moon@${moonLon.toFixed(3)}° -> ${nakInfo.nakshatraLord} ~${expectedRemYears}y remaining; child sums <= parent`,
+        observed: `lord=${bbLord} (match=${String(lordMatch)}), rem=${bbRemYears}y (Δ=${remDeltaYears.toFixed(4)}y), maxDepth=${maxDepthSeen}, sumViolations=${sumViolations}`,
+      });
+      (arcAndSumsOk ? internalMathConsistencyVerified : methodologyUnresolved).push({
+        key: 'vimshottari_nakshatra_arc_and_5level_sums',
+        label: 'Vimshottari Moon Nakshatra Arc & 5-Level Duration Hierarchy',
+        category: arcAndSumsOk ? 'internal_math_consistency_verified' : 'methodology_unresolved',
+        verificationBasis: 'cosmiccouncil_internal_solver',
+        verificationTier: 'internal_math_consistency',
+        status: arcAndSumsOk ? 'verified' : 'unresolved',
+        detail: `Moon Nakshatra=${nakInfo.nakshatra} (${nakInfo.nakshatraLord}), remΔ=${remDeltaYears.toFixed(4)}y, maxDepth=${maxDepthSeen}, violations=${sumViolations}`,
+      });
+    }
+  }
+
+  // 18. Sripati Bhava Chalit vs KP Placidus Non-Conflation Verification
+  if (bcData && kpData && bcData.houses.length === 12 && kpData.cusps.length === 12) {
+    const bcCusps = bcData.houses.map((h) => Number(h.degree_cusp ?? h.cusp ?? NaN)).filter(Number.isFinite);
+    const kpCusps = kpData.cusps.map((c) => Number(c.degree ?? c.longitude ?? NaN)).filter(Number.isFinite);
+    let maxBcVsKpDiff = 0;
+    if (bcCusps.length === 12 && kpCusps.length === 12) {
+      for (let i = 0; i < 12; i++) {
+        const d = Math.abs(circularDiffDeg(bcCusps[i], kpCusps[i]));
+        if (d > maxBcVsKpDiff) maxBcVsKpDiff = d;
+      }
+    }
+    const distinctFromKp =
+      bcData.methodologyAudit.cuspIsMidpointStraddledByBoundaries && maxBcVsKpDiff > 0.1;
+    checks.push({
+      id: 'bhava_chalit_non_conflation_with_kp',
+      domain: 'Sripati Bhava Chalit vs KP Separation',
+      passed: distinctFromKp,
+      severity: 'major',
+      epistemicCategory: distinctFromKp
+        ? 'internal_math_consistency_verified'
+        : 'methodology_unresolved',
+      verificationBasis: 'cosmiccouncil_internal_solver',
+      verificationTier: 'internal_math_consistency',
+      expected: 'Bhava Chalit uses midpoint-straddled Sripati Sandhis distinct from KP Placidus start cusps',
+      observed: `midpointStraddled=${String(bcData.methodologyAudit.cuspIsMidpointStraddledByBoundaries)}, maxDeltaFromKp=${maxBcVsKpDiff.toFixed(3)}°`,
+    });
+  }
+
+  // 19. External Reference Reconciliation (JHora / PyJHora / Swiss Ephemeris) OR Honest Blockers
+  const extRef = options?.externalReferenceData ?? null;
+  let externalReferenceAudit: ExternalReferenceAudit;
+
+  if (extRef) {
+    const comparisons: ExternalReferenceAudit['domainComparisons'] = [];
+    const extBlockers: string[] = [];
+
+    // D1 Ascendant & Planets
+    if (
+      vedicData &&
+      (typeof extRef.d1AscendantDeg === 'number' ||
+        (extRef.d1PlanetLongitudesDeg && Object.keys(extRef.d1PlanetLongitudesDeg).length > 0))
+    ) {
+      let maxD1Delta = 0;
+      const d1Issues: string[] = [];
+      if (typeof extRef.d1AscendantDeg === 'number' && Number.isFinite(Number(vedicData.ascendant?.degree))) {
+        const d = Math.abs(circularDiffDeg(Number(vedicData.ascendant!.degree), extRef.d1AscendantDeg));
+        maxD1Delta = Math.max(maxD1Delta, d);
+        if (d > 0.1) d1Issues.push(`Asc Δ=${d.toFixed(4)}°`);
+      }
+      if (extRef.d1PlanetLongitudesDeg) {
+        for (const [pl, refLon] of Object.entries(extRef.d1PlanetLongitudesDeg)) {
+          const found = vedicData.planets.find(
+            (p) => String(p.name || '').toLowerCase() === pl.toLowerCase()
+          );
+          const obsLon = found ? Number(found.absolute_degree ?? found.degree ?? NaN) : NaN;
+          if (Number.isFinite(obsLon)) {
+            const d = Math.abs(circularDiffDeg(obsLon, refLon));
+            maxD1Delta = Math.max(maxD1Delta, d);
+            if (d > 0.15) d1Issues.push(`${pl} Δ=${d.toFixed(4)}°`);
+          }
+        }
+      }
+      const matched = d1Issues.length === 0;
+      comparisons.push({
+        domain: 'd1_longitudes',
+        matched,
+        maxDelta: Number(maxD1Delta.toFixed(4)),
+        notes: matched ? 'D1 Ascendant & longitudes match external reference within 0.15°.' : d1Issues.join('; '),
+      });
+    } else {
+      extBlockers.push('External reference did not provide D1 Ascendant/planet longitudes.');
+    }
+
+    // Vargas
+    if (vedicData?.vargas?.chartsByDivision && extRef.vargasByDivision) {
+      let vargaErrs = 0;
+      let vargaChecked = 0;
+      for (const [divKey, extChart] of Object.entries(extRef.vargasByDivision)) {
+        const obsChart = vedicData.vargas.chartsByDivision[divKey];
+        if (!obsChart || typeof obsChart !== 'object') continue;
+        if (extChart.planets) {
+          const obsPlanets = Array.isArray((obsChart as Record<string, unknown>).planets)
+            ? ((obsChart as Record<string, unknown>).planets as Array<Record<string, unknown>>)
+            : [];
+          for (const [pName, extSign] of Object.entries(extChart.planets)) {
+            const op = obsPlanets.find((x) => String(x.name || '').toLowerCase() === pName.toLowerCase());
+            if (op && typeof op.sign === 'string') {
+              vargaChecked++;
+              if (op.sign.toLowerCase() !== extSign.toLowerCase()) vargaErrs++;
+            }
+          }
+        }
+      }
+      if (vargaChecked > 0) {
+        comparisons.push({
+          domain: 'divisional_vargas',
+          matched: vargaErrs === 0,
+          maxDelta: vargaErrs,
+          notes: `${vargaChecked - vargaErrs}/${vargaChecked} external reference varga signs matched.`,
+        });
+      }
+    }
+
+    // Shadbala
+    if (sb && extRef.shadbalaTotalVirupas) {
+      let sbMaxDelta = 0;
+      for (const row of sb.perPlanet) {
+        const refV = extRef.shadbalaTotalVirupas[row.planet];
+        if (typeof refV === 'number' && row.provider) {
+          sbMaxDelta = Math.max(sbMaxDelta, Math.abs(row.provider.totalVirupas - refV));
+        }
+      }
+      comparisons.push({
+        domain: 'shadbala_virupas',
+        matched: sbMaxDelta <= 5.0,
+        maxDelta: Number(sbMaxDelta.toFixed(3)),
+        notes: `Max Virupa delta vs external reference = ${sbMaxDelta.toFixed(3)}V.`,
+      });
+    }
+
+    // Bhavabala
+    if (bbHouses.length === 12 && extRef.bhavabalaTotalRupas) {
+      let bbMaxDelta = 0;
+      for (const h of bbHouses) {
+        const hNum = Number(h.house);
+        const obsR = Number(h.totalRupa ?? (Number(h.totalVirupa) / 60));
+        const refR = extRef.bhavabalaTotalRupas[hNum];
+        if (typeof refR === 'number' && Number.isFinite(obsR)) {
+          bbMaxDelta = Math.max(bbMaxDelta, Math.abs(obsR - refR));
+        }
+      }
+      comparisons.push({
+        domain: 'bhavabala_rupas',
+        matched: bbMaxDelta <= 0.5,
+        maxDelta: Number(bbMaxDelta.toFixed(3)),
+        notes: `Max Bhavabala delta vs external reference = ${bbMaxDelta.toFixed(3)}R.`,
+      });
+    }
+
+    // Ashtakavarga
+    if (vedicData?.ashtakavarga && extRef.ashtakavarga?.sarvashtakavarga?.length === 12) {
+      const obsSav = vedicData.ashtakavarga.sarvashtakavarga;
+      const refSav = extRef.ashtakavarga.sarvashtakavarga;
+      const savMaxDiff = Math.max(...obsSav.map((v, i) => Math.abs(Number(v) - Number(refSav[i]))));
+      comparisons.push({
+        domain: 'ashtakavarga_sav',
+        matched: savMaxDiff === 0,
+        maxDelta: savMaxDiff,
+        notes: savMaxDiff === 0 ? 'All 12 SAV sign totals match external reference.' : `Max SAV cell diff=${savMaxDiff}`,
+      });
+    }
+
+    // KP Cusps
+    if (kpData && extRef.kpCuspsDeg?.length === 12) {
+      let kpMaxD = 0;
+      for (let i = 0; i < 12; i++) {
+        const obsC = Number(kpData.cusps[i]?.degree ?? kpData.cusps[i]?.longitude ?? NaN);
+        if (Number.isFinite(obsC)) kpMaxD = Math.max(kpMaxD, Math.abs(circularDiffDeg(obsC, extRef.kpCuspsDeg[i])));
+      }
+      comparisons.push({
+        domain: 'kp_placidus_cusps',
+        matched: kpMaxD <= 0.15,
+        maxDelta: Number(kpMaxD.toFixed(4)),
+        notes: `Max KP cusp delta vs external reference = ${kpMaxD.toFixed(4)}°.`,
+      });
+    }
+
+    for (const cmp of comparisons) {
+      checks.push({
+        id: `external_ref_${cmp.domain}`,
+        domain: `External Reference (${cmp.domain})`,
+        passed: cmp.matched,
+        severity: 'major',
+        epistemicCategory: cmp.matched
+          ? 'independently_validated_against_external_reference'
+          : 'methodology_unresolved',
+        verificationBasis: 'external_jhora_pyjhora_swisseph',
+        verificationTier: 'independent_classical_validation',
+        expected: `Matches ${extRef.referenceSourceLabel}`,
+        observed: cmp.notes,
+      });
+      if (cmp.matched) {
+        independentlyValidatedAgainstExternalReference.push({
+          key: `external_ref_${cmp.domain}`,
+          label: `${extRef.referenceSourceLabel}: ${cmp.domain}`,
+          category: 'independently_validated_against_external_reference',
+          verificationBasis: 'external_jhora_pyjhora_swisseph',
+          verificationTier: 'independent_classical_validation',
+          status: 'verified',
+          detail: cmp.notes,
+        });
+      } else {
+        methodologyUnresolved.push({
+          key: `external_ref_mismatch_${cmp.domain}`,
+          label: `${extRef.referenceSourceLabel}: ${cmp.domain} Divergence`,
+          category: 'methodology_unresolved',
+          verificationBasis: 'external_jhora_pyjhora_swisseph',
+          verificationTier: 'independent_classical_validation',
+          status: 'unresolved',
+          detail: cmp.notes,
+        });
+      }
+    }
+
+    const matchedDomainsCount = comparisons.filter((c) => c.matched).length;
+    const mismatchedDomainsCount = comparisons.length - matchedDomainsCount;
+    externalReferenceAudit = {
+      status: 'reconciled',
+      referenceSourceLabel: extRef.referenceSourceLabel,
+      matchedDomainsCount,
+      mismatchedDomainsCount,
+      blockers: extBlockers,
+      domainComparisons: comparisons,
+    };
+  } else {
+    externalReferenceAudit = {
+      status: 'blocked_no_external_reference',
+      referenceSourceLabel: null,
+      matchedDomainsCount: 0,
+      mismatchedDomainsCount: 0,
+      blockers: [
+        'No external reference fixture (externalReferenceData: JHora / PyJHora / Swiss Ephemeris export) was supplied.',
+        'JHora, PyJHora, and Swiss Ephemeris runtimes are not installed in this TypeScript/Worker runtime.',
+        'AstroWay endpoints flagged OpenAPI x-quality=yellow (Bhavabala, Shadbala Ishta/Kashta, Ashtakavarga Shodhana) require external classical cross-check before marking independently_validated.',
+      ],
+      domainComparisons: [],
+    };
+  }
+
+  // Normalize verificationTier across all checks & epistemic items
+  for (const check of checks) {
+    check.verificationTier = inferCheckVerificationTier(check);
+  }
+  for (const bucket of [
+    providerDataAcquired,
+    internalMathConsistencyVerified,
+    independentlyValidatedAgainstExternalReference,
+    methodologyUnresolved,
+    datasetUnavailable,
+  ]) {
+    for (const item of bucket) {
+      item.verificationTier = inferEpistemicVerificationTier(item);
+    }
+  }
+
+  const verificationTierSummary: NonNullable<MathematicalVerificationReport['verificationTierSummary']> = {
+    software_regression: { total: 0, passed: 0, failed: 0 },
+    internal_math_consistency: { total: 0, passed: 0, failed: 0 },
+    independent_classical_validation: { total: 0, passed: 0, failed: 0 },
+  };
+  for (const c of checks) {
+    const t = c.verificationTier || 'internal_math_consistency';
+    verificationTierSummary[t].total++;
+    if (c.passed) verificationTierSummary[t].passed++;
+    else verificationTierSummary[t].failed++;
+  }
+
   const passedCount = checks.filter((c) => c.passed).length;
   const failedCount = checks.length - passedCount;
 
@@ -2186,6 +2873,8 @@ export function verifyMasterChartRecord(
     mode,
     passedCount,
     failedCount,
+    verificationTierSummary,
+    externalReferenceAudit,
     epistemicClassification: {
       providerDataAcquired,
       internalMathConsistencyVerified,

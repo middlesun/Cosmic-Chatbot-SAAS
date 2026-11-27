@@ -28,6 +28,7 @@ import {
 import {
   V2_RECALCULATION_VERSION,
   deriveCanonicalDatasetState,
+  evaluateDatasetCompleteness,
 } from './datasetManifest';
 import { enrichMasterWithPhase4LocalCalculations } from './localVedicMath';
 import { buildShadbalaReconciliationReport } from './shadbalaReconciliation';
@@ -549,8 +550,15 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
   cachedVerifiedRecord?: LayerBMasterChartRecord | null;
   referenceDateIso?: string | null;
   preferLocalAshtakavarga?: boolean;
+  includeLocalModules?: boolean;
 }): LayerBMasterChartRecord {
-  const { instant, rawLayerA, referenceDateIso, preferLocalAshtakavarga } = params;
+  const {
+    instant,
+    rawLayerA,
+    referenceDateIso,
+    preferLocalAshtakavarga,
+    includeLocalModules = true,
+  } = params;
   const fp = instant.inputFingerprint;
   const indepRef = computeIndependentAstronomicalReference(instant);
   const calls = rawLayerA.calls || {};
@@ -1088,29 +1096,40 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     const tMc = typeof tHousesObj?.mc === 'number' ? normalizeDeg(tHousesObj.mc) : null;
 
     const tCuspsDeg12 = tCuspsArr.map((c) => c.abs_pos);
-    const tPlanets = asObjArr(chartTropical.planets).map((p) => {
-      const lon = normalizeDeg(Number(p.longitude ?? 0));
-      const providerHouse =
-        typeof p.house === 'number' && Number.isInteger(p.house) && p.house >= 1 && p.house <= 12
-          ? p.house
-          : undefined;
-      const derivedHouse =
-        providerHouse === undefined ? findHouseFrom12Cusps(tCuspsDeg12, lon) : undefined;
-      return {
-        ...p,
-        name: normalizeAstroWayPlanetName(p.name || p.id),
-        raw_name: p.name ?? p.id,
-        abs_pos: lon,
-        longitude: lon,
-        sign: SIGNS[Math.floor(lon / 30) % 12],
-        is_retrograde: Boolean(p.isRetrograde),
-        ...(providerHouse !== undefined
-          ? { house: providerHouse }
-          : derivedHouse !== undefined
-          ? { house: derivedHouse, house_derived_from_provider_cusps: true }
-          : {}),
-      };
-    });
+    const tPlanets = asObjArr(chartTropical.planets)
+      .map((p) => {
+        const rawLon = p.longitude;
+        if (
+          rawLon === null ||
+          rawLon === undefined ||
+          rawLon === '' ||
+          !Number.isFinite(Number(rawLon))
+        ) {
+          return null;
+        }
+        const lon = normalizeDeg(Number(rawLon));
+        const providerHouse =
+          typeof p.house === 'number' && Number.isInteger(p.house) && p.house >= 1 && p.house <= 12
+            ? p.house
+            : undefined;
+        const derivedHouse =
+          providerHouse === undefined ? findHouseFrom12Cusps(tCuspsDeg12, lon) : undefined;
+        return {
+          ...p,
+          name: normalizeAstroWayPlanetName(p.name || p.id),
+          raw_name: p.name ?? p.id,
+          abs_pos: lon,
+          longitude: lon,
+          sign: SIGNS[Math.floor(lon / 30) % 12],
+          is_retrograde: Boolean(p.isRetrograde),
+          ...(providerHouse !== undefined
+            ? { house: providerHouse }
+            : derivedHouse !== undefined
+            ? { house: derivedHouse, house_derived_from_provider_cusps: true }
+            : {}),
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
 
     const tAspects = asObjArr(chartTropical.aspects).map((a) => {
       const typeObj = asObj(a.type);
@@ -1289,19 +1308,27 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
   const shadbalaFullData = unwrapAstroWayCall(calls.shadbala_full);
   const providerShadbalaMap: Record<string, Record<string, unknown>> = {};
   if (shadbalaFullData && Array.isArray(shadbalaFullData.items)) {
+    const finiteOrNull = (val: unknown): number | null => {
+      if (val === null || val === undefined || val === '') return null;
+      const n = Number(val);
+      return Number.isFinite(n) ? n : null;
+    };
     for (const item of asObjArr(shadbalaFullData.items)) {
       const pName = normalizeAstroWayPlanetName(item.planetName || item.planet);
       const minRupas = BPHS_SHADBALA_MIN_RUPAS[pName];
       if (!pName || !minRupas) continue;
-      const totalVirupa = Number(item.totalVirupa ?? 0);
-      const totalRupa = Number(item.totalRupa ?? (totalVirupa / 60).toFixed(2));
+      const totalVirupa = finiteOrNull(item.totalVirupa);
+      if (totalVirupa === null || totalVirupa <= 0) continue;
+      const totalRupaRaw = finiteOrNull(item.totalRupa);
+      const totalRupa =
+        totalRupaRaw !== null ? totalRupaRaw : Number((totalVirupa / 60).toFixed(2));
       providerShadbalaMap[pName] = {
-        sthana_bala: Number(item.sthana ?? 0),
-        dig_bala: Number(item.dig ?? 0),
-        kala_bala: Number(item.kala ?? 0),
-        cheshta_bala: Number(item.cheshta ?? 0),
-        naisargika_bala: Number(item.naisargika ?? 0),
-        drik_bala: Number(item.drik ?? 0),
+        sthana_bala: finiteOrNull(item.sthana),
+        dig_bala: finiteOrNull(item.dig),
+        kala_bala: finiteOrNull(item.kala),
+        cheshta_bala: finiteOrNull(item.cheshta),
+        naisargika_bala: finiteOrNull(item.naisargika),
+        drik_bala: finiteOrNull(item.drik),
         total: totalVirupa,
         shadbala_in_rupas: totalRupa,
         minimum_requirements: minRupas,
@@ -1805,6 +1832,10 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     providerExtendedDatasets,
     remainingClassicalGaps,
   };
+  if (includeLocalModules === false) {
+    master.datasetManifest = evaluateDatasetCompleteness(master);
+    return master;
+  }
   return enrichMasterWithPhase4LocalCalculations(master, {
     preferLocalAshtakavarga,
   });
@@ -1817,6 +1848,7 @@ export function buildLayerBMasterChartRecord(params: {
   referenceDateIso?: string | null;
   supplementaryFreeAstroApiVedicCall?: SanitizedProviderCallRecord | null;
   preferLocalAshtakavarga?: boolean;
+  includeLocalModules?: boolean;
 }): LayerBMasterChartRecord {
   const {
     instant,
@@ -1825,6 +1857,7 @@ export function buildLayerBMasterChartRecord(params: {
     referenceDateIso,
     supplementaryFreeAstroApiVedicCall,
     preferLocalAshtakavarga,
+    includeLocalModules = true,
   } = params;
   if (rawLayerA?.providerId === 'astroway') {
     const awMaster = normalizeAstroWayLayerBMasterChartRecord({
@@ -1833,11 +1866,13 @@ export function buildLayerBMasterChartRecord(params: {
       cachedVerifiedRecord,
       referenceDateIso,
       preferLocalAshtakavarga,
+      includeLocalModules,
     });
     if (supplementaryFreeAstroApiVedicCall) {
       return integrateFreeAstroApiSupplementaryIntoMaster(
         awMaster,
-        supplementaryFreeAstroApiVedicCall
+        supplementaryFreeAstroApiVedicCall,
+        { includeLocalModules }
       );
     }
     return awMaster;
@@ -2121,7 +2156,7 @@ export function buildLayerBMasterChartRecord(params: {
     bhavaChalit =
       resolveCached((r) => r.frames.bhavaChalit) ||
       unavailableEnvelope<BhavaChalitFrame>(
-        'freeastroapi:/api/v2/vedic/calculate#bhava_chalit',
+        calcCall ? 'freeastroapi:/api/v2/vedic/calculate#bhava_chalit' : 'unavailable',
         'none',
         { ayanamsha: 'lahiri', methodology: 'sripati_midpoint_chalit' },
         fp,
@@ -2400,6 +2435,10 @@ export function buildLayerBMasterChartRecord(params: {
     referenceDateTiming,
     remainingClassicalGaps: REMAINING_CLASSICAL_GAPS_INVENTORY,
   };
+  if (includeLocalModules === false) {
+    master.datasetManifest = evaluateDatasetCompleteness(master);
+    return master;
+  }
   return enrichMasterWithPhase4LocalCalculations(master, {
     preferLocalAshtakavarga,
   });

@@ -19,3 +19,12 @@ export * from './astrowayEval';
 export * from './supplementaryCompatibility';
 export * from './localAshtakavarga';
 export * from './localVedicMath';
+export * from './compiler';
+export {
+  evaluateAshtakavargaCompatibility as validateSupplementaryAshtakavarga,
+  evaluateBhavaChalitCompatibility as validateSupplementaryBhavaChalit,
+  evaluateD5DivisionalCompatibility as validateSupplementaryDivisionalChart,
+} from './supplementaryCompatibility';
+export {
+  computeLocalAshtakavarga as computeValidatedLocalAshtakavarga,
+} from './localAshtakavarga';

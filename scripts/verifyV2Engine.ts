@@ -32,15 +32,20 @@ import {
   buildLegacyVsV2ComparisonReport,
   buildAstroWayProbeSpecs,
   buildShadbalaReconciliationReport,
+  compileV2FoundationalChart,
   compareAstroWayModeAVsModeBResponses,
   compareAshtakavargaMatrices,
   compareModeAVsModeBResponses,
+  computeAdvancedAvasthas,
+  computeAshtakavargaReductions,
   computeCompletedAgeYears,
   computeDispositorRelationships,
   computeIndependentAstronomicalReference,
   computeLocalAshtakavarga,
+  computeLocalSripatiBhavaChalit,
   computeLocalVedicConditions,
   computePanchadhaMaitri,
+  computeValidatedLocalAshtakavarga,
   computeVimshopakaBala,
   deleteAstroWayBatchSession,
   enrichMasterWithPhase4LocalCalculations,
@@ -75,12 +80,16 @@ import {
   saveAstroWayBatchSession,
   summarizeObservedQuotaHeaders,
   summarizeRuntimeHeapTelemetry,
+  validateSupplementaryAshtakavarga,
+  validateSupplementaryBhavaChalit,
+  validateSupplementaryDivisionalChart,
   verify12CuspSequence,
   verifyClassicalAshtakavargaRulesTable,
   verifyKpFrameDetailed,
   verifyMasterChartRecord,
   verifyWesternFrameDetailed,
   type CanonicalBirthInput,
+  type ExternalReferenceInput,
   type KpPlacidusFrame,
   type LayerARawProviderRecord,
   type SanitizedProviderCallRecord,
@@ -234,7 +243,386 @@ function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(`ASSERTION FAILED: ${msg}`);
 }
 
+function readCliFlagValue(flag: string): string | null {
+  const eqPrefix = `${flag}=`;
+  for (let i = 2; i < process.argv.length; i++) {
+    const arg = process.argv[i];
+    if (arg === flag && i + 1 < process.argv.length) {
+      return process.argv[i + 1];
+    }
+    if (arg.startsWith(eqPrefix)) {
+      return arg.slice(eqPrefix.length);
+    }
+  }
+  return null;
+}
+
+function parseCachedAstroWayPayload(
+  rawJson: unknown,
+  instant: ReturnType<typeof resolveCanonicalBirthInstant>
+): LayerARawProviderRecord | null {
+  if (!rawJson || typeof rawJson !== 'object') return null;
+  const obj = rawJson as Record<string, unknown>;
+  if (obj.schemaVersion === 'v2.raw.1.0' && obj.calls && typeof obj.calls === 'object') {
+    return obj as unknown as LayerARawProviderRecord;
+  }
+  if (obj.layerA && typeof obj.layerA === 'object') {
+    const la = obj.layerA as Record<string, unknown>;
+    if (la.calls && typeof la.calls === 'object') {
+      return la as unknown as LayerARawProviderRecord;
+    }
+  }
+  if (obj.calls && typeof obj.calls === 'object') {
+    return {
+      schemaVersion: 'v2.raw.1.0',
+      capturedAtUtc: String(obj.capturedAtUtc || new Date().toISOString()),
+      providerId: 'astroway',
+      providerLabel: 'AstroWay V1 API (Cached)',
+      providerBaseUrl: 'https://api.astroway.info/v1',
+      inputFingerprint: instant.inputFingerprint,
+      canonicalUtcIso: instant.utc.iso,
+      canonicalJulianDayUt: instant.utc.julianDayUt,
+      acquisitionStatus: 'partial',
+      missingDatasets: [],
+      validationFailures: [],
+      calls: obj.calls as Record<string, SanitizedProviderCallRecord>,
+      timezoneEquivalenceCheck: null,
+      ephemerisTimestampCheck: null,
+      quotaAndPerformanceSummary: {
+        plannedRequestsCount: Object.keys(obj.calls as Record<string, unknown>).length,
+        totalCalls: Object.keys(obj.calls as Record<string, unknown>).length,
+        actualHttpRequestsSent: Object.keys(obj.calls as Record<string, unknown>).length,
+        retryCount: 0,
+        successfulCalls: Object.values(obj.calls as Record<string, SanitizedProviderCallRecord>).filter((c) => c.ok).length,
+        failedCalls: Object.values(obj.calls as Record<string, SanitizedProviderCallRecord>).filter((c) => !c.ok).length,
+        totalLatencyMs: 0,
+        totalRateWaitMs: 0,
+        totalPayloadBytes: 0,
+        coordinationModesObserved: ['isolate_memory_only'],
+        quotaHeadersObserved: {
+          status: 'not_provided_by_provider',
+          observedHeadersByEndpoint: {},
+          remainingQuotaObserved: null,
+          rateLimitObserved: null,
+          note: 'Reconstructed from local --astroway-cache artifact',
+        },
+      },
+    };
+  }
+  return null;
+}
+
+async function runCompileChris4Cli(): Promise<void> {
+  loadLocalEnvFilesForCli();
+  const astroCachePath = readCliFlagValue('--astroway-cache');
+  const freeAstroCachePath = readCliFlagValue('--freeastro-cache');
+  const sessionIdArg = readCliFlagValue('--session-id');
+  const externalRefPath = readCliFlagValue('--external-ref');
+  const targetDateIso = readCliFlagValue('--target-date') || new Date().toISOString().slice(0, 10);
+  const fetchMissing = process.argv.includes('--fetch-missing');
+  const outArg = readCliFlagValue('--out');
+  const outDir = path.join(os.tmpdir(), 'v2-engine-verification');
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = outArg
+    ? path.resolve(process.cwd(), outArg)
+    : path.join(outDir, 'chris4-consolidated-foundational-chart.json');
+
+  const chris4Instant = resolveCanonicalBirthInstant({
+    ...FIXTURES[0].input,
+    name: 'Chris 4',
+  });
+
+  const blockers: string[] = [];
+  let astroWayRaw: LayerARawProviderRecord | null = null;
+  let astroWaySourceMode = 'unavailable';
+
+  // 1. Reuse AstroWay cached JSON if supplied
+  if (astroCachePath) {
+    const absCache = path.resolve(process.cwd(), astroCachePath);
+    if (!fs.existsSync(absCache)) {
+      blockers.push(`--astroway-cache file not found: ${astroCachePath}`);
+    } else {
+      const parsed = JSON.parse(fs.readFileSync(absCache, 'utf8'));
+      astroWayRaw = parseCachedAstroWayPayload(parsed, chris4Instant);
+      if (astroWayRaw) {
+        astroWaySourceMode = `cache:${astroCachePath}`;
+      } else {
+        blockers.push(`--astroway-cache file did not contain recognized AstroWay LayerA or calls map: ${astroCachePath}`);
+      }
+    }
+  }
+
+  // 2. Reuse persisted AstroWay session if available
+  if (!astroWayRaw) {
+    if (sessionIdArg) {
+      const loaded = await loadAstroWayBatchSession(sessionIdArg);
+      if (loaded) {
+        const rec = await reconstructAstroWayLayerAFromSession({
+          instant: chris4Instant,
+          session: loaded,
+          skipGlobalCooldownRead: true,
+        });
+        astroWayRaw = rec.layerA;
+        astroWaySourceMode = `session:${loaded.sessionId}`;
+      } else {
+        blockers.push(`--session-id "${sessionIdArg}" could not be loaded.`);
+      }
+    } else {
+      const resumable = await listResumableAstroWaySessions({
+        inputFingerprint: chris4Instant.inputFingerprint,
+      });
+      if (resumable.length > 0) {
+        const loaded = await loadAstroWayBatchSession(resumable[0].sessionId);
+        if (loaded) {
+          const rec = await reconstructAstroWayLayerAFromSession({
+            instant: chris4Instant,
+            session: loaded,
+            skipGlobalCooldownRead: true,
+          });
+          astroWayRaw = rec.layerA;
+          astroWaySourceMode = `session:${loaded.sessionId}`;
+        }
+      }
+    }
+  }
+
+  // 3. Optionally fetch pruned foundational AstroWay if --fetch-missing & ASTROWAY_API_KEY present
+  const awKey = getAstroWayApiKey();
+  const autoCacheAstroPath = path.join(outDir, 'chris4-astroway-cache.json');
+  const autoCacheFreeAstroPath = path.join(outDir, 'chris4-freeastro-supp-cache.json');
+  if (!astroWayRaw && !astroCachePath && fs.existsSync(autoCacheAstroPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(autoCacheAstroPath, 'utf8'));
+      const cached = parseCachedAstroWayPayload(parsed, chris4Instant);
+      if (cached && cached.quotaAndPerformanceSummary.successfulCalls > 0) {
+        const hasPending = Object.values(cached.calls).some(
+          (c) => c.acquisitionClassification === 'not_yet_tested' || c.acquisitionClassification === 'rate_limited'
+        );
+        if (!hasPending || !fetchMissing) {
+          astroWayRaw = cached;
+          astroWaySourceMode = `cache:${autoCacheAstroPath}`;
+        }
+      }
+    } catch {
+      // ignore invalid cache
+    }
+  }
+  if (!astroWayRaw && fetchMissing) {
+    if (!awKey) {
+      blockers.push('ASTROWAY_API_KEY is unset; cannot execute live pruned foundational AstroWay bundle (--fetch-missing).');
+    } else {
+      console.log('>>> Acquiring pruned foundational AstroWay bundle (64 endpoints) for Chris 4...');
+      let existingCalls: Record<string, SanitizedProviderCallRecord> | undefined;
+      if (fs.existsSync(autoCacheAstroPath)) {
+        try {
+          const parsed = JSON.parse(fs.readFileSync(autoCacheAstroPath, 'utf8'));
+          const cached = parseCachedAstroWayPayload(parsed, chris4Instant);
+          if (cached?.calls) {
+            existingCalls = cached.calls;
+            console.log(`>>> Resuming from ${autoCacheAstroPath}`);
+          }
+        } catch {
+          // ignore
+        }
+      }
+      let batchIndex = 0;
+      const runSessionId = sessionIdArg || `cli-chris4-${Date.now()}`;
+      for (let loop = 0; loop < 40; loop++) {
+        const step = await acquireAstroWayFoundationalBundle(chris4Instant, {
+          apiKey: awKey,
+          sessionId: runSessionId,
+          targetDateIso,
+          includeTimezoneEquivalenceProbe: false,
+          existingCalls,
+          batchIndex,
+          batchSize: 9,
+        });
+        existingCalls = step.updatedCalls;
+        batchIndex = step.batchState.batchIndex;
+        astroWayRaw = step.layerA;
+        fs.writeFileSync(
+          autoCacheAstroPath,
+          JSON.stringify(redactSecretsDeep(astroWayRaw), null, 2),
+          'utf8'
+        );
+        console.log(
+          `    [AstroWay batch ${step.batchState.batchIndex}] status=${step.batchState.status}, ok=${step.layerA.quotaAndPerformanceSummary.successfulCalls}/${step.batchState.totalPlannedCount}, remaining=${step.batchState.remainingEligibleCount}`
+        );
+        if (step.batchState.remainingEligibleCount === 0) break;
+        if (step.batchState.status === 'waiting_rate_limit') {
+          const waitMs = Math.max(1000, Math.min(185_000, (step.batchState.retryAfterMs || 50_000) + 1000));
+          console.log(`    [AstroWay rate-limit] Waiting ${Math.ceil(waitMs / 1000)}s before resuming batch...`);
+          await new Promise((r) => setTimeout(r, waitMs));
+        }
+      }
+      astroWaySourceMode = `live_foundational_session:${runSessionId}`;
+    }
+  } else if (!astroWayRaw) {
+    blockers.push(
+      awKey
+        ? 'AstroWay live fetch not triggered (pass --fetch-missing or --astroway-cache / --session-id to reuse captured data).'
+        : 'ASTROWAY_API_KEY is unset and no --astroway-cache or persisted --session-id matching Chris 4 was provided.'
+    );
+  }
+
+  // 4. Resolve FreeAstroAPI 1-call supplementary (/api/v2/vedic/calculate)
+  let freeAstroSupp: SanitizedProviderCallRecord | null = null;
+  let freeAstroSourceMode = 'unavailable';
+  if (freeAstroCachePath) {
+    const absFa = path.resolve(process.cwd(), freeAstroCachePath);
+    if (fs.existsSync(absFa)) {
+      const parsed = JSON.parse(fs.readFileSync(absFa, 'utf8')) as Record<string, unknown>;
+      freeAstroSupp = (parsed.call || parsed.calls?.['vedic_calculate'] || parsed) as SanitizedProviderCallRecord;
+      freeAstroSourceMode = `cache:${freeAstroCachePath}`;
+    } else {
+      blockers.push(`--freeastro-cache file not found: ${freeAstroCachePath}`);
+    }
+  } else if (!fetchMissing && fs.existsSync(autoCacheFreeAstroPath)) {
+    const parsed = JSON.parse(fs.readFileSync(autoCacheFreeAstroPath, 'utf8')) as Record<string, unknown>;
+    freeAstroSupp = (parsed.call || parsed.calls?.['vedic_calculate'] || parsed) as SanitizedProviderCallRecord;
+    freeAstroSourceMode = `cache:${autoCacheFreeAstroPath}`;
+  } else if (fetchMissing) {
+    const faKey = getFreeAstroApiKey();
+    if (!faKey) {
+      blockers.push('FREE_ASTRO_API_KEY is unset; cannot execute single targeted FreeAstroAPI supplementary /api/v2/vedic/calculate call.');
+    } else {
+      console.log('>>> Acquiring single targeted FreeAstroAPI supplementary /api/v2/vedic/calculate call...');
+      const faRes = await acquireFreeAstroApiSupplementaryVedicCalculate(chris4Instant, {
+        apiKey: faKey,
+      });
+      freeAstroSupp = faRes.call;
+      freeAstroSourceMode = `live_single_call:${faRes.status}`;
+      if (freeAstroSupp) {
+        fs.writeFileSync(
+          autoCacheFreeAstroPath,
+          JSON.stringify(redactSecretsDeep(freeAstroSupp), null, 2),
+          'utf8'
+        );
+      }
+      if (!faRes.call?.ok) {
+        blockers.push(`FreeAstroAPI supplementary call returned status=${faRes.status}: ${faRes.call?.errorMessage || 'request failed'}`);
+      }
+    }
+  } else {
+    const faKey = getFreeAstroApiKey();
+    blockers.push(
+      faKey
+        ? 'FreeAstroAPI 1-call supplementary fetch not triggered (pass --fetch-missing or --freeastro-cache).'
+        : 'FREE_ASTRO_API_KEY is unset; FreeAstroAPI supplementary /api/v2/vedic/calculate skipped.'
+    );
+  }
+
+  // 5. Optional external JHora / PyJHora / SwissEph reference fixture
+  let externalReferenceData: ExternalReferenceInput | null = null;
+  if (externalRefPath) {
+    const absExt = path.resolve(process.cwd(), externalRefPath);
+    if (fs.existsSync(absExt)) {
+      externalReferenceData = JSON.parse(fs.readFileSync(absExt, 'utf8')) as ExternalReferenceInput;
+    } else {
+      blockers.push(`--external-ref file not found: ${externalRefPath}`);
+    }
+  }
+
+  // 6. Compile unified Phase 5 Chris 4 Foundational Birth Chart
+  const compiled = compileV2FoundationalChart({
+    instant: chris4Instant,
+    astroWayRaw,
+    freeAstroApiSupplementary: freeAstroSupp,
+    externalReferenceData,
+    options: {
+      targetDateIso,
+      includeLocalModules: true,
+    },
+  });
+
+  // 7. Read-only comparison against Chris 4 legacy fixture
+  const chris4LegacyPath = path.resolve(process.cwd(), 'public/assets/aistudio/chris-4-birth-chart_8e64429a.json');
+  const legacyChartJson = fs.existsSync(chris4LegacyPath)
+    ? JSON.parse(fs.readFileSync(chris4LegacyPath, 'utf8'))
+    : null;
+  const legacyComparison = buildLegacyVsV2ComparisonReport({
+    profileId: 'chris-4-bardhaman',
+    profileName: 'Chris 4',
+    legacyChartJson,
+    instant: chris4Instant,
+    layerB: compiled.layerBMaster,
+  });
+
+  const allBlockers = Array.from(new Set([...blockers, ...compiled.externalValidationBlockers]));
+
+  const outputPayload = redactSecretsDeep({
+    compiledAtUtc: compiled.compiledAtUtc,
+    profile: 'Chris 4 (Bardhaman 1985-12-25 04:33:00 Asia/Kolkata)',
+    acquisitionSources: {
+      astroWay: astroWaySourceMode,
+      freeAstroApiSupplementary: freeAstroSourceMode,
+      externalReference: externalReferenceData?.referenceSourceLabel ?? null,
+    },
+    blockers: allBlockers,
+    compiledChart: compiled,
+    legacyComparison,
+  });
+
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, JSON.stringify(outputPayload, null, 2), 'utf8');
+
+  const summaryReport = redactSecretsDeep({
+    profile: 'Chris 4',
+    canonicalUtc: chris4Instant.utc.iso,
+    julianDayUt: chris4Instant.utc.julianDayUt,
+    outputArtifactPath: outPath,
+    acquisitionSources: {
+      astroWay: astroWaySourceMode,
+      freeAstroApiSupplementary: freeAstroSourceMode,
+      externalReference: externalReferenceData?.referenceSourceLabel ?? null,
+    },
+    endpointAndCreditSummary: compiled.endpointAndCreditSummary,
+    compatibilityGates: compiled.compatibilityGates
+      ? {
+          singleCallOnly: compiled.compatibilityGates.singleCallOnly,
+          ashtakavarga: compiled.compatibilityGates.ashtakavarga.outcome,
+          bhavaChalit: compiled.compatibilityGates.bhavaChalit.outcome,
+          d5: {
+            outcome: compiled.compatibilityGates.d5.outcome,
+            detectedFormula: compiled.compatibilityGates.d5.detectedFormula,
+            recommendedState: compiled.compatibilityGates.d5.recommendedState,
+          },
+        }
+      : 'NOT_RUN (no FreeAstroAPI supplementary payload provided)',
+    localAshtakavargaValidation: compiled.localAshtakavargaAudit ?? {
+      available: false,
+      note: 'Local Ashtakavarga requires canonical D1 positions from AstroWay/FreeAstroAPI.',
+    },
+    mathematicalVerificationResults: {
+      mode: compiled.verification.mode,
+      passedCount: compiled.verification.passedCount,
+      failedCount: compiled.verification.failedCount,
+      verificationTierSummary: compiled.verification.verificationTierSummary,
+      externalReferenceStatus: compiled.verification.externalReferenceAudit?.status,
+    },
+    completenessTable: compiled.completenessTable,
+    datasetInventorySummary: compiled.datasetInventory.map((d) => ({
+      key: d.key,
+      canonicalStatus: d.canonicalStatus,
+      temporalScope: d.temporalScope,
+      sources: d.sourceAttribution,
+    })),
+    layerCStatus: compiled.layerCShell.status,
+    exactBlockers: allBlockers,
+  });
+
+  console.log('====================================================================');
+  console.log('CosmicCouncil V2 — Consolidated Chris 4 Foundational Birth Chart');
+  console.log('====================================================================');
+  console.log(JSON.stringify(summaryReport, null, 2));
+}
+
 async function main() {
+  if (process.argv.includes('--compile-chris4')) {
+    await runCompileChris4Cli();
+    return;
+  }
+
   const requireLive = process.argv.includes('--require-live');
   const evalAstroWay = process.argv.includes('--eval-astroway');
   const envLoad = loadLocalEnvFilesForCli();
@@ -2449,6 +2837,19 @@ async function main() {
       },
     },
   });
+  const emptyAltDashasNoLocalMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    includeLocalModules: false,
+    rawLayerA: {
+      ...prunedAwLayerA,
+      calls: {
+        ...prunedAwLayerA.calls,
+        dashas_chara_maha: makeAwCall('dashas_chara_maha', '/vedic/dashas/chara/maha', 'dasha', { periods: [] }),
+        dashas_yogini_maha: makeAwCall('dashas_yogini_maha', '/vedic/dashas/yogini/maha', 'dasha', { periods: [] }),
+        ashtakavarga_shodhana: makeAwCall('ashtakavarga_shodhana', '/vedic/ashtakavarga/shodhana', 'ashtakavarga', { items: [] }),
+      },
+    },
+  });
 
   assert(
     prunedMaster.frames.vedicLahiri.data?.vargas?.supportedCount === 16 &&
@@ -2481,6 +2882,10 @@ async function main() {
       emptyAltDashasMaster.datasetManifest?.entries.find((e) => e.key === 'alternative_dashas_natal')
         ?.canonicalStatus === 'unavailable' &&
       emptyAltDashasMaster.datasetManifest?.entries.find((e) => e.key === 'ashtakavarga_shodhana_pinda')
+        ?.canonicalStatus === 'internally_verified' &&
+      emptyAltDashasMaster.datasetManifest?.entries.find((e) => e.key === 'ashtakavarga_shodhana_pinda')
+        ?.source === 'local:ashtakavargaReductions' &&
+      emptyAltDashasNoLocalMaster.datasetManifest?.entries.find((e) => e.key === 'ashtakavarga_shodhana_pinda')
         ?.canonicalStatus === 'unavailable' &&
       prunedVerif.checks.every((c) => c.passed),
     `Phase 2 deep normalization/pruning verification failed (checksFailed=${prunedVerif.failedCount}, failed=[${prunedVerif.checks.filter((c) => !c.passed).map((c) => `${c.id}:${c.observed}`).join('; ')}]).`
@@ -3253,7 +3658,8 @@ async function main() {
   const customDispositor = computeDispositorRelationships(cycleAndCondFrame);
   const customLocalCond = computeLocalVedicConditions(cycleAndCondFrame, customPanchadha);
 
-  // Also check Graha Yuddha within 1.0° (Mars 40.2° vs Jupiter 40.65°)
+  // Also check Graha Yuddha within 1.0° (Mars 40.2° vs Jupiter 40.65°):
+  // both missing-latitude undetermined mode AND northern-latitude brighter winner resolution.
   const yuddhaFrame: VedicLahiriFrame = {
     ...cycleAndCondFrame,
     planets: cycleAndCondFrame.planets.map((p) =>
@@ -3265,6 +3671,21 @@ async function main() {
     ),
   };
   const yuddhaCond = computeLocalVedicConditions(yuddhaFrame, computePanchadhaMaitri(yuddhaFrame));
+
+  const yuddhaLatFrame: VedicLahiriFrame = {
+    ...yuddhaFrame,
+    planets: yuddhaFrame.planets.map((p) =>
+      p.name === 'Mars'
+        ? { ...p, latitude_deg: 1.42 }
+        : p.name === 'Jupiter'
+        ? { ...p, latitude_deg: 0.35 }
+        : p
+    ),
+  };
+  const yuddhaLatCond = computeLocalVedicConditions(
+    yuddhaLatFrame,
+    computePanchadhaMaitri(yuddhaLatFrame)
+  );
 
   // Verify planetary_dignity_conditions unlocks on FreeAstroAPI chart when provider dignity/combustion flags absent
   const faWithoutDignityTags = buildLayerBMasterChartRecord({
@@ -3317,9 +3738,20 @@ async function main() {
       yuddhaCond.grahaYuddhaPairs.length === 1 &&
       yuddhaCond.grahaYuddhaPairs[0].planetA === 'Mars' &&
       yuddhaCond.grahaYuddhaPairs[0].planetB === 'Jupiter' &&
+      yuddhaCond.grahaYuddhaPairs[0].winner === null &&
+      yuddhaCond.grahaYuddhaPairs[0].loser === null &&
+      yuddhaCond.grahaYuddhaPairs[0].determinationBasis === 'undetermined_missing_latitude' &&
       yuddhaCond.byPlanet.Mars.inGrahaYuddha === true &&
+      yuddhaCond.byPlanet.Mars.grahaYuddhaRole === 'undetermined' &&
+      yuddhaLatCond !== null &&
+      yuddhaLatCond.grahaYuddhaPairs.length === 1 &&
+      yuddhaLatCond.grahaYuddhaPairs[0].winner === 'Mars' &&
+      yuddhaLatCond.grahaYuddhaPairs[0].loser === 'Jupiter' &&
+      yuddhaLatCond.grahaYuddhaPairs[0].determinationBasis === 'northern_latitude_brighter' &&
+      yuddhaLatCond.byPlanet.Mars.grahaYuddhaRole === 'winner' &&
+      yuddhaLatCond.byPlanet.Jupiter.grahaYuddhaRole === 'loser' &&
       faDigStatus === 'internally_verified',
-    `Phase 4 Dispositor/Conditions/Fallback check failed: parivartana=${JSON.stringify(customDispositor?.d1.mutualExchanges)}, sunTerm=${customDispositor?.d1.planets.Sun.terminationType}, marsCycle=${JSON.stringify(customDispositor?.d1.planets.Mars.cycleNodes)}, sunDignity=${customLocalCond?.byPlanet.Sun.dignity}, sunVarg=${customLocalCond?.byPlanet.Sun.isVargottama}, moon=${customLocalCond?.byPlanet.Moon.dignity}, merc=${customLocalCond?.byPlanet.Mercury.dignity}/combust=${customLocalCond?.byPlanet.Mercury.isCombust}, marsGandanta=${customLocalCond?.byPlanet.Mars.isGandanta}/varg=${customLocalCond?.byPlanet.Mars.isVargottama}, yuddha=${JSON.stringify(yuddhaCond?.grahaYuddhaPairs)}, faDigStatus=${faDigStatus}`
+    `Phase 4 Dispositor/Conditions/Fallback check failed: parivartana=${JSON.stringify(customDispositor?.d1.mutualExchanges)}, sunTerm=${customDispositor?.d1.planets.Sun.terminationType}, marsCycle=${JSON.stringify(customDispositor?.d1.planets.Mars.cycleNodes)}, sunDignity=${customLocalCond?.byPlanet.Sun.dignity}, sunVarg=${customLocalCond?.byPlanet.Sun.isVargottama}, moon=${customLocalCond?.byPlanet.Moon.dignity}, merc=${customLocalCond?.byPlanet.Mercury.dignity}/combust=${customLocalCond?.byPlanet.Mercury.isCombust}, marsGandanta=${customLocalCond?.byPlanet.Mars.isGandanta}/varg=${customLocalCond?.byPlanet.Mars.isVargottama}, yuddha=${JSON.stringify(yuddhaCond?.grahaYuddhaPairs)}, yuddhaLat=${JSON.stringify(yuddhaLatCond?.grahaYuddhaPairs)}, faDigStatus=${faDigStatus}`
   );
 
   regressionResults.push({
@@ -3340,6 +3772,231 @@ async function main() {
       f16Manifest.downstreamGuardSummary.phi_planetary_health?.ready,
     zeroCoercionNoD60Status:
       masterNoD60.datasetManifest?.entries.find((e) => e.key === 'vimshopaka_bala')?.canonicalStatus,
+  });
+
+  // 3ad. Phase 5 — Consolidated Foundational Chart Compiler, Upgraded Verification, Reductions, Advanced Avasthas, Sripati Fallback & External Ref Audit
+  const compiledHybrid = compileV2FoundationalChart({
+    instant: sampleInstant,
+    astroWayRaw: {
+      ...prunedAwLayerA,
+      calls: awWithoutAvOrBcCalls,
+    },
+    freeAstroApiSupplementary: singleCallRes.call,
+    options: {
+      targetDateIso: '2026-11-27',
+      includeLocalModules: true,
+    },
+  });
+
+  const redRes = compiledHybrid.localModules.ashtakavargaReductions.data;
+  const advAv = compiledHybrid.localModules.advancedAvasthas.data;
+  const compilerFallbackOnly = compileV2FoundationalChart({
+    instant: sampleInstant,
+    astroWayRaw: {
+      ...prunedAwLayerA,
+      calls: awWithoutAvOrBcCalls,
+    },
+    freeAstroApiSupplementary: null,
+    options: { targetDateIso: '2026-11-27' },
+  });
+
+  // Verify standalone computeAshtakavargaReductions, computeAdvancedAvasthas & computeLocalSripatiBhavaChalit invariants
+  const localRedDirect = computeAshtakavargaReductions(
+    computeLocalAshtakavarga(extractCanonicalAshtakavargaSignInput(compiledHybrid.layerBMaster.frames.vedicLahiri.data!)!)
+  );
+  const localSripatiDirect = computeLocalSripatiBhavaChalit(
+    compiledHybrid.layerBMaster.frames.vedicLahiri.data,
+    sampleRef
+  );
+  const redNullGuard = computeAshtakavargaReductions(null);
+  const advNullGuard = computeAdvancedAvasthas(null, null, null);
+
+  // Verify mutated D9 sign triggers varga_d1_d60_bphs_formulas check failure cleanly
+  const badD9Master = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: {
+      ...prunedAwLayerA,
+      calls: {
+        ...prunedAwLayerA.calls,
+        varga_D9: makeAwCall('varga_D9', '/vedic/varga/D9', 'varga', {
+          varga: 'D9',
+          lagna: { signName: 'Aries' },
+          planets: [{ name: 'Sun', signName: 'Taurus' }], // wrong D9 sign intentionally
+        }),
+      },
+    },
+  });
+  const badD9Verif = verifyMasterChartRecord(badD9Master, prunedAwLayerA);
+  const d9CheckFailed = badD9Verif.checks.find((c) => c.id === 'varga_d1_d60_bphs_formulas')?.passed === false;
+
+  // Verify externalReferenceData cleanly reconciles & populates Bucket 3 ONLY when explicitly supplied
+  const extRefMatchInput: ExternalReferenceInput = {
+    referenceSourceLabel: 'PyJHora_Test_Reference',
+    d1AscendantDeg: sampleRef.lahiriAscendantDeg,
+    d1PlanetLongitudesDeg: {
+      Sun: sampleRef.lahiriSunLonDeg,
+      Moon: sampleRef.lahiriMoonLonDeg,
+    },
+    bhavabalaTotalRupas: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i + 1, (420 + i * 5) / 60])),
+    kpCuspsDeg: sampleRef.kpPlacidusCuspsDeg,
+  };
+  const compiledWithExtRef = compileV2FoundationalChart({
+    instant: sampleInstant,
+    astroWayRaw: {
+      ...prunedAwLayerA,
+      calls: awWithoutAvOrBcCalls,
+    },
+    freeAstroApiSupplementary: singleCallRes.call,
+    externalReferenceData: extRefMatchInput,
+    options: { targetDateIso: '2026-11-27' },
+  });
+
+  assert(
+    compiledHybrid.schemaVersion === 'v2.compiled_foundational_chart.1.0' &&
+      compiledHybrid.layerCShell.status === 'deferred_by_scope' &&
+      compiledHybrid.layerCShell.touchedIndices.length === 0 &&
+      compiledHybrid.verification.failedCount === 0 &&
+      compiledHybrid.verification.externalReferenceAudit?.status === 'blocked_no_external_reference' &&
+      compiledHybrid.externalValidationBlockers.length >= 2 &&
+      compiledHybrid.verification.epistemicClassification.independentlyValidatedAgainstExternalReference.length === 0 &&
+      Boolean(compiledHybrid.verification.verificationTierSummary?.internal_math_consistency.total) &&
+      compiledHybrid.completenessTable.length === 6 &&
+      compiledHybrid.completenessTable.reduce((s, r) => s + r.count, 0) === compiledHybrid.manifest.entries.length &&
+      compiledHybrid.endpointAndCreditSummary.astroWay.acquired === true &&
+      compiledHybrid.endpointAndCreditSummary.freeAstroApi.acquired === true &&
+      compiledHybrid.endpointAndCreditSummary.localModulesComputedCount === 8 &&
+      redRes !== null &&
+      redRes.valid === true &&
+      Object.values(redRes.perPlanet).every((p) => p.rasiPinda + p.grahaPinda === p.shodhyaPinda) &&
+      localRedDirect !== null &&
+      redNullGuard === null &&
+      advNullGuard === null &&
+      advAv !== null &&
+      advAv.valid === true &&
+      Object.keys(advAv.byPlanet).length === 9 &&
+      localSripatiDirect !== null &&
+      localSripatiDirect.methodologyAudit.compatibleWithIntendedClassicalMethodology === true &&
+      // When FreeAstroAPI supplementary accepted Bhava Chalit, compiler keeps FreeAstroAPI Bhava Chalit
+      compiledHybrid.layerBMaster.frames.bhavaChalit.source.includes('freeastroapi') &&
+      // When supplementary Bhava Chalit is absent, compiler promotes local Sripati fallback without conflating with KP
+      compilerFallbackOnly.layerBMaster.frames.bhavaChalit.source.includes('local:sripatiBhavaChalit') &&
+      compilerFallbackOnly.layerBMaster.datasetManifest?.entries.find((e) => e.key === 'bhava_chalit')?.canonicalStatus === 'internally_verified' &&
+      compilerFallbackOnly.verification.checks.some((c) => c.id === 'bhava_chalit_non_conflation_with_kp' && c.passed) &&
+      d9CheckFailed === true &&
+      compiledWithExtRef.verification.externalReferenceAudit?.status === 'reconciled' &&
+      compiledWithExtRef.verification.externalReferenceAudit?.matchedDomainsCount === 3 &&
+      compiledWithExtRef.verification.epistemicClassification.independentlyValidatedAgainstExternalReference.length === 3 &&
+      (compiledWithExtRef.verification.verificationTierSummary?.independent_classical_validation.passed ?? 0) === 3,
+    `Phase 5 consolidated compiler / verification test failed: hybridFailed=${JSON.stringify(compiledHybrid.verification.checks.filter((c) => !c.passed))}, d9CheckFailed=${d9CheckFailed}, extMatched=${compiledWithExtRef.verification.externalReferenceAudit?.matchedDomainsCount}`
+  );
+
+  regressionResults.push({
+    id: 'phase5_consolidated_compiler_verification_and_local_modules',
+    status: 'PASSED',
+    compiledHybridPassedChecks: compiledHybrid.verification.passedCount,
+    compiledHybridFailedChecks: compiledHybrid.verification.failedCount,
+    localModulesComputed: compiledHybrid.endpointAndCreditSummary.localModulesComputedCount,
+    completenessStatesCount: compiledHybrid.completenessTable.length,
+    sunShodhyaPinda: redRes?.perPlanet.Sun?.shodhyaPinda,
+    fallbackSripatiSource: compilerFallbackOnly.layerBMaster.frames.bhavaChalit.source,
+    d9MismatchCaught: d9CheckFailed,
+    externalRefReconciledCount: compiledWithExtRef.verification.externalReferenceAudit?.matchedDomainsCount,
+  });
+
+  // 3ae. Stage 1 Offline Hardening: Zero-Coercion, includeLocalModules=false, Provisional Avasthas & Aliases
+  const compiledNoLocal = compileV2FoundationalChart({
+    instant: sampleInstant,
+    astroWayRaw: {
+      ...prunedAwLayerA,
+      calls: awWithoutAvOrBcCalls,
+    },
+    freeAstroApiSupplementary: null,
+    options: {
+      targetDateIso: '2026-11-27',
+      includeLocalModules: false,
+      fallbackToLocalSripatiBhavaChalit: true,
+    },
+  });
+
+  const offlineEmptyMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: null,
+  });
+
+  const tropCallData = ((prunedAwLayerA.calls.chart_tropical?.rawResponse as Record<string, unknown>)
+    ?.data ?? {}) as Record<string, unknown>;
+  const tropPlanetsOrig = Array.isArray(tropCallData.planets)
+    ? (tropCallData.planets as Array<Record<string, unknown>>)
+    : [];
+  const shadbalaCallData = ((prunedAwLayerA.calls.shadbala_full?.rawResponse as Record<string, unknown>)
+    ?.data ?? {}) as Record<string, unknown>;
+  const shadbalaItemsOrig = Array.isArray(shadbalaCallData.items)
+    ? (shadbalaCallData.items as Array<Record<string, unknown>>)
+    : [];
+
+  const zeroCoercionProbeMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: {
+      ...prunedAwLayerA,
+      calls: {
+        ...prunedAwLayerA.calls,
+        chart_tropical: makeAwCall('chart_tropical', '/chart', 'western', {
+          ...tropCallData,
+          planets: [
+            ...tropPlanetsOrig,
+            { name: 'Chiron', longitude: undefined, house: 4 },
+            { name: 'Lilith', longitude: null, house: 8 },
+          ],
+        }),
+        shadbala_full: makeAwCall('shadbala_full', '/vedic/shadbala', 'shadbala', {
+          items: shadbalaItemsOrig.map((it) =>
+            String(it.planetName || '').toLowerCase() === 'sun'
+              ? { planetName: 'Sun', totalVirupa: 380, sthana: undefined, dig: null }
+              : it
+          ),
+        }),
+      },
+    },
+  });
+  const tropProbePlanets = zeroCoercionProbeMaster.frames.westernTropical.data?.planets ?? [];
+  const sbSunProbe = zeroCoercionProbeMaster.shadbalaReconciliation.data?.perPlanet.find(
+    (p) => p.planet === 'Sun'
+  );
+
+  assert(
+    compiledNoLocal.endpointAndCreditSummary.localModulesComputedCount === 0 &&
+      Object.values(compiledNoLocal.localModules).every(
+        (env) => env.canonicalStatus === 'unavailable' && env.data === null
+      ) &&
+      compiledNoLocal.layerBMaster.localModules === undefined &&
+      compiledNoLocal.layerBMaster.frames.bhavaChalit.canonicalStatus === 'unavailable' &&
+      compiledHybrid.localModules.advancedAvasthas.canonicalStatus === 'provisional' &&
+      compiledHybrid.manifest.entries.find((e) => e.key === 'advanced_avasthas')?.canonicalStatus ===
+        'provisional' &&
+      compiledHybrid.verification.checks.every((c) => Boolean(c.verificationTier)) &&
+      offlineEmptyMaster.frames.bhavaChalit.source === 'unavailable' &&
+      !tropProbePlanets.some((p) => p.name === 'Chiron' || p.name === 'Lilith') &&
+      tropProbePlanets.length === tropPlanetsOrig.length &&
+      sbSunProbe?.provider !== null &&
+      sbSunProbe?.provider?.totalVirupas === 380 &&
+      sbSunProbe?.provider?.sthanaBala === null &&
+      sbSunProbe?.provider?.digBala === null &&
+      sbSunProbe?.provider?.componentSumCheckDelta === null &&
+      validateSupplementaryAshtakavarga === evaluateAshtakavargaCompatibility &&
+      validateSupplementaryBhavaChalit === evaluateBhavaChalitCompatibility &&
+      validateSupplementaryDivisionalChart === evaluateD5DivisionalCompatibility &&
+      computeValidatedLocalAshtakavarga === computeLocalAshtakavarga,
+    `Stage 1 offline hardening check failed: noLocalCount=${compiledNoLocal.endpointAndCreditSummary.localModulesComputedCount}, offlineBcSource=${offlineEmptyMaster.frames.bhavaChalit.source}, sbSun=${JSON.stringify(sbSunProbe?.provider)}`
+  );
+
+  regressionResults.push({
+    id: 'stage1_hardening_zero_coercion_and_local_module_isolation',
+    status: 'PASSED',
+    noLocalModulesComputedCount: compiledNoLocal.endpointAndCreditSummary.localModulesComputedCount,
+    offlineEmptyBhavaChalitSource: offlineEmptyMaster.frames.bhavaChalit.source,
+    advancedAvasthasStatus: compiledHybrid.localModules.advancedAvasthas.canonicalStatus,
+    droppedInvalidTropicalPlanets: 2,
+    partialShadbalaSthanaPreservedNull: sbSunProbe?.provider?.sthanaBala === null,
   });
 
   // 4. Read-Only Existing Profile Defect Audit + Legacy vs V2 Comparison on Local Fixtures

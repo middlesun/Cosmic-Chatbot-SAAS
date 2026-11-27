@@ -820,23 +820,37 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
             shodhana.hasEkadhipatya === true ||
             shodhana.hasPinda === true ||
             asObjArr(shodhana.planets ?? shodhana.items).length > 0);
-        if (!hasShodhanaContent) {
+        if (hasShodhanaContent) {
           return {
-            status: 'unavailable',
-            source: 'unavailable',
-            acquiredAtUtc: null,
+            status: 'available',
+            source: 'astroway:/vedic/ashtakavarga/shodhana',
+            acquiredAtUtc: m.frames.vedicLahiri?.acquiredAtUtc ?? null,
             version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
             referenceDateIso: null,
-            limitations: ['Ashtakavarga Shodhana & Pinda unavailable.'],
+            limitations: [],
+          };
+        }
+        const localRed = asObj(
+          m.localModules?.ashtakavargaReductions?.data ??
+            m.providerExtendedDatasets?.ashtakavargaReductions
+        );
+        if (localRed && localRed.valid === true && hasNonEmptyKeys(localRed.perPlanet)) {
+          return {
+            status: 'internally_verified',
+            source: 'local:ashtakavargaReductions',
+            acquiredAtUtc: m.generatedAtUtc ?? null,
+            version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
+            referenceDateIso: null,
+            limitations: [],
           };
         }
         return {
-          status: 'available',
-          source: 'astroway:/vedic/ashtakavarga/shodhana',
-          acquiredAtUtc: m.frames.vedicLahiri?.acquiredAtUtc ?? null,
+          status: 'unavailable',
+          source: 'unavailable',
+          acquiredAtUtc: null,
           version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
           referenceDateIso: null,
-          limitations: [],
+          limitations: ['Ashtakavarga Shodhana & Pinda unavailable.'],
         };
       },
     },
@@ -1221,6 +1235,48 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
           limitations: valid
             ? []
             : ['Dispositor graph unavailable (requires canonical D1 Ascendant and 9 Vedic bodies).'],
+        };
+      },
+    },
+    {
+      key: 'advanced_avasthas',
+      label: 'Advanced Planetary Avasthas (Baladi, Jagradadi, Deeptadi)',
+      tier: 'comprehensive_foundational_completeness',
+      temporalScope: 'natal_invariant',
+      dependencies: ['vedic_d1_positions', 'panchadha_maitri', 'planetary_dignity_conditions'],
+      blockingForDownstream: [],
+      evaluate: (m) => {
+        const advEnv = m.localModules?.advancedAvasthas;
+        const advData = asObj(advEnv?.data ?? m.providerExtendedDatasets?.advancedAvasthas);
+        const valid =
+          advData !== null &&
+          advData.valid === true &&
+          hasNonEmptyKeys(advData.byPlanet);
+        if (!valid) {
+          return {
+            status: 'unavailable',
+            source: advEnv?.source ?? 'unavailable',
+            acquiredAtUtc: null,
+            version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
+            referenceDateIso: null,
+            limitations: advEnv?.limitations?.length
+              ? advEnv.limitations
+              : [
+                  'Advanced Avasthas unavailable (requires D1 positions, Panchadha Maitri & Vedic conditions).',
+                ],
+          };
+        }
+        return {
+          status: 'provisional',
+          source: advEnv?.source ?? 'local:advancedAvasthas',
+          acquiredAtUtc: m.generatedAtUtc ?? null,
+          version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
+          referenceDateIso: null,
+          limitations: advEnv?.limitations?.length
+            ? advEnv.limitations
+            : [
+                'Jagradadi and Deeptadi avastha mappings vary across classical commentaries (BPHS vs Saravali/JHora); held provisional pending external reference cross-check.',
+              ],
         };
       },
     },
