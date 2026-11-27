@@ -115,6 +115,24 @@ export interface SanitizedProviderCallRecord {
   rawResponse: unknown;
 }
 
+export interface ShadbalaModeDeltaRow {
+  planet: string;
+  modeATotal: number;
+  modeBTotal: number;
+  totalDelta: number;
+  modeARatio: number | null;
+  modeBRatio: number | null;
+  componentDeltas: {
+    sthana_bala: number;
+    dig_bala: number;
+    kala_bala: number;
+    cheshta_bala: number;
+    naisargika_bala: number;
+    drik_bala: number;
+  };
+  suspectedKalaBalaDriver: string | null;
+}
+
 export interface TimezoneEquivalenceCheck {
   executed: boolean;
   modeARequest: Record<string, unknown>;
@@ -122,10 +140,38 @@ export interface TimezoneEquivalenceCheck {
   modeAStatus: number;
   modeBStatus: number;
   equivalent: boolean;
+  coordinatesEquivalent: boolean;
   maxPlanetDeltaDeg: number | null;
   ascendantDeltaDeg: number | null;
   moonDeltaDeg: number | null;
   perPlanetDeltasDeg: Array<{ planet: string; modeALon: number; modeBLon: number; deltaDeg: number }>;
+  shadbalaComparison?: {
+    available: boolean;
+    equivalent: boolean;
+    maxTotalDeltaVirupas: number | null;
+    maxComponentDeltaVirupas: number | null;
+    perPlanet: ShadbalaModeDeltaRow[];
+  };
+  bhavaChalitEquivalent?: boolean | null;
+  bhavaChalitMaxCuspDeltaDeg?: number | null;
+  bhavaChalitHouseMismatches?: string[];
+  ashtakavargaEquivalent?: boolean | null;
+  ashtakavargaSavDiffs?: number[];
+  ashtakavargaBavMismatches?: string[];
+  vargasEquivalent?: boolean | null;
+  vargasMismatches?: string[];
+  yogasEquivalent?: boolean | null;
+  yogasMismatches?: string[];
+  dashaEquivalent?: boolean | null;
+  dashaMismatches?: string[];
+  panchangAudit?: {
+    available: boolean;
+    equivalent: boolean;
+    nonClockMismatches: string[];
+    sunriseInstantDeltaSeconds: number | null;
+    sunsetInstantDeltaSeconds: number | null;
+    legitimateDisplayTimeDifferences: string[];
+  } | null;
   notes: string[];
 }
 
@@ -146,7 +192,9 @@ export interface ObservedQuotaHeadersSummary {
   status: 'measured_from_headers' | 'not_provided_by_provider';
   observedHeadersByEndpoint: Record<string, Record<string, string>>;
   remainingQuotaObserved: string | null;
+  initialRemainingQuotaObserved?: string | null;
   rateLimitObserved: string | null;
+  bodyQuotaMetadataObserved?: Record<string, unknown> | null;
   note: string;
 }
 
@@ -431,10 +479,19 @@ export type EpistemicCategory =
   | 'methodology_unresolved'
   | 'dataset_unavailable';
 
+export type VerificationBasis =
+  | 'provider_payload'
+  | 'provider_self_consistency'
+  | 'cosmiccouncil_internal_solver'
+  | 'external_jhora_pyjhora_swisseph'
+  | 'pending_external_validation'
+  | 'none';
+
 export interface EpistemicClassificationItem {
   key: string;
   label: string;
   category: EpistemicCategory;
+  verificationBasis?: VerificationBasis;
   status: 'verified' | 'partial' | 'unresolved' | 'unavailable';
   detail: string;
 }
@@ -453,6 +510,7 @@ export interface VerificationCheckResult {
   passed: boolean;
   severity: 'critical' | 'major' | 'info';
   epistemicCategory: EpistemicCategory;
+  verificationBasis?: VerificationBasis;
   expected: string;
   observed: string;
   notes?: string;

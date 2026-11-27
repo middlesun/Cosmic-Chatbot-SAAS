@@ -3693,16 +3693,18 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
       totalResponseBytes: 0,
     };
 
+    const heapMeasured = heapBeforeBytes !== null && heapAfterBytes !== null;
     const fullResponse = {
       ...sanitizedPayload,
       runtimeTelemetry: {
         executionDurationMs,
+        heapMemoryStatus: heapMeasured ? 'measured' : 'unavailable_in_worker_isolate',
+        heapMeasurementNote: heapMeasured
+          ? 'Measured via Node.js process.memoryUsage().heapUsed before and after execution.'
+          : 'process.memoryUsage() is not exposed inside Cloudflare Worker isolates; heap metrics are reported as unavailable rather than 0.',
         heapBeforeBytes,
         heapAfterBytes,
-        heapDeltaBytes:
-          heapBeforeBytes !== null && heapAfterBytes !== null
-            ? heapAfterBytes - heapBeforeBytes
-            : null,
+        heapDeltaBytes: heapMeasured ? heapAfterBytes - heapBeforeBytes : null,
         artifactSizesBytes,
       },
     };

@@ -36,6 +36,7 @@ import type {
   LayerARawProviderRecord,
   ObservedQuotaHeadersSummary,
   SanitizedProviderCallRecord,
+  ShadbalaModeDeltaRow,
   TimezoneEquivalenceCheck,
   V2EndpointId,
 } from './types';
@@ -262,6 +263,11 @@ function captureQuotaHeaders(headers: Headers): Record<string, string> {
       k.includes('remaining') ||
       k.includes('reset') ||
       k.includes('retry') ||
+      k.includes('credit') ||
+      k.includes('usage') ||
+      k.includes('allowance') ||
+      k.includes('burst') ||
+      k.includes('window') ||
       k.includes('cache') ||
       k.includes('request-id') ||
       k.includes('version') ||
@@ -480,48 +486,87 @@ export function evaluateEphemerisTimestampCheck(
   };
 }
 
-async function runTimezoneEquivalenceProbeInternal(
+function asRec(val: unknown): Record<string, unknown> {
+  return val && typeof val === 'object' && !Array.isArray(val)
+    ? (val as Record<string, unknown>)
+    : {};
+}
+
+function asRecArr(val: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(val)
+    ? (val.filter((x) => x && typeof x === 'object') as Array<Record<string, unknown>>)
+    : [];
+}
+
+function round4(n: number): number {
+  return Number(n.toFixed(4));
+}
+
+function parseClockOrIsoInstantSeconds(
+  rawVal: unknown,
   instant: CanonicalBirthInstant,
-  apiKey: string,
-  rateWaitMs: number
-): Promise<{
-  check: TimezoneEquivalenceCheck;
-  callA: SanitizedProviderCallRecord;
-  callB: SanitizedProviderCallRecord;
-}> {
-  const reqA = buildAndValidateV2Requests(instant, { timeMode: 'local_iana' }).request1VedicCalculate;
-  const reqB = buildAndValidateV2Requests(instant, { timeMode: 'utc' }).request1VedicCalculate;
+  isLocalClockMode: boolean
+): { utcSecondsOfDay: number | null; epochMs: number | null; displayText: string | null } {
+  if (typeof rawVal !== 'string' || !rawVal.trim()) {
+    return { utcSecondsOfDay: null, epochMs: null, displayText: null };
+  }
+  const text = rawVal.trim();
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text) && (text.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(text))) {
+    const ms = Date.parse(text);
+    if (!Number.isNaN(ms)) {
+      const d = new Date(ms);
+      return {
+        utcSecondsOfDay: d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds(),
+        epochMs: ms,
+        displayText: text,
+      };
+    }
+  }
+  const hmsMatch = /(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(text);
+  if (hmsMatch) {
+    const secOfDay =
+      Number(hmsMatch[1]) * 3600 +
+      Number(hmsMatch[2]) * 60 +
+      (hmsMatch[3] ? Number(hmsMatch[3]) : 0);
+    const utcSec = isLocalClockMode
+      ? (((secOfDay - instant.timezone.historicalUtcOffsetSeconds) % 86400) + 86400) % 86400
+      : ((secOfDay % 86400) + 86400) % 86400;
+    return { utcSecondsOfDay: utcSec, epochMs: null, displayText: text };
+  }
+  return { utcSecondsOfDay: null, epochMs: null, displayText: text };
+}
 
-  const callA = await executeProviderPost('timezone_probe_mode_a', reqA.endpoint, reqA.body, apiKey, {
-    rateWaitMs,
-  });
-  const callB = await executeProviderPost('timezone_probe_mode_b', reqB.endpoint, reqB.body, apiKey, {
-    rateWaitMs,
-  });
+function extractPanchangFieldLabel(val: unknown): string {
+  if (typeof val === 'string') return val.trim().toLowerCase();
+  if (val && typeof val === 'object') {
+    const o = val as Record<string, unknown>;
+    return String(o.name ?? o.title ?? o.lord ?? o.number ?? JSON.stringify(o))
+      .trim()
+      .toLowerCase();
+  }
+  return val === undefined || val === null ? '' : String(val).trim().toLowerCase();
+}
 
-  const chartA = ((callA.rawResponse as Record<string, unknown>)?.chart || {}) as Record<
-    string,
-    unknown
-  >;
-  const chartB = ((callB.rawResponse as Record<string, unknown>)?.chart || {}) as Record<
-    string,
-    unknown
-  >;
+export function compareModeAVsModeBResponses(
+  callA: SanitizedProviderCallRecord,
+  callB: SanitizedProviderCallRecord,
+  instant: CanonicalBirthInstant
+): TimezoneEquivalenceCheck {
+  const rawA = asRec(callA.rawResponse);
+  const rawB = asRec(callB.rawResponse);
+  const chartA = asRec(rawA.chart);
+  const chartB = asRec(rawB.chart);
 
-  const ascA = Number((chartA.ascendant as Record<string, unknown>)?.degree);
-  const ascB = Number((chartB.ascendant as Record<string, unknown>)?.degree);
+  // 1. Ascendant & Planetary Longitudes
+  const ascA = Number(asRec(chartA.ascendant).degree);
+  const ascB = Number(asRec(chartB.ascendant).degree);
   const ascendantDeltaDeg =
     Number.isFinite(ascA) && Number.isFinite(ascB)
       ? Number(circularDeltaDeg(ascA, ascB).toFixed(6))
       : null;
 
-  const planetsA = Array.isArray(chartA.planets)
-    ? (chartA.planets as Array<Record<string, unknown>>)
-    : [];
-  const planetsB = Array.isArray(chartB.planets)
-    ? (chartB.planets as Array<Record<string, unknown>>)
-    : [];
-
+  const planetsA = asRecArr(chartA.planets);
+  const planetsB = asRecArr(chartB.planets);
   const perPlanetDeltasDeg: Array<{
     planet: string;
     modeALon: number;
@@ -544,8 +589,7 @@ async function runTimezoneEquivalenceProbeInternal(
     if (name === 'Moon') moonDeltaDeg = delta;
   }
 
-  const notes: string[] = [];
-  const equivalent =
+  const coordinatesEquivalent =
     callA.ok &&
     callB.ok &&
     ascendantDeltaDeg !== null &&
@@ -553,41 +597,425 @@ async function runTimezoneEquivalenceProbeInternal(
     maxPlanetDeltaDeg !== null &&
     maxPlanetDeltaDeg < 0.01;
 
-  if (!equivalent) {
+  // 2. Shadbala (all 6 components + total + ratio)
+  const sbA = asRec(rawA.shadbala);
+  const sbB = asRec(rawB.shadbala);
+  const SEVEN = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
+  const shadbalaRows: ShadbalaModeDeltaRow[] = [];
+  let maxSbTotalDelta: number | null = null;
+  let maxSbCompDelta: number | null = null;
+
+  for (const planet of SEVEN) {
+    const rA = asRec(sbA[planet]);
+    const rB = asRec(sbB[planet]);
+    if (typeof rA.total !== 'number' || typeof rB.total !== 'number') continue;
+
+    const compDeltas = {
+      sthana_bala: round4(Number(rA.sthana_bala ?? 0) - Number(rB.sthana_bala ?? 0)),
+      dig_bala: round4(Number(rA.dig_bala ?? 0) - Number(rB.dig_bala ?? 0)),
+      kala_bala: round4(Number(rA.kala_bala ?? 0) - Number(rB.kala_bala ?? 0)),
+      cheshta_bala: round4(Number(rA.cheshta_bala ?? 0) - Number(rB.cheshta_bala ?? 0)),
+      naisargika_bala: round4(Number(rA.naisargika_bala ?? 0) - Number(rB.naisargika_bala ?? 0)),
+      drik_bala: round4(Number(rA.drik_bala ?? 0) - Number(rB.drik_bala ?? 0)),
+    };
+    const totalDelta = round4(Number(rA.total) - Number(rB.total));
+    const maxThisComp = Math.max(...Object.values(compDeltas).map((v) => Math.abs(v)));
+    if (maxSbTotalDelta === null || Math.abs(totalDelta) > maxSbTotalDelta) {
+      maxSbTotalDelta = round4(Math.abs(totalDelta));
+    }
+    if (maxSbCompDelta === null || maxThisComp > maxSbCompDelta) {
+      maxSbCompDelta = round4(maxThisComp);
+    }
+
+    let suspectedKalaBalaDriver: string | null = null;
+    if (Math.abs(compDeltas.kala_bala) > 0.02) {
+      const absK = Math.abs(compDeltas.kala_bala);
+      if (absK >= 59.5) {
+        suspectedKalaBalaDriver =
+          'Kala Bala (Hora Bala ±60V swap + Natonnata Bala diurnal/nocturnal shift)';
+      } else {
+        suspectedKalaBalaDriver =
+          'Kala Bala (Natonnata / diurnal-nocturnal time-of-day variance)';
+      }
+    }
+
+    shadbalaRows.push({
+      planet,
+      modeATotal: Number(rA.total),
+      modeBTotal: Number(rB.total),
+      totalDelta,
+      modeARatio: typeof rA.ratio === 'number' ? Number(rA.ratio) : null,
+      modeBRatio: typeof rB.ratio === 'number' ? Number(rB.ratio) : null,
+      componentDeltas: compDeltas,
+      suspectedKalaBalaDriver,
+    });
+  }
+
+  const shadbalaAvailable = shadbalaRows.length > 0;
+  const shadbalaEquivalent =
+    !shadbalaAvailable ||
+    ((maxSbTotalDelta ?? 0) <= 0.02 && (maxSbCompDelta ?? 0) <= 0.02);
+
+  // 3. Bhava Chalit cusps, boundaries & shifted planet houses
+  const bcA = rawA.bhava_chalit ? asRec(rawA.bhava_chalit) : asRec(chartA.bhava_chalit);
+  const bcB = rawB.bhava_chalit ? asRec(rawB.bhava_chalit) : asRec(chartB.bhava_chalit);
+  const bcHousesA = asRecArr(bcA.houses);
+  const bcHousesB = asRecArr(bcB.houses);
+  let bhavaChalitMaxCuspDeltaDeg: number | null = null;
+  const bhavaChalitHouseMismatches: string[] = [];
+  let bhavaChalitEquivalent: boolean | null = null;
+
+  if (bcHousesA.length > 0 || bcHousesB.length > 0) {
+    for (const hA of bcHousesA) {
+      const hNum = Number(hA.house);
+      const hB = bcHousesB.find((x) => Number(x.house) === hNum);
+      if (!hB) {
+        bhavaChalitHouseMismatches.push(`Missing Bhava Chalit house ${hNum} in Mode B`);
+        continue;
+      }
+      for (const field of ['degree_cusp', 'boundary_start', 'boundary_end'] as const) {
+        const vA = Number(hA[field]);
+        const vB = Number(hB[field]);
+        if (Number.isFinite(vA) && Number.isFinite(vB)) {
+          const d = round4(circularDeltaDeg(vA, vB));
+          if (field === 'degree_cusp' && (bhavaChalitMaxCuspDeltaDeg === null || d > bhavaChalitMaxCuspDeltaDeg)) {
+            bhavaChalitMaxCuspDeltaDeg = d;
+          }
+          if (d > 0.01) {
+            bhavaChalitHouseMismatches.push(`H${hNum}.${field}: Δ=${d}° (${vA} vs ${vB})`);
+          }
+        }
+      }
+    }
+    const bcPlanetsA = asRecArr(bcA.planets);
+    const bcPlanetsB = asRecArr(bcB.planets);
+    for (const pA of bcPlanetsA) {
+      const pName = String(pA.name || '');
+      const pB = bcPlanetsB.find((x) => String(x.name || '') === pName);
+      if (!pB) continue;
+      const chA = Number(pA.chalit_house ?? pA.house);
+      const chB = Number(pB.chalit_house ?? pB.house);
+      if (Number.isFinite(chA) && Number.isFinite(chB) && chA !== chB) {
+        bhavaChalitHouseMismatches.push(`${pName} chalit_house: ${chA} vs ${chB}`);
+      }
+    }
+    bhavaChalitEquivalent = bhavaChalitHouseMismatches.length === 0;
+  }
+
+  // 4. Ashtakavarga (SAV + BAV)
+  const avA = asRec(rawA.ashtakavarga);
+  const avB = asRec(rawB.ashtakavarga);
+  let ashtakavargaEquivalent: boolean | null = null;
+  const ashtakavargaSavDiffs: number[] = [];
+  const ashtakavargaBavMismatches: string[] = [];
+
+  if (Array.isArray(avA.sarvashtakavarga) || Array.isArray(avB.sarvashtakavarga)) {
+    const savA = Array.isArray(avA.sarvashtakavarga) ? (avA.sarvashtakavarga as number[]) : [];
+    const savB = Array.isArray(avB.sarvashtakavarga) ? (avB.sarvashtakavarga as number[]) : [];
+    for (let i = 0; i < Math.max(savA.length, savB.length); i++) {
+      ashtakavargaSavDiffs.push(Number(savA[i] ?? 0) - Number(savB[i] ?? 0));
+    }
+    const bavA = asRec(avA.bhinnashtakavarga);
+    const bavB = asRec(avB.bhinnashtakavarga);
+    for (const pl of Array.from(new Set([...Object.keys(bavA), ...Object.keys(bavB)]))) {
+      const rA = Array.isArray(bavA[pl]) ? (bavA[pl] as number[]) : [];
+      const rB = Array.isArray(bavB[pl]) ? (bavB[pl] as number[]) : [];
+      if (rA.length !== rB.length || rA.some((v, idx) => Number(v) !== Number(rB[idx]))) {
+        ashtakavargaBavMismatches.push(`${pl} BAV mismatch`);
+      }
+    }
+    ashtakavargaEquivalent =
+      ashtakavargaSavDiffs.every((d) => d === 0) &&
+      Number(avA.total_points ?? 0) === Number(avB.total_points ?? 0) &&
+      ashtakavargaBavMismatches.length === 0;
+  }
+
+  // 5. Vargas (all returned divisions)
+  const vargasA = asRec(asRec(rawA.vargas).vargas);
+  const vargasB = asRec(asRec(rawB.vargas).vargas);
+  let vargasEquivalent: boolean | null = null;
+  const vargasMismatches: string[] = [];
+
+  if (Object.keys(vargasA).length > 0 || Object.keys(vargasB).length > 0) {
+    const divKeys = Array.from(new Set([...Object.keys(vargasA), ...Object.keys(vargasB)]));
+    for (const div of divKeys) {
+      const dA = asRec(vargasA[div]);
+      const dB = asRec(vargasB[div]);
+      const ascSignA = String(asRec(dA.ascendant).sign || '');
+      const ascSignB = String(asRec(dB.ascendant).sign || '');
+      if (ascSignA !== ascSignB) {
+        vargasMismatches.push(`${div}.ascendant.sign: ${ascSignA} vs ${ascSignB}`);
+      }
+      const pListA = asRecArr(dA.planets);
+      const pListB = asRecArr(dB.planets);
+      for (const pA of pListA) {
+        const n = String(pA.name || '');
+        const pB = pListB.find((x) => String(x.name || '') === n);
+        if (!pB) {
+          vargasMismatches.push(`${div}.${n}: missing in Mode B`);
+          continue;
+        }
+        if (String(pA.sign || '') !== String(pB.sign || '')) {
+          vargasMismatches.push(`${div}.${n}.sign: ${String(pA.sign)} vs ${String(pB.sign)}`);
+        }
+        const degA = Number(pA.absolute_degree ?? pA.degree);
+        const degB = Number(pB.absolute_degree ?? pB.degree);
+        if (Number.isFinite(degA) && Number.isFinite(degB) && circularDeltaDeg(degA, degB) > 0.02) {
+          vargasMismatches.push(
+            `${div}.${n}.degree: Δ=${round4(circularDeltaDeg(degA, degB))}°`
+          );
+        }
+      }
+    }
+    vargasEquivalent = vargasMismatches.length === 0;
+  }
+
+  // 6. Yogas
+  const yogasA = asRec(rawA.yogas);
+  const yogasB = asRec(rawB.yogas);
+  let yogasEquivalent: boolean | null = null;
+  const yogasMismatches: string[] = [];
+
+  if (Object.keys(yogasA).length > 0 || Object.keys(yogasB).length > 0) {
+    const activeA = asRecArr(yogasA.yogas)
+      .filter((y) => y.active === true)
+      .map((y) => String(y.name || y.id || ''))
+      .sort();
+    const activeB = asRecArr(yogasB.yogas)
+      .filter((y) => y.active === true)
+      .map((y) => String(y.name || y.id || ''))
+      .sort();
+    if (JSON.stringify(activeA) !== JSON.stringify(activeB)) {
+      yogasMismatches.push(`Active yogas differ (${activeA.length} vs ${activeB.length})`);
+    }
+    const sumA = asRec(yogasA.summary);
+    const sumB = asRec(yogasB.summary);
+    if (Number(sumA.active_yogas ?? 0) !== Number(sumB.active_yogas ?? 0)) {
+      yogasMismatches.push(
+        `yogas.summary.active_yogas: ${String(sumA.active_yogas)} vs ${String(sumB.active_yogas)}`
+      );
+    }
+    yogasEquivalent = yogasMismatches.length === 0;
+  }
+
+  // 7. Vimshottari Dasha
+  const dashaA = asRec(rawA.vimshottari_dasha);
+  const dashaB = asRec(rawB.vimshottari_dasha);
+  let dashaEquivalent: boolean | null = null;
+  const dashaMismatches: string[] = [];
+
+  if (Object.keys(dashaA).length > 0 || Object.keys(dashaB).length > 0) {
+    const bbA = asRec(dashaA.birth_balance);
+    const bbB = asRec(dashaB.birth_balance);
+    if (String(bbA.lord || '') !== String(bbB.lord || '')) {
+      dashaMismatches.push(`birth_balance.lord: ${String(bbA.lord)} vs ${String(bbB.lord)}`);
+    }
+    const remA = Number(bbA.remaining_years ?? 0);
+    const remB = Number(bbB.remaining_years ?? 0);
+    if (Math.abs(remA - remB) > 0.001) {
+      dashaMismatches.push(`birth_balance.remaining_years: ${remA} vs ${remB}`);
+    }
+    const mdA = asRecArr(dashaA.mahadashas ?? dashaA.periods ?? dashaA.timeline);
+    const mdB = asRecArr(dashaB.mahadashas ?? dashaB.periods ?? dashaB.timeline);
+    if (mdA.length !== mdB.length) {
+      dashaMismatches.push(`mahadasha count: ${mdA.length} vs ${mdB.length}`);
+    } else {
+      for (let i = 0; i < mdA.length; i++) {
+        const lA = String(mdA[i].lord || '');
+        const lB = String(mdB[i].lord || '');
+        const sA = String(mdA[i].start_date ?? mdA[i].start ?? '').slice(0, 10);
+        const sB = String(mdB[i].start_date ?? mdB[i].start ?? '').slice(0, 10);
+        const eA = String(mdA[i].end_date ?? mdA[i].end ?? '').slice(0, 10);
+        const eB = String(mdB[i].end_date ?? mdB[i].end ?? '').slice(0, 10);
+        if (lA !== lB || sA !== sB || eA !== eB) {
+          dashaMismatches.push(`MD[${i}]: ${lA}(${sA}..${eA}) vs ${lB}(${sB}..${eB})`);
+        }
+      }
+    }
+    dashaEquivalent = dashaMismatches.length === 0;
+  }
+
+  // 8. Panchang (separating astro-elements from legitimate clock display formatting)
+  const panA = asRec(rawA.panchang);
+  const panB = asRec(rawB.panchang);
+  let panchangAudit: TimezoneEquivalenceCheck['panchangAudit'] = null;
+
+  if (Object.keys(panA).length > 0 || Object.keys(panB).length > 0) {
+    const nonClockMismatches: string[] = [];
+    const legitimateDisplayTimeDifferences: string[] = [];
+
+    for (const key of ['tithi', 'nakshatra', 'yoga', 'karana', 'vara', 'weekday']) {
+      if (panA[key] === undefined && panB[key] === undefined) continue;
+      const vA = extractPanchangFieldLabel(panA[key]);
+      const vB = extractPanchangFieldLabel(panB[key]);
+      if (vA !== vB) {
+        nonClockMismatches.push(`panchang.${key}: "${vA}" vs "${vB}"`);
+      }
+    }
+
+    const compareSunEvent = (fieldName: 'sunrise' | 'sunset'): number | null => {
+      const aInfo = parseClockOrIsoInstantSeconds(panA[fieldName], instant, true);
+      const bInfo = parseClockOrIsoInstantSeconds(panB[fieldName], instant, false);
+      if (aInfo.displayText && bInfo.displayText && aInfo.displayText !== bInfo.displayText) {
+        if (aInfo.epochMs !== null && bInfo.epochMs !== null) {
+          const deltaSec = Math.round((aInfo.epochMs - bInfo.epochMs) / 1000);
+          if (Math.abs(deltaSec) <= 5) {
+            legitimateDisplayTimeDifferences.push(
+              `panchang.${fieldName}: local display "${aInfo.displayText}" vs UTC "${bInfo.displayText}" (same instant, Δ=${deltaSec}s)`
+            );
+          } else {
+            nonClockMismatches.push(
+              `panchang.${fieldName} instant mismatch: Δ=${deltaSec}s ("${aInfo.displayText}" vs "${bInfo.displayText}")`
+            );
+          }
+          return deltaSec;
+        }
+        if (aInfo.utcSecondsOfDay !== null && bInfo.utcSecondsOfDay !== null) {
+          let deltaSec = aInfo.utcSecondsOfDay - bInfo.utcSecondsOfDay;
+          if (deltaSec > 43200) deltaSec -= 86400;
+          if (deltaSec < -43200) deltaSec += 86400;
+          if (Math.abs(deltaSec) <= 120) {
+            legitimateDisplayTimeDifferences.push(
+              `panchang.${fieldName}: wall-clock "${aInfo.displayText}" vs UTC "${bInfo.displayText}" (consistent after ${instant.timezone.historicalUtcOffsetHours}h offset, Δ=${deltaSec}s)`
+            );
+          } else {
+            nonClockMismatches.push(
+              `panchang.${fieldName} time-of-day mismatch after offset: Δ=${deltaSec}s ("${aInfo.displayText}" vs "${bInfo.displayText}")`
+            );
+          }
+          return deltaSec;
+        }
+      }
+      return null;
+    };
+
+    const sunriseInstantDeltaSeconds = compareSunEvent('sunrise');
+    const sunsetInstantDeltaSeconds = compareSunEvent('sunset');
+
+    panchangAudit = {
+      available: true,
+      equivalent: nonClockMismatches.length === 0,
+      nonClockMismatches,
+      sunriseInstantDeltaSeconds,
+      sunsetInstantDeltaSeconds,
+      legitimateDisplayTimeDifferences,
+    };
+  }
+
+  const allSubdatasetsEquivalent =
+    shadbalaEquivalent &&
+    (bhavaChalitEquivalent !== false) &&
+    (ashtakavargaEquivalent !== false) &&
+    (vargasEquivalent !== false) &&
+    (yogasEquivalent !== false) &&
+    (dashaEquivalent !== false) &&
+    (panchangAudit ? panchangAudit.equivalent : true);
+
+  const equivalent = coordinatesEquivalent && allSubdatasetsEquivalent;
+
+  const notes: string[] = [];
+  if (!coordinatesEquivalent) {
     notes.push(
-      `Timezone equivalence FAILED or incomplete: ModeA HTTP ${callA.httpStatus}, ModeB HTTP ${callB.httpStatus}, ascDelta=${ascendantDeltaDeg}, maxPlanetDelta=${maxPlanetDeltaDeg}.`
+      `Coordinate equivalence FAILED or incomplete: ModeA HTTP ${callA.httpStatus}, ModeB HTTP ${callB.httpStatus}, ascDelta=${ascendantDeltaDeg}°, maxPlanetDelta=${maxPlanetDeltaDeg}°.`
     );
   } else {
     notes.push(
-      `Mode A (${reqA.body.tz_str}) and Mode B (UTC) match within ${Math.max(
+      `Coordinates invariant across Mode A (${String(callA.sanitizedRequest.tz_str || '')}) and Mode B (UTC) within ${Math.max(
         ascendantDeltaDeg || 0,
         maxPlanetDeltaDeg || 0
       )}°.`
     );
   }
 
+  if (shadbalaAvailable && !shadbalaEquivalent) {
+    notes.push(
+      `SHADBALA TIMEZONE INVARIANCE FAILURE: maxTotalΔ=${maxSbTotalDelta}V, maxCompΔ=${maxSbCompDelta}V (isolated to Kala Bala while longitudes match).`
+    );
+  } else if (shadbalaAvailable) {
+    notes.push(`Shadbala invariant across all 6 components and totals (maxΔ=${maxSbTotalDelta ?? 0}V).`);
+  }
+
+  if (bhavaChalitEquivalent === false) {
+    notes.push(`Bhava Chalit divergence: ${bhavaChalitHouseMismatches.join('; ')}`);
+  }
+  if (ashtakavargaEquivalent === false) {
+    notes.push(`Ashtakavarga divergence: ${ashtakavargaBavMismatches.join('; ') || 'SAV array differs'}`);
+  }
+  if (vargasEquivalent === false) {
+    notes.push(`Vargas divergence: ${vargasMismatches.slice(0, 6).join('; ')}`);
+  }
+  if (yogasEquivalent === false) {
+    notes.push(`Yogas divergence: ${yogasMismatches.join('; ')}`);
+  }
+  if (dashaEquivalent === false) {
+    notes.push(`Vimshottari Dasha divergence: ${dashaMismatches.slice(0, 4).join('; ')}`);
+  }
+  if (panchangAudit && !panchangAudit.equivalent) {
+    notes.push(`Panchang divergence: ${panchangAudit.nonClockMismatches.join('; ')}`);
+  }
+
   return {
-    check: {
-      executed: true,
-      modeARequest: callA.sanitizedRequest,
-      modeBRequest: callB.sanitizedRequest,
-      modeAStatus: callA.httpStatus,
-      modeBStatus: callB.httpStatus,
-      equivalent,
-      maxPlanetDeltaDeg,
-      ascendantDeltaDeg,
-      moonDeltaDeg,
-      perPlanetDeltasDeg,
-      notes,
+    executed: true,
+    modeARequest: callA.sanitizedRequest,
+    modeBRequest: callB.sanitizedRequest,
+    modeAStatus: callA.httpStatus,
+    modeBStatus: callB.httpStatus,
+    equivalent,
+    coordinatesEquivalent,
+    maxPlanetDeltaDeg,
+    ascendantDeltaDeg,
+    moonDeltaDeg,
+    perPlanetDeltasDeg,
+    shadbalaComparison: {
+      available: shadbalaAvailable,
+      equivalent: shadbalaEquivalent,
+      maxTotalDeltaVirupas: maxSbTotalDelta,
+      maxComponentDeltaVirupas: maxSbCompDelta,
+      perPlanet: shadbalaRows,
     },
-    callA,
-    callB,
+    bhavaChalitEquivalent,
+    bhavaChalitMaxCuspDeltaDeg,
+    bhavaChalitHouseMismatches,
+    ashtakavargaEquivalent,
+    ashtakavargaSavDiffs,
+    ashtakavargaBavMismatches,
+    vargasEquivalent,
+    vargasMismatches,
+    yogasEquivalent,
+    yogasMismatches,
+    dashaEquivalent,
+    dashaMismatches,
+    panchangAudit,
+    notes,
   };
+}
+
+async function runTimezoneEquivalenceProbeInternal(
+  instant: CanonicalBirthInstant,
+  apiKey: string,
+  rateWaitMs: number
+): Promise<{
+  check: TimezoneEquivalenceCheck;
+  callA: SanitizedProviderCallRecord;
+  callB: SanitizedProviderCallRecord;
+}> {
+  const reqA = buildAndValidateV2Requests(instant, { timeMode: 'local_iana' }).request1VedicCalculate;
+  const reqB = buildAndValidateV2Requests(instant, { timeMode: 'utc' }).request1VedicCalculate;
+
+  const callA = await executeProviderPost('timezone_probe_mode_a', reqA.endpoint, reqA.body, apiKey, {
+    rateWaitMs,
+  });
+  const callB = await executeProviderPost('timezone_probe_mode_b', reqB.endpoint, reqB.body, apiKey, {
+    rateWaitMs,
+  });
+
+  const check = compareModeAVsModeBResponses(callA, callB, instant);
+  return { check, callA, callB };
 }
 
 /**
  * Verifies Mode A (local wall clock + IANA tz_str) vs Mode B (UTC + tz_str='UTC')
- * on /api/v2/vedic/calculate produce equivalent astronomical longitudes & Ascendant.
+ * on /api/v2/vedic/calculate across longitudes AND all birth-instant numerical tables.
  */
 export async function verifyTimezoneEquivalenceLive(
   instant: CanonicalBirthInstant,
@@ -606,8 +1034,11 @@ export function summarizeObservedQuotaHeaders(
   calls: SanitizedProviderCallRecord[]
 ): ObservedQuotaHeadersSummary {
   const observedHeadersByEndpoint: Record<string, Record<string, string>> = {};
-  let remainingQuotaObserved: string | null = null;
+  let initialRemainingQuotaObserved: string | null = null;
+  let finalRemainingQuotaObserved: string | null = null;
+  const finalRemainingByKey: Record<string, string> = {};
   let rateLimitObserved: string | null = null;
+  let bodyQuotaMetadataObserved: Record<string, unknown> | null = null;
 
   for (const call of calls) {
     const quotaEntries: Record<string, string> = {};
@@ -619,13 +1050,29 @@ export function summarizeObservedQuotaHeaders(
         lk.includes('quota') ||
         lk.includes('remaining') ||
         lk.includes('reset') ||
-        lk.includes('retry')
+        lk.includes('retry') ||
+        lk.includes('credit') ||
+        lk.includes('usage') ||
+        lk.includes('allowance')
       ) {
         quotaEntries[k] = v;
-        if (!remainingQuotaObserved && lk.includes('remaining')) {
-          remainingQuotaObserved = `${k}: ${v}`;
-        }
-        if (!rateLimitObserved && (lk.includes('limit') || lk.includes('quota'))) {
+        const isRemainingKey =
+          lk.includes('remaining') || lk.includes('credits-left') || lk.includes('quota-left');
+        const isResetOrUsageKey =
+          lk.includes('reset') || lk.includes('used') || lk.includes('retry');
+
+        if (isRemainingKey) {
+          const formatted = `${k}: ${v}`;
+          if (!initialRemainingQuotaObserved) {
+            initialRemainingQuotaObserved = formatted;
+          }
+          finalRemainingQuotaObserved = formatted;
+          finalRemainingByKey[k] = v;
+        } else if (
+          !rateLimitObserved &&
+          !isResetOrUsageKey &&
+          (lk.includes('limit') || lk.includes('quota') || lk.includes('allowance'))
+        ) {
           rateLimitObserved = `${k}: ${v}`;
         }
       }
@@ -633,16 +1080,47 @@ export function summarizeObservedQuotaHeaders(
     if (Object.keys(quotaEntries).length > 0) {
       observedHeadersByEndpoint[call.id] = quotaEntries;
     }
+
+    if (call.rawResponse && typeof call.rawResponse === 'object' && !Array.isArray(call.rawResponse)) {
+      const r = call.rawResponse as Record<string, unknown>;
+      for (const candidateKey of ['quota', 'usage', 'credits', 'rate_limit']) {
+        if (r[candidateKey] !== undefined) {
+          bodyQuotaMetadataObserved = bodyQuotaMetadataObserved || {};
+          bodyQuotaMetadataObserved[`${call.id}.${candidateKey}`] = r[candidateKey];
+        }
+      }
+      const meta = r.meta && typeof r.meta === 'object' ? (r.meta as Record<string, unknown>) : null;
+      if (meta) {
+        for (const [mk, mv] of Object.entries(meta)) {
+          if (/quota|remaining|credit|limit|usage/i.test(mk)) {
+            bodyQuotaMetadataObserved = bodyQuotaMetadataObserved || {};
+            bodyQuotaMetadataObserved[`${call.id}.meta.${mk}`] = mv;
+          }
+        }
+      }
+    }
   }
+
+  const remainingKeys = Object.keys(finalRemainingByKey);
+  const remainingQuotaSummary =
+    remainingKeys.length > 1
+      ? remainingKeys.map((k) => `${k}: ${finalRemainingByKey[k]}`).join(' | ')
+      : finalRemainingQuotaObserved;
 
   const hasMeasuredHeaders = Object.keys(observedHeadersByEndpoint).length > 0;
   return {
     status: hasMeasuredHeaders ? 'measured_from_headers' : 'not_provided_by_provider',
     observedHeadersByEndpoint,
-    remainingQuotaObserved,
+    remainingQuotaObserved: remainingQuotaSummary,
+    ...(initialRemainingQuotaObserved && initialRemainingQuotaObserved !== remainingQuotaSummary
+      ? { initialRemainingQuotaObserved }
+      : {}),
     rateLimitObserved,
+    ...(bodyQuotaMetadataObserved ? { bodyQuotaMetadataObserved } : {}),
     note: hasMeasuredHeaders
-      ? 'Quota/rate-limit values below were directly observed in provider HTTP response headers.'
+      ? remainingQuotaSummary
+        ? `Quota/rate-limit headers directly observed across ${calls.length} calls; remainingQuotaObserved reports final post-run header state (${remainingQuotaSummary}).`
+        : 'Rate-limit headers observed in provider HTTP responses, without a remaining-quota header.'
       : 'FreeAstroAPI HTTP responses did not include rate-limit or remaining-quota headers; only client-measured request counts and payload sizes are reported.',
   };
 }

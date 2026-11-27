@@ -62,6 +62,8 @@ interface V2DiagnosticRunResult {
   };
   runtimeTelemetry: {
     executionDurationMs: number;
+    heapMemoryStatus?: 'measured' | 'unavailable_in_worker_isolate';
+    heapMeasurementNote?: string;
     heapBeforeBytes: number | null;
     heapAfterBytes: number | null;
     heapDeltaBytes: number | null;
@@ -150,7 +152,9 @@ interface V2DiagnosticRunResult {
         status: 'measured_from_headers' | 'not_provided_by_provider';
         observedHeadersByEndpoint: Record<string, Record<string, string>>;
         remainingQuotaObserved: string | null;
+        initialRemainingQuotaObserved?: string | null;
         rateLimitObserved: string | null;
+        bodyQuotaMetadataObserved?: Record<string, unknown> | null;
         note: string;
       };
     };
@@ -1037,14 +1041,14 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
                   items: result.verificationReport.epistemicClassification.providerDataAcquired,
                 },
                 {
-                  title: '2. Internal Math Consistency Verified',
+                  title: '2. Internal Math & Internal Solver Verified',
                   tone: 'border-[#2D6A4F]/25 bg-[#2D6A4F]/5',
                   items:
                     result.verificationReport.epistemicClassification
                       .internalMathConsistencyVerified,
                 },
                 {
-                  title: '3. Independently Validated vs External Reference',
+                  title: '3. External JHora / PyJHora / SwissEph Validated',
                   tone: 'border-[#2D6A4F]/25 bg-[#2D6A4F]/5',
                   items:
                     result.verificationReport.epistemicClassification
@@ -1069,7 +1073,11 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
                     </span>
                   </div>
                   {bucket.items.length === 0 ? (
-                    <div className="text-[11px] text-[#8B8275]">None</div>
+                    <div className="text-[11px] text-[#8B8275]">
+                      {bucket.title.startsWith('3.')
+                        ? 'None (internal solver checks are in Bucket 2; external JHora/PyJHora pending)'
+                        : 'None'}
+                    </div>
                   ) : (
                     <ul className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                       {bucket.items.map((item) => (

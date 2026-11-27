@@ -16,23 +16,32 @@ import dotenv from 'dotenv';
 import {
   acquireV2NatalBundle,
   assessChartJsonDefects,
+  auditVargasMethodology,
   BirthInstantTimezoneError,
   buildAndValidateV2Requests,
   buildLayerBMasterChartRecord,
   buildLayerCAnalyticalShell,
   buildLegacyVsV2ComparisonReport,
+  compareModeAVsModeBResponses,
   computeIndependentAstronomicalReference,
   getFreeAstroApiKey,
   getFreeAstroApiSecretStatus,
   READ_ONLY_SUPABASE_DIAGNOSTIC_SQL,
   redactSecretsDeep,
   resolveCanonicalBirthInstant,
+  summarizeObservedQuotaHeaders,
   verify12CuspSequence,
+  verifyKpFrameDetailed,
   verifyMasterChartRecord,
+  verifyWesternFrameDetailed,
   type CanonicalBirthInput,
+  type KpPlacidusFrame,
   type LayerARawProviderRecord,
+  type SanitizedProviderCallRecord,
+  type VedicLahiriFrame,
+  type WesternTropicalFrame,
 } from '../server/services/v2Engine';
-import { getNakshatraAndSubs } from '../server/services/jyotishMath';
+import { getNakshatraAndSubs, getVargaSignIndex, normalizeDeg, SIGNS } from '../server/services/jyotishMath';
 
 function loadLocalEnvFilesForCli(): { loadedFiles: string[] } {
   const cwd = process.cwd();
@@ -455,7 +464,10 @@ async function main() {
       partialMaster.shadbalaReconciliation.data?.authoritativeDesignation ===
         'unassigned_pending_reconciliation' &&
       partialVerification.epistemicClassification.providerDataAcquired.length >= 1 &&
-      partialVerification.epistemicClassification.methodologyUnresolved.length >= 1 &&
+      partialVerification.epistemicClassification.independentlyValidatedAgainstExternalReference.length === 0 &&
+      partialVerification.epistemicClassification.methodologyUnresolved.some(
+        (i) => i.key === 'pending_external_jhora_pyjhora_validation'
+      ) &&
       partialVerification.epistemicClassification.datasetUnavailable.length >= 1,
     'Partial acquisition & 5-bucket epistemic classification check failed.'
   );
@@ -463,7 +475,300 @@ async function main() {
     id: 'partial_acquisition_and_epistemic_classification',
     status: 'PASSED',
     verificationMode: partialVerification.mode,
+    externalBucketCount:
+      partialVerification.epistemicClassification.independentlyValidatedAgainstExternalReference.length,
     shadbalaDesignation: partialMaster.shadbalaReconciliation.data?.authoritativeDesignation,
+  });
+
+  // 3d. Chris 4 Mode A vs Mode B Shadbala Kala Bala failure & Panchang clock-offset audit
+  const makeProbeCall = (
+    id: 'timezone_probe_mode_a' | 'timezone_probe_mode_b',
+    rawResponse: unknown
+  ): SanitizedProviderCallRecord => ({
+    id,
+    endpoint: '/api/v2/vedic/calculate',
+    method: 'POST',
+    timestampUtc: new Date().toISOString(),
+    sanitizedRequest: { tz_str: id === 'timezone_probe_mode_a' ? 'Asia/Kolkata' : 'UTC' },
+    httpStatus: 200,
+    ok: true,
+    attempts: 1,
+    rateWaitMs: 0,
+    coordinationMode: 'isolate_memory_only',
+    latencyMs: 100,
+    payloadBytes: 1024,
+    quotaAndMetaHeaders: {},
+    rawResponse,
+  });
+  const chris4ModeBCall = makeProbeCall('timezone_probe_mode_b', {
+    chart: {
+      ascendant: { degree: sampleRef.lahiriAscendantDeg },
+      planets: [
+        { name: 'Sun', absolute_degree: sampleRef.lahiriSunLonDeg },
+        { name: 'Moon', absolute_degree: sampleRef.lahiriMoonLonDeg },
+      ],
+    },
+    shadbala: {
+      Sun: { sthana_bala: 222.31, dig_bala: 24.27, kala_bala: 118.12, cheshta_bala: 1.03, naisargika_bala: 60, drik_bala: 8.39, total: 434.12, ratio: 1.45 },
+      Moon: { sthana_bala: 214.03, dig_bala: 32.94, kala_bala: 110.05, cheshta_bala: 51.33, naisargika_bala: 51.42, drik_bala: -29.76, total: 430.01, ratio: 1.2 },
+      Mars: { sthana_bala: 189.87, dig_bala: 43.21, kala_bala: 92.41, cheshta_bala: 23.31, naisargika_bala: 17.16, drik_bala: 12.77, total: 378.73, ratio: 1.26 },
+      Mercury: { sthana_bala: 256.02, dig_bala: 58.58, kala_bala: 127.19, cheshta_bala: 27.01, naisargika_bala: 25.74, drik_bala: 13.85, total: 508.39, ratio: 1.21 },
+      Jupiter: { sthana_bala: 126.04, dig_bala: 37.35, kala_bala: 155.21, cheshta_bala: 16.77, naisargika_bala: 34.26, drik_bala: -29.39, total: 340.24, ratio: 0.87 },
+      Venus: { sthana_bala: 151.48, dig_bala: 33.68, kala_bala: 145.56, cheshta_bala: 2.97, naisargika_bala: 42.84, drik_bala: 9.93, total: 386.46, ratio: 1.17 },
+      Saturn: { sthana_bala: 214.33, dig_bala: 1.48, kala_bala: 91.37, cheshta_bala: 10.94, naisargika_bala: 8.58, drik_bala: 15.21, total: 341.91, ratio: 1.14 },
+    },
+    panchang: {
+      tithi: { name: 'Shukla Chaturdashi' },
+      nakshatra: { name: 'Rohini' },
+      sunrise: '06:17:00',
+      sunset: '16:56:00',
+    },
+  });
+  const chris4ModeACall = makeProbeCall('timezone_probe_mode_a', {
+    chart: {
+      ascendant: { degree: sampleRef.lahiriAscendantDeg },
+      planets: [
+        { name: 'Sun', absolute_degree: sampleRef.lahiriSunLonDeg },
+        { name: 'Moon', absolute_degree: sampleRef.lahiriMoonLonDeg },
+      ],
+    },
+    shadbala: {
+      Sun: { sthana_bala: 222.31, dig_bala: 24.27, kala_bala: 105.14, cheshta_bala: 1.03, naisargika_bala: 60, drik_bala: 8.39, total: 421.14, ratio: 1.4 },
+      Moon: { sthana_bala: 214.03, dig_bala: 32.94, kala_bala: 123.03, cheshta_bala: 51.33, naisargika_bala: 51.42, drik_bala: -29.76, total: 442.99, ratio: 1.23 },
+      Mars: { sthana_bala: 189.87, dig_bala: 43.21, kala_bala: 165.39, cheshta_bala: 23.31, naisargika_bala: 17.16, drik_bala: 12.77, total: 451.71, ratio: 1.51 },
+      Mercury: { sthana_bala: 256.02, dig_bala: 58.58, kala_bala: 127.19, cheshta_bala: 27.01, naisargika_bala: 25.74, drik_bala: 13.85, total: 508.39, ratio: 1.21 },
+      Jupiter: { sthana_bala: 126.04, dig_bala: 37.35, kala_bala: 142.23, cheshta_bala: 16.77, naisargika_bala: 34.26, drik_bala: -29.39, total: 327.26, ratio: 0.84 },
+      Venus: { sthana_bala: 151.48, dig_bala: 33.68, kala_bala: 72.58, cheshta_bala: 2.97, naisargika_bala: 42.84, drik_bala: 9.93, total: 313.48, ratio: 0.95 },
+      Saturn: { sthana_bala: 214.33, dig_bala: 1.48, kala_bala: 104.35, cheshta_bala: 10.94, naisargika_bala: 8.58, drik_bala: 15.21, total: 354.89, ratio: 1.18 },
+    },
+    panchang: {
+      tithi: { name: 'Shukla Chaturdashi' },
+      nakshatra: { name: 'Rohini' },
+      sunrise: '11:47:00',
+      sunset: '22:26:00',
+    },
+  });
+  const modeCompare = compareModeAVsModeBResponses(chris4ModeACall, chris4ModeBCall, sampleInstant);
+  assert(
+    modeCompare.coordinatesEquivalent === true &&
+      modeCompare.shadbalaComparison?.available === true &&
+      modeCompare.shadbalaComparison.equivalent === false &&
+      modeCompare.equivalent === false &&
+      Math.abs((modeCompare.shadbalaComparison.maxTotalDeltaVirupas ?? 0) - 72.98) < 0.02 &&
+      modeCompare.panchangAudit?.equivalent === true &&
+      (modeCompare.panchangAudit?.legitimateDisplayTimeDifferences.length ?? 0) === 2,
+    'Chris 4 Mode A vs Mode B Shadbala Kala Bala failure + Panchang offset test failed.'
+  );
+  regressionResults.push({
+    id: 'shadbala_timezone_invariance_detector',
+    status: 'PASSED',
+    maxTotalDeltaVirupas: modeCompare.shadbalaComparison?.maxTotalDeltaVirupas,
+    legitimatePanchangTimeDiffs: modeCompare.panchangAudit?.legitimateDisplayTimeDifferences.length,
+  });
+
+  // 3e. D4 alternate longitudes & D5 calibrated:false audit
+  const syntheticVedicForVargas: VedicLahiriFrame = {
+    ayanamshaLabel: 'lahiri',
+    houseSystem: 'whole_sign',
+    nodeType: 'mean',
+    timezoneUsed: 'Asia/Kolkata',
+    ascendant: { degree: sampleRef.lahiriAscendantDeg },
+    planets: [
+      { name: 'Sun', absolute_degree: sampleRef.lahiriSunLonDeg },
+      { name: 'Moon', absolute_degree: sampleRef.lahiriMoonLonDeg },
+    ],
+    houses: [],
+    sadeSati: null,
+    vargas: {
+      supportedCount: 2,
+      divisionsReturned: ['D4', 'D5'],
+      chartsByDivision: {
+        D4: {
+          profile: 'auto',
+          alternate_source_longitudes: true,
+          ascendant: { sign: SIGNS[getVargaSignIndex(sampleRef.lahiriAscendantDeg, 4)] },
+          planets: [
+            { name: 'Sun', sign: SIGNS[getVargaSignIndex(sampleRef.lahiriSunLonDeg, 4)] },
+            { name: 'Moon', sign: SIGNS[getVargaSignIndex(sampleRef.lahiriMoonLonDeg, 4)] },
+          ],
+        },
+        D5: {
+          calibrated: false,
+          ascendant: { sign: 'Scorpio' },
+          planets: [{ name: 'Sun', sign: 'Sagittarius' }],
+        },
+      },
+    },
+    ashtakavarga: null,
+    yogas: null,
+    panchang: null,
+    vimshottariDasha: null,
+    providerMetadata: null,
+  };
+  const vargaAuditRes = auditVargasMethodology(syntheticVedicForVargas);
+  assert(
+    vargaAuditRes.d4Audit.matchesBphsQuadrantJumpCount === 3 &&
+      vargaAuditRes.d4Audit.hasAlternateSourceLongitudes === true &&
+      vargaAuditRes.d5Audit.calibrated === false &&
+      vargaAuditRes.uncalibratedDivisions.some((u) => u.division === 'D5'),
+    'D4/D5 varga audit test failed.'
+  );
+  regressionResults.push({
+    id: 'vargas_d4_d5_methodology_audit',
+    status: 'PASSED',
+    d4Matches: vargaAuditRes.d4Audit.matchesBphsQuadrantJumpCount,
+    d5Calibrated: vargaAuditRes.d5Audit.calibrated,
+  });
+
+  // 3f. KP cusps, occupancy & 4-level significators verification
+  const kpAyRef = normalizeDeg(sampleRef.tropicalAscendantDeg - sampleRef.kpAscendantDeg);
+  const kpSunLon = normalizeDeg(sampleRef.tropicalSunLonDeg - kpAyRef);
+  const kpMoonLon = normalizeDeg(sampleRef.tropicalMoonLonDeg - kpAyRef);
+  const findKpHouse = (lon: number): number => {
+    for (let i = 0; i < 12; i++) {
+      const s = sampleRef.kpPlacidusCuspsDeg[i];
+      const e = sampleRef.kpPlacidusCuspsDeg[(i + 1) % 12];
+      if (s < e ? lon >= s && lon < e : lon >= s || lon < e) return i + 1;
+    }
+    return 1;
+  };
+  const kpSunH = findKpHouse(kpSunLon);
+  const kpMoonH = findKpHouse(kpMoonLon);
+  const kpCuspsArr = sampleRef.kpPlacidusCuspsDeg.map((deg, idx) => {
+    const nak = getNakshatraAndSubs(deg);
+    return { house: idx + 1, cusp_degree: deg, star_lord: nak.nakshatraLord, sub_lord: nak.subLord };
+  });
+  const SIGN_LORDS = ['Mars', 'Venus', 'Mercury', 'Moon', 'Sun', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Saturn', 'Jupiter'];
+  const sunOwned = kpCuspsArr.filter((c) => SIGN_LORDS[Math.floor(c.cusp_degree / 30) % 12] === 'Sun').map((c) => c.house);
+  const moonOwned = kpCuspsArr.filter((c) => SIGN_LORDS[Math.floor(c.cusp_degree / 30) % 12] === 'Moon').map((c) => c.house);
+  const kpFrameGood: KpPlacidusFrame = {
+    ayanamsha: { id: 'kp', name: 'KP', valueDegrees: kpAyRef },
+    angles: { ascendant: { degree: sampleRef.kpAscendantDeg }, mc: { degree: sampleRef.kpMcDeg } },
+    ascendant: { degree: sampleRef.kpAscendantDeg },
+    planets: [
+      { name: 'Sun', absolute_degree: kpSunLon, kp_house: kpSunH },
+      { name: 'Moon', absolute_degree: kpMoonLon, kp_house: kpMoonH },
+    ],
+    cusps: kpCuspsArr,
+    cuspalSubLordTable: [],
+    planetSignificators: [
+      { planet: 'Sun', level_2: [kpSunH], level_4: sunOwned },
+      { planet: 'Moon', level_2: [kpMoonH], level_4: moonOwned },
+    ],
+    houseSignificators: Array.from({ length: 12 }, (_, i) => ({ house: i + 1 })),
+    rulingPlanets: null,
+    dasha: null,
+    metadata: null,
+  };
+  const kpGoodCheck = verifyKpFrameDetailed(kpFrameGood, sampleRef);
+  const kpBadCheck = verifyKpFrameDetailed(
+    {
+      ...kpFrameGood,
+      planets: [
+        { name: 'Sun', absolute_degree: kpSunLon, kp_house: (kpSunH % 12) + 1 },
+        { name: 'Moon', absolute_degree: kpMoonLon, kp_house: kpMoonH },
+      ],
+    },
+    sampleRef
+  );
+  assert(
+    kpGoodCheck.passed === true &&
+      kpGoodCheck.occupancyMatches === 2 &&
+      kpBadCheck.passed === false &&
+      kpBadCheck.occupancyMismatches.length === 1,
+    'KP occupancy & significators verification check failed.'
+  );
+  regressionResults.push({
+    id: 'kp_occupancy_and_significators',
+    status: 'PASSED',
+    goodOccupancyMatches: kpGoodCheck.occupancyMatches,
+    corruptedMismatchesDetected: kpBadCheck.occupancyMismatches.length,
+  });
+
+  // 3g. Western Placidus occupancy & aspect geometry verification
+  const findTropHouse = (lon: number): number => {
+    for (let i = 0; i < 12; i++) {
+      const s = sampleRef.tropicalPlacidusCusps[i];
+      const e = sampleRef.tropicalPlacidusCusps[(i + 1) % 12];
+      if (s < e ? lon >= s && lon < e : lon >= s || lon < e) return i + 1;
+    }
+    return 1;
+  };
+  const westGood: WesternTropicalFrame = {
+    zodiacType: 'tropical',
+    houseSystem: 'placidus',
+    timeKnown: true,
+    secondPrecisionDroppedByV1Endpoint: false,
+    subject: null,
+    resolvedTime: null,
+    angles: { ascendant: { abs_pos: sampleRef.tropicalAscendantDeg }, mc: { abs_pos: sampleRef.tropicalMcDeg } },
+    anglesDetails: null,
+    planets: [
+      { name: 'Sun', abs_pos: sampleRef.tropicalSunLonDeg, house: findTropHouse(sampleRef.tropicalSunLonDeg) },
+      { name: 'Moon', abs_pos: sampleRef.tropicalMoonLonDeg, house: findTropHouse(sampleRef.tropicalMoonLonDeg) },
+      {
+        name: 'Mercury',
+        abs_pos: normalizeDeg(sampleRef.tropicalSunLonDeg + 120),
+        house: findTropHouse(normalizeDeg(sampleRef.tropicalSunLonDeg + 120)),
+      },
+    ],
+    houses: sampleRef.tropicalPlacidusCusps.map((deg, idx) => ({ house: idx + 1, abs_pos: deg })),
+    aspects: [{ p1_name: 'Sun', p2_name: 'Mercury', aspect: 'Trine', orb: 0.0 }],
+    aspectsSummary: null,
+    declinationAspects: [],
+    declinationAspectsSummary: null,
+    configurations: null,
+    stelliums: null,
+    dominants: null,
+    dominantsProfile: null,
+    tables: null,
+  };
+  const westGoodCheck = verifyWesternFrameDetailed(westGood, sampleRef, false);
+  const westBadCheck = verifyWesternFrameDetailed(
+    { ...westGood, aspects: [{ p1_name: 'Sun', p2_name: 'Mercury', aspect: 'Square', orb: 0.0 }] },
+    sampleRef,
+    false
+  );
+  assert(
+    westGoodCheck.passed === true &&
+      westGoodCheck.aspectsMatched === 1 &&
+      westBadCheck.passed === false &&
+      westBadCheck.aspectMismatches.length === 1,
+    'Western occupancy & aspect verification check failed.'
+  );
+  regressionResults.push({
+    id: 'western_occupancy_and_aspects',
+    status: 'PASSED',
+    aspectsVerified: westGoodCheck.aspectsMatched,
+    badAspectDetected: westBadCheck.aspectMismatches.length,
+  });
+
+  // 3h. Quota header summary non-conflation & post-run remaining value
+  const quotaCalls: SanitizedProviderCallRecord[] = [
+    {
+      ...chris4ModeACall,
+      id: 'vedic_calculate',
+      quotaAndMetaHeaders: { 'x-ratelimit-limit': '60', 'x-ratelimit-remaining': '100' },
+    },
+    {
+      ...chris4ModeBCall,
+      id: 'ephemeris',
+      quotaAndMetaHeaders: { 'x-ratelimit-limit': '60', 'x-ratelimit-remaining': '96' },
+    },
+  ];
+  const quotaSummary = summarizeObservedQuotaHeaders(quotaCalls);
+  assert(
+    quotaSummary.remainingQuotaObserved === 'x-ratelimit-remaining: 96' &&
+      quotaSummary.initialRemainingQuotaObserved === 'x-ratelimit-remaining: 100' &&
+      quotaSummary.rateLimitObserved === 'x-ratelimit-limit: 60',
+    `Quota summary mismatch: ${JSON.stringify(quotaSummary)}`
+  );
+  regressionResults.push({
+    id: 'quota_header_summary_accuracy',
+    status: 'PASSED',
+    initialRemaining: quotaSummary.initialRemainingQuotaObserved,
+    finalRemaining: quotaSummary.remainingQuotaObserved,
+    rateLimit: quotaSummary.rateLimitObserved,
   });
 
   // 4. Read-Only Existing Profile Defect Audit + Legacy vs V2 Comparison on Local Fixtures
