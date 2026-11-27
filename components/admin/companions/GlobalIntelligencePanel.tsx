@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
+  ChevronUp,
   Layers,
   Plus,
   RotateCcw,
@@ -123,6 +125,35 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
     CONSULTANTS_ONLY_MODE ? 'spiritual_guides' : 'cross_cutting'
   );
   const [newSpecDesc, setNewSpecDesc] = useState('');
+  const [globalFieldSearch, setGlobalFieldSearch] = useState('');
+  const [collapsedFields, setCollapsedFields] = useState<Record<string, boolean>>({});
+
+  const allFieldKeys = [
+    ...GLOBAL_COMPANION_PROMPT_META.map((m) => `prompt_${m.key}`),
+    ...GLOBAL_ANALYTICAL_PREP_PROMPT_META.map((m) => `prep_${m.key}`),
+    ...ACTIVE_COMPANION_GROUP_OPTIONS.map((g) => `group_${g.value}`),
+    ...SKILL_RULE_LABELS.map((s) => `skill_${s.key}`),
+  ];
+
+  const toggleFieldCollapse = (key: string) => {
+    setCollapsedFields((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleCollapseAll = () => {
+    const next: Record<string, boolean> = {};
+    allFieldKeys.forEach((k) => { next[k] = true; });
+    setCollapsedFields(next);
+  };
+
+  const handleExpandAll = () => {
+    setCollapsedFields({});
+  };
+
+  const matchesSearch = (title: string, desc: string) => {
+    if (!globalFieldSearch.trim()) return true;
+    const q = globalFieldSearch.toLowerCase();
+    return title.toLowerCase().includes(q) || desc.toLowerCase().includes(q);
+  };
 
   const showArchivedMatrixOptions =
     !CONSULTANTS_ONLY_MODE ||
@@ -231,15 +262,43 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
               Always-active realism baselines, posture guardrails, pillar group defaults, skill rules, and hub matcher instructions.
             </p>
           </div>
-          <button
-            type="button"
-            disabled={globalPromptsSaving || globalPromptsLoading}
-            onClick={onSaveGlobalPrompts}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <Save className="h-3.5 w-3.5" />
-            <span>{globalPromptsSaving ? 'Saving...' : 'Save Global Intelligence'}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCollapseAll}
+              className="rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+            >
+              Collapse All
+            </button>
+            <button
+              type="button"
+              onClick={handleExpandAll}
+              className="rounded-full border border-[#3D3830]/15 bg-[#FAF7F2] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+            >
+              Expand All
+            </button>
+            <button
+              type="button"
+              disabled={globalPromptsSaving || globalPromptsLoading}
+              onClick={onSaveGlobalPrompts}
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-4 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <Save className="h-3.5 w-3.5" />
+              <span>{globalPromptsSaving ? 'Saving...' : 'Save Global Intelligence'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Search Bar for Global Settings & Prompts */}
+        <div className="relative">
+          <Search className="h-3.5 w-3.5 text-[#8B8275] absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={globalFieldSearch}
+            onChange={(e) => setGlobalFieldSearch(e.target.value)}
+            placeholder="Search particular field, prompt, or setting in global intelligence..."
+            className="w-full rounded-2xl border border-[#3D3830]/15 bg-[#FAF7F2] pl-9 pr-4 py-2 text-xs text-[#3D3830] placeholder:text-[#8B8275] focus:outline-none"
+          />
         </div>
 
         {globalPromptsLoading ? (
@@ -248,7 +307,9 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
           <div className="space-y-6">
             {/* Scalar Prompt Controls */}
             <div className="grid grid-cols-1 gap-4">
-              {GLOBAL_COMPANION_PROMPT_META.map((meta) => {
+              {GLOBAL_COMPANION_PROMPT_META.filter((meta) => matchesSearch(meta.label, meta.description)).map((meta) => {
+                const fieldKey = `prompt_${meta.key}`;
+                const isCollapsed = Boolean(collapsedFields[fieldKey]);
                 const overrideVal = String(engineOverrides[meta.key as GlobalCompanionPromptKey] ?? '');
                 const defaultVal = String(engineDefaults[meta.key as GlobalCompanionPromptKey] ?? '');
                 const effectiveText = overrideVal || defaultVal;
@@ -259,37 +320,61 @@ const GlobalIntelligencePanel: React.FC<GlobalIntelligencePanelProps> = ({
                     className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-2"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-[#3D3830]">
-                            {meta.label}
-                          </span>
-                          <span className="font-mono text-[10px] text-[#8B8275]">
-                            {isOverridden ? 'Custom Override' : 'Default'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-[#8B8275] mt-0.5">{meta.description}</p>
-                      </div>
-                      {isOverridden && (
+                      <div
+                        className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
+                        onClick={() => toggleFieldCollapse(fieldKey)}
+                      >
                         <button
                           type="button"
-                          onClick={() => onResetGlobalPromptKey(meta.key)}
-                          className="inline-flex items-center gap-1 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-2.5 py-1 text-[11px] text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                          aria-label="Toggle field collapse"
+                          className="p-1 rounded-lg text-[#5C5449] hover:bg-[#FDFBF7] shrink-0"
                         >
-                          <RotateCcw className="h-3 w-3" />
-                          <span>Reset</span>
+                          {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
                         </button>
-                      )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-[#3D3830] truncate">
+                              {meta.label}
+                            </span>
+                            <span className="font-mono text-[10px] text-[#8B8275] shrink-0">
+                              {isOverridden ? 'Custom Override' : 'Default'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[#8B8275] mt-0.5 truncate">{meta.description}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isOverridden && (
+                          <button
+                            type="button"
+                            onClick={() => onResetGlobalPromptKey(meta.key)}
+                            className="inline-flex items-center gap-1 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-2.5 py-1 text-[11px] text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            <span>Reset</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => toggleFieldCollapse(fieldKey)}
+                          aria-label="Toggle collapse"
+                          className="p-1 rounded-lg border border-[#3D3830]/12 bg-[#FDFBF7] text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                        >
+                          {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                        </button>
+                      </div>
                     </div>
-                    <textarea
-                      rows={4}
-                      value={effectiveText}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setEngineOverrides((prev) => ({ ...prev, [meta.key]: val }));
-                      }}
-                      className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] p-3 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
-                    />
+                    {!isCollapsed && (
+                      <textarea
+                        rows={4}
+                        value={effectiveText}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEngineOverrides((prev) => ({ ...prev, [meta.key]: val }));
+                        }}
+                        className="w-full rounded-xl border border-[#3D3830]/15 bg-[#FDFBF7] p-3 font-mono text-xs leading-relaxed text-[#3D3830] focus:border-[#3D3830]/40 focus:outline-none resize-y"
+                      />
+                    )}
                   </div>
                 );
               })}
