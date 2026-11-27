@@ -16,6 +16,20 @@ import {
   type WesternPlanetPosition,
 } from './jyotishMath';
 
+import {
+  getActiveAstrologyProviderSync,
+  isAstrologyProviderEnvConfigured,
+} from './astrologyProviders/registry';
+import {
+  fetchChartFreeAstroApi,
+  fetchDailyTransitPlanetsFreeAstroApi,
+  geocodeBirthLocationFreeAstroApi,
+  isFreeAstroApiConfigured,
+  resolveHistoricalTimezoneOffsetFreeAstroApi,
+  searchBirthPlacesFreeAstroApi,
+} from './astrologyProviders/freeAstroApiAdapter';
+import { getBirthChartConversionConfig } from './platformSettings';
+
 const BASE_URL = 'https://json.freeastrologyapi.com';
 const RATE_LIMIT_INTERVAL_MS = Number(process.env.FREE_ASTROLOGY_RATE_MS) || 1100;
 
@@ -23,7 +37,8 @@ let queueTail: Promise<unknown> = Promise.resolve();
 let lastRequestTime = 0;
 
 export function isAstrologyApiConfigured(): boolean {
-  return Boolean(process.env.FREE_ASTROLOGY_API_KEY);
+  const active = getActiveAstrologyProviderSync();
+  return isAstrologyProviderEnvConfigured(active);
 }
 
 async function scheduleRateLimited<T>(fn: () => Promise<T>): Promise<T> {
@@ -136,6 +151,18 @@ export async function searchBirthPlaces(query: string): Promise<PlaceSuggestion[
   const trimmed = query.trim();
   if (trimmed.length < 2) return [];
 
+  const cfg = await getBirthChartConversionConfig();
+  if (cfg.astrology_provider === 'freeastroapi') {
+    const cacheKey = `freeastroapi::${trimmed.toLowerCase()}`;
+    const cached = placeSearchCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.places;
+    }
+    const places = await searchBirthPlacesFreeAstroApi(trimmed);
+    placeSearchCache.set(cacheKey, { expiresAt: Date.now() + PLACE_CACHE_TTL_MS, places });
+    return places;
+  }
+
   const cacheKey = trimmed.toLowerCase();
   const cached = placeSearchCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -198,6 +225,18 @@ export async function resolveHistoricalTimezoneOffset(
   fallbackOffset: number,
   tzName?: string
 ): Promise<number> {
+  const cfg = await getBirthChartConversionConfig();
+  if (cfg.astrology_provider === 'freeastroapi') {
+    return resolveHistoricalTimezoneOffsetFreeAstroApi(
+      lat,
+      lon,
+      birthDateISO,
+      birthTimeStr,
+      fallbackOffset,
+      tzName
+    );
+  }
+
   const [year, month, date] = birthDateISO.split('-').map(Number);
   const [hours, minutes] = birthTimeStr.split(':').map(Number);
 
@@ -235,6 +274,11 @@ export async function geocodeBirthLocation(
   birthDateISO: string,
   birthTimeStr: string
 ): Promise<BirthLocationResolved> {
+  const cfg = await getBirthChartConversionConfig();
+  if (cfg.astrology_provider === 'freeastroapi') {
+    return geocodeBirthLocationFreeAstroApi(city, state, country, birthDateISO, birthTimeStr);
+  }
+
   const query = [city, state, country].filter(Boolean).join(', ');
   const geoResp = await postAstrologyEndpoint<unknown[]>('/geo-details', {
     location: query,
@@ -457,6 +501,11 @@ export async function fetchChartFromApi(
   apiShadBala?: unknown;
   apiWesternPlanets?: Array<{ name: string; longitude: number; isRetrograde?: boolean }> | null;
 }> {
+  const cfg = await getBirthChartConversionConfig();
+  if (cfg.astrology_provider === 'freeastroapi') {
+    return fetchChartFreeAstroApi(payload, options);
+  }
+
   const planetsRaw = await postAstrologyEndpoint('/planets/extended', payload as unknown as Record<string, unknown>);
   const planets = normalizeExtendedPlanets(planetsRaw);
 
@@ -590,7 +639,23 @@ export async function getOrFetchDailyTransits(): Promise<{
   let planets: PlanetPosition[] | null = null;
   let fetchedFromApi = false;
 
-  if (isAstrologyApiConfigured()) {
+  const cfg = await getBirthChartConversionConfig().catch(() => null);
+  const activeProvider = cfg?.astrology_provider || getActiveAstrologyProviderSync();
+
+  if (activeProvider === 'freeastroapi' && isFreeAstroApiConfigured()) {
+    try {
+      const parsed = await fetchDailyTransitPlanetsFreeAstroApi(todayISO);
+      if (parsed.length > 0) {
+        planets = parsed;
+        fetchedFromApi = true;
+      }
+    } catch (err) {
+      console.warn(
+        '[astrologyApi] FreeAstroAPI daily transits fetch failed; using deterministic Sidereal Lahiri ephemeris fallback:',
+        err instanceof Error ? err.message : err
+      );
+    }
+  } else if (isAstrologyApiConfigured()) {
     try {
       const payload = buildApiPayload(todayISO, '12:00:00', 28.6139, 77.209, 5.5);
       const raw = await postAstrologyEndpoint(

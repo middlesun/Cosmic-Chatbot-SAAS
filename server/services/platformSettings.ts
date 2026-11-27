@@ -73,8 +73,14 @@ import {
   DEFAULT_COMPANION_SPECIALIZATIONS,
   type CompanionSpecializationTag,
 } from '../../lib/companionV2Schema';
+import {
+  DEFAULT_ASTROLOGY_PROVIDER,
+  normalizeAstrologyProviderId,
+  setActiveAstrologyProviderSync,
+} from './astrologyProviders/registry';
+import type { AstrologyProviderId } from './astrologyProviders/types';
 
-export type { ChatStyle, DefaultCompanionArchetype, GuideSlug };
+export type { AstrologyProviderId, ChatStyle, DefaultCompanionArchetype, GuideSlug };
 export { ALLOWED_CHAT_STYLES, ALL_GUIDE_CATALOG_META, GUIDE_SLUGS, getGuideCatalogMeta, isValidGuideSlug, normalizeChatStyle } from './enginePromptDefaults';
 
 export type SupportedCurrency = 'INR' | 'USD' | 'AED' | 'EUR';
@@ -253,6 +259,7 @@ export interface EnginePromptOverrides {
 }
 
 export interface BirthChartConversionConfig {
+  astrology_provider: AstrologyProviderId;
   observation_point: 'geocentric' | 'topocentric';
   ayanamsha: 'lahiri';
   western_house_system: 'Placidus' | 'Whole Sign';
@@ -268,6 +275,7 @@ export interface BirthChartConversionConfig {
 }
 
 export const DEFAULT_BIRTH_CHART_CONVERSION_CONFIG: BirthChartConversionConfig = {
+  astrology_provider: DEFAULT_ASTROLOGY_PROVIDER,
   observation_point: 'geocentric',
   ayanamsha: 'lahiri',
   western_house_system: 'Placidus',
@@ -743,6 +751,14 @@ export async function savePlatformSetting(
   if (key === 'per_guide_chatbot_config') perGuideConfigCache = null;
   if (key === 'engine_prompt_overrides') enginePromptsCache = null;
   if (key === 'playbook_overrides') playbookOverridesCache = null;
+  if (key === 'birth_chart_conversion_config') {
+    birthChartConversionCache = null;
+    if (value && typeof value === 'object' && 'astrology_provider' in value) {
+      setActiveAstrologyProviderSync(
+        normalizeAstrologyProviderId((value as { astrology_provider?: unknown }).astrology_provider)
+      );
+    }
+  }
   return { ok: true };
 }
 
@@ -1366,6 +1382,10 @@ export function sanitizeBirthChartConversionConfig(
     return Math.max(min, Math.min(max, Math.round(val * 100) / 100));
   };
   return {
+    astrology_provider: normalizeAstrologyProviderId(
+      obj.astrology_provider,
+      fallback.astrology_provider
+    ),
     observation_point:
       obj.observation_point === 'topocentric' || obj.observation_point === 'geocentric'
         ? obj.observation_point
@@ -1431,10 +1451,12 @@ export function sanitizeBirthChartConversionConfig(
 export async function getBirthChartConversionConfig(): Promise<BirthChartConversionConfig> {
   const now = Date.now();
   if (birthChartConversionCache && birthChartConversionCache.expiresAt > now) {
+    setActiveAstrologyProviderSync(birthChartConversionCache.value.astrology_provider);
     return birthChartConversionCache.value;
   }
   const stored = await readSettingRow<BirthChartConversionConfig>('birth_chart_conversion_config');
   const merged = sanitizeBirthChartConversionConfig(stored, DEFAULT_BIRTH_CHART_CONVERSION_CONFIG);
+  setActiveAstrologyProviderSync(merged.astrology_provider);
   birthChartConversionCache = { value: merged, expiresAt: now + CACHE_TTL_MS };
   return merged;
 }

@@ -11,7 +11,25 @@ import {
 import CustomSelect from '../app/CustomSelect';
 import type { ModelChoiceOption } from './PromptLibraryManager';
 
+export type AstrologyProviderOptionId =
+  | 'freeastrologyapi'
+  | 'freeastroapi'
+  | 'astroway'
+  | 'astrology_api_io';
+
+export interface AstrologyProviderRuntimeInfo {
+  id: AstrologyProviderOptionId;
+  label: string;
+  envKeyName: string;
+  baseUrl: string;
+  status: 'production_default' | 'poc_adapter_ready' | 'pending_poc';
+  supportsSwitch: boolean;
+  summary: string;
+  envConfigured: boolean;
+}
+
 export interface BirthChartConversionConfigState {
+  astrology_provider: AstrologyProviderOptionId;
   observation_point: 'geocentric' | 'topocentric';
   ayanamsha: 'lahiri';
   western_house_system: 'Placidus' | 'Whole Sign';
@@ -51,6 +69,7 @@ const AdminBirthChartCompiler: React.FC<AdminBirthChartCompilerProps> = ({
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const [config, setConfig] = useState<BirthChartConversionConfigState | null>(null);
+  const [providers, setProviders] = useState<AstrologyProviderRuntimeInfo[]>([]);
   const [systemPrompt, setSystemPrompt] = useState('');
   const [userPrompt, setUserPrompt] = useState('');
   const [defaultSystemPrompt, setDefaultSystemPrompt] = useState('');
@@ -69,6 +88,7 @@ const AdminBirthChartCompiler: React.FC<AdminBirthChartCompilerProps> = ({
       if (!res.ok) throw new Error(data.error || 'Failed to load birth chart compiler settings');
 
       setConfig(data.config);
+      if (Array.isArray(data.providers)) setProviders(data.providers);
       setSystemPrompt(data.prompts?.natal_narrative_kernel_system_prompt || '');
       setUserPrompt(data.prompts?.natal_narrative_kernel_user_prompt || '');
       setDefaultSystemPrompt(data.promptDefaults?.natal_narrative_kernel_system_prompt || '');
@@ -125,6 +145,7 @@ const AdminBirthChartCompiler: React.FC<AdminBirthChartCompilerProps> = ({
       if (!res.ok) throw new Error(data.error || 'Failed to save birth chart settings');
 
       setConfig(data.config);
+      if (Array.isArray(data.providers)) setProviders(data.providers);
       setSystemPrompt(data.prompts?.natal_narrative_kernel_system_prompt || '');
       setUserPrompt(data.prompts?.natal_narrative_kernel_user_prompt || '');
       setFeedback('Birth chart conversion parameters and Natal Truth Dossier prompts saved.');
@@ -154,6 +175,7 @@ const AdminBirthChartCompiler: React.FC<AdminBirthChartCompilerProps> = ({
       if (!res.ok) throw new Error(data.error || 'Reset failed');
 
       setConfig(data.config);
+      if (Array.isArray(data.providers)) setProviders(data.providers);
       setSystemPrompt(data.prompts?.natal_narrative_kernel_system_prompt || '');
       setUserPrompt(data.prompts?.natal_narrative_kernel_user_prompt || '');
       setFeedback(
@@ -297,6 +319,72 @@ const AdminBirthChartCompiler: React.FC<AdminBirthChartCompilerProps> = ({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="block text-xs font-medium text-[#5C5449]">
+                Active Ephemeris &amp; Chart API Provider
+              </label>
+              <CustomSelect
+                value={config.astrology_provider || 'freeastrologyapi'}
+                onChange={(val) =>
+                  setConfig((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          astrology_provider: val as AstrologyProviderOptionId,
+                        }
+                      : prev
+                  )
+                }
+                ariaLabel="Active astrology API provider"
+                surface="canvas"
+                className="w-full"
+                options={(providers.length > 0
+                  ? providers
+                  : [
+                      {
+                        id: 'freeastrologyapi' as const,
+                        label: 'FreeAstrologyAPI (Production Default)',
+                        envKeyName: 'FREE_ASTROLOGY_API_KEY',
+                        baseUrl: 'https://json.freeastrologyapi.com',
+                        status: 'production_default' as const,
+                        supportsSwitch: true,
+                        summary: 'Default provider',
+                        envConfigured: true,
+                      },
+                      {
+                        id: 'freeastroapi' as const,
+                        label: 'FreeAstroAPI V2 (French Ephemeris)',
+                        envKeyName: 'FREE_ASTRO_API_KEY',
+                        baseUrl: 'https://api.freeastroapi.com',
+                        status: 'poc_adapter_ready' as const,
+                        supportsSwitch: true,
+                        summary: 'Evaluation candidate',
+                        envConfigured: false,
+                      },
+                    ]
+                ).map((p) => ({
+                  value: p.id,
+                  label: p.label,
+                  disabled: !p.supportsSwitch,
+                  hint: p.supportsSwitch
+                    ? `${p.envKeyName}: ${p.envConfigured ? 'Configured in server env' : 'Missing in server env'}`
+                    : `${p.envKeyName} — Pending PoC evaluation`,
+                }))}
+              />
+              {(() => {
+                const selected = providers.find((p) => p.id === config.astrology_provider);
+                if (!selected) return null;
+                return (
+                  <p className="text-[11px] text-[#8B8275]">
+                    {selected.summary}{' '}
+                    <span className="font-mono">
+                      ({selected.envKeyName}: {selected.envConfigured ? 'configured' : 'unset in server env'})
+                    </span>
+                  </p>
+                );
+              })()}
+            </div>
+
             <div className="space-y-1.5">
               <label className="block text-xs font-medium text-[#5C5449]">
                 Observation Point

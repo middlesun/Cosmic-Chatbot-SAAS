@@ -14,6 +14,11 @@ import {
   type AuthenticatedRequest,
 } from '../middleware/auth';
 import { isAstrologyApiConfigured } from '../services/astrologyApi';
+import {
+  getAstrologyProviderCatalogEntry,
+  isAstrologyProviderEnvConfigured,
+  listAstrologyProviderStatuses,
+} from '../services/astrologyProviders/registry';
 import { sendClientInviteEmail, sendSupportReplyEmail } from '../services/email';
 import {
   ALL_DEFAULT_PROMPTS,
@@ -3121,6 +3126,7 @@ router.get('/settings/birth-chart', async (_req: AuthenticatedRequest, res) => {
   res.json({
     config,
     defaults: DEFAULT_BIRTH_CHART_CONVERSION_CONFIG,
+    providers: listAstrologyProviderStatuses(),
     prompts: {
       natal_narrative_kernel_system_prompt:
         engineOverrides.natal_narrative_kernel_system_prompt ||
@@ -3159,6 +3165,17 @@ router.put('/settings/birth-chart', async (req: AuthenticatedRequest, res) => {
     body.config && typeof body.config === 'object' ? body.config : body,
     currentConfig
   );
+
+  if (
+    nextConfig.astrology_provider !== currentConfig.astrology_provider &&
+    !isAstrologyProviderEnvConfigured(nextConfig.astrology_provider)
+  ) {
+    const providerMeta = getAstrologyProviderCatalogEntry(nextConfig.astrology_provider);
+    res.status(400).json({
+      error: `Cannot switch to ${providerMeta.label}: ${providerMeta.envKeyName} is not configured in server environment secrets.`,
+    });
+    return;
+  }
 
   const savedCfg = await savePlatformSetting(
     'birth_chart_conversion_config',
@@ -3213,6 +3230,7 @@ router.put('/settings/birth-chart', async (req: AuthenticatedRequest, res) => {
     saved: true,
     config: freshCfg,
     defaults: DEFAULT_BIRTH_CHART_CONVERSION_CONFIG,
+    providers: listAstrologyProviderStatuses(),
     prompts: {
       natal_narrative_kernel_system_prompt:
         freshEngine.natal_narrative_kernel_system_prompt ||
@@ -3273,6 +3291,7 @@ router.post('/settings/birth-chart/reset', async (req: AuthenticatedRequest, res
     scope,
     config: freshCfg,
     defaults: DEFAULT_BIRTH_CHART_CONVERSION_CONFIG,
+    providers: listAstrologyProviderStatuses(),
     prompts: {
       natal_narrative_kernel_system_prompt:
         freshEngine.natal_narrative_kernel_system_prompt ||
