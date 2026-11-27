@@ -124,12 +124,30 @@ function getTimezoneOffsetHoursForZone(
   }
 }
 
-function formatOffsetToTzStr(offsetHours: number): string {
-  const sign = offsetHours >= 0 ? '+' : '-';
-  const absMins = Math.round(Math.abs(offsetHours) * 60);
-  const hh = String(Math.floor(absMins / 60)).padStart(2, '0');
-  const mm = String(absMins % 60).padStart(2, '0');
-  return `UTC${sign}${hh}:${mm}`;
+function toUtcBirthComponents(payload: ProviderBirthInputPayload): {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+} {
+  const localMs = Date.UTC(
+    payload.year,
+    payload.month - 1,
+    payload.date,
+    payload.hours,
+    payload.minutes,
+    payload.seconds || 0
+  );
+  const utcMs = localMs - Math.round(payload.timezone * 3600 * 1000);
+  const roundedUtc = new Date(Math.round(utcMs / 60000) * 60000);
+  return {
+    year: roundedUtc.getUTCFullYear(),
+    month: roundedUtc.getUTCMonth() + 1,
+    day: roundedUtc.getUTCDate(),
+    hour: roundedUtc.getUTCHours(),
+    minute: roundedUtc.getUTCMinutes(),
+  };
 }
 
 export async function searchBirthPlacesFreeAstroApi(query: string): Promise<ProviderPlaceSuggestion[]> {
@@ -363,18 +381,18 @@ export async function fetchChartFreeAstroApi(
     westernHouseSystem?: 'Placidus' | 'Whole Sign';
   }
 ): Promise<ProviderChartFetchResult> {
-  const tzStr = formatOffsetToTzStr(payload.timezone);
+  const utc = toUtcBirthComponents(payload);
   const vedicRaw = await requestFreeAstroApi<Record<string, unknown>>('/api/v2/vedic/calculate', {
     method: 'POST',
     body: {
-      year: payload.year,
-      month: payload.month,
-      day: payload.date,
-      hour: payload.hours,
-      minute: payload.minutes,
+      year: utc.year,
+      month: utc.month,
+      day: utc.day,
+      hour: utc.hour,
+      minute: utc.minute,
       lat: payload.latitude,
       lng: payload.longitude,
-      tz_str: tzStr,
+      tz_str: 'UTC',
       ayanamsha: 'lahiri',
       house_system: 'whole_sign',
       node_type: 'mean',
@@ -397,15 +415,15 @@ export async function fetchChartFreeAstroApi(
       const westernRaw = await requestFreeAstroApi<Record<string, unknown>>('/api/v1/natal/calculate', {
         method: 'POST',
         body: {
-          year: payload.year,
-          month: payload.month,
-          day: payload.date,
-          hour: payload.hours,
-          minute: payload.minutes,
+          year: utc.year,
+          month: utc.month,
+          day: utc.day,
+          hour: utc.hour,
+          minute: utc.minute,
           city: 'Reference',
           lat: payload.latitude,
           lng: payload.longitude,
-          tz_str: tzStr,
+          tz_str: 'UTC',
           house_system: options?.westernHouseSystem === 'Whole Sign' ? 'whole_sign' : 'placidus',
           zodiac_type: 'tropical',
         },
