@@ -325,7 +325,22 @@ export type DatasetVerificationStatus =
   | 'cached_verified'
   | 'partial'
   | 'unavailable'
-  | 'pending_live_reconciliation';
+  | 'pending_live_reconciliation'
+  | 'available'
+  | 'internally_verified'
+  | 'independently_validated'
+  | 'provisional'
+  | 'incompatible';
+
+export type CanonicalDatasetState =
+  | 'available'
+  | 'internally_verified'
+  | 'independently_validated'
+  | 'provisional'
+  | 'incompatible'
+  | 'unavailable';
+
+export type TemporalScope = 'natal_invariant' | 'reference_date_dependent';
 
 export type DatasetCompleteness = 'complete' | 'partial' | 'unavailable';
 
@@ -334,9 +349,14 @@ export interface DatasetEnvelope<T> {
   calculationMethod: string;
   version: string;
   conventions: Record<string, unknown>;
+  dependencies?: string[];
+  acquiredAtUtc?: string | null;
+  temporalScope?: TemporalScope;
+  referenceDateIso?: string | null;
   inputFingerprint: string;
   completeness: DatasetCompleteness;
   verificationStatus: DatasetVerificationStatus;
+  canonicalStatus?: CanonicalDatasetState;
   limitations: string[];
   data: T | null;
 }
@@ -610,15 +630,257 @@ export interface RemainingClassicalGapItem {
   notes: string;
 }
 
+export interface CalculationConventionsRecord {
+  ayanamsa: {
+    vedic: string;
+    kp: string;
+    kpValueDegrees?: number | null;
+  };
+  nodeConvention: {
+    requested: 'mean' | 'true';
+    vedicObserved: string;
+    isExplicitOnProvider: boolean;
+  };
+  houseSystems: {
+    parashari: string;
+    kp: string;
+    bhavaChalit: string;
+    western: string;
+  };
+  divisionalChartMethods: {
+    shodashavarga: string;
+    d4Method?: string | null;
+    d5Method?: string | null;
+  };
+  dashaYearLength: {
+    vimshottari: string;
+    alternativeDashas?: string | null;
+  };
+  shadbalaMethodology: {
+    provider: string;
+    luminaryCheshtaConvention: string;
+    minimumStrengthThresholdStandard: string;
+  };
+  recalculationVersion: string;
+  supportsFutureUserConventionOverrides: true;
+}
+
+export interface ReferenceDateTimingSnapshot {
+  temporalScope: 'reference_date_dependent';
+  referenceDateIso: string | null;
+  targetAgeYears?: number | null;
+  activeVimshottari?: Record<string, unknown> | null;
+  activeAlternativeDashas?: Record<string, unknown> | null;
+  kpRulingPlanets?: Record<string, unknown> | null;
+  westernProfections?: Record<string, unknown> | null;
+  limitations: string[];
+}
+
+export type ManifestReadinessTier =
+  | 'minimum_chart_readiness'
+  | 'comprehensive_foundational_completeness'
+  | 'specialized_on_demand';
+
+export interface DatasetManifestEntry {
+  key: string;
+  label: string;
+  tier: ManifestReadinessTier;
+  temporalScope: TemporalScope;
+  referenceDateIso: string | null;
+  canonicalStatus: CanonicalDatasetState;
+  source: string;
+  acquiredAtUtc: string | null;
+  version: string;
+  dependencies: string[];
+  missingDependencies: string[];
+  blockingForDownstream: string[];
+  limitations: string[];
+}
+
+export interface DatasetCompletenessManifest {
+  schemaVersion: 'v2.manifest.1.0';
+  evaluatedAtUtc: string;
+  inputFingerprint: string;
+  minimumChartReadiness: {
+    ready: boolean;
+    satisfiedCount: number;
+    totalCount: number;
+    missingKeys: string[];
+  };
+  comprehensiveFoundationalCompleteness: {
+    ready: boolean;
+    satisfiedCount: number;
+    totalCount: number;
+    completenessRatio: number;
+    missingOrUnresolvedKeys: string[];
+  };
+  specializedOnDemand: {
+    availableCount: number;
+    totalCount: number;
+    referenceDateIso: string | null;
+  };
+  countsByStatus: Record<CanonicalDatasetState, number>;
+  entries: DatasetManifestEntry[];
+  downstreamGuardSummary: Record<
+    string,
+    {
+      ready: boolean;
+      missingPrerequisites: string[];
+    }
+  >;
+}
+
+export type SupplementaryCompatibilityOutcome =
+  | 'accepted'
+  | 'preserved_primary_cross_verified'
+  | 'provisional'
+  | 'rejected_incompatible'
+  | 'unavailable';
+
+export interface AshtakavargaCompatibilityAudit {
+  outcome: SupplementaryCompatibilityOutcome;
+  recommendedState: CanonicalDatasetState;
+  primaryAlreadyHadValidAshtakavarga: boolean;
+  sevenClassicalPlanetSignsMatch: boolean;
+  ascendantSignMatches: boolean;
+  planetSignMismatches: Array<{
+    planet: string;
+    primarySign: string | null;
+    supplementarySign: string | null;
+  }>;
+  ascendantSignComparison: {
+    primarySign: string | null;
+    supplementarySign: string | null;
+  };
+  nodeConventionNote: string;
+  nodeSignOrLongitudeDiffs: Array<{
+    planet: string;
+    primarySign: string | null;
+    supplementarySign: string | null;
+    deltaDeg: number | null;
+  }>;
+  conventionsCompatible: boolean;
+  classicalPlanetTotalsMatch: boolean;
+  perPlanetTotalChecks: Array<{
+    planet: string;
+    observedTotal: number | null;
+    expectedClassicalTotal: number;
+    matched: boolean;
+  }>;
+  savTotalEquals337: boolean;
+  observedSavSum: number | null;
+  observedTotalPointsField: number | null;
+  bavToSavReconciliationPassed: boolean;
+  bavToSavMismatches: Array<{
+    signIndex: number;
+    sign: string;
+    bavColumnSum: number;
+    savValue: number;
+  }>;
+  prastaraAvailable: boolean;
+  prastaraReconciliationPassed: boolean | null;
+  prastaraMismatches: string[];
+  totalsAloneRejectedNotice: boolean;
+  reasons: string[];
+}
+
+export interface BhavaChalitCompatibilityAudit {
+  outcome: SupplementaryCompatibilityOutcome;
+  recommendedState: CanonicalDatasetState;
+  canonicalBirthInstantCompatible: boolean;
+  coordinatesCompatible: boolean;
+  ayanamsaCompatible: boolean;
+  classicalPlanetLongitudesCompatible: boolean;
+  maxClassicalPlanetDeltaDeg: number | null;
+  nodeLongitudesDeltaDeg: {
+    rahu: number | null;
+    ketu: number | null;
+  };
+  ascendantCompatible: boolean;
+  ascendantDeltaDeg: number | null;
+  mcCompatible: boolean;
+  h10MidpointVsRefMcDeltaDeg: number | null;
+  sripatiConventionCompatible: boolean;
+  kpPlacidusConfusionDetected: boolean;
+  methodologyAudit: BhavaChalitMethodologyAudit | null;
+  reasons: string[];
+}
+
+export interface D5CompatibilityAudit {
+  outcome: SupplementaryCompatibilityOutcome;
+  recommendedState: CanonicalDatasetState;
+  longitudesCompatible: boolean;
+  maxClassicalPlanetDeltaDeg: number | null;
+  ascendantCompatible: boolean;
+  ascendantDeltaDeg: number | null;
+  ayanamsaCompatible: boolean;
+  nodeConventionCompatible: boolean;
+  nodeDeltaDeg: {
+    rahu: number | null;
+    ketu: number | null;
+  };
+  providerCalibratedFlag: boolean | null;
+  detectedFormula:
+    | 'parashari_odd_even'
+    | 'cyclical_continuous'
+    | 'unestablished_unknown'
+    | 'unavailable';
+  formulaMatchCount: number;
+  formulaCheckedCount: number;
+  boundarySensitiveBodies: Array<{
+    body: string;
+    degreeInSign: number;
+    nearest6DegBoundary: number;
+    distanceDeg: number;
+    primarySignD5: string | null;
+    supplementarySignD5: string | null;
+  }>;
+  preservesMethodDistinction: boolean;
+  reasons: string[];
+}
+
+export interface OptionalFieldCompatibilityAudit {
+  field: string;
+  presentOnSupplementary: boolean;
+  primaryAlreadyPopulated: boolean;
+  compatible: boolean;
+  adoptedCount: number;
+  notes: string[];
+}
+
+export interface SupplementaryIntegrationReport {
+  schemaVersion: 'v2.supplementary.1.0';
+  supplementaryProvider: 'freeastroapi';
+  supplementaryEndpoint: '/api/v2/vedic/calculate';
+  acquiredAtUtc: string | null;
+  singleCallOnly: boolean;
+  primaryPreservationGuarantee: {
+    primaryPlanetsOverwritten: false;
+    primaryShadbalaOverwritten: false;
+    primaryOtherVargasOverwritten: false;
+    primaryDashasOverwritten: false;
+  };
+  ashtakavarga: AshtakavargaCompatibilityAudit;
+  bhavaChalit: BhavaChalitCompatibilityAudit;
+  d5: D5CompatibilityAudit;
+  optionalFields: OptionalFieldCompatibilityAudit[];
+  provisionalCandidates?: {
+    d5?: Record<string, unknown> | null;
+  };
+  summaryNotes: string[];
+}
+
 /**
  * Layer B — Master Chart Record
  * Normalized, frame-separated, provenance-tagged foundational record.
  */
 export interface LayerBMasterChartRecord {
   schemaVersion: 'v2.master.1.0';
+  recalculationVersion?: string;
   providerId?: V2DiagnosticProviderId;
   generatedAtUtc: string;
   canonicalBirthInstant: CanonicalBirthInstant;
+  calculationConventions?: CalculationConventionsRecord;
   frames: {
     vedicLahiri: DatasetEnvelope<VedicLahiriFrame>;
     kpPlacidus: DatasetEnvelope<KpPlacidusFrame>;
@@ -627,7 +889,10 @@ export interface LayerBMasterChartRecord {
     astronomicalTelemetry: DatasetEnvelope<AstronomicalTelemetryFrame>;
   };
   shadbalaReconciliation: DatasetEnvelope<ShadbalaReconciliationReport>;
+  referenceDateTiming?: ReferenceDateTimingSnapshot | null;
   providerExtendedDatasets?: Record<string, unknown> | null;
+  supplementaryIntegration?: SupplementaryIntegrationReport | null;
+  datasetManifest?: DatasetCompletenessManifest;
   remainingClassicalGaps: RemainingClassicalGapItem[];
 }
 

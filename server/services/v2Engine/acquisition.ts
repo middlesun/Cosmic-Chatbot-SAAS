@@ -285,11 +285,12 @@ async function executeProviderPost(
   endpoint: string,
   body: Record<string, unknown>,
   apiKey: string,
-  options?: { rateWaitMs?: number; maxRetries?: number }
+  options?: { rateWaitMs?: number; maxRetries?: number; fetchFn?: typeof fetch }
 ): Promise<SanitizedProviderCallRecord> {
   const sanitizedRequest = redactSecretsDeep(structuredClone(body), [apiKey]);
   const minIntervalMs = options?.rateWaitMs ?? 1150;
   const maxRetries = options?.maxRetries ?? 1;
+  const fetchImpl = options?.fetchFn ?? fetch;
 
   let attempts = 0;
   let totalRateWaitMs = 0;
@@ -305,10 +306,12 @@ async function executeProviderPost(
       const { result: res, slot } = await coordinateFreeAstroApiSlot(
         () => {
           const signal =
-            typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+            !options?.fetchFn &&
+            typeof AbortSignal !== 'undefined' &&
+            typeof AbortSignal.timeout === 'function'
               ? AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS)
               : undefined;
-          return fetch(`${FREE_ASTRO_API_BASE_URL}${endpoint}`, {
+          return fetchImpl(`${FREE_ASTRO_API_BASE_URL}${endpoint}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1518,5 +1521,105 @@ export async function acquireV2NatalBundle(
       coordinationModesObserved,
       quotaHeadersObserved: summarizeObservedQuotaHeaders(allCallValues),
     },
+  };
+}
+
+/**
+ * Builds the targeted single-call FreeAstroAPI /api/v2/vedic/calculate request body
+ * used only to supplement missing datasets (BAV/SAV/Prastara, Bhava Chalit, D5, avastha)
+ * alongside AstroWay primary foundational intelligence.
+ */
+export function buildFreeAstroApiSupplementaryRequest(
+  instant: CanonicalBirthInstant,
+  options?: {
+    timeMode?: 'local_iana' | 'utc';
+    referenceDateIso?: string;
+    vargas?: number[];
+    includeAvastha?: boolean;
+  }
+): {
+  endpoint: '/api/v2/vedic/calculate';
+  body: Record<string, unknown>;
+} {
+  const built = buildAndValidateV2Requests(instant, {
+    timeMode: options?.timeMode,
+    referenceDateIso: options?.referenceDateIso,
+  });
+  if (built.validationErrors.length > 0) {
+    throw new Error(`OpenAPI preflight validation failed: ${built.validationErrors.join('; ')}`);
+  }
+
+  return {
+    endpoint: '/api/v2/vedic/calculate',
+    body: {
+      ...built.request1VedicCalculate.body,
+      // Include D1 (required for sign/longitude/Asc compatibility checks) + D5 Panchamsha by default
+      vargas: options?.vargas && options.vargas.length > 0 ? options.vargas : [1, 5],
+      include_bhava_chalit: true,
+      include_ashtakavarga: true,
+      include_avastha: options?.includeAvastha ?? true,
+      include_yogas: false,
+      include_panchang: false,
+      include_shadbala: false,
+    },
+  };
+}
+
+/**
+ * Acquires targeted supplementary Vedic datasets from FreeAstroAPI via strictly ONE
+ * /api/v2/vedic/calculate HTTP call, rate-limited via the global coordinator.
+ */
+export async function acquireFreeAstroApiSupplementaryVedicCalculate(
+  instant: CanonicalBirthInstant,
+  options?: {
+    apiKey?: string;
+    rateWaitMs?: number;
+    maxRetries?: number;
+    timeMode?: 'local_iana' | 'utc';
+    referenceDateIso?: string;
+    vargas?: number[];
+    includeAvastha?: boolean;
+    fetchFn?: typeof fetch;
+  }
+): Promise<{
+  status: 'acquired' | 'failed' | 'blocked_missing_api_key';
+  plannedRequestsCount: 1;
+  actualHttpRequestsSent: number;
+  call: SanitizedProviderCallRecord | null;
+}> {
+  const apiKey = (options?.apiKey ?? getFreeAstroApiKey() ?? '').trim();
+  const req = buildFreeAstroApiSupplementaryRequest(instant, {
+    timeMode: options?.timeMode,
+    referenceDateIso: options?.referenceDateIso,
+    vargas: options?.vargas,
+    includeAvastha: options?.includeAvastha,
+  });
+
+  if (!apiKey) {
+    return {
+      status: 'blocked_missing_api_key',
+      plannedRequestsCount: 1,
+      actualHttpRequestsSent: 0,
+      call: null,
+    };
+  }
+
+  const call = await executeProviderPost(
+    'vedic_calculate',
+    req.endpoint,
+    req.body,
+    apiKey,
+    {
+      rateWaitMs: options?.rateWaitMs ?? 1150,
+      maxRetries: options?.maxRetries ?? 1,
+      fetchFn: options?.fetchFn,
+    }
+  );
+
+  return {
+    status: call.ok ? 'acquired' : 'failed',
+    plannedRequestsCount: 1,
+    actualHttpRequestsSent: call.attempts || 1,
+    call,
   };
 }

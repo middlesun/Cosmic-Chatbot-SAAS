@@ -14,12 +14,17 @@ import os from 'node:os';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import {
+  acquireAstroWayFoundationalBundle,
+  acquireFreeAstroApiSupplementaryVedicCalculate,
   acquireV2NatalBundle,
   assessChartJsonDefects,
+  ASTROWAY_PRUNED_REDUNDANT_ENDPOINTS,
   auditVargasMethodology,
   BirthInstantTimezoneError,
   buildAndValidateV2Requests,
   buildAstroWayChris4EvaluationPlan,
+  buildAstroWayFoundationalPlan,
+  buildFreeAstroApiSupplementaryRequest,
   buildLayerBMasterChartRecord,
   buildLayerCAnalyticalShell,
   buildLegacyVsV2ComparisonReport,
@@ -30,15 +35,22 @@ import {
   computeCompletedAgeYears,
   computeIndependentAstronomicalReference,
   deleteAstroWayBatchSession,
+  evaluateAshtakavargaCompatibility,
   evaluateAstroWayJulianDayCheck,
+  evaluateBhavaChalitCompatibility,
+  evaluateD5DivisionalCompatibility,
   executeAstroWayBatchedBundle,
   executeAstroWayEvaluationBundle,
   getAstroWayApiKey,
   getAstroWayApiSecretStatus,
   getFreeAstroApiKey,
   getFreeAstroApiSecretStatus,
+  integrateFreeAstroApiSupplementaryIntoMaster,
   listResumableAstroWaySessions,
   loadAstroWayBatchSession,
+  normalizeAstroWayAlternativeDasha,
+  normalizeAstroWayAshtakavargaShodhana,
+  normalizeAstroWayVimshottari5Level,
   normalizeAstroWayYogas,
   normalizePositiveHeapBytes,
   orderAstroWaySpecsForPriorityVerification,
@@ -1937,7 +1949,8 @@ async function main() {
       Boolean(ext.shadbalaFull) &&
       Boolean(ext.shadbalaSubcomponents) &&
       Boolean(ext.ishtaKashtaPhala) &&
-      Boolean(ext.bhavabala) &&
+      'bhavabala' in ext &&
+      ext.bhavabala === null &&
       Boolean(ext.kpExtended) &&
       Boolean(ext.jaimini) &&
       Boolean(ext.yogasAndDoshas) &&
@@ -1955,6 +1968,918 @@ async function main() {
     extendedBucketsCount: Object.keys(ext).length,
     kpHouseSignificators: awMaster.frames.kpPlacidus.data?.houseSignificators?.length ?? 0,
     westernTablesPreserved: Boolean(awMaster.frames.westernTropical.data?.tables),
+  });
+
+  // 3z. Phase 1 — Canonical Dataset Contract, Definitive Manifest, Zero-Coercion Guards & Temporal Separation
+  const zeroCoercionLayerA: LayerARawProviderRecord = {
+    ...syntheticPartialLayerA,
+    calls: {
+      vedic_calculate: {
+        ...syntheticPartialLayerA.calls.vedic_calculate,
+        rawResponse: {
+          ayanamsha: 'lahiri',
+          timezone_used: 'Asia/Kolkata',
+          chart: {
+            ascendant: null,
+            planets: [],
+            houses: [],
+          },
+          ashtakavarga: {
+            sarvashtakavarga: [],
+            bhinnashtakavarga: {},
+            prastharashtakavarga: {},
+            total_points: 0,
+          },
+          vimshottari_dasha: {
+            birth_balance: { lord: '', remaining_years: null },
+            mahadashas: [],
+          },
+        },
+      },
+    },
+  };
+  const zeroCoercionMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: zeroCoercionLayerA,
+  });
+  const zcManifest = zeroCoercionMaster.datasetManifest!;
+  const zcEntry = (key: string) => zcManifest.entries.find((e) => e.key === key);
+
+  assert(
+    zeroCoercionMaster.frames.vedicLahiri.canonicalStatus === 'unavailable' &&
+      zcEntry('vedic_d1_positions')?.canonicalStatus === 'unavailable' &&
+      zcEntry('ashtakavarga_bav_sav_prastara')?.canonicalStatus === 'unavailable' &&
+      zcEntry('vimshottari_natal_timeline')?.canonicalStatus === 'unavailable' &&
+      zcEntry('vedic_d9_navamsa')?.canonicalStatus === 'unavailable' &&
+      zcManifest.minimumChartReadiness.ready === false &&
+      zcManifest.minimumChartReadiness.missingKeys.includes('vedic_d1_positions') &&
+      zcManifest.downstreamGuardSummary.phi_planetary_health?.ready === false &&
+      zcManifest.downstreamGuardSummary.phi_planetary_health?.missingPrerequisites.includes('vedic_d1_positions'),
+    'Zero-coercion empty-success guardrail failed to mark empty D1/Ashtakavarga/Dasha payloads as unavailable.'
+  );
+
+  // Check offlineMaster & partialMaster downstream guards + conventions preservation
+  const offlineManifest = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: null,
+  }).datasetManifest!;
+  assert(
+    offlineManifest.minimumChartReadiness.ready === false &&
+      offlineManifest.minimumChartReadiness.satisfiedCount === 1 &&
+      offlineManifest.downstreamGuardSummary.phi_planetary_health.ready === false &&
+      partialMaster.datasetManifest?.downstreamGuardSummary.phi_planetary_health.ready === false,
+    'Offline/partial downstream prerequisite guard failed.'
+  );
+
+  // Check AstroWay master manifest, empty subcomponents/bhavabala rejection, conventions & temporal scope
+  const awManifest = awMaster.datasetManifest!;
+  const awEntry = (key: string) => awManifest.entries.find((e) => e.key === key);
+  const refTimedAwMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: {
+      ...mockAwLayerA,
+      calls: {
+        ...mockAwLayerA.calls,
+        western_profections: {
+          ...mockAwLayerA.calls.chart_tropical,
+          id: 'western_profections',
+          endpoint: '/western/profections',
+          sanitizedRequest: { targetDate: '2026-11-27' },
+          rawResponse: { ok: true, data: { lordOfYear: 'Jupiter', profectedHouse: 5 } },
+        },
+        hellenistic_brennan_profections_detail: {
+          ...mockAwLayerA.calls.chart_tropical,
+          id: 'hellenistic_brennan_profections_detail',
+          endpoint: '/hellenistic/profections',
+          sanitizedRequest: { targetAge: 40 },
+          rawResponse: { ok: true, data: { annualProfection: { house: 5 } } },
+        },
+      },
+    },
+  });
+
+  const manifestTotalByStatus = Object.values(awManifest.countsByStatus).reduce((a, b) => a + b, 0);
+  const emptySubcomponentsMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: {
+      ...mockAwLayerA,
+      calls: {
+        ...mockAwLayerA.calls,
+        shadbala_kala: {
+          ...mockAwLayerA.calls.shadbala_kala,
+          rawResponse: { ok: true, data: { items: [] } },
+        },
+      },
+    },
+  });
+  assert(
+    awMaster.recalculationVersion !== undefined &&
+      awMaster.calculationConventions?.supportsFutureUserConventionOverrides === true &&
+      awMaster.frames.vedicLahiri.temporalScope === 'natal_invariant' &&
+      awManifest.entries.length === manifestTotalByStatus &&
+      awEntry('canonical_birth_instant')?.canonicalStatus === 'internally_verified' &&
+      awEntry('vedic_d1_positions')?.canonicalStatus === 'available' &&
+      awEntry('shadbala_subcomponents')?.canonicalStatus === 'provisional' &&
+      emptySubcomponentsMaster.datasetManifest?.entries.find((e) => e.key === 'shadbala_subcomponents')
+        ?.canonicalStatus === 'unavailable' &&
+      awEntry('bhavabala')?.canonicalStatus === 'unavailable' &&
+      awEntry('reference_date_dasha_snapshot')?.temporalScope === 'reference_date_dependent' &&
+      refTimedAwMaster.referenceDateTiming?.temporalScope === 'reference_date_dependent' &&
+      refTimedAwMaster.referenceDateTiming?.referenceDateIso === '2026-11-27' &&
+      refTimedAwMaster.referenceDateTiming?.targetAgeYears === 40 &&
+      refTimedAwMaster.datasetManifest?.entries.find((e) => e.key === 'western_profections_snapshot')?.canonicalStatus ===
+        'available',
+    'Phase 1 manifest, empty subcomponent rejection, conventions, or reference-date temporal isolation check failed.'
+  );
+  regressionResults.push({
+    id: 'phase1_canonical_manifest_zero_coercion_and_temporal_scope',
+    status: 'PASSED',
+    manifestEntriesCount: awManifest.entries.length,
+    awTier1Ready: awManifest.minimumChartReadiness.ready,
+    awTier2Ratio: awManifest.comprehensiveFoundationalCompleteness.completenessRatio,
+    referenceDateIsoExtracted: refTimedAwMaster.referenceDateTiming?.referenceDateIso,
+    targetAgeExtracted: refTimedAwMaster.referenceDateTiming?.targetAgeYears,
+  });
+
+  // 3aa. Phase 2 — AstroWay Foundational Pruning (67 -> 64) & Deep Mathematical Dataset Normalization
+  const foundationalPlan = buildAstroWayFoundationalPlan(sampleInstant, {
+    timeMode: 'local_iana',
+    targetDateIso: '2026-11-27',
+  });
+  const prunedPlanIds = new Set(foundationalPlan.requests.map((r) => r.id));
+  assert(
+    foundationalPlan.planMode === 'foundational_pruned' &&
+      ASTROWAY_PRUNED_REDUNDANT_ENDPOINTS.length === 3 &&
+      foundationalPlan.requests.length === 64 &&
+      !prunedPlanIds.has('ashtakavarga_basic') &&
+      !prunedPlanIds.has('kp_cusps') &&
+      !prunedPlanIds.has('varga_D1') &&
+      prunedPlanIds.has('ashtakavarga_prastara') &&
+      prunedPlanIds.has('kp_sub_lords') &&
+      prunedPlanIds.has('varga_D2') &&
+      prunedPlanIds.has('varga_D60') &&
+      prunedPlanIds.has('jaimini_karakas') &&
+      prunedPlanIds.has('jaimini_chara_karakas') &&
+      prunedPlanIds.has('western_essential_dignities'),
+    `Phase 2 AstroWay foundational plan pruning check failed (count=${foundationalPlan.requests.length}).`
+  );
+
+  await resetAstroWayIsolateRateStateForTests();
+  const foundationalCalledPaths: string[] = [];
+  let foundationalExistingCalls: Record<string, SanitizedProviderCallRecord> | undefined;
+  let foundationalBatchIndex = 0;
+  let foundationalExec: Awaited<ReturnType<typeof acquireAstroWayFoundationalBundle>> | null = null;
+  for (let loop = 0; loop < 15; loop++) {
+    const step = await acquireAstroWayFoundationalBundle(sampleInstant, {
+      apiKey: 'test-key-redacted',
+      sessionId: 'sess-phase2-foundational-test',
+      includeTimezoneEquivalenceProbe: false,
+      existingCalls: foundationalExistingCalls,
+      batchIndex: foundationalBatchIndex,
+      batchSize: 9,
+      skipGlobalCooldown: true,
+      fetchFn: async (url: string) => {
+        foundationalCalledPaths.push(new URL(url).pathname);
+        return new Response(JSON.stringify({ ok: true, data: { items: [] } }), {
+          status: 200,
+          headers: { 'x-ratelimit-remaining': '9', 'x-ratelimit-limit': '10' },
+        });
+      },
+    });
+    foundationalExistingCalls = step.updatedCalls;
+    foundationalBatchIndex = step.batchState.batchIndex;
+    foundationalExec = step;
+    if (step.batchState.remainingEligibleCount === 0) break;
+  }
+  assert(
+    foundationalExec !== null &&
+      foundationalExec.layerA.quotaAndPerformanceSummary.totalCalls === 64 &&
+      foundationalExec.layerA.quotaAndPerformanceSummary.successfulCalls === 64 &&
+      foundationalCalledPaths.length === 64 &&
+      !foundationalCalledPaths.includes('/v1/ashtakavarga') &&
+      !foundationalCalledPaths.includes('/v1/vedic/kp/cusps') &&
+      !foundationalCalledPaths.includes('/v1/vedic/varga/D1'),
+    `Phase 2 acquireAstroWayFoundationalBundle executed unexpected/pruned paths (${foundationalCalledPaths.length}).`
+  );
+
+  // Build deep 5-level Vimshottari, alternative dashas (1 valid + 1 empty), enriched telemetry/dignity,
+  // Ashtakavarga Shodhana (empty vs populated), and pruned KP/Varga_D1/AV_basic bundle
+  const prunedCalls = { ...mockAwLayerA.calls };
+  delete prunedCalls.ashtakavarga_basic;
+  delete prunedCalls.kp_cusps;
+  delete prunedCalls.varga_D1;
+
+  const prunedAwLayerA: LayerARawProviderRecord = {
+    ...mockAwLayerA,
+    calls: {
+      ...prunedCalls,
+      chart_sidereal: makeAwCall('chart_sidereal', '/chart', 'natal_core', {
+        ...(unwrapAstroWayDataCheck(mockAwLayerA.calls.chart_sidereal.rawResponse)),
+        planets: [
+          {
+            name: 'Sun',
+            longitude: sampleRef.lahiriSunLonDeg,
+            latitude: 0.0001,
+            distance: 0.983,
+            speedLong: 1.01,
+            speedLat: 0.00002,
+            speedDist: -0.00004,
+            isRetrograde: false,
+            declination: -23.4,
+            rightAscension: 270,
+          },
+          {
+            name: 'Moon',
+            longitude: sampleRef.lahiriMoonLonDeg,
+            latitude: 1.2,
+            distance: 0.0025,
+            speedLong: 13.1,
+            speedLat: -0.11,
+            speedDist: 0.00001,
+            isRetrograde: false,
+            declination: 21.1,
+            rightAscension: 68,
+          },
+          { name: 'Mars', longitude: 185, isRetrograde: false },
+          { name: 'Mercury', longitude: 230, isRetrograde: false },
+          { name: 'Jupiter', longitude: 295, isRetrograde: false },
+          { name: 'Venus', longitude: 245, isRetrograde: false },
+          { name: 'Saturn', longitude: 221, isRetrograde: false },
+          { name: 'Mean Node', longitude: 11.5, isRetrograde: true },
+          { name: 'South Node', longitude: 191.5, isRetrograde: true },
+        ],
+      }),
+      vedic_kundli: makeAwCall('vedic_kundli', '/vedic/kundli', 'natal_core', {
+        ayanamsa: 'lahiri',
+        lagna: {
+          longitude: sampleRef.lahiriAscendantDeg,
+          signName: SIGNS[Math.floor(sampleRef.lahiriAscendantDeg / 30) % 12],
+        },
+        nakshatra: { name: 'Rohini', pada: 2 },
+        dasha: { current: { maha: 'Saturn', antar: 'Mercury' } },
+        yogas: { present: ['Raja Yoga'] },
+        doshas: { present: [] },
+        grahas: [
+          {
+            name: 'Sun',
+            longitude: sampleRef.lahiriSunLonDeg,
+            dignity: 'Friendly',
+            avastha: 'Kumara',
+            isCombust: false,
+            nakshatraName: 'Mula',
+            nakshatraLord: 'Ketu',
+            pada: 1,
+          },
+          {
+            name: 'Moon',
+            longitude: sampleRef.lahiriMoonLonDeg,
+            dignity: 'Exalted',
+            avastha: 'Yuva',
+            isCombust: false,
+            nakshatraName: 'Rohini',
+            nakshatraLord: 'Moon',
+            pada: 2,
+          },
+          { name: 'Mars', longitude: 185, dignity: 'Neutral', isCombust: false },
+          { name: 'Mercury', longitude: 230, dignity: 'Friendly', isCombust: false },
+          { name: 'Jupiter', longitude: 295, dignity: 'Debilitated', isCombust: false },
+          { name: 'Venus', longitude: 245, dignity: 'Neutral', isCombust: true },
+          { name: 'Saturn', longitude: 221, dignity: 'Neutral', isCombust: false },
+          { name: 'Rahu', longitude: 12.5352, isRetrograde: true },
+          { name: 'Ketu', longitude: 192.5352, isRetrograde: true },
+        ],
+      }),
+      ashtakavarga_prastara: (() => {
+        // Classical per-planet bindu totals: Sun=48, Moon=49, Mars=39, Mercury=54, Jupiter=56, Venus=52, Saturn=39 -> 337
+        const bavRows: Array<{ planetName: string; bindus: number[] }> = [
+          { planetName: 'Sun', bindus: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4] }, // 48
+          { planetName: 'Moon', bindus: [5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4] }, // 49
+          { planetName: 'Mars', bindus: [3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4] }, // 39
+          { planetName: 'Mercury', bindus: [5, 5, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4] }, // 54
+          { planetName: 'Jupiter', bindus: [5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 4, 4] }, // 56
+          { planetName: 'Venus', bindus: [5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4] }, // 52
+          { planetName: 'Saturn', bindus: [3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4] }, // 39
+        ];
+        const sarva = Array.from({ length: 12 }, (_, idx) =>
+          bavRows.reduce((s, r) => s + r.bindus[idx], 0)
+        );
+        const contributorsList = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Ascendant'];
+        return makeAwCall('ashtakavarga_prastara', '/vedic/ashtakavarga/prastara', 'ashtakavarga', {
+          sarva,
+          sarvaTotal: sarva.reduce((a, b) => a + b, 0),
+          planets: bavRows.map((row) => ({
+            planetName: row.planetName,
+            bindus: row.bindus,
+            contributors: contributorsList.map((src, cIdx) => ({
+              source: src,
+              signs: row.bindus.map((targetCount) => (cIdx < targetCount ? 1 : 0)),
+            })),
+          })),
+        });
+      })(),
+      ashtakavarga_shodhana: makeAwCall('ashtakavarga_shodhana', '/vedic/ashtakavarga/shodhana', 'ashtakavarga', {
+        planets: [{ planetName: 'Sun', shodhyaPinda: 112 }],
+      }, { declaredQuality: 'yellow' }),
+      ...(() => {
+        const kpBodies = [
+          { rawName: 'Sun', canon: 'Sun', lon: awSunKp },
+          { rawName: 'Moon', canon: 'Moon', lon: awMoonKp },
+          { rawName: 'Mars', canon: 'Mars', lon: 185 },
+          { rawName: 'Mercury', canon: 'Mercury', lon: 230 },
+          { rawName: 'Jupiter', canon: 'Jupiter', lon: 295 },
+          { rawName: 'Venus', canon: 'Venus', lon: 245 },
+          { rawName: 'Saturn', canon: 'Saturn', lon: 221 },
+          { rawName: 'Mean Node', canon: 'Rahu', lon: 11.5 },
+          { rawName: 'South Node', canon: 'Ketu', lon: 191.5 },
+        ];
+        const kpOccMap = new Map<string, number>();
+        for (const b of kpBodies) {
+          kpOccMap.set(b.canon, findKpHouse(b.lon));
+        }
+        const ownedByPlanet = (canon: string) => {
+          const signLords = ['Mars', 'Venus', 'Mercury', 'Moon', 'Sun', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Saturn', 'Jupiter'];
+          return awKpCusps
+            .filter((c) => signLords[Math.floor(c.longitude / 30) % 12] === canon)
+            .map((c) => c.house);
+        };
+        return {
+          kp_sub_lords: makeAwCall('kp_sub_lords', '/vedic/kp/sub-lords', 'kp', {
+            ayanamsa: 23.56,
+            method: 'placidus',
+            cusps: [
+              ...awKpCusps,
+              // Non-finite cusp longitude must be dropped rather than coerced to 0°
+              { house: 99, longitude: undefined, signName: 'Aries' },
+            ],
+            planets: kpBodies.map((b) => ({ grahaName: b.rawName, longitude: b.lon })),
+          }),
+          kp_planet_cuspal_position: makeAwCall('kp_planet_cuspal_position', '/vedic/kp/planet-cuspal-position', 'kp', {
+            planets: kpBodies.map((b) => ({ grahaName: b.rawName, house: kpOccMap.get(b.canon)! })),
+          }),
+          kp_significators: makeAwCall('kp_significators', '/vedic/kp/significators', 'kp', {
+            significators: kpBodies.map((b) => {
+              const starLord = getNakshatraAndSubs(b.lon).nakshatraLord;
+              const starOcc = kpOccMap.get(starLord);
+              const ownH = kpOccMap.get(b.canon)!;
+              return {
+                grahaName: b.rawName,
+                levels: {
+                  l1: starOcc ? [starOcc] : [],
+                  l2: [ownH],
+                  l3: ownedByPlanet(starLord),
+                  l4: ownedByPlanet(b.canon),
+                },
+              };
+            }),
+          }),
+        };
+      })(),
+      dashas_vimshottari_prana: makeAwCall('dashas_vimshottari_prana', '/vedic/dashas/vimshottari/prana', 'dasha', {
+        initial: { initialPlanetName: 'Moon', balanceYears: 7.435, elapsedYears: 2.565 },
+        current: { maha: 'Saturn', antar: 'Mercury', pratyantar: 'Venus', targetDate: '2026-11-27' },
+        periods: [
+          {
+            planetName: 'Moon',
+            startDate: '1985-12-25',
+            endDate: '1993-06-01',
+            durationYears: 7.435,
+            subPeriods: [
+              {
+                planetName: 'Moon',
+                startDate: '1985-12-25',
+                endDate: '1986-10-25',
+                pratyantardashas: [
+                  {
+                    planetName: 'Mars',
+                    startDate: '1985-12-25',
+                    endDate: '1986-01-15',
+                    sookshmadashas: [
+                      {
+                        planetName: 'Rahu',
+                        startDate: '1985-12-25',
+                        endDate: '1985-12-29',
+                        pranadashas: [
+                          {
+                            planetName: 'Jupiter',
+                            startDate: '1985-12-25',
+                            endDate: '1985-12-26',
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+      dashas_chara_maha: makeAwCall('dashas_chara_maha', '/vedic/dashas/chara/maha', 'dasha', {
+        initial: { signName: 'Sagittarius' },
+        current: { signName: 'Virgo', targetDate: '2026-11-27' },
+        periods: [
+          { signName: 'Sagittarius', startDate: '1985-12-25', endDate: '1994-12-25', durationYears: 9 },
+        ],
+      }),
+      dashas_yogini_maha: makeAwCall('dashas_yogini_maha', '/vedic/dashas/yogini/maha', 'dasha', {
+        periods: [],
+      }),
+      western_essential_dignities: makeAwCall('western_essential_dignities', '/western/essential-dignities', 'hellenistic_traditional', {
+        planets: [{ name: 'Sun', domicile: false, triplicity: 'Fire' }],
+      }),
+      bhavabala: makeAwCall('bhavabala', '/vedic/bhavabala', 'bhavabala', {
+        houses: Array.from({ length: 12 }, (_, idx) => ({
+          house: idx + 1,
+          totalVirupa: 420 + idx * 5,
+        })),
+      }, { declaredQuality: 'yellow' }),
+    },
+  };
+
+  function unwrapAstroWayDataCheck(rawResponse: unknown): Record<string, unknown> {
+    const r = rawResponse as Record<string, unknown>;
+    return (r?.data && typeof r.data === 'object' ? r.data : r) as Record<string, unknown>;
+  }
+
+  const prunedMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: prunedAwLayerA,
+    referenceDateIso: '2026-11-27',
+  });
+  const prunedVerif = verifyMasterChartRecord(prunedMaster, prunedAwLayerA);
+  const prunedManifest = prunedMaster.datasetManifest!;
+  const pEntry = (key: string) => prunedManifest.entries.find((e) => e.key === key);
+
+  const vim5 = prunedMaster.frames.vedicLahiri.data?.vimshottariDasha as Record<string, unknown>;
+  const level1 = (vim5?.mahadashas as Array<Record<string, unknown>>)?.[0];
+  const level2 = (level1?.subPeriods as Array<Record<string, unknown>>)?.[0];
+  const level3 = (level2?.subPeriods as Array<Record<string, unknown>>)?.[0];
+  const level4 = (level3?.subPeriods as Array<Record<string, unknown>>)?.[0];
+  const level5 = (level4?.subPeriods as Array<Record<string, unknown>>)?.[0];
+  const sunPlanet = prunedMaster.frames.vedicLahiri.data?.planets.find((p) => p.name === 'Sun');
+  const venusPlanet = prunedMaster.frames.vedicLahiri.data?.planets.find((p) => p.name === 'Venus');
+  const advExt = (prunedMaster.providerExtendedDatasets?.advancedDashas ?? {}) as Record<string, unknown>;
+  const charaNorm = advExt.charaMaha as Record<string, unknown>;
+  const bhavaNorm = prunedMaster.providerExtendedDatasets?.bhavabala as Record<string, unknown> | null;
+  const bhavaHouses = (bhavaNorm?.houses ?? []) as Array<Record<string, unknown>>;
+
+  // Zero-coercion checks on empty Shodhana & all-empty alternative Dashas
+  const emptyShodhanaNorm = normalizeAstroWayAshtakavargaShodhana({ items: [] });
+  const emptyAltDashasMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: {
+      ...prunedAwLayerA,
+      calls: {
+        ...prunedAwLayerA.calls,
+        dashas_chara_maha: makeAwCall('dashas_chara_maha', '/vedic/dashas/chara/maha', 'dasha', { periods: [] }),
+        dashas_yogini_maha: makeAwCall('dashas_yogini_maha', '/vedic/dashas/yogini/maha', 'dasha', { periods: [] }),
+        ashtakavarga_shodhana: makeAwCall('ashtakavarga_shodhana', '/vedic/ashtakavarga/shodhana', 'ashtakavarga', { items: [] }),
+      },
+    },
+  });
+
+  assert(
+    prunedMaster.frames.vedicLahiri.data?.vargas?.supportedCount === 16 &&
+      prunedMaster.frames.vedicLahiri.data?.vargas?.chartsByDivision?.D1?.source === 'canonical_d1_mirror' &&
+      prunedMaster.frames.kpPlacidus.data?.cusps.length === 12 &&
+      !prunedMaster.frames.kpPlacidus.source.includes('/vedic/kp/cusps') &&
+      vim5?.maxDepthObserved === 5 &&
+      level5?.levelName === 'prana' &&
+      level5?.lord === 'Jupiter' &&
+      sunPlanet?.speed_lat_deg_per_day === 0.00002 &&
+      sunPlanet?.dignity === 'Friendly' &&
+      sunPlanet?.avastha === 'Kumara' &&
+      sunPlanet?.nakshatra === 'Mula' &&
+      sunPlanet?.nakshatra_lord === 'Ketu' &&
+      sunPlanet?.pada === 1 &&
+      venusPlanet?.is_combust === true &&
+      bhavaHouses.length === 12 &&
+      bhavaHouses[0]?.totalRupa === 7 &&
+      Boolean((prunedMaster.frames.westernTropical.data?.tables as Record<string, unknown>)?.essentialDignities) &&
+      Boolean(prunedMaster.referenceDateTiming?.activeVimshottari) &&
+      Boolean((prunedMaster.referenceDateTiming?.activeAlternativeDashas as Record<string, unknown>)?.chara) &&
+      (charaNorm?.natalTimeline as Record<string, unknown>)?.maxDepthObserved === 1 &&
+      pEntry('vedic_shodashavarga_16')?.canonicalStatus === 'available' &&
+      pEntry('kp_placidus_cusps_sublords')?.canonicalStatus === 'available' &&
+      pEntry('planetary_dignity_conditions')?.canonicalStatus === 'available' &&
+      pEntry('ashtakavarga_shodhana_pinda')?.canonicalStatus === 'available' &&
+      pEntry('bhavabala')?.canonicalStatus === 'provisional' &&
+      pEntry('alternative_dashas_natal')?.canonicalStatus === 'provisional' &&
+      emptyShodhanaNorm === null &&
+      emptyAltDashasMaster.datasetManifest?.entries.find((e) => e.key === 'alternative_dashas_natal')
+        ?.canonicalStatus === 'unavailable' &&
+      emptyAltDashasMaster.datasetManifest?.entries.find((e) => e.key === 'ashtakavarga_shodhana_pinda')
+        ?.canonicalStatus === 'unavailable' &&
+      prunedVerif.checks.every((c) => c.passed),
+    `Phase 2 deep normalization/pruning verification failed (checksFailed=${prunedVerif.failedCount}, failed=[${prunedVerif.checks.filter((c) => !c.passed).map((c) => `${c.id}:${c.observed}`).join('; ')}]).`
+  );
+  // Silence unused helper import warning if needed while verifying direct exports
+  assert(
+    normalizeAstroWayVimshottari5Level(null) === null &&
+      normalizeAstroWayAlternativeDasha('chara', null) === null,
+    'Null dasha normalizer guard failed.'
+  );
+
+  regressionResults.push({
+    id: 'phase2_astroway_foundational_pruning_and_deep_normalization',
+    status: 'PASSED',
+    foundationalPlanEndpoints: foundationalPlan.requests.length,
+    prunedEndpointsCount: ASTROWAY_PRUNED_REDUNDANT_ENDPOINTS.length,
+    shodashavargaCountWithD1Mirror: prunedMaster.frames.vedicLahiri.data?.vargas?.supportedCount,
+    vimshottariMaxDepth: vim5?.maxDepthObserved,
+    prunedMasterChecksFailed: prunedVerif.failedCount,
+  });
+
+  // 3ab. Phase 3 — FreeAstroAPI 1-Call Supplementary Acquisition & Mandatory Compatibility Gates
+  const suppReq = buildFreeAstroApiSupplementaryRequest(sampleInstant);
+  assert(
+    suppReq.endpoint === '/api/v2/vedic/calculate' &&
+      Array.isArray(suppReq.body.vargas) &&
+      (suppReq.body.vargas as number[]).join(',') === '1,5' &&
+      suppReq.body.include_bhava_chalit === true &&
+      suppReq.body.include_ashtakavarga === true &&
+      suppReq.body.include_avastha === true &&
+      suppReq.body.include_yogas === false &&
+      suppReq.body.include_panchang === false &&
+      suppReq.body.include_shadbala === false,
+    'Phase 3 supplementary request builder did not target strictly required supplementary datasets.'
+  );
+
+  // Classical D5 helper for synthetic validation cases
+  const parashariD5Sign = (lon: number): string => {
+    const nLon = normalizeDeg(lon);
+    const sIdx = Math.floor(nLon / 30) % 12;
+    const part = Math.min(4, Math.floor((nLon % 30) / 6));
+    const odd = [0, 10, 8, 2, 6];
+    const even = [1, 5, 11, 9, 7];
+    return SIGNS[sIdx % 2 === 0 ? odd[part] : even[part]];
+  };
+
+  // Build canonical FreeAstroAPI D1 + AV + Bhava Chalit + D5 payload matching sampleRef
+  // Intentionally shift Rahu/Ketu (Mean vs True Node) to prove 7-planet AV passes while D5 catches node sensitivity
+  const faSuppClassicalBodies = [
+    { name: 'Sun', absolute_degree: sampleRef.lahiriSunLonDeg, avastha: 'Deepta' },
+    { name: 'Moon', absolute_degree: sampleRef.lahiriMoonLonDeg, avastha: 'Mudita' },
+    { name: 'Mars', absolute_degree: 185, avastha: 'Shanta' },
+    { name: 'Mercury', absolute_degree: 230, avastha: 'Svastha' },
+    { name: 'Jupiter', absolute_degree: 295, avastha: 'Deena' },
+    { name: 'Venus', absolute_degree: 245, avastha: 'Mudita' },
+    { name: 'Saturn', absolute_degree: 221, avastha: 'Shanta' },
+  ];
+  const faSuppNodesTrue = [
+    { name: 'Rahu', absolute_degree: 29.8 }, // Aries (Mean was 12.53 Aries; differs > 0.2 deg)
+    { name: 'Ketu', absolute_degree: 209.8 },
+  ];
+  const faSuppAllPlanets = [...faSuppClassicalBodies, ...faSuppNodesTrue].map((p) => ({
+    ...p,
+    sign: SIGNS[Math.floor(normalizeDeg(p.absolute_degree) / 30) % 12],
+  }));
+
+  const faBavRows: Record<string, number[]> = {
+    Sun: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+    Moon: [5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+    Mars: [3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4],
+    Mercury: [5, 5, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4],
+    Jupiter: [5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 4, 4],
+    Venus: [5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4],
+    Saturn: [3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4],
+  };
+  const faSavRow = Array.from({ length: 12 }, (_, idx) =>
+    Object.values(faBavRows).reduce((s, r) => s + r[idx], 0)
+  );
+  const faContributors = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Ascendant'];
+  const faPrastara: Record<string, Record<string, number[]>> = {};
+  for (const [pl, row] of Object.entries(faBavRows)) {
+    faPrastara[pl] = {};
+    faContributors.forEach((cName, cIdx) => {
+      faPrastara[pl][cName] = row.map((cnt) => (cIdx < cnt ? 1 : 0));
+    });
+  }
+
+  const faValidBhavaChalit = {
+    chart_type: 'bhava_chalit',
+    name: 'Sripati Bhava Chalit',
+    calibrated: true,
+    house_basis: 'sripati_midpoint_chalit',
+    ascendant: { degree: sampleRef.lahiriAscendantDeg, sign: SIGNS[Math.floor(sampleRef.lahiriAscendantDeg / 30) % 12] },
+    houses: sampleRef.sripatiLahiriSandhisDeg.map((s) => ({
+      house: s.house,
+      degree_cusp: s.midpoint,
+      boundary_start: s.start,
+      boundary_end: s.end,
+    })),
+    planets: faSuppAllPlanets.map((p) => {
+      const hObj = sampleRef.sripatiLahiriSandhisDeg.find((s) => {
+        const st = normalizeDeg(s.start);
+        const en = normalizeDeg(s.end);
+        const t = normalizeDeg(p.absolute_degree);
+        return st < en ? t >= st && t < en : t >= st || t < en;
+      });
+      return {
+        name: p.name,
+        absolute_degree: p.absolute_degree,
+        chalit_house: hObj?.house ?? 1,
+      };
+    }),
+  };
+
+  const faUncalibratedD5 = {
+    calibrated: false,
+    ascendant: { sign: parashariD5Sign(sampleRef.lahiriAscendantDeg) },
+    planets: faSuppAllPlanets.map((p) => ({
+      name: p.name,
+      sign: parashariD5Sign(p.absolute_degree),
+    })),
+  };
+
+  const validSupplPayload = {
+    ayanamsha: 'lahiri',
+    timezone_used: 'Asia/Kolkata',
+    chart: {
+      metadata: { house_system: 'whole_sign', node_type: sampleInstant.input.nodeConvention },
+      ascendant: {
+        degree: sampleRef.lahiriAscendantDeg,
+        sign: SIGNS[Math.floor(sampleRef.lahiriAscendantDeg / 30) % 12],
+      },
+      planets: faSuppAllPlanets,
+    },
+    vargas: {
+      vargas: {
+        D1: { ascendant: { sign: SIGNS[Math.floor(sampleRef.lahiriAscendantDeg / 30) % 12] }, planets: faSuppAllPlanets },
+        D5: faUncalibratedD5,
+      },
+    },
+    ashtakavarga: {
+      sarvashtakavarga: faSavRow,
+      bhinnashtakavarga: faBavRows,
+      prastharashtakavarga: faPrastara,
+      total_points: 337,
+    },
+    bhava_chalit: faValidBhavaChalit,
+  };
+
+  let singleCallFetchCount = 0;
+  const singleCallRes = await acquireFreeAstroApiSupplementaryVedicCalculate(sampleInstant, {
+    apiKey: 'test-key-redacted',
+    rateWaitMs: 0,
+    fetchFn: async (url: string) => {
+      singleCallFetchCount++;
+      assert(
+        new URL(url).pathname === '/api/v2/vedic/calculate',
+        `Expected single call to /api/v2/vedic/calculate, got ${url}`
+      );
+      return new Response(JSON.stringify(validSupplPayload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+  assert(
+    singleCallFetchCount === 1 &&
+      singleCallRes.status === 'acquired' &&
+      singleCallRes.plannedRequestsCount === 1 &&
+      singleCallRes.actualHttpRequestsSent === 1 &&
+      singleCallRes.call !== null,
+    'Single-call FreeAstroAPI supplementary acquisition helper failed.'
+  );
+
+  // Build an AstroWay primary master WITHOUT Ashtakavarga, Bhava Chalit, or D5
+  const awWithoutAvOrBcCalls = { ...prunedAwLayerA.calls };
+  delete awWithoutAvOrBcCalls.ashtakavarga_prastara;
+  const awBaseForSupp = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: {
+      ...prunedAwLayerA,
+      calls: awWithoutAvOrBcCalls,
+    },
+  });
+  assert(
+    awBaseForSupp.frames.vedicLahiri.data?.ashtakavarga === null &&
+      awBaseForSupp.frames.bhavaChalit.data === null &&
+      !awBaseForSupp.frames.vedicLahiri.data?.vargas?.chartsByDivision?.D5,
+    'Precondition for Phase 3 base AstroWay chart failed.'
+  );
+
+  const hybridMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: {
+      ...prunedAwLayerA,
+      calls: awWithoutAvOrBcCalls,
+    },
+    supplementaryFreeAstroApiVedicCall: singleCallRes.call,
+  });
+
+  const hManifest = hybridMaster.datasetManifest!;
+  const hEntry = (key: string) => hManifest.entries.find((e) => e.key === key);
+  const hSun = hybridMaster.frames.vedicLahiri.data?.planets.find((p) => p.name === 'Sun');
+  const hMars = hybridMaster.frames.vedicLahiri.data?.planets.find((p) => p.name === 'Mars');
+
+  assert(
+    hybridMaster.supplementaryIntegration?.singleCallOnly === true &&
+      hybridMaster.supplementaryIntegration?.primaryPreservationGuarantee.primaryPlanetsOverwritten === false &&
+      hybridMaster.supplementaryIntegration?.ashtakavarga.outcome === 'accepted' &&
+      hybridMaster.supplementaryIntegration?.ashtakavarga.recommendedState === 'internally_verified' &&
+      hybridMaster.supplementaryIntegration?.ashtakavarga.nodeSignOrLongitudeDiffs.some(
+        (d) => (d.deltaDeg ?? 0) > 10
+      ) &&
+      hybridMaster.frames.vedicLahiri.data?.ashtakavarga?.totalPoints === 337 &&
+      hybridMaster.supplementaryIntegration?.bhavaChalit.outcome === 'accepted' &&
+      hybridMaster.frames.bhavaChalit.canonicalStatus === 'internally_verified' &&
+      hEntry('bhava_chalit')?.canonicalStatus === 'internally_verified' &&
+      hEntry('ashtakavarga_bav_sav_prastara')?.canonicalStatus === 'internally_verified' &&
+      !hManifest.downstreamGuardSummary.dsi_dosha_strength?.missingPrerequisites.includes('bhava_chalit') &&
+      !hManifest.downstreamGuardSummary.house_intelligence?.missingPrerequisites.includes('bhava_chalit') &&
+      !hManifest.downstreamGuardSummary.house_intelligence?.missingPrerequisites.includes(
+        'ashtakavarga_bav_sav_prastara'
+      ) &&
+      // Uncalibrated D5 must NOT pollute primary BPHS Shodashavarga; remains provisional
+      hybridMaster.supplementaryIntegration?.d5.outcome === 'provisional' &&
+      hybridMaster.supplementaryIntegration?.d5.detectedFormula === 'parashari_odd_even' &&
+      !hybridMaster.frames.vedicLahiri.data?.vargas?.chartsByDivision?.D5 &&
+      Boolean(hybridMaster.supplementaryIntegration?.provisionalCandidates?.d5) &&
+      hEntry('vedic_d5_panchamsha')?.canonicalStatus === 'provisional' &&
+      // Primary Sun avastha ('Kumara') preserved while missing Mars avastha ('Shanta') filled cleanly
+      hSun?.avastha === 'Kumara' &&
+      hMars?.avastha === 'Shanta' &&
+      // AstroWay primary Shadbala, KP, and Dashas remained intact
+      hybridMaster.shadbalaReconciliation.source.includes('astroway_v1') &&
+      (hybridMaster.frames.vedicLahiri.data?.vimshottariDasha as Record<string, unknown>)?.maxDepthObserved === 5,
+    `Phase 3 hybrid supplementary integration failed: notes=${JSON.stringify(hybridMaster.supplementaryIntegration?.summaryNotes)}, dsiMissing=${JSON.stringify(hManifest.downstreamGuardSummary.dsi_dosha_strength?.missingPrerequisites)}, houseMissing=${JSON.stringify(hManifest.downstreamGuardSummary.house_intelligence?.missingPrerequisites)}, sunAvastha=${String(hSun?.avastha)}, marsAvastha=${String(hMars?.avastha)}`
+  );
+
+  // Test established & calibrated D5 acceptance (calibrated=true, matching node convention, no boundary flip)
+  const calibratedD5SupplCall: SanitizedProviderCallRecord = {
+    ...singleCallRes.call!,
+    rawResponse: {
+      ...validSupplPayload,
+      chart: {
+        ...validSupplPayload.chart,
+        planets: [...faSuppClassicalBodies, { name: 'Rahu', absolute_degree: 12.5352 }, { name: 'Ketu', absolute_degree: 192.5352 }].map(
+          (p) => ({ ...p, sign: SIGNS[Math.floor(normalizeDeg(p.absolute_degree) / 30) % 12] })
+        ),
+      },
+      vargas: {
+        vargas: {
+          D5: {
+            calibrated: true,
+            ascendant: { sign: parashariD5Sign(sampleRef.lahiriAscendantDeg) },
+            planets: [...faSuppClassicalBodies, { name: 'Rahu', absolute_degree: 12.5352 }, { name: 'Ketu', absolute_degree: 192.5352 }].map(
+              (p) => ({ name: p.name, sign: parashariD5Sign(p.absolute_degree) })
+            ),
+          },
+        },
+      },
+    },
+  };
+  const d5AcceptedHybrid = integrateFreeAstroApiSupplementaryIntoMaster(awBaseForSupp, calibratedD5SupplCall);
+  assert(
+    d5AcceptedHybrid.supplementaryIntegration?.d5.outcome === 'accepted' &&
+      d5AcceptedHybrid.supplementaryIntegration?.d5.recommendedState === 'available' &&
+      d5AcceptedHybrid.frames.vedicLahiri.data?.vargas?.supportedCount === 17 &&
+      Boolean(d5AcceptedHybrid.frames.vedicLahiri.data?.vargas?.chartsByDivision?.D5) &&
+      d5AcceptedHybrid.datasetManifest?.entries.find((e) => e.key === 'vedic_d5_panchamsha')?.canonicalStatus ===
+        'available',
+    'Established & calibrated FreeAstroAPI D5 should be cleanly accepted into master Vargas.'
+  );
+
+  // Test Non-Overwrite Guarantee when AstroWay already owns valid Ashtakavarga
+  const customAwSavCheck = prunedMaster.frames.vedicLahiri.data?.ashtakavarga?.sarvashtakavarga;
+  const crossVerifiedAw = integrateFreeAstroApiSupplementaryIntoMaster(prunedMaster, singleCallRes.call);
+  assert(
+    crossVerifiedAw.supplementaryIntegration?.ashtakavarga.outcome === 'preserved_primary_cross_verified' &&
+      JSON.stringify(crossVerifiedAw.frames.vedicLahiri.data?.ashtakavarga?.sarvashtakavarga) ===
+        JSON.stringify(customAwSavCheck),
+    'Existing valid primary AstroWay Ashtakavarga must never be overwritten by supplementary data.'
+  );
+
+  // Adversarial Rejection 1: Matching 337 SAV total alone with mismatched planet sign MUST fail!
+  const signMismatchAvEval = evaluateAshtakavargaCompatibility(awBaseForSupp, {
+    ...validSupplPayload,
+    chart: {
+      ...validSupplPayload.chart,
+      planets: validSupplPayload.chart.planets.map((p) =>
+        p.name === 'Saturn' ? { ...p, sign: 'Aries' } : p
+      ),
+    },
+  });
+  assert(
+    signMismatchAvEval.audit.savTotalEquals337 === true &&
+      signMismatchAvEval.audit.sevenClassicalPlanetSignsMatch === false &&
+      signMismatchAvEval.audit.totalsAloneRejectedNotice === true &&
+      signMismatchAvEval.audit.recommendedState === 'incompatible' &&
+      signMismatchAvEval.normalizedSupplementaryAv === null,
+    'Ashtakavarga matching 337 total with mismatched classical planet sign was not rejected!'
+  );
+
+  // Adversarial Rejection 2: BAV-to-SAV & Prastara mismatch (even with SAV=337) MUST fail!
+  const corruptedPrastara = structuredClone(faPrastara);
+  corruptedPrastara.Sun.Sun[0] = corruptedPrastara.Sun.Sun[0] === 1 ? 0 : 1;
+  const prastaraMismatchAvEval = evaluateAshtakavargaCompatibility(awBaseForSupp, {
+    ...validSupplPayload,
+    ashtakavarga: {
+      ...validSupplPayload.ashtakavarga,
+      prastharashtakavarga: corruptedPrastara,
+    },
+  });
+  assert(
+    prastaraMismatchAvEval.audit.savTotalEquals337 === true &&
+      prastaraMismatchAvEval.audit.prastaraReconciliationPassed === false &&
+      prastaraMismatchAvEval.audit.recommendedState === 'incompatible',
+    'Prastara contributor mismatch was not rejected!'
+  );
+
+  // Adversarial Rejection 3: KP Placidus cusp starts passed as Bhava Chalit MUST be rejected cleanly
+  const kpCuspAsBhavaChalitCall: SanitizedProviderCallRecord = {
+    ...singleCallRes.call!,
+    rawResponse: {
+      ...validSupplPayload,
+      bhava_chalit: {
+        house_basis: 'placidus',
+        houses: sampleRef.kpPlacidusCuspsDeg.map((cusp, idx) => ({
+          house: idx + 1,
+          degree_cusp: cusp,
+          boundary_start: cusp,
+          boundary_end: sampleRef.kpPlacidusCuspsDeg[(idx + 1) % 12],
+        })),
+        planets: faSuppAllPlanets.map((p) => ({
+          name: p.name,
+          absolute_degree: p.absolute_degree,
+          chalit_house: 1,
+        })),
+      },
+    },
+  };
+  const rejectedBcMaster = integrateFreeAstroApiSupplementaryIntoMaster(
+    awBaseForSupp,
+    kpCuspAsBhavaChalitCall
+  );
+  assert(
+    rejectedBcMaster.supplementaryIntegration?.bhavaChalit.kpPlacidusConfusionDetected === true &&
+      rejectedBcMaster.supplementaryIntegration?.bhavaChalit.recommendedState === 'incompatible' &&
+      rejectedBcMaster.frames.bhavaChalit.canonicalStatus === 'incompatible' &&
+      rejectedBcMaster.datasetManifest?.entries.find((e) => e.key === 'bhava_chalit')?.canonicalStatus ===
+        'incompatible' &&
+      rejectedBcMaster.datasetManifest?.downstreamGuardSummary.dsi_dosha_strength?.ready === false &&
+      rejectedBcMaster.datasetManifest?.downstreamGuardSummary.house_intelligence?.ready === false,
+    'KP Placidus cusp starts masquerading as Sripati Bhava Chalit failed to reject cleanly.'
+  );
+
+  // Adversarial Rejection 4: Mismatched coords / longitudes for Bhava Chalit & D5
+  const badCoordsCall: SanitizedProviderCallRecord = {
+    ...singleCallRes.call!,
+    sanitizedRequest: {
+      ...singleCallRes.call!.sanitizedRequest,
+      lat: 51.5074, // Wrong latitude (London vs Bardhaman)
+    },
+  };
+  const badBcEval = evaluateBhavaChalitCompatibility(
+    awBaseForSupp,
+    validSupplPayload,
+    badCoordsCall,
+    sampleRef
+  );
+  const badD5Eval = evaluateD5DivisionalCompatibility(awBaseForSupp, validSupplPayload, badCoordsCall);
+  assert(
+    badBcEval.audit.coordinatesCompatible === false &&
+      badBcEval.audit.recommendedState === 'incompatible' &&
+      badD5Eval.audit.recommendedState === 'incompatible',
+    'Coordinate mismatch failed to trigger incompatible rejection on Bhava Chalit / D5.'
+  );
+
+  // Boundary Sensitivity Check: D5 body right across 6° boundary (e.g., primary Mars=185° vs supp=186.05° -> 5° vs 6.05°; or 215.95°)
+  const boundaryFlipD5Eval = evaluateD5DivisionalCompatibility(awBaseForSupp, {
+    ...validSupplPayload,
+    chart: {
+      ...validSupplPayload.chart,
+      planets: validSupplPayload.chart.planets.map((p) =>
+        p.name === 'Saturn' ? { ...p, absolute_degree: 215.95 } : p
+      ), // Primary Saturn is 221° vs 215.95° -> crosses 6° boundary -> flipped D5 sign
+    },
+    vargas: {
+      vargas: {
+        D5: {
+          ...faUncalibratedD5,
+          calibrated: true,
+        },
+      },
+    },
+  });
+  assert(
+    boundaryFlipD5Eval.audit.longitudesCompatible === false &&
+      boundaryFlipD5Eval.audit.boundarySensitiveBodies.some((b) => b.body === 'Saturn'),
+    `D5 boundary sensitivity check failed: ${JSON.stringify(boundaryFlipD5Eval.audit)}`
+  );
+
+  regressionResults.push({
+    id: 'phase3_freeastroapi_supplementary_compatibility_gates',
+    status: 'PASSED',
+    singleCallHttpRequests: singleCallRes.actualHttpRequestsSent,
+    hybridAvOutcome: hybridMaster.supplementaryIntegration?.ashtakavarga.outcome,
+    hybridBcStatus: hybridMaster.frames.bhavaChalit.canonicalStatus,
+    hybridD5UncalibratedStatus: hybridMaster.datasetManifest?.entries.find((e) => e.key === 'vedic_d5_panchamsha')?.canonicalStatus,
+    calibratedD5Status: d5AcceptedHybrid.datasetManifest?.entries.find((e) => e.key === 'vedic_d5_panchamsha')?.canonicalStatus,
+    totalsOnlyRejectionVerified: signMismatchAvEval.audit.totalsAloneRejectedNotice,
+    kpPlacidusConfusionRejected: rejectedBcMaster.supplementaryIntegration?.bhavaChalit.kpPlacidusConfusionDetected,
   });
 
   // 4. Read-Only Existing Profile Defect Audit + Legacy vs V2 Comparison on Local Fixtures

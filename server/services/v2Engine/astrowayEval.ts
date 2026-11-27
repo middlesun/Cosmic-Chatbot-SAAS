@@ -81,8 +81,43 @@ export interface AstroWayEvalEndpointSpec {
   body: Record<string, unknown>;
 }
 
+export type AstroWayPlanMode = 'foundational_pruned' | 'full_evaluation';
+
+export interface AstroWayPrunedEndpointNote {
+  id: string;
+  path: string;
+  supersededBy: string[];
+  reason: string;
+}
+
+export const ASTROWAY_PRUNED_REDUNDANT_ENDPOINTS: AstroWayPrunedEndpointNote[] = [
+  {
+    id: 'ashtakavarga_basic',
+    path: '/ashtakavarga',
+    supersededBy: ['ashtakavarga_prastara'],
+    reason:
+      'Strict subset of /vedic/ashtakavarga/prastara, which already returns full BAV (planets[].bindus), SAV (sarva/sarvaTotal), and Prastara contributor matrices.',
+  },
+  {
+    id: 'kp_cusps',
+    path: '/vedic/kp/cusps',
+    supersededBy: ['kp_sub_lords'],
+    reason:
+      'Strict subset of /vedic/kp/sub-lords, which already returns all 12 Placidus cusps, planetary longitudes, lagna, ayanamsa, and sign/star/sub/sub-sub lords.',
+  },
+  {
+    id: 'varga_D1',
+    path: '/vedic/varga/D1',
+    supersededBy: ['chart_sidereal', 'vedic_kundli'],
+    reason:
+      'Duplicates D1 Rashi longitudes and signs already returned by /chart and /vedic/kundli; normalized canonical D1 is mirrored directly into vargas.chartsByDivision.D1.',
+  },
+];
+
 export interface AstroWayChris4EvaluationPlan {
   schemaVersion: 'v2.astroway_plan.1.0';
+  planMode?: AstroWayPlanMode;
+  prunedRedundantEndpoints?: AstroWayPrunedEndpointNote[];
   baseUrl: string;
   inputFingerprint: string;
   canonicalUtcIso: string;
@@ -281,8 +316,13 @@ export function buildAstroWayChartInputPayload(
  */
 export function buildAstroWayChris4EvaluationPlan(
   instant: CanonicalBirthInstant,
-  options?: { timeMode?: 'local_iana' | 'utc'; targetDateIso?: string }
+  options?: {
+    timeMode?: 'local_iana' | 'utc';
+    targetDateIso?: string;
+    planMode?: AstroWayPlanMode;
+  }
 ): AstroWayChris4EvaluationPlan {
+  const planMode: AstroWayPlanMode = options?.planMode ?? 'full_evaluation';
   const timeMode = options?.timeMode ?? (instant.timezone.ianaTimezone ? 'local_iana' : 'utc');
 
   const siderealWholeSignBase = buildAstroWayChartInputPayload(instant, {
@@ -833,8 +873,17 @@ export function buildAstroWayChris4EvaluationPlan(
     },
   ];
 
+  const prunedIds = new Set(ASTROWAY_PRUNED_REDUNDANT_ENDPOINTS.map((p) => p.id));
+  const filteredRequests =
+    planMode === 'foundational_pruned'
+      ? requests.filter((r) => !prunedIds.has(r.id))
+      : requests;
+
   return {
     schemaVersion: 'v2.astroway_plan.1.0',
+    planMode,
+    prunedRedundantEndpoints:
+      planMode === 'foundational_pruned' ? ASTROWAY_PRUNED_REDUNDANT_ENDPOINTS : [],
     baseUrl: ASTROWAY_BASE_URL,
     inputFingerprint: instant.inputFingerprint,
     canonicalUtcIso: instant.utc.iso,
@@ -848,8 +897,24 @@ export function buildAstroWayChris4EvaluationPlan(
       'Hellenistic Lots, Zodiacal Releasing, Profections, and Firdaria use `zodiacType: "tropical"` and `houseSystem: "W"` (Whole Sign) matching Brennan/Valens methodology.',
     ],
     validationErrors,
-    requests,
+    requests: filteredRequests,
   };
+}
+
+/**
+ * Phase 2 Primary AstroWay Foundational Plan: removes genuinely redundant subset
+ * endpoints (`ashtakavarga_basic`, `kp_cusps`, `varga_D1`) while retaining 100%
+ * of AstroWay's mathematical intelligence across all frames, Bala subcomponents,
+ * Shodashavargas, Jaimini, KP, Yogas/Doshas, Dashas, Panchang, and Western/Hellenistic.
+ */
+export function buildAstroWayFoundationalPlan(
+  instant: CanonicalBirthInstant,
+  options?: { timeMode?: 'local_iana' | 'utc'; targetDateIso?: string }
+): AstroWayChris4EvaluationPlan {
+  return buildAstroWayChris4EvaluationPlan(instant, {
+    ...options,
+    planMode: 'foundational_pruned',
+  });
 }
 
 export type AstroWayFetchFn = (
@@ -2037,6 +2102,8 @@ export function buildAstroWayLayerAFromCalls(params: {
 export interface ExecuteAstroWayBatchedBundleOptions {
   apiKey?: string;
   timeMode?: 'local_iana' | 'utc';
+  targetDateIso?: string;
+  planMode?: AstroWayPlanMode;
   includeTimezoneEquivalenceProbe?: boolean;
   existingCalls?: Record<string, SanitizedProviderCallRecord>;
   sessionId?: string;
@@ -2078,6 +2145,8 @@ export async function executeAstroWayBatchedBundle(
 
   const plan = buildAstroWayChris4EvaluationPlan(instant, {
     timeMode: options?.timeMode ?? (instant.timezone.ianaTimezone ? 'local_iana' : 'utc'),
+    targetDateIso: options?.targetDateIso,
+    planMode: options?.planMode,
   });
   if (plan.validationErrors.length > 0) {
     throw new Error(`AstroWay preflight failed: ${plan.validationErrors.join('; ')}`);
@@ -2349,6 +2418,7 @@ export async function reconstructAstroWayLayerAFromSession(params: {
     totalRateLimitWindowWaitMs: number;
     calls: Record<string, SanitizedProviderCallRecord>;
   };
+  planMode?: AstroWayPlanMode;
   apiKeyForRedaction?: string;
   skipGlobalCooldownRead?: boolean;
 }): Promise<{
@@ -2358,6 +2428,7 @@ export async function reconstructAstroWayLayerAFromSession(params: {
   const { instant, session } = params;
   const plan = buildAstroWayChris4EvaluationPlan(instant, {
     timeMode: instant.timezone.ianaTimezone ? 'local_iana' : 'utc',
+    planMode: params.planMode,
   });
   const runProbe = Boolean(
     session.includeTimezoneEquivalenceProbe && instant.timezone.ianaTimezone
@@ -2580,6 +2651,8 @@ export async function acquireAstroWayV2Bundle(
   options?: {
     apiKey?: string;
     timeMode?: 'local_iana' | 'utc';
+    targetDateIso?: string;
+    planMode?: AstroWayPlanMode;
     includeTimezoneEquivalenceProbe?: boolean;
     existingCalls?: Record<string, SanitizedProviderCallRecord>;
     sessionId?: string;
@@ -2592,4 +2665,22 @@ export async function acquireAstroWayV2Bundle(
 ): Promise<LayerARawProviderRecord> {
   const { layerA } = await executeAstroWayBatchedBundle(instant, options);
   return layerA;
+}
+
+/**
+ * Phase 2 Primary Foundational AstroWay Bundle Executor (defaults to `foundational_pruned`,
+ * eliminating strictly redundant endpoints without sacrificing mathematical intelligence).
+ */
+export async function acquireAstroWayFoundationalBundle(
+  instant: CanonicalBirthInstant,
+  options?: ExecuteAstroWayBatchedBundleOptions
+): Promise<{
+  layerA: LayerARawProviderRecord;
+  batchState: V2DiagnosticBatchState;
+  updatedCalls: Record<string, SanitizedProviderCallRecord>;
+}> {
+  return executeAstroWayBatchedBundle(instant, {
+    ...options,
+    planMode: options?.planMode ?? 'foundational_pruned',
+  });
 }

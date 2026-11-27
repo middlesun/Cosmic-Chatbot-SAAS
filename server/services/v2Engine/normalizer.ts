@@ -14,7 +14,24 @@
  */
 
 import { normalizeDeg, SIGNS } from '../jyotishMath';
+import {
+  extractAstroWayPlanetaryConditions,
+  normalizeAstroWayAlternativeDasha,
+  normalizeAstroWayAshtakavargaShodhana,
+  normalizeAstroWayBhavabala,
+  normalizeAstroWayIshtaKashta,
+  normalizeAstroWayJaiminiSuite,
+  normalizeAstroWayPanchang,
+  normalizeAstroWayShadbalaSubcomponents,
+  normalizeAstroWayVimshottari5Level,
+} from './astrowayNormalizer';
+import {
+  V2_RECALCULATION_VERSION,
+  deriveCanonicalDatasetState,
+  evaluateDatasetCompleteness,
+} from './datasetManifest';
 import { buildShadbalaReconciliationReport } from './shadbalaReconciliation';
+import { integrateFreeAstroApiSupplementaryIntoMaster } from './supplementaryCompatibility';
 import {
   buildPlanetPositionsFromVedicFrame,
   computeIndependentAstronomicalReference,
@@ -23,14 +40,17 @@ import {
 import type {
   AstronomicalTelemetryFrame,
   BhavaChalitFrame,
+  CalculationConventionsRecord,
   CanonicalBirthInstant,
   DatasetEnvelope,
   KpPlacidusFrame,
   LayerARawProviderRecord,
   LayerBMasterChartRecord,
   LayerCAnalyticalShell,
+  ReferenceDateTimingSnapshot,
   RemainingClassicalGapItem,
   SanitizedProviderCallRecord,
+  TemporalScope,
   VedicLahiriFrame,
   WesternTropicalFrame,
 } from './types';
@@ -141,19 +161,60 @@ function unavailableEnvelope<T>(
   calculationMethod: string,
   conventions: Record<string, unknown>,
   inputFingerprint: string,
-  limitations: string[]
+  limitations: string[],
+  opts?: {
+    dependencies?: string[];
+    acquiredAtUtc?: string | null;
+    temporalScope?: TemporalScope;
+    referenceDateIso?: string | null;
+  }
 ): DatasetEnvelope<T> {
   return {
     source,
     calculationMethod,
     version: V2_MASTER_SCHEMA_VERSION,
     conventions,
+    dependencies: opts?.dependencies ?? ['canonical_birth_instant'],
+    acquiredAtUtc: opts?.acquiredAtUtc ?? null,
+    temporalScope: opts?.temporalScope ?? 'natal_invariant',
+    referenceDateIso: opts?.referenceDateIso ?? null,
     inputFingerprint,
     completeness: 'unavailable',
     verificationStatus: 'unavailable',
+    canonicalStatus: 'unavailable',
     limitations,
     data: null,
   };
+}
+
+function inferReferenceDateIso(
+  rawLayerA?: LayerARawProviderRecord | null,
+  explicitReferenceDateIso?: string | null
+): string | null {
+  if (explicitReferenceDateIso && /^\d{4}-\d{2}-\d{2}/.test(explicitReferenceDateIso.trim())) {
+    return explicitReferenceDateIso.trim().slice(0, 10);
+  }
+  const calls = Object.values(rawLayerA?.calls || {});
+  for (const call of calls) {
+    const req = call?.sanitizedRequest;
+    if (!req || typeof req !== 'object') continue;
+    const candidate = req.targetDate ?? req.reference_date ?? req.referenceDate;
+    if (typeof candidate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(candidate.trim())) {
+      return candidate.trim().slice(0, 10);
+    }
+  }
+  return null;
+}
+
+function firstAcquiredTimestamp(
+  calls: Array<SanitizedProviderCallRecord | undefined>
+): string | null {
+  for (const call of calls) {
+    if (call?.ok && typeof call.timestampUtc === 'string' && call.timestampUtc) {
+      return call.timestampUtc;
+    }
+  }
+  return null;
 }
 
 function asObj(val: unknown): Record<string, unknown> | null {
@@ -486,11 +547,13 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
   instant: CanonicalBirthInstant;
   rawLayerA: LayerARawProviderRecord;
   cachedVerifiedRecord?: LayerBMasterChartRecord | null;
+  referenceDateIso?: string | null;
 }): LayerBMasterChartRecord {
-  const { instant, rawLayerA } = params;
+  const { instant, rawLayerA, referenceDateIso } = params;
   const fp = instant.inputFingerprint;
   const indepRef = computeIndependentAstronomicalReference(instant);
   const calls = rawLayerA.calls || {};
+  const effectiveRefDateIso = inferReferenceDateIso(rawLayerA, referenceDateIso);
 
   const chartSidereal = unwrapAstroWayCall(calls.chart_sidereal);
   const chartTropical = unwrapAstroWayCall(calls.chart_tropical);
@@ -549,6 +612,12 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     const signIdx = Math.floor(lon / 30) % 12;
     const degInSign = Number((lon % 30).toFixed(6));
     const house = ascSignIdx !== null ? ((signIdx - ascSignIdx + 12) % 12) + 1 : undefined;
+    const dignityRaw = k?.dignity ?? s?.dignity;
+    const avasthaRaw = k?.avastha ?? s?.avastha;
+    const combustRaw = k?.isCombust ?? k?.combust ?? s?.isCombust ?? s?.combust;
+    const nakRaw = k?.nakshatraName ?? k?.nakshatra ?? s?.nakshatra;
+    const nakLordRaw = k?.nakshatraLord ?? k?.starLord;
+    const padaRaw = Number(k?.pada ?? Number.NaN);
     vedicPlanets.push({
       name,
       raw_name: k?.name ?? s?.name ?? name,
@@ -558,15 +627,29 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       degree_in_sign: degInSign,
       ...(house !== undefined ? { house } : {}),
       is_retrograde: Boolean(k?.isRetrograde ?? s?.isRetrograde),
+      ...(typeof dignityRaw === 'string' && dignityRaw.trim() ? { dignity: dignityRaw.trim() } : {}),
+      ...(typeof avasthaRaw === 'string' && avasthaRaw.trim() ? { avastha: avasthaRaw.trim() } : {}),
+      ...(typeof combustRaw === 'boolean' ? { is_combust: combustRaw } : {}),
+      ...(typeof nakRaw === 'string' && nakRaw.trim()
+        ? { nakshatra: nakRaw.trim() }
+        : asObj(nakRaw)?.name
+        ? { nakshatra: String(asObj(nakRaw)!.name) }
+        : {}),
+      ...(typeof nakLordRaw === 'string' && nakLordRaw.trim()
+        ? { nakshatra_lord: normalizeAstroWayPlanetName(nakLordRaw) }
+        : {}),
+      ...(Number.isInteger(padaRaw) && padaRaw >= 1 && padaRaw <= 4 ? { pada: padaRaw } : {}),
       ...(typeof s?.latitude === 'number' ? { latitude_deg: s.latitude } : {}),
       ...(typeof s?.distance === 'number' ? { distance_au: s.distance } : {}),
       ...(typeof s?.speedLong === 'number' ? { speed_deg_per_day: s.speedLong } : {}),
+      ...(typeof s?.speedLat === 'number' ? { speed_lat_deg_per_day: s.speedLat } : {}),
+      ...(typeof s?.speedDist === 'number' ? { speed_dist_au_per_day: s.speedDist } : {}),
       ...(typeof s?.declination === 'number' ? { declination: s.declination } : {}),
       ...(typeof s?.rightAscension === 'number' ? { right_ascension: s.rightAscension } : {}),
     });
   }
 
-  // Build 16 Shodashavarga charts from /vedic/varga/D*
+  // Build Shodashavarga charts from /vedic/varga/D* (and mirror canonical D1 if varga_D1 call was pruned)
   const vargaChartsByDivision: Record<string, Record<string, unknown>> = {};
   for (const [callId, callRec] of Object.entries(calls)) {
     if (!callId.startsWith('varga_')) continue;
@@ -594,6 +677,28 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
           }
         : null,
       planets: vPlanets,
+    };
+  }
+  if (!vargaChartsByDivision.D1 && ascDeg !== null && ascSignIdx !== null && vedicPlanets.length > 0) {
+    vargaChartsByDivision.D1 = {
+      varga: 'D1',
+      source: 'canonical_d1_mirror',
+      ayanamsa: kundli?.ayanamsa ?? 'lahiri',
+      calibrated: true,
+      ascendant: {
+        ...(kundliLagna || {}),
+        degree: ascDeg,
+        longitude: ascDeg,
+        sign: resolveSignNameFromAstroWayEntry(kundliLagna) || SIGNS[ascSignIdx],
+      },
+      planets: vedicPlanets.map((vp) => ({
+        name: vp.name,
+        raw_name: vp.raw_name,
+        sign: vp.sign,
+        longitude: vp.absolute_degree,
+        degree_in_sign: vp.degree_in_sign,
+        is_retrograde: vp.is_retrograde,
+      })),
     };
   }
   const vargaKeys = Object.keys(vargaChartsByDivision);
@@ -656,36 +761,12 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     kundli,
   });
 
-  // Normalize Vimshottari Prana Dasha
-  let normalizedVimshottari: Record<string, unknown> | null = null;
-  if (vimshottariPrana) {
-    const init = asObj(vimshottariPrana.initial) || {};
-    const lord = normalizeAstroWayPlanetName(init.initialPlanetName ?? init.initialPlanet);
-    const remY = Number(init.balanceYears ?? Number.NaN);
-    const elY = Number(init.elapsedYears ?? Number.NaN);
-    const canonicalFullY = VIMSHOTTARI_FULL_YEARS[lord];
-    const periods = asObjArr(vimshottariPrana.periods).map((md) => ({
-      ...md,
-      lord: normalizeAstroWayPlanetName(md.planetName ?? md.planet),
-      start_date: md.startDate,
-      end_date: md.endDate,
-      duration_years: md.durationYears,
-    }));
-    normalizedVimshottari = {
-      ...vimshottariPrana,
-      birth_balance: {
-        lord,
-        remaining_years: Number.isFinite(remY) ? remY : null,
-        elapsed_years: Number.isFinite(elY) ? elY : null,
-        full_duration_years:
-          canonicalFullY ??
-          (Number.isFinite(remY) && Number.isFinite(elY) ? Number((remY + elY).toFixed(4)) : null),
-        balanceMonths: init.balanceMonths ?? null,
-        balanceDays: init.balanceDays ?? null,
-      },
-      mahadashas: periods,
-    };
-  }
+  // Normalize Vimshottari 5-Level Dasha Hierarchy (separating natal timeline from reference-date snapshot)
+  const normalizedVimshottari = normalizeAstroWayVimshottari5Level(
+    vimshottariPrana,
+    normalizeAstroWayPlanetName
+  );
+  const normalizedPanchang = normalizeAstroWayPanchang(panchang);
 
   const vedicCusps = Array.isArray(sidHousesObj?.cusps)
     ? (sidHousesObj!.cusps as number[]).map((c, idx) => ({
@@ -726,7 +807,7 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
           : null,
       ashtakavarga: vedicAshtakavarga,
       yogas: normalizedYogas,
-      panchang,
+      panchang: normalizedPanchang,
       vimshottariDasha: normalizedVimshottari,
       providerMetadata: asObj(chartSidereal?.meta) || null,
     };
@@ -740,6 +821,20 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       );
     }
 
+    const vedicCompleteness =
+      vedicPlanets.length >= 9 &&
+      vargaKeys.length >= 16 &&
+      vedicAshtakavarga &&
+      normalizedVimshottari
+        ? 'complete'
+        : 'partial';
+    const vedicAcquiredAt = firstAcquiredTimestamp([
+      calls.chart_sidereal,
+      calls.vedic_kundli,
+      calls.dashas_vimshottari_prana,
+    ]);
+    const hasValidD1 = ascDeg !== null && vedicPlanets.length >= 9;
+
     vedicLahiri = {
       source: 'astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara',
       calculationMethod: 'AstroWay V1 Lahiri Whole-Sign Sidereal',
@@ -750,15 +845,18 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
         nodeConvention: vedicFrameData.nodeType,
         observationPoint: 'geocentric',
       },
+      dependencies: ['canonical_birth_instant'],
+      acquiredAtUtc: vedicAcquiredAt,
+      temporalScope: 'natal_invariant',
+      referenceDateIso: null,
       inputFingerprint: fp,
-      completeness:
-        vedicPlanets.length >= 9 &&
-        vargaKeys.length >= 16 &&
-        vedicAshtakavarga &&
-        normalizedVimshottari
-          ? 'complete'
-          : 'partial',
+      completeness: vedicCompleteness,
       verificationStatus: 'verified_provider',
+      canonicalStatus: hasValidD1
+        ? vedicCompleteness === 'complete'
+          ? 'available'
+          : 'provisional'
+        : 'unavailable',
       limitations: vedicLimitations,
       data: vedicFrameData,
     };
@@ -788,20 +886,24 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
   let kpPlacidus: DatasetEnvelope<KpPlacidusFrame>;
   if (kpSubLordsRaw || kpCuspsRaw) {
     const rawCusps = asObjArr(kpSubLordsRaw?.cusps ?? kpCuspsRaw?.cusps);
-    const kpCusps = rawCusps.map((c, idx) => {
-      const deg = normalizeDeg(Number(c.longitude ?? c.cusp_degree ?? 0));
-      return {
-        ...c,
-        house: Number(c.house ?? idx + 1),
-        cusp_degree: deg,
-        absolute_degree: deg,
-        sign: resolveSignNameFromAstroWayEntry(c) || SIGNS[Math.floor(deg / 30) % 12],
-        star_lord: normalizeAstroWayPlanetName(c.starLordName ?? c.starLord),
-        sub_lord: normalizeAstroWayPlanetName(c.subName ?? c.subLord),
-        sub_sub_lord: normalizeAstroWayPlanetName(c.subSubName ?? c.subSubLord),
-        sign_lord: normalizeAstroWayPlanetName(c.signLordName ?? c.signLord),
-      };
-    });
+    const kpCusps = rawCusps
+      .map((c, idx) => {
+        const rawDeg = Number(c.longitude ?? c.cusp_degree ?? Number.NaN);
+        if (!Number.isFinite(rawDeg)) return null;
+        const deg = normalizeDeg(rawDeg);
+        return {
+          ...c,
+          house: Number(c.house ?? idx + 1),
+          cusp_degree: deg,
+          absolute_degree: deg,
+          sign: resolveSignNameFromAstroWayEntry(c) || SIGNS[Math.floor(deg / 30) % 12],
+          star_lord: normalizeAstroWayPlanetName(c.starLordName ?? c.starLord),
+          sub_lord: normalizeAstroWayPlanetName(c.subName ?? c.subLord),
+          sub_sub_lord: normalizeAstroWayPlanetName(c.subSubName ?? c.subSubLord),
+          sign_lord: normalizeAstroWayPlanetName(c.signLordName ?? c.signLord),
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
 
     const kpPosArr = findArrayInAstroWayData(kpPosRaw, ['planets', 'items', 'positions', 'cuspalPositions']);
     const kpHouseByPlanet = new Map<string, number>();
@@ -813,24 +915,28 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       }
     }
 
-    const kpPlanets = asObjArr(kpSubLordsRaw?.planets ?? kpCuspsRaw?.planets).map((p) => {
-      const pName = normalizeAstroWayPlanetName(p.grahaName ?? p.name);
-      const lon = normalizeDeg(Number(p.longitude ?? 0));
-      const kpHouse = kpHouseByPlanet.get(pName) ?? (typeof p.house === 'number' ? p.house : undefined);
-      return {
-        ...p,
-        name: pName,
-        raw_name: p.grahaName ?? p.name,
-        absolute_degree: lon,
-        degree: lon,
-        sign: resolveSignNameFromAstroWayEntry(p) || SIGNS[Math.floor(lon / 30) % 12],
-        star_lord: normalizeAstroWayPlanetName(p.starLordName ?? p.starLord),
-        sub_lord: normalizeAstroWayPlanetName(p.subName ?? p.subLord),
-        sub_sub_lord: normalizeAstroWayPlanetName(p.subSubName ?? p.subSubLord),
-        sign_lord: normalizeAstroWayPlanetName(p.signLordName ?? p.signLord),
-        ...(kpHouse !== undefined ? { kp_house: kpHouse, house: kpHouse } : {}),
-      };
-    });
+    const kpPlanets = asObjArr(kpSubLordsRaw?.planets ?? kpCuspsRaw?.planets)
+      .map((p) => {
+        const rawLon = Number(p.longitude ?? Number.NaN);
+        if (!Number.isFinite(rawLon)) return null;
+        const pName = normalizeAstroWayPlanetName(p.grahaName ?? p.name);
+        const lon = normalizeDeg(rawLon);
+        const kpHouse = kpHouseByPlanet.get(pName) ?? (typeof p.house === 'number' ? p.house : undefined);
+        return {
+          ...p,
+          name: pName,
+          raw_name: p.grahaName ?? p.name,
+          absolute_degree: lon,
+          degree: lon,
+          sign: resolveSignNameFromAstroWayEntry(p) || SIGNS[Math.floor(lon / 30) % 12],
+          star_lord: normalizeAstroWayPlanetName(p.starLordName ?? p.starLord),
+          sub_lord: normalizeAstroWayPlanetName(p.subName ?? p.subLord),
+          sub_sub_lord: normalizeAstroWayPlanetName(p.subSubName ?? p.subSubLord),
+          sign_lord: normalizeAstroWayPlanetName(p.signLordName ?? p.signLord),
+          ...(kpHouse !== undefined ? { kp_house: kpHouse, house: kpHouse } : {}),
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
 
     const planetSignificators = asObjArr(
       kpSigRaw?.significators ?? findArrayInAstroWayData(kpSigRaw, ['significators', 'planets', 'items'])
@@ -907,15 +1013,18 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       rulingPlanets: kpRulingRaw,
       dasha: null,
       metadata: {
-        method: kpCuspsRaw?.method ?? 'placidus',
+        method: kpCuspsRaw?.method ?? kpSubLordsRaw?.method ?? 'placidus',
         nodeConventionNote: 'ChartInput omits nodeType',
         ascSub: unwrapAstroWayCall(calls.kp_asc_sub),
         fortuna: unwrapAstroWayCall(calls.kp_fortuna),
       },
     };
 
+    const kpCompleteness = kpCusps.length === 12 && kpPlanets.length >= 9 ? 'complete' : 'partial';
     kpPlacidus = {
-      source: 'astroway:/vedic/kp/cusps + /sub-lords + /planet-cuspal-position + /significators',
+      source: kpCuspsRaw
+        ? 'astroway:/vedic/kp/cusps + /sub-lords + /planet-cuspal-position + /significators'
+        : 'astroway:/vedic/kp/sub-lords + /planet-cuspal-position + /significators',
       calculationMethod: 'AstroWay V1 KP Placidus (ayanamsa=kp, houseSystem=P)',
       version: V2_MASTER_SCHEMA_VERSION,
       conventions: {
@@ -923,9 +1032,14 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
         ayanamshaValueDeg: kpAyVal,
         houseSystem: 'placidus',
       },
+      dependencies: ['canonical_birth_instant'],
+      acquiredAtUtc: firstAcquiredTimestamp([calls.kp_sub_lords, calls.kp_cusps]),
+      temporalScope: 'natal_invariant',
+      referenceDateIso: null,
       inputFingerprint: fp,
-      completeness: kpCusps.length === 12 && kpPlanets.length >= 9 ? 'complete' : 'partial',
+      completeness: kpCompleteness,
       verificationStatus: 'verified_provider',
+      canonicalStatus: kpCompleteness === 'complete' ? 'available' : 'provisional',
       limitations: [],
       data: kpFrameData,
     };
@@ -1017,10 +1131,12 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     const tHouseAspects = asObjArr(chartTropical.houseAspects);
     const tAntiscia = asObjArr(chartTropical.antiscia);
     const tAntisciaAspects = asObjArr(chartTropical.antisciaAspects);
+    const tEssentialDignities = unwrapAstroWayCall(calls.western_essential_dignities);
     const tTables: Record<string, unknown> = {
       ...(tHouseAspects.length > 0 ? { houseAspects: tHouseAspects } : {}),
       ...(tAntiscia.length > 0 ? { antiscia: tAntiscia } : {}),
       ...(tAntisciaAspects.length > 0 ? { antisciaAspects: tAntisciaAspects } : {}),
+      ...(tEssentialDignities ? { essentialDignities: tEssentialDignities } : {}),
     };
 
     const westData: WesternTropicalFrame = {
@@ -1057,6 +1173,7 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       tables: Object.keys(tTables).length > 0 ? tTables : null,
     };
 
+    const westCompleteness = tPlanets.length >= 10 && tCuspsArr.length === 12 ? 'complete' : 'partial';
     westernTropical = {
       source: 'astroway:/chart (zodiacType=tropical, houseSystem=P)',
       calculationMethod: 'AstroWay V1 Tropical Placidus Natal',
@@ -1065,9 +1182,14 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
         zodiac: 'tropical',
         houseSystem: 'placidus',
       },
+      dependencies: ['canonical_birth_instant'],
+      acquiredAtUtc: firstAcquiredTimestamp([calls.chart_tropical]),
+      temporalScope: 'natal_invariant',
+      referenceDateIso: null,
       inputFingerprint: fp,
-      completeness: tPlanets.length >= 10 && tCuspsArr.length === 12 ? 'complete' : 'partial',
+      completeness: westCompleteness,
       verificationStatus: 'verified_provider',
+      canonicalStatus: westCompleteness === 'complete' ? 'available' : 'provisional',
       limitations: [],
       data: westData,
     };
@@ -1123,6 +1245,8 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       timestampVerification: tsCheck,
     };
 
+    const telCompleteness = Object.keys(bodies).length > 0 ? 'complete' : 'partial';
+    const telVerificationStatus = tsCheck?.exactTimestampMatch ? 'verified_provider' : 'partial';
     astronomicalTelemetry = {
       source: 'astroway:/chart (telemetry fields)',
       calculationMethod: 'AstroWay V1 Astronomical Ephemeris Telemetry',
@@ -1132,9 +1256,19 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
         ayanamsha: 'lahiri',
         observationPoint: 'geocentric',
       },
+      dependencies: ['canonical_birth_instant'],
+      acquiredAtUtc: firstAcquiredTimestamp([calls.chart_sidereal]),
+      temporalScope: 'natal_invariant',
+      referenceDateIso: null,
       inputFingerprint: fp,
-      completeness: Object.keys(bodies).length > 0 ? 'complete' : 'partial',
-      verificationStatus: tsCheck?.exactTimestampMatch ? 'verified_provider' : 'partial',
+      completeness: telCompleteness,
+      verificationStatus: telVerificationStatus,
+      canonicalStatus:
+        Object.keys(bodies).length === 0
+          ? 'unavailable'
+          : tsCheck?.exactTimestampMatch
+          ? 'internally_verified'
+          : 'available',
       limitations: tsCheck?.limitationNotes || [],
       data: telemetryData,
     };
@@ -1238,14 +1372,59 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     conventions: {
       authoritativeDesignation: reconciliationData.authoritativeDesignation,
     },
+    dependencies: ['canonical_birth_instant', 'vedic_d1_positions'],
+    acquiredAtUtc: firstAcquiredTimestamp([calls.shadbala_full]),
+    temporalScope: 'natal_invariant',
+    referenceDateIso: null,
     inputFingerprint: fp,
     completeness: hasAwShadbala ? 'complete' : 'partial',
     verificationStatus: 'pending_live_reconciliation',
+    canonicalStatus: hasAwShadbala ? 'provisional' : 'unavailable',
     limitations: [
       'AstroWay exposes detailed 6-Bala subcomponents, Ishta/Kashta (x-quality=yellow), and Bhavabala (x-quality=yellow), while Vimshopaka Bala and Panchadha Maitri are absent.',
     ],
     data: reconciliationData,
   };
+
+  const shadbalaSubRaw = {
+    sthana: unwrapAstroWayCall(calls.shadbala_sthana),
+    dig: unwrapAstroWayCall(calls.shadbala_dig),
+    kala: unwrapAstroWayCall(calls.shadbala_kala),
+    cheshta: unwrapAstroWayCall(calls.shadbala_cheshta),
+    naisargika: unwrapAstroWayCall(calls.shadbala_naisargika),
+    drik: unwrapAstroWayCall(calls.shadbala_drik),
+  };
+  const shadbalaSubNormalized = normalizeAstroWayShadbalaSubcomponents(
+    shadbalaSubRaw,
+    normalizeAstroWayPlanetName
+  );
+  const westEssentialDignities = unwrapAstroWayCall(calls.western_essential_dignities);
+  const planetaryConditions = extractAstroWayPlanetaryConditions(vedicPlanets, westEssentialDignities);
+  const normalizedChara = normalizeAstroWayAlternativeDasha(
+    'chara',
+    unwrapAstroWayCall(calls.dashas_chara_maha),
+    normalizeAstroWayPlanetName
+  );
+  const normalizedYogini = normalizeAstroWayAlternativeDasha(
+    'yogini',
+    unwrapAstroWayCall(calls.dashas_yogini_maha),
+    normalizeAstroWayPlanetName
+  );
+  const normalizedAshtottari = normalizeAstroWayAlternativeDasha(
+    'ashtottari',
+    unwrapAstroWayCall(calls.dashas_ashtottari_maha),
+    normalizeAstroWayPlanetName
+  );
+  const normalizedKalachakra = normalizeAstroWayAlternativeDasha(
+    'kalachakra',
+    unwrapAstroWayCall(calls.dashas_kalachakra_maha),
+    normalizeAstroWayPlanetName
+  );
+  const normalizedTribhagi = normalizeAstroWayAlternativeDasha(
+    'tribhagi',
+    unwrapAstroWayCall(calls.dashas_tribhagi_maha),
+    normalizeAstroWayPlanetName
+  );
 
   // =========================================================================
   // EXTENDED CLASSICAL DATASETS + UPDATED GAPS MATRIX
@@ -1271,25 +1450,25 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
         }
       : null,
     shadbalaFull: shadbalaFullData,
-    shadbalaSubcomponents: {
-      sthana: unwrapAstroWayCall(calls.shadbala_sthana),
-      dig: unwrapAstroWayCall(calls.shadbala_dig),
-      kala: unwrapAstroWayCall(calls.shadbala_kala),
-      cheshta: unwrapAstroWayCall(calls.shadbala_cheshta),
-      naisargika: unwrapAstroWayCall(calls.shadbala_naisargika),
-      drik: unwrapAstroWayCall(calls.shadbala_drik),
-    },
-    ishtaKashtaPhala: unwrapAstroWayCall(calls.shadbala_ishta_kashta),
-    bhavabala: unwrapAstroWayCall(calls.bhavabala),
+    shadbalaSubcomponents: shadbalaSubRaw,
+    shadbalaSubcomponentsNormalized: shadbalaSubNormalized,
+    ishtaKashtaPhala: normalizeAstroWayIshtaKashta(
+      unwrapAstroWayCall(calls.shadbala_ishta_kashta),
+      normalizeAstroWayPlanetName
+    ),
+    bhavabala: normalizeAstroWayBhavabala(unwrapAstroWayCall(calls.bhavabala)),
+    planetaryConditions,
     ashtakavargaBasic: avBasic,
-    ashtakavargaShodhana: unwrapAstroWayCall(calls.ashtakavarga_shodhana),
+    ashtakavargaShodhana: normalizeAstroWayAshtakavargaShodhana(
+      unwrapAstroWayCall(calls.ashtakavarga_shodhana)
+    ),
     kpExtended: {
       rulingPlanets: kpRulingRaw,
       ascSub: unwrapAstroWayCall(calls.kp_asc_sub),
       fortuna: unwrapAstroWayCall(calls.kp_fortuna),
       planetCuspalPosition: kpPosRaw,
     },
-    jaimini: {
+    jaimini: normalizeAstroWayJaiminiSuite({
       karakas: unwrapAstroWayCall(calls.jaimini_karakas),
       charaKarakas: unwrapAstroWayCall(calls.jaimini_chara_karakas),
       padas: unwrapAstroWayCall(calls.jaimini_padas),
@@ -1300,7 +1479,7 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       atmakarakaNavamsa: unwrapAstroWayCall(calls.jaimini_atmakaraka_navamsa),
       argalaAnalysis: unwrapAstroWayCall(calls.jaimini_argala_analysis),
       yogas: jaiminiYogas,
-    },
+    }),
     yogasAndDoshas: {
       yogasParashara,
       yogasJaimini,
@@ -1310,15 +1489,15 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     },
     upagrahas: unwrapAstroWayCall(calls.vedic_upagrahas),
     advancedDashas: {
-      vimshottariPrana,
-      charaMaha: unwrapAstroWayCall(calls.dashas_chara_maha),
-      yoginiMaha: unwrapAstroWayCall(calls.dashas_yogini_maha),
-      ashtottariMaha: unwrapAstroWayCall(calls.dashas_ashtottari_maha),
-      kalachakraMaha: unwrapAstroWayCall(calls.dashas_kalachakra_maha),
-      tribhagiMaha: unwrapAstroWayCall(calls.dashas_tribhagi_maha),
+      vimshottariPrana: normalizedVimshottari,
+      charaMaha: normalizedChara,
+      yoginiMaha: normalizedYogini,
+      ashtottariMaha: normalizedAshtottari,
+      kalachakraMaha: normalizedKalachakra,
+      tribhagiMaha: normalizedTribhagi,
     },
     westernAndHellenistic: {
-      essentialDignities: unwrapAstroWayCall(calls.western_essential_dignities),
+      essentialDignities: westEssentialDignities,
       firdaria: unwrapAstroWayCall(calls.western_firdaria),
       profections: unwrapAstroWayCall(calls.western_profections),
       brennanLots15: unwrapAstroWayCall(calls.hellenistic_brennan_lots_15),
@@ -1510,11 +1689,109 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     }
   );
 
-  return {
+  const calculationConventions: CalculationConventionsRecord = {
+    ayanamsa: {
+      vedic: String(kundli?.ayanamsa ?? 'lahiri'),
+      kp: kpPlacidus.data?.ayanamsha?.name ?? 'Krishnamurti (KP)',
+      kpValueDegrees: kpPlacidus.data?.ayanamsha?.valueDegrees ?? null,
+    },
+    nodeConvention: {
+      requested: instant.input.nodeConvention,
+      vedicObserved:
+        vedicLahiri.data?.nodeType ||
+        (chartSiderealNodeLabels.length
+          ? chartSiderealNodeLabels.join(', ')
+          : 'provider_default (ChartInput omits nodeType)'),
+      isExplicitOnProvider: false,
+    },
+    houseSystems: {
+      parashari: 'whole_sign',
+      kp: 'placidus',
+      bhavaChalit: 'sripati_midpoint_pending_supplementary_or_local',
+      western: westernTropical.data?.houseSystem || 'placidus',
+    },
+    divisionalChartMethods: {
+      shodashavarga: calls.varga_D1
+        ? 'astroway_v1_bphs_16_charts (excludes D5)'
+        : 'astroway_v1_bphs_16_charts (D1 mirrored from canonical D1; excludes D5)',
+      d4Method: 'astroway_v1_chaturthamsha',
+      d5Method: null,
+    },
+    dashaYearLength: {
+      vimshottari: '365.2425/365.25-day calendar dates returned by AstroWay prana endpoint',
+      alternativeDashas: 'astroway_v1_chara_yogini_ashtottari_kalachakra_tribhagi',
+    },
+    shadbalaMethodology: {
+      provider: 'astroway_v1_shadbala',
+      luminaryCheshtaConvention: 'explicit_non_zero_subject_to_bphs_reconciliation',
+      minimumStrengthThresholdStandard: 'bphs_6.5_sun_rupas_reference',
+    },
+    recalculationVersion: V2_RECALCULATION_VERSION,
+    supportsFutureUserConventionOverrides: true,
+  };
+
+  const kundliDashaSnapshot = asObj(kundli?.dasha);
+  const profectionsBasic = unwrapAstroWayCall(calls.western_profections);
+  const profectionsDetail = unwrapAstroWayCall(calls.hellenistic_brennan_profections_detail);
+  const profReqAgeRaw = calls.hellenistic_brennan_profections_detail?.sanitizedRequest?.targetAge;
+  const targetAgeYears =
+    typeof profReqAgeRaw === 'number' && Number.isFinite(profReqAgeRaw) ? profReqAgeRaw : null;
+
+  const altDashaSnap: Record<string, unknown> = {};
+  for (const [k, normalizedAlt] of [
+    ['chara', normalizedChara],
+    ['yogini', normalizedYogini],
+    ['ashtottari', normalizedAshtottari],
+    ['kalachakra', normalizedKalachakra],
+    ['tribhagi', normalizedTribhagi],
+  ] as const) {
+    if (normalizedAlt?.referenceDateActive) {
+      altDashaSnap[k] = normalizedAlt.referenceDateActive;
+    }
+  }
+
+  const vimRefActive = asObj(normalizedVimshottari?.referenceDateActive);
+  const hasRefTiming = Boolean(
+    effectiveRefDateIso ||
+      kpRulingRaw ||
+      profectionsBasic ||
+      profectionsDetail ||
+      kundliDashaSnapshot?.current ||
+      vimRefActive ||
+      Object.keys(altDashaSnap).length > 0
+  );
+
+  const referenceDateTiming: ReferenceDateTimingSnapshot | null = hasRefTiming
+    ? {
+        temporalScope: 'reference_date_dependent',
+        referenceDateIso: effectiveRefDateIso,
+        targetAgeYears,
+        activeVimshottari:
+          vimRefActive ?? asObj(kundliDashaSnapshot?.current) ?? kundliDashaSnapshot ?? null,
+        activeAlternativeDashas: Object.keys(altDashaSnap).length > 0 ? altDashaSnap : null,
+        kpRulingPlanets: kpRulingRaw ?? null,
+        westernProfections:
+          profectionsBasic || profectionsDetail
+            ? {
+                basic: profectionsBasic,
+                hellenisticDetail: profectionsDetail,
+              }
+            : null,
+        limitations: effectiveRefDateIso
+          ? []
+          : [
+              'Reference-date-dependent snapshot fields extracted from provider response without an explicit targetDate parameter in sanitizedRequest.',
+            ],
+      }
+    : null;
+
+  const master: LayerBMasterChartRecord = {
     schemaVersion: V2_MASTER_SCHEMA_VERSION,
+    recalculationVersion: V2_RECALCULATION_VERSION,
     providerId: 'astroway',
     generatedAtUtc: new Date().toISOString(),
     canonicalBirthInstant: instant,
+    calculationConventions,
     frames: {
       vedicLahiri,
       kpPlacidus,
@@ -1523,23 +1800,42 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       astronomicalTelemetry,
     },
     shadbalaReconciliation,
+    referenceDateTiming,
     providerExtendedDatasets,
     remainingClassicalGaps,
   };
+  master.datasetManifest = evaluateDatasetCompleteness(master);
+  return master;
 }
 
 export function buildLayerBMasterChartRecord(params: {
   instant: CanonicalBirthInstant;
   rawLayerA?: LayerARawProviderRecord | null;
   cachedVerifiedRecord?: LayerBMasterChartRecord | null;
+  referenceDateIso?: string | null;
+  supplementaryFreeAstroApiVedicCall?: SanitizedProviderCallRecord | null;
 }): LayerBMasterChartRecord {
-  const { instant, rawLayerA, cachedVerifiedRecord } = params;
+  const {
+    instant,
+    rawLayerA,
+    cachedVerifiedRecord,
+    referenceDateIso,
+    supplementaryFreeAstroApiVedicCall,
+  } = params;
   if (rawLayerA?.providerId === 'astroway') {
-    return normalizeAstroWayLayerBMasterChartRecord({
+    const awMaster = normalizeAstroWayLayerBMasterChartRecord({
       instant,
       rawLayerA,
       cachedVerifiedRecord,
+      referenceDateIso,
     });
+    if (supplementaryFreeAstroApiVedicCall) {
+      return integrateFreeAstroApiSupplementaryIntoMaster(
+        awMaster,
+        supplementaryFreeAstroApiVedicCall
+      );
+    }
+    return awMaster;
   }
 
   const fp = instant.inputFingerprint;
@@ -1636,6 +1932,18 @@ export function buildLayerBMasterChartRecord(params: {
       );
     }
 
+    const vedicCompleteness =
+      frameData.planets.length >= 9 &&
+      frameData.vargas &&
+      frameData.ashtakavarga &&
+      frameData.vimshottariDasha
+        ? 'complete'
+        : 'partial';
+    const hasValidFreeAstroD1 =
+      frameData.planets.length >= 9 &&
+      frameData.ascendant !== null &&
+      Number.isFinite(Number(frameData.ascendant.degree ?? frameData.ascendant.absolute_degree));
+
     vedicLahiri = {
       source: 'freeastroapi:/api/v2/vedic/calculate',
       calculationMethod: 'FreeAstroAPI V2 Lahiri Whole-Sign Sidereal',
@@ -1646,15 +1954,18 @@ export function buildLayerBMasterChartRecord(params: {
         nodeConvention: frameData.nodeType,
         observationPoint: 'geocentric',
       },
+      dependencies: ['canonical_birth_instant'],
+      acquiredAtUtc: firstAcquiredTimestamp([calcCall]),
+      temporalScope: 'natal_invariant',
+      referenceDateIso: null,
       inputFingerprint: fp,
-      completeness:
-        frameData.planets.length >= 9 &&
-        frameData.vargas &&
-        frameData.ashtakavarga &&
-        frameData.vimshottariDasha
-          ? 'complete'
-          : 'partial',
+      completeness: vedicCompleteness,
       verificationStatus: 'verified_provider',
+      canonicalStatus: hasValidFreeAstroD1
+        ? vedicCompleteness === 'complete'
+          ? 'available'
+          : 'provisional'
+        : 'unavailable',
       limitations,
       data: frameData,
     };
@@ -1672,6 +1983,9 @@ export function buildLayerBMasterChartRecord(params: {
             : 'Live provider acquisition not executed (FREE_ASTRO_API_KEY unset or request omitted). Silent fallback disabled.',
         ]
       );
+    if (vedicLahiri.verificationStatus === 'cached_verified') {
+      vedicLahiri.canonicalStatus = deriveCanonicalDatasetState(vedicLahiri);
+    }
   }
 
   // =========================================================================
@@ -1699,6 +2013,8 @@ export function buildLayerBMasterChartRecord(params: {
       metadata: asObj(raw.metadata),
     };
 
+    const kpCompleteness =
+      frameData.cusps.length === 12 && frameData.planets.length >= 9 ? 'complete' : 'partial';
     kpPlacidus = {
       source: 'freeastroapi:/api/v2/vedic/kp',
       calculationMethod: 'FreeAstroAPI V2 Dedicated KP (ayanamsha=kp, house_system=placidus)',
@@ -1713,9 +2029,14 @@ export function buildLayerBMasterChartRecord(params: {
         nodePolicy: asObj(raw.metadata)?.node_policy ?? null,
         significatorPolicy: asObj(raw.metadata)?.significator_policy ?? null,
       },
+      dependencies: ['canonical_birth_instant'],
+      acquiredAtUtc: firstAcquiredTimestamp([kpCall]),
+      temporalScope: 'natal_invariant',
+      referenceDateIso: null,
       inputFingerprint: fp,
-      completeness: frameData.cusps.length === 12 && frameData.planets.length >= 9 ? 'complete' : 'partial',
+      completeness: kpCompleteness,
       verificationStatus: 'verified_provider',
+      canonicalStatus: kpCompleteness === 'complete' ? 'available' : 'provisional',
       limitations: [],
       data: frameData,
     };
@@ -1733,6 +2054,9 @@ export function buildLayerBMasterChartRecord(params: {
             : 'Live KP acquisition not executed. Unverified local cusp approximations are disabled as silent fallbacks.',
         ]
       );
+    if (kpPlacidus.verificationStatus === 'cached_verified') {
+      kpPlacidus.canonicalStatus = deriveCanonicalDatasetState(kpPlacidus);
+    }
   }
 
   // =========================================================================
@@ -1758,6 +2082,7 @@ export function buildLayerBMasterChartRecord(params: {
       methodologyAudit,
     };
 
+    const bcCompatible = methodologyAudit.compatibleWithIntendedClassicalMethodology;
     bhavaChalit = {
       source: 'freeastroapi:/api/v2/vedic/calculate#bhava_chalit',
       calculationMethod: `FreeAstroAPI V2 Bhava Chalit (${frameData.houseBasis || 'unspecified'})`,
@@ -1767,12 +2092,20 @@ export function buildLayerBMasterChartRecord(params: {
         houseBasis: frameData.houseBasis,
         nodeConvention: instant.input.nodeConvention,
       },
+      dependencies: ['canonical_birth_instant', 'vedic_d1_positions'],
+      acquiredAtUtc: firstAcquiredTimestamp([calcCall]),
+      temporalScope: 'natal_invariant',
+      referenceDateIso: null,
       inputFingerprint: fp,
       completeness: frameData.houses.length === 12 ? 'complete' : 'partial',
-      verificationStatus: methodologyAudit.compatibleWithIntendedClassicalMethodology
-        ? 'verified_provider'
-        : 'partial',
-      limitations: methodologyAudit.compatibleWithIntendedClassicalMethodology
+      verificationStatus: bcCompatible ? 'verified_provider' : 'partial',
+      canonicalStatus:
+        frameData.houses.length !== 12
+          ? 'unavailable'
+          : bcCompatible
+          ? 'internally_verified'
+          : 'incompatible',
+      limitations: bcCompatible
         ? []
         : [
             'Provider Bhava Chalit failed full classical Sripati midpoint methodology compatibility check; review methodologyAudit.',
@@ -1787,8 +2120,12 @@ export function buildLayerBMasterChartRecord(params: {
         'none',
         { ayanamsha: 'lahiri', methodology: 'sripati_midpoint_chalit' },
         fp,
-        ['Provider Bhava Chalit not available; legacy KP-cusp Bhava Chalit conflation removed.']
+        ['Provider Bhava Chalit not available; legacy KP-cusp Bhava Chalit conflation removed.'],
+        { dependencies: ['canonical_birth_instant', 'vedic_d1_positions'] }
       );
+    if (bhavaChalit.verificationStatus === 'cached_verified') {
+      bhavaChalit.canonicalStatus = deriveCanonicalDatasetState(bhavaChalit);
+    }
   }
 
   // =========================================================================
@@ -1826,6 +2163,8 @@ export function buildLayerBMasterChartRecord(params: {
       );
     }
 
+    const westCompleteness =
+      frameData.planets.length >= 10 && frameData.houses.length === 12 ? 'complete' : 'partial';
     westernTropical = {
       source: 'freeastroapi:/api/v1/natal/calculate',
       calculationMethod: 'FreeAstroAPI V1 Tropical Placidus Natal',
@@ -1835,9 +2174,15 @@ export function buildLayerBMasterChartRecord(params: {
         houseSystem: 'placidus',
         nodeConvention: instant.input.nodeConvention,
       },
+      dependencies: ['canonical_birth_instant'],
+      acquiredAtUtc: firstAcquiredTimestamp([westCall]),
+      temporalScope: 'natal_invariant',
+      referenceDateIso: null,
       inputFingerprint: fp,
-      completeness: frameData.planets.length >= 10 && frameData.houses.length === 12 ? 'complete' : 'partial',
+      completeness: westCompleteness,
       verificationStatus: limitations.length ? 'partial' : 'verified_provider',
+      canonicalStatus:
+        westCompleteness === 'complete' && limitations.length === 0 ? 'available' : 'provisional',
       limitations,
       data: frameData,
     };
@@ -1851,6 +2196,9 @@ export function buildLayerBMasterChartRecord(params: {
         fp,
         ['Western Tropical natal calculation not executed; KP-based Western cusp reconstruction disabled.']
       );
+    if (westernTropical.verificationStatus === 'cached_verified') {
+      westernTropical.canonicalStatus = deriveCanonicalDatasetState(westernTropical);
+    }
   }
 
   // =========================================================================
@@ -1894,9 +2242,19 @@ export function buildLayerBMasterChartRecord(params: {
         ayanamsha: frameData.siderealAyanamsa,
         observationPoint: 'geocentric',
       },
+      dependencies: ['canonical_birth_instant'],
+      acquiredAtUtc: firstAcquiredTimestamp([ephCall]),
+      temporalScope: 'natal_invariant',
+      referenceDateIso: null,
       inputFingerprint: fp,
       completeness: Object.keys(frameData.bodies).length > 0 ? 'complete' : 'partial',
       verificationStatus: exactOk ? 'verified_provider' : 'partial',
+      canonicalStatus:
+        Object.keys(frameData.bodies).length === 0
+          ? 'unavailable'
+          : exactOk
+          ? 'internally_verified'
+          : 'provisional',
       limitations: tsCheck?.limitationNotes || [],
       data: frameData,
     };
@@ -1910,6 +2268,9 @@ export function buildLayerBMasterChartRecord(params: {
         fp,
         ['Astronomical ephemeris telemetry unavailable.']
       );
+    if (astronomicalTelemetry.verificationStatus === 'cached_verified') {
+      astronomicalTelemetry.canonicalStatus = deriveCanonicalDatasetState(astronomicalTelemetry);
+    }
   }
 
   // =========================================================================
@@ -1947,20 +2308,82 @@ export function buildLayerBMasterChartRecord(params: {
     conventions: {
       authoritativeDesignation: reconciliationData.authoritativeDesignation,
     },
+    dependencies: ['canonical_birth_instant', 'vedic_d1_positions'],
+    acquiredAtUtc: firstAcquiredTimestamp([calcCall]),
+    temporalScope: 'natal_invariant',
+    referenceDateIso: null,
     inputFingerprint: fp,
     completeness: providerShadbalaRaw ? 'complete' : 'partial',
     verificationStatus: 'pending_live_reconciliation',
+    canonicalStatus: providerShadbalaRaw ? 'provisional' : 'unavailable',
     limitations: providerShadbalaRaw
       ? ['Detailed classical subcomponents and Bhavabala/Vimshopaka are unavailable from provider.']
       : ['Provider Shadbala absent; reconciliation awaits live FreeAstroAPI execution.'],
     data: reconciliationData,
   };
 
-  return {
+  const calculationConventions: CalculationConventionsRecord = {
+    ayanamsa: {
+      vedic: vedicLahiri.data?.ayanamshaLabel || 'lahiri',
+      kp: kpPlacidus.data?.ayanamsha?.name || 'Krishnamurti (KP)',
+      kpValueDegrees: kpPlacidus.data?.ayanamsha?.valueDegrees ?? null,
+    },
+    nodeConvention: {
+      requested: instant.input.nodeConvention,
+      vedicObserved: vedicLahiri.data?.nodeType || instant.input.nodeConvention,
+      isExplicitOnProvider: true,
+    },
+    houseSystems: {
+      parashari: vedicLahiri.data?.houseSystem || 'whole_sign',
+      kp: 'placidus',
+      bhavaChalit: bhavaChalit.data?.houseBasis || 'sripati_midpoint_chalit',
+      western: westernTropical.data?.houseSystem || 'placidus',
+    },
+    divisionalChartMethods: {
+      shodashavarga: 'freeastroapi_v2_17_vargas',
+      d4Method: 'freeastroapi_v2_chaturthamsha',
+      d5Method: vedicLahiri.data?.vargas?.chartsByDivision?.D5
+        ? 'freeastroapi_v2_panchamsha'
+        : null,
+    },
+    dashaYearLength: {
+      vimshottari: '365.2425/365.25-day calendar dates returned by FreeAstroAPI v2',
+      alternativeDashas: null,
+    },
+    shadbalaMethodology: {
+      provider: 'freeastroapi_v2_shadbala',
+      luminaryCheshtaConvention: 'explicit_zero_for_sun_and_moon_per_provider',
+      minimumStrengthThresholdStandard: 'mixed_sun_5.0_on_provider_vs_bphs_6.5',
+    },
+    recalculationVersion: V2_RECALCULATION_VERSION,
+    supportsFutureUserConventionOverrides: true,
+  };
+
+  const effectiveRefDateIso = inferReferenceDateIso(rawLayerA, referenceDateIso);
+  const kpRuling = kpPlacidus.data?.rulingPlanets ?? null;
+  const referenceDateTiming: ReferenceDateTimingSnapshot | null =
+    effectiveRefDateIso || kpRuling
+      ? {
+          temporalScope: 'reference_date_dependent',
+          referenceDateIso: effectiveRefDateIso,
+          targetAgeYears: null,
+          activeVimshottari: asObj(vedicLahiri.data?.vimshottariDasha?.current_dasha) ?? null,
+          activeAlternativeDashas: null,
+          kpRulingPlanets: kpRuling,
+          westernProfections: null,
+          limitations: effectiveRefDateIso
+            ? []
+            : ['KP ruling planets captured without an explicit targetDate in sanitizedRequest.'],
+        }
+      : null;
+
+  const master: LayerBMasterChartRecord = {
     schemaVersion: V2_MASTER_SCHEMA_VERSION,
+    recalculationVersion: V2_RECALCULATION_VERSION,
     providerId: 'freeastroapi',
     generatedAtUtc: new Date().toISOString(),
     canonicalBirthInstant: instant,
+    calculationConventions,
     frames: {
       vedicLahiri,
       kpPlacidus,
@@ -1969,8 +2392,11 @@ export function buildLayerBMasterChartRecord(params: {
       astronomicalTelemetry,
     },
     shadbalaReconciliation,
+    referenceDateTiming,
     remainingClassicalGaps: REMAINING_CLASSICAL_GAPS_INVENTORY,
   };
+  master.datasetManifest = evaluateDatasetCompleteness(master);
+  return master;
 }
 
 export function buildLayerCAnalyticalShell(
