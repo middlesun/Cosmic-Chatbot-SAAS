@@ -731,7 +731,7 @@ export async function downloadChartPdf(
   let ky = jChartsY - 22;
   p2.drawText('Jaimini Chara Karakas', { x: margin, y: ky, size: 10, font: bold, color: umber });
   ky -= 14;
-  for (const k of chart.jaimini.karakas) {
+  for (const k of chart.jaimini?.karakas || []) {
     if (ky < 36) break;
     p2.drawText(
       winAnsiSafe(`${k.code.padEnd(4)} ${k.title.padEnd(28)} ${k.planet.padEnd(8)} (${k.sign} ${k.dms})`),
@@ -747,7 +747,7 @@ export async function downloadChartPdf(
   let y3 = pageHeight - 40;
   p3.drawText('Vimshottari Mahadasha Timeline', { x: margin, y: y3, size: 13, font: serifBold, color: umber });
   y3 -= 18;
-  for (const md of chart.vimshottari.timeline) {
+  for (const md of chart.vimshottari?.timeline || []) {
     if (y3 < 200) break;
     p3.drawText(winAnsiSafe(`${md.lord.padEnd(9)} Mahadasha: ${md.startDate} -> ${md.endDate}`), {
       x: margin,
@@ -768,7 +768,7 @@ export async function downloadChartPdf(
   y3 -= 12;
   p3.drawText('KP Placidus House Cusps', { x: margin, y: y3, size: 12, font: serifBold, color: umber });
   y3 -= 16;
-  for (const c of chart.kp.cusps) {
+  for (const c of chart.kp?.cusps || []) {
     if (y3 < 130) break;
     p3.drawText(
       winAnsiSafe(`H${String(c.house).padEnd(2)}  ${c.sign.padEnd(11)} ${c.dms.padEnd(8)}  Sign: ${c.signLord.padEnd(8)}  Star: ${c.starLord.padEnd(8)}  Sub: ${c.subLord}`),

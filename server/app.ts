@@ -125,12 +125,7 @@ export function createExpressApp(): Express {
   app.get('/api/public/places', async (req, res) => {
     const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 120) : '';
     if (q.length < 2) {
-      res.json({ places: [], configured: isAstrologyApiConfigured() });
-      return;
-    }
-
-    if (!isAstrologyApiConfigured()) {
-      res.json({ places: [], configured: false });
+      res.json({ places: [], configured: true });
       return;
     }
 

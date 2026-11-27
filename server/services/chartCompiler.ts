@@ -5,6 +5,7 @@ import {
   resolveHistoricalTimezoneOffset,
   type BirthLocationResolved,
 } from './astrologyApi';
+import { getAstrologyProviderCatalogEntry } from './astrologyProviders/registry';
 import { getBirthChartConversionConfig } from './platformSettings';
 import {
   computeAscendantMaturity,
@@ -62,6 +63,8 @@ export interface CompiledChartData {
     location: BirthLocationResolved;
     ayanamsha: string;
     generatedAt: string;
+    astrologyProvider?: string;
+    astrologyProviderLabel?: string;
   };
   planets: PlanetPosition[];
   vargas: Record<
@@ -241,6 +244,7 @@ export async function compileBirthChart(input: CompileProfileInput): Promise<{
   });
   const dispositorChain = computeDispositorChain(planets);
 
+  const providerMeta = getAstrologyProviderCatalogEntry(conversionConfig.astrology_provider);
   const chartJson: CompiledChartData = {
     meta: {
       name: input.name,
@@ -249,6 +253,8 @@ export async function compileBirthChart(input: CompileProfileInput): Promise<{
       location,
       ayanamsha: 'Lahiri (Chitrapaksha) + KP Placidus',
       generatedAt: new Date().toISOString(),
+      astrologyProvider: conversionConfig.astrology_provider,
+      astrologyProviderLabel: providerMeta.label,
     },
     planets,
     vargas,

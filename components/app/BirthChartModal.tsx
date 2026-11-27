@@ -351,11 +351,14 @@ export const BirthChartForm: React.FC<BirthChartFormProps> = ({
       } catch (err) {
         if ((err as Error)?.name !== 'AbortError') {
           setSuggestions([]);
+          setShowSuggestions(true);
         }
       } finally {
-        setLoadingPlaces(false);
+        if (placeAbortRef.current === controller) {
+          setLoadingPlaces(false);
+        }
       }
-    }, 320);
+    }, 360);
 
     return () => {
       window.clearTimeout(timer);
@@ -401,11 +404,14 @@ export const BirthChartForm: React.FC<BirthChartFormProps> = ({
       } catch (err) {
         if ((err as Error)?.name !== 'AbortError') {
           setCurrentSuggestions([]);
+          setShowCurrentSuggestions(true);
         }
       } finally {
-        setLoadingCurrentPlaces(false);
+        if (currentPlaceAbortRef.current === controller) {
+          setLoadingCurrentPlaces(false);
+        }
       }
-    }, 320);
+    }, 360);
 
     return () => {
       window.clearTimeout(timer);
@@ -690,30 +696,36 @@ export const BirthChartForm: React.FC<BirthChartFormProps> = ({
           </p>
         )}
 
-        {showSuggestions && suggestions.length > 0 && (
+        {showSuggestions && (suggestions.length > 0 || (!loadingPlaces && placeQuery.trim().length >= 2 && !selectedPlace)) && (
           <div className="animate-cc-dropdown-down absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-[0_18px_42px_-12px_rgba(61,56,48,0.22)] p-1.5 max-h-56 overflow-y-auto">
-            {suggestions.map((place, idx) => (
-              <button
-                key={`${place.latitude}-${place.longitude}-${idx}`}
-                type="button"
-                onClick={() => {
-                  setSelectedPlace(place);
-                  setPlaceQuery(place.label);
-                  setShowSuggestions(false);
-                }}
-                className="w-full text-left rounded-xl px-3 py-2.5 hover:bg-[#F1ECE3] transition-colors flex items-start gap-2.5"
-              >
-                <MapPin className="h-3.5 w-3.5 text-[#8B7355] shrink-0 mt-0.5" />
-                <div className="min-w-0">
-                  <p className="text-sm text-[#3D3830] font-medium truncate">
-                    {place.city}
-                  </p>
-                  <p className="text-[11px] text-[#8B8275] truncate">
-                    {[place.state, place.country].filter(Boolean).join(', ')}
-                  </p>
-                </div>
-              </button>
-            ))}
+            {suggestions.length > 0 ? (
+              suggestions.map((place, idx) => (
+                <button
+                  key={`${place.latitude}-${place.longitude}-${idx}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedPlace(place);
+                    setPlaceQuery(place.label);
+                    setShowSuggestions(false);
+                  }}
+                  className="w-full text-left rounded-xl px-3 py-2.5 hover:bg-[#F1ECE3] transition-colors flex items-start gap-2.5"
+                >
+                  <MapPin className="h-3.5 w-3.5 text-[#8B7355] shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-sm text-[#3D3830] font-medium truncate">
+                      {place.city}
+                    </p>
+                    <p className="text-[11px] text-[#8B8275] truncate">
+                      {[place.state, place.country].filter(Boolean).join(', ')}
+                    </p>
+                  </div>
+                </button>
+              ))
+            ) : (
+              <p className="px-3 py-2 text-xs text-[#8B8275]">
+                No close matches found — you can still enter City, State, Country directly.
+              </p>
+            )}
           </div>
         )}
       </div>

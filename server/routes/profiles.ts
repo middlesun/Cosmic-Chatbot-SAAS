@@ -323,12 +323,7 @@ router.get('/places', requireAuth, async (req: AuthenticatedRequest, res) => {
 
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   if (q.length < 2) {
-    res.json({ places: [], configured: isAstrologyApiConfigured() });
-    return;
-  }
-
-  if (!isAstrologyApiConfigured()) {
-    res.json({ places: [], configured: false });
+    res.json({ places: [], configured: true });
     return;
   }
 

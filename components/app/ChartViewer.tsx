@@ -13,6 +13,9 @@ import {
   Orbit,
   RefreshCw,
   Grid3X3,
+  Download,
+  FileText,
+  Braces,
 } from 'lucide-react';
 import AstrologyModeToggle from './AstrologyModeToggle';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
@@ -24,6 +27,7 @@ import {
   computeTraditionalBirthMeta,
   resolveCompleteVargas,
 } from '../../lib/chartMetaAndVarga';
+import { downloadChartJson, downloadChartPdf } from '../../lib/chartExport';
 
 export interface PlanetPosition {
   name: string;
@@ -99,6 +103,9 @@ export interface CompiledChartJson {
       locationLabel: string;
     };
     ayanamsha: string;
+    generatedAt?: string;
+    astrologyProvider?: string;
+    astrologyProviderLabel?: string;
   };
   planets: PlanetPosition[];
   vargas: Record<
@@ -777,7 +784,29 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
   const [vedicTab, setVedicTab] = useState<VedicTabId>(initialVedicTab || 'chart');
   const [westernTab, setWesternTab] = useState<WesternTabId>('chart');
   const [aspectFilter, setAspectFilter] = useState<'all' | 'Major' | 'Minor'>('all');
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const vedicTabsRef = useRef<HTMLDivElement | null>(null);
+  const downloadMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!downloadMenuOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(e.target as Node)) {
+        setDownloadMenuOpen(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDownloadMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [downloadMenuOpen]);
 
   useEffect(() => {
     if (initialVedicTab) {
@@ -1092,15 +1121,88 @@ const ChartViewer: React.FC<ChartViewerProps> = ({
           </div>
         )}
 
-        <div className="shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <AstrologyModeToggle
             value={viewMode}
             onChange={setViewMode}
             variant="light"
             size="sm"
           />
+
+          <div ref={downloadMenuRef} className="relative">
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={downloadMenuOpen}
+              disabled={exportingPdf}
+              onClick={() => {
+                setExportError(null);
+                setDownloadMenuOpen((prev) => !prev);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] disabled:opacity-55 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <Download className="h-3.5 w-3.5 text-[#8B7355]" />
+              <span>{exportingPdf ? 'Exporting...' : 'Download'}</span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 text-[#8B8275] transition-transform ${
+                  downloadMenuOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+
+            {downloadMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Download chart formats"
+                className="animate-cc-dropdown-down absolute right-0 top-full mt-1.5 z-50 w-44 rounded-2xl border border-[#3D3830]/15 bg-[#FDFBF7] shadow-[0_18px_42px_-12px_rgba(61,56,48,0.22)] p-1.5"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={exportingPdf}
+                  onClick={async () => {
+                    setDownloadMenuOpen(false);
+                    setExportingPdf(true);
+                    setExportError(null);
+                    try {
+                      await downloadChartPdf(chart, birthMeta, allVargas, chartStyle);
+                    } catch (err) {
+                      setExportError(
+                        err instanceof Error ? err.message : 'Unable to generate chart PDF.'
+                      );
+                    } finally {
+                      setExportingPdf(false);
+                    }
+                  }}
+                  className="w-full text-left rounded-xl px-3 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors flex items-center gap-2.5 cursor-pointer"
+                >
+                  <FileText className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
+                  <span>PDF Dossier</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setDownloadMenuOpen(false);
+                    setExportError(null);
+                    downloadChartJson(chart, birthMeta, allVargas);
+                  }}
+                  className="w-full text-left rounded-xl px-3 py-2 text-xs font-medium text-[#3D3830] hover:bg-[#F1ECE3] transition-colors flex items-center gap-2.5 cursor-pointer"
+                >
+                  <Braces className="h-3.5 w-3.5 text-[#8B7355] shrink-0" />
+                  <span>JSON Data</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {exportError && (
+        <div className="rounded-2xl border border-[#7A3E36]/25 bg-[#7A3E36]/8 px-4 py-2.5 text-xs text-[#7A3E36]">
+          {exportError}
+        </div>
+      )}
 
       {/* INTERACTIVE CONTENT VIEWS */}
       {viewMode === 'vedic' ? (

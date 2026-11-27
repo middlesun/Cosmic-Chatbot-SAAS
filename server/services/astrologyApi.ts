@@ -111,10 +111,132 @@ export interface PlaceSuggestion {
   latitude: number;
   longitude: number;
   timezoneOffset: number;
+  timezone?: string;
 }
 
 const placeSearchCache = new Map<string, { expiresAt: number; places: PlaceSuggestion[] }>();
 const PLACE_CACHE_TTL_MS = 10 * 60 * 1000;
+const coordTzCache = new Map<string, { expiresAt: number; timezone: string; offsetHours: number }>();
+
+function computeZoneOffsetHours(
+  ianaZone: string,
+  dateISO: string,
+  timeStr: string,
+  fallbackOffset: number
+): number {
+  try {
+    const [year, month, day] = dateISO.split('-').map(Number);
+    const [hour = 12, minute = 0, second = 0] = timeStr.split(':').map(Number);
+    const utcGuess = new Date(Date.UTC(year || 2000, (month || 1) - 1, day || 1, hour, minute, second));
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: ianaZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(utcGuess);
+
+    const map: Record<string, number> = {};
+    for (const p of parts) {
+      if (p.type !== 'literal') map[p.type] = Number(p.value);
+    }
+    const zonedUtc = Date.UTC(
+      map.year,
+      (map.month || 1) - 1,
+      map.day || 1,
+      map.hour || 0,
+      map.minute || 0,
+      map.second || 0
+    );
+    const offsetHours = (zonedUtc - utcGuess.getTime()) / 3600000;
+    return Number.isFinite(offsetHours) ? Number(offsetHours.toFixed(4)) : fallbackOffset;
+  } catch {
+    return fallbackOffset;
+  }
+}
+
+async function fetchJsonWithTimeout<T = unknown>(
+  url: string,
+  headers?: Record<string, string>,
+  timeoutMs = 3500
+): Promise<T | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json', ...(headers || {}) },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function lookupTimezoneByCoords(
+  lat: number,
+  lon: number,
+  dateISO?: string,
+  timeStr?: string
+): Promise<{ timezone: string; offsetHours: number } | null> {
+  const key = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+  const cached = coordTzCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    const offsetHours =
+      dateISO && timeStr
+        ? computeZoneOffsetHours(cached.timezone, dateISO, timeStr, cached.offsetHours)
+        : cached.offsetHours;
+    return { timezone: cached.timezone, offsetHours };
+  }
+
+  const data = await fetchJsonWithTimeout<{
+    timezone?: string;
+    utc_offset_seconds?: number;
+  }>(
+    `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(
+      lat.toFixed(4)
+    )}&longitude=${encodeURIComponent(lon.toFixed(4))}&timezone=auto&forecast_days=1`,
+    undefined,
+    3000
+  );
+
+  if (!data || typeof data.timezone !== 'string' || !data.timezone) {
+    return null;
+  }
+
+  const baseOffset =
+    typeof data.utc_offset_seconds === 'number' && Number.isFinite(data.utc_offset_seconds)
+      ? Number((data.utc_offset_seconds / 3600).toFixed(4))
+      : computeZoneOffsetHours(
+          data.timezone,
+          new Date().toISOString().slice(0, 10),
+          '12:00:00',
+          0
+        );
+
+  if (coordTzCache.size > 300) {
+    const oldest = coordTzCache.keys().next().value;
+    if (oldest) coordTzCache.delete(oldest);
+  }
+  coordTzCache.set(key, {
+    expiresAt: Date.now() + 60 * 60 * 1000,
+    timezone: data.timezone,
+    offsetHours: baseOffset,
+  });
+
+  const offsetHours =
+    dateISO && timeStr
+      ? computeZoneOffsetHours(data.timezone, dateISO, timeStr, baseOffset)
+      : baseOffset;
+
+  return { timezone: data.timezone, offsetHours };
+}
 
 function parsePlaceParts(completeName: string, fallbackQuery: string): {
   city: string;
@@ -147,21 +269,309 @@ function parsePlaceParts(completeName: string, fallbackQuery: string): {
   };
 }
 
+const HISTORICAL_CITY_ALIASES: Record<string, string> = {
+  calcutta: 'Kolkata',
+  allahabad: 'Prayagraj',
+  bombay: 'Mumbai',
+  madras: 'Chennai',
+  benares: 'Varanasi',
+  banaras: 'Varanasi',
+  trivandrum: 'Thiruvananthapuram',
+  bangalore: 'Bengaluru',
+  gurgaon: 'Gurugram',
+  baroda: 'Vadodara',
+  poona: 'Pune',
+  cawnpore: 'Kanpur',
+  pondicherry: 'Puducherry',
+  cochin: 'Kochi',
+  calicut: 'Kozhikode',
+  gauhati: 'Guwahati',
+  mysore: 'Mysuru',
+  mangalore: 'Mangaluru',
+  simla: 'Shimla',
+  burdwan: 'Bardhaman',
+};
+
+async function searchOpenMeteoPlaces(query: string): Promise<PlaceSuggestion[]> {
+  const parts = query
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const rawCityToken = parts[0] || query;
+  const canonicalAlias = HISTORICAL_CITY_ALIASES[rawCityToken.toLowerCase()];
+  const cityToken = canonicalAlias || rawCityToken;
+  const qualifiers = parts.slice(1).map((q) => q.toLowerCase());
+
+  const data = await fetchJsonWithTimeout<{
+    results?: Array<{
+      name?: string;
+      latitude?: number;
+      longitude?: number;
+      country?: string;
+      admin1?: string;
+      admin2?: string;
+      timezone?: string;
+      population?: number;
+    }>;
+  }>(
+    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+      cityToken
+    )}&count=10&language=en&format=json`
+  );
+
+  const rows = Array.isArray(data?.results) ? data.results : [];
+  if (rows.length === 0) return [];
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const scored = rows
+    .filter(
+      (r) =>
+        typeof r.latitude === 'number' &&
+        typeof r.longitude === 'number' &&
+        typeof r.name === 'string'
+    )
+    .map((r) => {
+      const city = String(r.name || cityToken).trim();
+      const state = typeof r.admin1 === 'string' && r.admin1.trim() ? r.admin1.trim() : null;
+      const country = typeof r.country === 'string' && r.country.trim() ? r.country.trim() : '';
+      const haystack = `${city} ${state || ''} ${r.admin2 || ''} ${country}`.toLowerCase();
+      const qualifierMatches = qualifiers.filter((q) => haystack.includes(q)).length;
+      const tz = typeof r.timezone === 'string' && r.timezone ? r.timezone : undefined;
+      const tzOffset = tz ? computeZoneOffsetHours(tz, todayISO, '12:00:00', 0) : 0;
+      const label = [city, state, country].filter(Boolean).join(', ');
+      return {
+        score: qualifierMatches * 1_000_000_000 + Number(r.population || 0),
+        suggestion: {
+          label,
+          city,
+          state,
+          country: country || 'India',
+          latitude: Number(r.latitude),
+          longitude: Number(r.longitude),
+          timezoneOffset: tzOffset,
+          ...(tz ? { timezone: tz } : {}),
+        } satisfies PlaceSuggestion,
+      };
+    });
+
+  if (qualifiers.length > 0) {
+    const matched = scored.filter((s) => s.score >= 1_000_000_000);
+    if (matched.length > 0) {
+      return matched.sort((a, b) => b.score - a.score).map((s) => s.suggestion);
+    }
+  }
+
+  return scored.sort((a, b) => b.score - a.score).map((s) => s.suggestion);
+}
+
+const PHOTON_ALLOWED_OSM_VALUES = new Set([
+  'city',
+  'town',
+  'village',
+  'hamlet',
+  'suburb',
+  'borough',
+  'municipality',
+  'county',
+  'state_district',
+  'district',
+  'administrative',
+]);
+
+async function searchPhotonPlaces(query: string): Promise<PlaceSuggestion[]> {
+  const data = await fetchJsonWithTimeout<{
+    features?: Array<{
+      geometry?: { coordinates?: [number, number] };
+      properties?: {
+        name?: string;
+        city?: string;
+        town?: string;
+        village?: string;
+        county?: string;
+        state?: string;
+        country?: string;
+        osm_key?: string;
+        osm_value?: string;
+        type?: string;
+      };
+    }>;
+  }>(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=10&lang=en`);
+
+  const features = Array.isArray(data?.features) ? data.features : [];
+  const ranked: Array<{ rank: number; suggestion: PlaceSuggestion }> = [];
+
+  for (const feat of features) {
+    const coords = feat.geometry?.coordinates;
+    const props = feat.properties;
+    if (!coords || coords.length < 2 || !props) continue;
+    const lon = Number(coords[0]);
+    const lat = Number(coords[1]);
+    if (Number.isNaN(lat) || Number.isNaN(lon)) continue;
+
+    const osmVal = String(props.osm_value || props.type || '').toLowerCase();
+    const osmKey = String(props.osm_key || '').toLowerCase();
+    if (
+      osmKey &&
+      osmKey !== 'place' &&
+      osmKey !== 'boundary' &&
+      !PHOTON_ALLOWED_OSM_VALUES.has(osmVal)
+    ) {
+      continue;
+    }
+
+    const city = String(
+      props.city || props.town || props.village || props.name || query
+    ).trim();
+    const state = typeof props.state === 'string' && props.state.trim() ? props.state.trim() : null;
+    const country =
+      typeof props.country === 'string' && props.country.trim() ? props.country.trim() : '';
+    if (!city || !country) continue;
+
+    const label = [city, state, country].filter(Boolean).join(', ');
+    const isSettlement =
+      osmKey === 'place' ||
+      osmVal === 'city' ||
+      osmVal === 'town' ||
+      osmVal === 'village' ||
+      osmVal === 'municipality';
+    const rank = isSettlement ? 2 : osmVal === 'administrative' || osmVal === 'county' ? 1 : 0;
+
+    ranked.push({
+      rank,
+      suggestion: {
+        label,
+        city,
+        state,
+        country,
+        latitude: lat,
+        longitude: lon,
+        timezoneOffset: Math.round((lon / 15) * 2) / 2,
+      },
+    });
+  }
+
+  return ranked.sort((a, b) => b.rank - a.rank).map((r) => r.suggestion);
+}
+
+async function searchNominatimPlaces(query: string): Promise<PlaceSuggestion[]> {
+  const rows = await fetchJsonWithTimeout<
+    Array<{
+      lat?: string;
+      lon?: string;
+      name?: string;
+      display_name?: string;
+      address?: {
+        city?: string;
+        town?: string;
+        village?: string;
+        municipality?: string;
+        county?: string;
+        state_district?: string;
+        state?: string;
+        country?: string;
+      };
+    }>
+  >(
+    `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&q=${encodeURIComponent(
+      query
+    )}`,
+    { 'User-Agent': 'CosmicCouncil/1.0 (https://cosmiccouncil.chat)' }
+  );
+
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const results: PlaceSuggestion[] = [];
+  for (const row of rows) {
+    const lat = Number(row.lat);
+    const lon = Number(row.lon);
+    if (Number.isNaN(lat) || Number.isNaN(lon)) continue;
+    const addr = row.address || {};
+    const city = String(
+      addr.city ||
+        addr.town ||
+        addr.village ||
+        addr.municipality ||
+        row.name ||
+        addr.county ||
+        addr.state_district ||
+        query
+    ).trim();
+    const state = typeof addr.state === 'string' && addr.state.trim() ? addr.state.trim() : null;
+    const country =
+      typeof addr.country === 'string' && addr.country.trim() ? addr.country.trim() : 'India';
+    const label = [city, state, country].filter(Boolean).join(', ');
+    results.push({
+      label,
+      city,
+      state,
+      country,
+      latitude: lat,
+      longitude: lon,
+      timezoneOffset: Math.round((lon / 15) * 2) / 2,
+    });
+  }
+  return results;
+}
+
+async function searchProviderPlacesFallback(query: string): Promise<PlaceSuggestion[]> {
+  try {
+    const cfg = await getBirthChartConversionConfig();
+    if (cfg.astrology_provider === 'freeastroapi' && isFreeAstroApiConfigured()) {
+      return await searchBirthPlacesFreeAstroApi(query);
+    }
+    if (!process.env.FREE_ASTROLOGY_API_KEY) return [];
+    const geoResp = await postAstrologyEndpoint<unknown[]>('/geo-details', {
+      location: query,
+    });
+    const rows = Array.isArray(geoResp) ? geoResp : [];
+    const places: PlaceSuggestion[] = [];
+    for (const item of rows) {
+      if (!item || typeof item !== 'object') continue;
+      const obj = item as Record<string, unknown>;
+      const lat = Number(obj.latitude);
+      const lon = Number(obj.longitude);
+      if (Number.isNaN(lat) || Number.isNaN(lon)) continue;
+      const label = String(obj.complete_name || obj.location_name || obj.name || query).trim();
+      const parsed = parsePlaceParts(label, query);
+      const tzOffset = Number(obj.timezone_offset ?? 0);
+      places.push({
+        label,
+        city: parsed.city,
+        state: parsed.state,
+        country: parsed.country,
+        latitude: lat,
+        longitude: lon,
+        timezoneOffset: Number.isNaN(tzOffset) ? 0 : tzOffset,
+      });
+      if (places.length >= 6) break;
+    }
+    return places;
+  } catch {
+    return [];
+  }
+}
+
+function mergeUniquePlaces(lists: PlaceSuggestion[][], limit = 6): PlaceSuggestion[] {
+  const seen = new Set<string>();
+  const out: PlaceSuggestion[] = [];
+
+  for (const list of lists) {
+    for (const item of list) {
+      const coordBucket = `${item.city.toLowerCase()}::${item.latitude.toFixed(1)}:${item.longitude.toFixed(1)}`;
+      const labelKey = item.label.toLowerCase();
+      if (seen.has(coordBucket) || seen.has(labelKey)) continue;
+      seen.add(coordBucket);
+      seen.add(labelKey);
+      out.push(item);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
 export async function searchBirthPlaces(query: string): Promise<PlaceSuggestion[]> {
   const trimmed = query.trim();
   if (trimmed.length < 2) return [];
-
-  const cfg = await getBirthChartConversionConfig();
-  if (cfg.astrology_provider === 'freeastroapi') {
-    const cacheKey = `freeastroapi::${trimmed.toLowerCase()}`;
-    const cached = placeSearchCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.places;
-    }
-    const places = await searchBirthPlacesFreeAstroApi(trimmed);
-    placeSearchCache.set(cacheKey, { expiresAt: Date.now() + PLACE_CACHE_TTL_MS, places });
-    return places;
-  }
 
   const cacheKey = trimmed.toLowerCase();
   const cached = placeSearchCache.get(cacheKey);
@@ -169,50 +579,48 @@ export async function searchBirthPlaces(query: string): Promise<PlaceSuggestion[
     return cached.places;
   }
 
-  const geoResp = await postAstrologyEndpoint<unknown[]>('/geo-details', {
-    location: trimmed,
-  });
+  const [openMeteoRes, photonRes] = await Promise.allSettled([
+    searchOpenMeteoPlaces(trimmed),
+    searchPhotonPlaces(trimmed),
+  ]);
 
-  const rows = Array.isArray(geoResp) ? geoResp : [];
-  const seen = new Set<string>();
-  const places: PlaceSuggestion[] = [];
+  const openMeteoList = openMeteoRes.status === 'fulfilled' ? openMeteoRes.value : [];
+  const photonList = photonRes.status === 'fulfilled' ? photonRes.value : [];
 
-  for (const item of rows) {
-    if (!item || typeof item !== 'object') continue;
-    const obj = item as Record<string, unknown>;
-    const lat = Number(obj.latitude);
-    const lon = Number(obj.longitude);
-    if (Number.isNaN(lat) || Number.isNaN(lon)) continue;
+  let places = mergeUniquePlaces([openMeteoList, photonList], 6);
 
-    const label = String(obj.complete_name || obj.location_name || obj.name || trimmed).trim();
-    const dedupKey = `${label.toLowerCase()}::${lat.toFixed(2)}:${lon.toFixed(2)}`;
-    if (seen.has(dedupKey)) continue;
-    seen.add(dedupKey);
+  if (places.length === 0) {
+    const nominatimList = await searchNominatimPlaces(trimmed);
+    places = mergeUniquePlaces([nominatimList], 6);
+  }
 
-    const parsed = parsePlaceParts(label, trimmed);
-    const tzOffset = Number(obj.timezone_offset ?? 0);
+  if (places.length === 0) {
+    const providerList = await searchProviderPlacesFallback(trimmed);
+    places = mergeUniquePlaces([providerList], 6);
+  }
 
-    places.push({
-      label,
-      city: parsed.city,
-      state: parsed.state,
-      country: parsed.country,
-      latitude: lat,
-      longitude: lon,
-      timezoneOffset: Number.isNaN(tzOffset) ? 0 : tzOffset,
+  // Enrich any suggestions missing an IANA timezone so Current Location / Birth Place offsets are exact
+  await Promise.all(
+    places.map(async (p) => {
+      if (p.timezone) return;
+      const tzInfo = await lookupTimezoneByCoords(p.latitude, p.longitude);
+      if (tzInfo) {
+        p.timezone = tzInfo.timezone;
+        p.timezoneOffset = tzInfo.offsetHours;
+      }
+    })
+  );
+
+  if (places.length > 0) {
+    if (placeSearchCache.size > 200) {
+      const oldestKey = placeSearchCache.keys().next().value;
+      if (oldestKey) placeSearchCache.delete(oldestKey);
+    }
+    placeSearchCache.set(cacheKey, {
+      expiresAt: Date.now() + PLACE_CACHE_TTL_MS,
+      places,
     });
-
-    if (places.length >= 6) break;
   }
-
-  if (placeSearchCache.size > 200) {
-    const oldestKey = placeSearchCache.keys().next().value;
-    if (oldestKey) placeSearchCache.delete(oldestKey);
-  }
-  placeSearchCache.set(cacheKey, {
-    expiresAt: Date.now() + PLACE_CACHE_TTL_MS,
-    places,
-  });
 
   return places;
 }
@@ -227,7 +635,7 @@ export async function resolveHistoricalTimezoneOffset(
 ): Promise<number> {
   const cfg = await getBirthChartConversionConfig();
   if (cfg.astrology_provider === 'freeastroapi') {
-    return resolveHistoricalTimezoneOffsetFreeAstroApi(
+    const resolved = await resolveHistoricalTimezoneOffsetFreeAstroApi(
       lat,
       lon,
       birthDateISO,
@@ -235,36 +643,47 @@ export async function resolveHistoricalTimezoneOffset(
       fallbackOffset,
       tzName
     );
+    if (resolved !== 0 || fallbackOffset === 0) return resolved;
   }
 
   const [year, month, date] = birthDateISO.split('-').map(Number);
   const [hours, minutes] = birthTimeStr.split(':').map(Number);
 
-  let tzOffset = fallbackOffset;
-  try {
-    const tzResp = await postAstrologyEndpoint<Record<string, unknown>>('/timezone-with-dst', {
-      latitude: lat,
-      longitude: lon,
-      year,
-      month,
-      date,
-      hours: hours || 0,
-      minutes: minutes || 0,
-      seconds: 0,
-      ...(tzName ? { timezone: tzName } : {}),
-    });
+  if (process.env.FREE_ASTROLOGY_API_KEY) {
+    try {
+      const tzResp = await postAstrologyEndpoint<Record<string, unknown>>('/timezone-with-dst', {
+        latitude: lat,
+        longitude: lon,
+        year,
+        month,
+        date,
+        hours: hours || 0,
+        minutes: minutes || 0,
+        seconds: 0,
+        ...(tzName ? { timezone: tzName } : {}),
+      });
 
-    const parsedOffset = Number(
-      tzResp?.timezone_offset ?? tzResp?.offset ?? tzResp?.gmt_offset ?? tzOffset
-    );
-    if (!Number.isNaN(parsedOffset)) {
-      tzOffset = parsedOffset;
+      const parsedOffset = Number(
+        tzResp?.timezone_offset ?? tzResp?.offset ?? tzResp?.gmt_offset ?? NaN
+      );
+      if (!Number.isNaN(parsedOffset)) {
+        return parsedOffset;
+      }
+    } catch {
+      // Fall through to IANA / Open-Meteo coordinate timezone lookup
     }
-  } catch {
-    // Keep base timezone_offset if timezone-with-dst is unavailable for historical edge case
   }
 
-  return tzOffset;
+  if (tzName && !tzName.startsWith('UTC')) {
+    return computeZoneOffsetHours(tzName, birthDateISO, birthTimeStr, fallbackOffset);
+  }
+
+  const coordTz = await lookupTimezoneByCoords(lat, lon, birthDateISO, birthTimeStr);
+  if (coordTz) {
+    return coordTz.offsetHours;
+  }
+
+  return fallbackOffset;
 }
 
 export async function geocodeBirthLocation(
@@ -276,40 +695,73 @@ export async function geocodeBirthLocation(
 ): Promise<BirthLocationResolved> {
   const cfg = await getBirthChartConversionConfig();
   if (cfg.astrology_provider === 'freeastroapi') {
-    return geocodeBirthLocationFreeAstroApi(city, state, country, birthDateISO, birthTimeStr);
+    try {
+      return await geocodeBirthLocationFreeAstroApi(city, state, country, birthDateISO, birthTimeStr);
+    } catch {
+      // Fall through to resilient multi-source geocoder
+    }
   }
 
   const query = [city, state, country].filter(Boolean).join(', ');
-  const geoResp = await postAstrologyEndpoint<unknown[]>('/geo-details', {
-    location: query,
-  });
+  if (process.env.FREE_ASTROLOGY_API_KEY) {
+    try {
+      const geoResp = await postAstrologyEndpoint<unknown[]>('/geo-details', {
+        location: query,
+      });
 
-  const first = Array.isArray(geoResp) ? (geoResp[0] as Record<string, unknown> | undefined) : undefined;
-  if (!first || typeof first.latitude !== 'number' || typeof first.longitude !== 'number') {
+      const first = Array.isArray(geoResp)
+        ? (geoResp[0] as Record<string, unknown> | undefined)
+        : undefined;
+      if (first && typeof first.latitude === 'number' && typeof first.longitude === 'number') {
+        const lat = Number(first.latitude);
+        const lon = Number(first.longitude);
+        const baseOffset = Number(first.timezone_offset ?? 0);
+        const tzName = typeof first.timezone === 'string' ? first.timezone : undefined;
+
+        const tzOffset = await resolveHistoricalTimezoneOffset(
+          lat,
+          lon,
+          birthDateISO,
+          birthTimeStr,
+          Number.isNaN(baseOffset) ? 0 : baseOffset,
+          tzName
+        );
+
+        return {
+          latitude: lat,
+          longitude: lon,
+          timezoneOffset: tzOffset,
+          locationLabel: String(first.complete_name || query),
+        };
+      }
+    } catch {
+      // Fall through to resilient multi-source geocoder
+    }
+  }
+
+  // Fallback to multi-source geocoder (Open-Meteo + Photon + Nominatim)
+  const fallbackPlaces = await searchBirthPlaces(query);
+  const match = fallbackPlaces[0];
+  if (!match) {
     throw new Error(
       `Could not find birth place "${query}". Try adding the state or country (for example, "Pune, Maharashtra, India").`
     );
   }
 
-  const lat = Number(first.latitude);
-  const lon = Number(first.longitude);
-  const baseOffset = Number(first.timezone_offset ?? 0);
-  const tzName = typeof first.timezone === 'string' ? first.timezone : undefined;
-
   const tzOffset = await resolveHistoricalTimezoneOffset(
-    lat,
-    lon,
+    match.latitude,
+    match.longitude,
     birthDateISO,
     birthTimeStr,
-    Number.isNaN(baseOffset) ? 0 : baseOffset,
-    tzName
+    match.timezoneOffset,
+    match.timezone
   );
 
   return {
-    latitude: lat,
-    longitude: lon,
+    latitude: match.latitude,
+    longitude: match.longitude,
     timezoneOffset: tzOffset,
-    locationLabel: String(first.complete_name || query),
+    locationLabel: match.label,
   };
 }
 
