@@ -19,6 +19,8 @@ import {
   isAstrologyProviderEnvConfigured,
   listAstrologyProviderStatuses,
 } from '../services/astrologyProviders/registry';
+import { isFreeAstroApiConfigured } from '../services/astrologyProviders/freeAstroApiAdapter';
+import { runFreeAstroApiPocBenchmark } from '../services/freeAstroApiPocRunner';
 import { sendClientInviteEmail, sendSupportReplyEmail } from '../services/email';
 import {
   ALL_DEFAULT_PROMPTS,
@@ -3308,6 +3310,29 @@ router.post('/settings/birth-chart/reset', async (req: AuthenticatedRequest, res
     },
     utilityModel: runtime.utilityModel,
   });
+});
+
+router.post('/settings/birth-chart/poc-benchmark', async (req: AuthenticatedRequest, res) => {
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  if (!isFreeAstroApiConfigured()) {
+    res.status(400).json({
+      error:
+        'FREE_ASTRO_API_KEY is not configured in server environment secrets. Add it as a Worker Secret / .env variable without overwriting FREE_ASTROLOGY_API_KEY.',
+    });
+    return;
+  }
+
+  try {
+    const report = await runFreeAstroApiPocBenchmark();
+    res.json({ ok: true, report });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'FreeAstroAPI PoC benchmark failed';
+    res.status(502).json({ error: message });
+  }
 });
 
 // 8C. Export & Import Chatbot Engine Prompts, Playbooks, Modular Rules & Birth Chart Config

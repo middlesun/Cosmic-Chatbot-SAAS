@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Check,
+  Copy,
   Cpu,
   Database,
+  Download,
+  FlaskConical,
   RefreshCw,
   RotateCcw,
   Save,
@@ -75,6 +78,10 @@ const AdminBirthChartCompiler: React.FC<AdminBirthChartCompilerProps> = ({
   const [defaultSystemPrompt, setDefaultSystemPrompt] = useState('');
   const [defaultUserPrompt, setDefaultUserPrompt] = useState('');
   const [utilityModel, setUtilityModel] = useState('google/gemini-2.5-flash');
+  const [runningPoc, setRunningPoc] = useState(false);
+  const [pocError, setPocError] = useState<string | null>(null);
+  const [pocReport, setPocReport] = useState<Record<string, unknown> | null>(null);
+  const [copiedPocJson, setCopiedPocJson] = useState(false);
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -189,6 +196,53 @@ const AdminBirthChartCompiler: React.FC<AdminBirthChartCompilerProps> = ({
     } finally {
       setResetting(false);
     }
+  };
+
+  const handleRunPocBenchmark = async () => {
+    setRunningPoc(true);
+    setPocError(null);
+    setCopiedPocJson(false);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch('/api/admin/settings/birth-chart/poc-benchmark', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to run FreeAstroAPI PoC benchmark');
+      setPocReport(data.report || null);
+    } catch (err) {
+      setPocError(err instanceof Error ? err.message : 'Benchmark execution failed');
+    } finally {
+      setRunningPoc(false);
+    }
+  };
+
+  const handleCopyPocJson = async () => {
+    if (!pocReport) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(pocReport, null, 2));
+      setCopiedPocJson(true);
+      window.setTimeout(() => setCopiedPocJson(false), 2000);
+    } catch {
+      setPocError('Unable to copy JSON to clipboard; use Download JSON instead.');
+    }
+  };
+
+  const handleDownloadPocJson = () => {
+    if (!pocReport) return;
+    const blob = new Blob([JSON.stringify(pocReport, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `freeastroapi-poc-report-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (loading || !config) {
@@ -513,6 +567,160 @@ const AdminBirthChartCompiler: React.FC<AdminBirthChartCompilerProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Isolated FreeAstroAPI V2 Evaluation Benchmark */}
+          {(() => {
+            const freeAstroProvider = providers.find((p) => p.id === 'freeastroapi');
+            const freeAstroReady = Boolean(freeAstroProvider?.envConfigured);
+            const perf = (pocReport?.performanceSummary || null) as Record<string, number> | null;
+            const audits = (pocReport?.audits || null) as Record<string, unknown> | null;
+            const missing = (audits?.missingRequirementsChecklist || null) as Record<
+              string,
+              boolean
+            > | null;
+            const avAudit = (audits?.ashtakavargaAudit || null) as Record<string, unknown> | null;
+            const quotaRows = Array.isArray(pocReport?.quotaAndPerformance)
+              ? (pocReport?.quotaAndPerformance as Array<Record<string, unknown>>)
+              : [];
+
+            return (
+              <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-[#3D3830]">
+                      <FlaskConical className="h-3.5 w-3.5 text-[#B8965A]" />
+                      <span>Isolated FreeAstroAPI V2 Benchmark (New Delhi 1988)</span>
+                    </div>
+                    <p className="text-[11px] text-[#8B8275] mt-0.5">
+                      Runs all documented V2/V1 benchmark endpoints (~12–15s) using server <span className="font-mono">FREE_ASTRO_API_KEY</span> without modifying production settings or charts.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!freeAstroReady || runningPoc}
+                    onClick={() => void handleRunPocBenchmark()}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-3.5 py-1.5 text-[11px] font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-45 transition-colors cursor-pointer"
+                  >
+                    <FlaskConical className="h-3.5 w-3.5" />
+                    <span>{runningPoc ? 'Running Benchmark (~15s)...' : 'Run Isolated PoC Benchmark'}</span>
+                  </button>
+                </div>
+
+                {!freeAstroReady && (
+                  <p className="text-[11px] text-[#7A3E36]">
+                    <span className="font-mono">FREE_ASTRO_API_KEY</span> is currently unset in this server environment.
+                  </p>
+                )}
+
+                {pocError && (
+                  <div className="rounded-xl border border-[#7A3E36]/25 bg-[#7A3E36]/8 px-3 py-2 text-[11px] text-[#7A3E36]">
+                    {pocError}
+                  </div>
+                )}
+
+                {pocReport && audits && (
+                  <div className="space-y-3 border-t border-[#3D3830]/10 pt-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-mono text-[11px] text-[#3D3830] tabular-nums">
+                        {perf
+                          ? `${perf.successfulCalls}/${perf.totalCalls} OK · ${(
+                              Number(perf.totalLatencyMs || 0) / 1000
+                            ).toFixed(1)}s · ${(
+                              Number(perf.totalPayloadBytes || 0) / 1024
+                            ).toFixed(1)} KB`
+                          : 'Completed'}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyPocJson()}
+                          className="inline-flex items-center gap-1 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-2.5 py-1 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                        >
+                          {copiedPocJson ? (
+                            <Check className="h-3 w-3 text-[#2D6A4F]" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                          <span>{copiedPocJson ? 'Copied JSON' : 'Copy Full JSON'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDownloadPocJson}
+                          className="inline-flex items-center gap-1 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-2.5 py-1 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                        >
+                          <Download className="h-3 w-3" />
+                          <span>Download JSON</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                      <div className="rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] p-2.5">
+                        <div className="text-[#8B8275]">Ashtakavarga SAV</div>
+                        <div className="font-mono text-[#3D3830] mt-0.5">
+                          {avAudit?.present
+                            ? `${String(avAudit.savTotal ?? '?')} / 337 (${
+                                avAudit.totalMatches337 ? 'Match' : 'Mismatch'
+                              })`
+                            : 'Missing'}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] p-2.5">
+                        <div className="text-[#8B8275]">KP &amp; Yogas</div>
+                        <div className="font-mono text-[#3D3830] mt-0.5">
+                          Cusps: {String(audits.kpCuspsCount ?? 0)} · Yogas: {String(audits.yogasActiveCount ?? 0)}/{String(audits.yogasCount ?? 0)}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] p-2.5">
+                        <div className="text-[#8B8275]">Vargas / Gochar</div>
+                        <div className="font-mono text-[#3D3830] mt-0.5">
+                          {Array.isArray(audits.vargasReturnedFromVargasEndpoint)
+                            ? audits.vargasReturnedFromVargasEndpoint.length
+                            : 0}{' '}
+                          vargas · Gochar HTTP {String(audits.gocharTimelineStatus ?? '?')}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] p-2.5">
+                        <div className="text-[#8B8275]">Classical Gaps</div>
+                        <div className="font-mono text-[#3D3830] mt-0.5">
+                          {missing
+                            ? `Bhava:${missing.bhavabalaPresent ? 'Y' : 'N'} Vimsh:${
+                                missing.vimshopakaBalaPresent ? 'Y' : 'N'
+                              } Jaim:${missing.jaiminiPresent ? 'Y' : 'N'}`
+                            : '—'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <details className="rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] p-3">
+                      <summary className="cursor-pointer text-[11px] font-medium text-[#3D3830]">
+                        View Endpoint Calls &amp; Audit Discrepancy JSON
+                      </summary>
+                      <div className="mt-2 space-y-2">
+                        <div className="space-y-1 font-mono text-[10px] text-[#5C5449]">
+                          {quotaRows.map((row) => (
+                            <div
+                              key={String(row.id)}
+                              className="flex items-center justify-between gap-2 border-b border-[#3D3830]/6 pb-1"
+                            >
+                              <span className="truncate">{String(row.endpoint)}</span>
+                              <span className="shrink-0 tabular-nums">
+                                HTTP {String(row.status)} · {String(row.latencyMs)}ms ·{' '}
+                                {(Number(row.payloadBytes || 0) / 1024).toFixed(1)} KB
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <pre className="max-h-64 overflow-auto rounded-lg bg-[#FAF7F2] p-2.5 font-mono text-[10px] leading-relaxed text-[#3D3830]">
+                          {JSON.stringify(audits, null, 2)}
+                        </pre>
+                      </div>
+                    </details>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </section>
 
         {/* Stage 3: Layer B LLM Extractor Runtime Settings */}
