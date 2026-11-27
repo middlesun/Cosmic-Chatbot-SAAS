@@ -28,6 +28,7 @@ import {
   compareAstroWayModeAVsModeBResponses,
   compareModeAVsModeBResponses,
   computeIndependentAstronomicalReference,
+  deleteAstroWayBatchSession,
   evaluateAstroWayJulianDayCheck,
   executeAstroWayBatchedBundle,
   executeAstroWayEvaluationBundle,
@@ -35,13 +36,18 @@ import {
   getAstroWayApiSecretStatus,
   getFreeAstroApiKey,
   getFreeAstroApiSecretStatus,
+  listResumableAstroWaySessions,
+  loadAstroWayBatchSession,
   normalizePositiveHeapBytes,
   orderAstroWaySpecsForPriorityVerification,
   parseAstroWayRateLimitHeaders,
   READ_ONLY_SUPABASE_DIAGNOSTIC_SQL,
+  reconstructAstroWayLayerAFromSession,
   redactSecretsDeep,
   resetAstroWayIsolateRateStateForTests,
+  resetAstroWayIsolateSessionsForTests,
   resolveCanonicalBirthInstant,
+  saveAstroWayBatchSession,
   summarizeObservedQuotaHeaders,
   summarizeRuntimeHeapTelemetry,
   verify12CuspSequence,
@@ -55,6 +61,13 @@ import {
   type VedicLahiriFrame,
   type WesternTropicalFrame,
 } from '../server/services/v2Engine';
+import {
+  acquireV2DiagnosticRunLock,
+  releaseV2DiagnosticRunLock,
+  renewV2DiagnosticRunLock,
+  resetV2DiagnosticLockForTests,
+  setV2DiagnosticLockClockOffsetForTests,
+} from '../server/services/astrologyProviders/freeAstroApiRateLimiter';
 import { getNakshatraAndSubs, getVargaSignIndex, normalizeDeg, SIGNS } from '../server/services/jyotishMath';
 
 function loadLocalEnvFilesForCli(): { loadedFiles: string[] } {
@@ -1334,6 +1347,298 @@ async function main() {
   );
   await resetAstroWayIsolateRateStateForTests();
   regressionResults.push({ id: 'astroway_batched_cooldown_halt_and_resume', status: 'PASSED' });
+
+  // 3s. Session-Aware Diagnostic Lock Contention, Release, Renewal & Stale-Lock Recovery
+  resetV2DiagnosticLockForTests();
+  const lockA = await acquireV2DiagnosticRunLock({
+    adminUserId: 'admin-1',
+    profileId: 'chris-4',
+    sessionId: 'sess-lock-A',
+    provider: 'astroway',
+  });
+  assert(lockA.acquired && Boolean(lockA.lockId), 'Session A should acquire diagnostic lock.');
+
+  // Unrelated session B and FreeAstroAPI non-session run must be rejected with conflict
+  const lockBBlocked = await acquireV2DiagnosticRunLock({
+    adminUserId: 'admin-1',
+    profileId: 'chris-4',
+    sessionId: 'sess-lock-B',
+    provider: 'astroway',
+  });
+  const lockFreeBlocked = await acquireV2DiagnosticRunLock({
+    adminUserId: 'admin-1',
+    profileId: 'chris-4',
+    sessionId: null,
+    provider: 'freeastroapi',
+  });
+  assert(
+    !lockBBlocked.acquired &&
+      lockBBlocked.code === 'DIAGNOSTIC_RUN_IN_PROGRESS' &&
+      !lockFreeBlocked.acquired &&
+      lockFreeBlocked.code === 'DIAGNOSTIC_RUN_IN_PROGRESS',
+    'Active Session A lock failed to block unrelated concurrent runs.'
+  );
+
+  // Lock renewal succeeds for valid lockId and fails for invalid lockId
+  const renewedValid = await renewV2DiagnosticRunLock({ lockId: lockA.lockId, sessionId: 'sess-lock-A' });
+  const renewedInvalid = await renewV2DiagnosticRunLock({ lockId: 'wrong-lock-id', sessionId: 'sess-lock-A' });
+  assert(renewedValid && !renewedInvalid, 'Diagnostic lock renewal validation failed.');
+
+  // Pre-response release frees Session A to immediately resume Batch 2
+  await releaseV2DiagnosticRunLock({
+    adminUserId: 'admin-1',
+    profileId: 'chris-4',
+    lockId: lockA.lockId,
+    sessionId: 'sess-lock-A',
+  });
+  const lockABatch2 = await acquireV2DiagnosticRunLock({
+    adminUserId: 'admin-1',
+    profileId: 'chris-4',
+    sessionId: 'sess-lock-A',
+    provider: 'astroway',
+  });
+  assert(lockABatch2.acquired && Boolean(lockABatch2.lockId), 'Same session Batch 2 failed after release.');
+
+  // Same-session manual resume takeover after stalled worker (>3s without heartbeat)
+  setV2DiagnosticLockClockOffsetForTests(4_500);
+  const lockASameSessionResume = await acquireV2DiagnosticRunLock({
+    adminUserId: 'admin-1',
+    profileId: 'chris-4',
+    sessionId: 'sess-lock-A',
+    provider: 'astroway',
+    allowSameSessionResume: true,
+  });
+  assert(
+    lockASameSessionResume.acquired && lockASameSessionResume.recoveredStaleLock === true,
+    'Same-session manual resume should reclaim stalled lock of same session.'
+  );
+
+  // Stale heartbeat expiry (>20s) allows unrelated session B to recover abandoned lock
+  setV2DiagnosticLockClockOffsetForTests(30_000);
+  const lockBRecovered = await acquireV2DiagnosticRunLock({
+    adminUserId: 'admin-1',
+    profileId: 'chris-4',
+    sessionId: 'sess-lock-B',
+    provider: 'astroway',
+  });
+  assert(
+    lockBRecovered.acquired && lockBRecovered.recoveredStaleLock === true,
+    'Stale abandoned lock was not recovered after heartbeat expiry.'
+  );
+  resetV2DiagnosticLockForTests();
+  regressionResults.push({ id: 'session_aware_lock_contention_renewal_and_recovery', status: 'PASSED' });
+
+  // 3t. Queued vs Failed Aggregate Counter Accuracy (8 acquired + 64 queued => 0 failed)
+  await resetAstroWayIsolateRateStateForTests();
+  const batch8Queued64 = await executeAstroWayBatchedBundle(sampleInstant, {
+    apiKey: 'test-key-redacted',
+    includeTimezoneEquivalenceProbe: true,
+    sessionId: 'sess-queued-counter',
+    batchSize: 8,
+    skipGlobalCooldown: true,
+    fetchFn: async () =>
+      new Response(JSON.stringify({ ok: true, data: { items: [] } }), {
+        status: 200,
+        headers: { 'x-ratelimit-remaining': '9', 'x-ratelimit-limit': '10' },
+      }),
+  });
+  assert(
+    batch8Queued64.layerA.quotaAndPerformanceSummary.successfulCalls === 8 &&
+      batch8Queued64.layerA.quotaAndPerformanceSummary.unexecutedCalls === 64 &&
+      batch8Queued64.layerA.quotaAndPerformanceSummary.failedCalls === 0 &&
+      batch8Queued64.batchState.status === 'in_progress' &&
+      batch8Queued64.batchState.remainingEligibleCount === 64,
+    `Queued requests miscounted as failed (ok=${batch8Queued64.layerA.quotaAndPerformanceSummary.successfulCalls}, failed=${batch8Queued64.layerA.quotaAndPerformanceSummary.failedCalls}, queued=${batch8Queued64.layerA.quotaAndPerformanceSummary.unexecutedCalls}).`
+  );
+  regressionResults.push({ id: 'queued_not_counted_as_failed_aggregate_counter', status: 'PASSED' });
+
+  // 3u. Full Multi-Batch Continuation (0 -> Terminal State) Across 429 Cooldowns & Persistent Failures
+  await resetAstroWayIsolateRateStateForTests();
+  const multiBatchCallCounts = new Map<string, number>();
+  let totalHttpSentSimulated = 0;
+  let existingCallsAcc: Record<string, SanitizedProviderCallRecord> | undefined;
+  let mbBatchIndex = 0;
+  let priorWaitAcc = 0;
+  let finalBatchResult: Awaited<ReturnType<typeof executeAstroWayBatchedBundle>> | null = null;
+  let loops = 0;
+  const multiBatchSessionId = 'sess-full-multibatch';
+
+  while (loops < 20) {
+    loops++;
+    const step = await executeAstroWayBatchedBundle(sampleInstant, {
+      apiKey: 'test-key-redacted',
+      includeTimezoneEquivalenceProbe: true,
+      sessionId: multiBatchSessionId,
+      existingCalls: existingCallsAcc,
+      batchSize: 8,
+      batchIndex: mbBatchIndex,
+      priorRateLimitWindowWaitMs: priorWaitAcc,
+      resumedFromSession: mbBatchIndex > 0,
+      fetchFn: async (url: string) => {
+        totalHttpSentSimulated++;
+        const p = new URL(url).pathname;
+        const count = (multiBatchCallCounts.get(p) || 0) + 1;
+        multiBatchCallCounts.set(p, count);
+
+        // Trigger a 429 cooldown once on request #12, then recover cleanly on retry
+        if (totalHttpSentSimulated === 12) {
+          return new Response(JSON.stringify({ ok: false, message: 'Rate limited' }), {
+            status: 429,
+            headers: { 'retry-after': '1', 'x-ratelimit-remaining': '0', 'x-ratelimit-limit': '10' },
+          });
+        }
+        // Tier-restricted endpoint (402) must settle immediately without retry
+        if (p.endsWith('/vedic/jaimini/yogas')) {
+          return new Response(JSON.stringify({ ok: false, message: 'Tier restricted' }), { status: 402 });
+        }
+        // Persistent HTTP 500 must retry at most once (2 total attempts) and settle to reach terminal state
+        if (p.endsWith('/vedic/kp/fortuna')) {
+          return new Response(JSON.stringify({ ok: false, message: 'Server error' }), { status: 500 });
+        }
+        return new Response(JSON.stringify({ ok: true, data: { items: [] } }), {
+          status: 200,
+          headers: { 'x-ratelimit-remaining': '8', 'x-ratelimit-limit': '10' },
+        });
+      },
+    });
+
+    existingCallsAcc = step.updatedCalls;
+    mbBatchIndex = step.batchState.batchIndex;
+    priorWaitAcc = step.batchState.totalRateLimitWindowWaitMs;
+    finalBatchResult = step;
+
+    // Every intermediate queued state must report failedCalls only for actual non-200 attempts, never queued items
+    assert(
+      step.layerA.quotaAndPerformanceSummary.unexecutedCalls ===
+        step.batchState.classificationCounts.not_yet_tested,
+      'Unexecuted count mismatch during multi-batch loop.'
+    );
+
+    if (step.batchState.status === 'waiting_rate_limit') {
+      // Simulate cooldown expiry without waiting full wall clock
+      await resetAstroWayIsolateRateStateForTests();
+      continue;
+    }
+    if (
+      step.batchState.status === 'completed' ||
+      step.batchState.status === 'completed_with_restrictions' ||
+      step.batchState.remainingEligibleCount === 0
+    ) {
+      break;
+    }
+  }
+
+  assert(
+    finalBatchResult !== null &&
+      loops < 20 &&
+      finalBatchResult.batchState.status === 'completed_with_restrictions' &&
+      finalBatchResult.batchState.remainingEligibleCount === 0 &&
+      finalBatchResult.layerA.quotaAndPerformanceSummary.totalCalls === 72 &&
+      finalBatchResult.layerA.quotaAndPerformanceSummary.unexecutedCalls === 0 &&
+      finalBatchResult.layerA.quotaAndPerformanceSummary.successfulCalls === 70 &&
+      finalBatchResult.layerA.quotaAndPerformanceSummary.tierRestrictedCalls === 1 &&
+      finalBatchResult.layerA.quotaAndPerformanceSummary.runtimeBlockedCalls === 1 &&
+      finalBatchResult.layerA.quotaAndPerformanceSummary.actualHttpRequestsSent === 74 &&
+      finalBatchResult.layerA.quotaAndPerformanceSummary.retryCount === 2,
+    `Full 72-endpoint multi-batch loop failed (status=${finalBatchResult?.batchState.status}, loops=${loops}, ok=${finalBatchResult?.layerA.quotaAndPerformanceSummary.successfulCalls}, sent=${finalBatchResult?.layerA.quotaAndPerformanceSummary.actualHttpRequestsSent}, retries=${finalBatchResult?.layerA.quotaAndPerformanceSummary.retryCount}).`
+  );
+  regressionResults.push({
+    id: 'astroway_full_multibatch_continuation_to_terminal_state',
+    status: 'PASSED',
+    batchesExecuted: loops,
+    totalHttpRequestsSent: finalBatchResult!.layerA.quotaAndPerformanceSummary.actualHttpRequestsSent,
+    retryCount: finalBatchResult!.layerA.quotaAndPerformanceSummary.retryCount,
+    terminalStatus: finalBatchResult!.batchState.status,
+  });
+
+  // 3v. Interrupted 8/72 Session Persistence, Discovery & Recovery Without Repeating Settled Calls
+  resetAstroWayIsolateSessionsForTests();
+  await resetAstroWayIsolateRateStateForTests();
+  const interruptedSessionId = 'sess-interrupted-8-of-72';
+  await saveAstroWayBatchSession({
+    sessionId: interruptedSessionId,
+    providerId: 'astroway',
+    // Intentionally omit profileId to match legacy pre-fix Batch 1 stored row shape
+    inputFingerprint: sampleInstant.inputFingerprint,
+    includeTimezoneEquivalenceProbe: true,
+    batchIndex: 1,
+    totalRateLimitWindowWaitMs: 0,
+    createdAtMs: Date.now() - 10_000,
+    updatedAtMs: Date.now() - 5_000,
+    calls: batch8Queued64.updatedCalls,
+  });
+
+  const discovered = await listResumableAstroWaySessions({
+    profileId: 'chris-4-profile',
+    inputFingerprint: sampleInstant.inputFingerprint,
+  });
+  assert(
+    discovered.length === 1 &&
+      discovered[0].sessionId === interruptedSessionId &&
+      discovered[0].matchesFingerprint === true &&
+      discovered[0].successfulCount === 8 &&
+      discovered[0].queuedCount === 64 &&
+      discovered[0].failedCount === 0 &&
+      discovered[0].remainingEligibleCount === 64,
+    'Interrupted 8/72 session discovery failed.'
+  );
+
+  const loadedInterrupted = await loadAstroWayBatchSession(discovered[0].sessionId);
+  assert(loadedInterrupted !== null, 'Failed to load interrupted session from coordinator.');
+  const hydratedZeroHttp = await reconstructAstroWayLayerAFromSession({
+    instant: sampleInstant,
+    session: loadedInterrupted!,
+    skipGlobalCooldownRead: true,
+  });
+  assert(
+    hydratedZeroHttp.layerA.quotaAndPerformanceSummary.successfulCalls === 8 &&
+      hydratedZeroHttp.layerA.quotaAndPerformanceSummary.failedCalls === 0 &&
+      hydratedZeroHttp.layerA.quotaAndPerformanceSummary.unexecutedCalls === 64 &&
+      hydratedZeroHttp.batchState.status === 'paused_partial',
+    'Zero-HTTP session bundle reconstruction failed.'
+  );
+
+  // Resume from interrupted 8/72 session and ensure the 8 already-succeeded endpoints are NEVER called again
+  const alreadyAcquiredIds = new Set(
+    Object.values(loadedInterrupted!.calls)
+      .filter((c) => c.ok)
+      .map((c) => c.id)
+  );
+  const resumedPaths: string[] = [];
+  const resumedBatch2 = await executeAstroWayBatchedBundle(sampleInstant, {
+    apiKey: 'test-key-redacted',
+    includeTimezoneEquivalenceProbe: loadedInterrupted!.includeTimezoneEquivalenceProbe,
+    existingCalls: loadedInterrupted!.calls,
+    sessionId: loadedInterrupted!.sessionId,
+    batchSize: 8,
+    batchIndex: loadedInterrupted!.batchIndex,
+    resumedFromSession: true,
+    skipGlobalCooldown: true,
+    fetchFn: async (url: string) => {
+      const p = new URL(url).pathname;
+      resumedPaths.push(p);
+      return new Response(JSON.stringify({ ok: true, data: { items: [] } }), { status: 200 });
+    },
+  });
+  // Verify Batch 2 ran 8 NEW endpoints, accumulated 16 total OK, and did not repeat any Batch 1 succeeded spec IDs
+  const batch1SucceededSpecIds = Object.values(loadedInterrupted!.calls)
+    .filter((c) => c.ok)
+    .map((c) => c.id);
+  const batch2CallAttemptsUnchanged = batch1SucceededSpecIds.every(
+    (id) => resumedBatch2.updatedCalls[id]?.attempts === loadedInterrupted!.calls[id]?.attempts
+  );
+  assert(
+    alreadyAcquiredIds.size === 8 &&
+      resumedPaths.length === 8 &&
+      batch2CallAttemptsUnchanged &&
+      resumedBatch2.layerA.quotaAndPerformanceSummary.successfulCalls === 16 &&
+      resumedBatch2.layerA.quotaAndPerformanceSummary.failedCalls === 0 &&
+      resumedBatch2.layerA.quotaAndPerformanceSummary.unexecutedCalls === 56,
+    'Resuming interrupted 8/72 session repeated settled calls or failed to accumulate responses.'
+  );
+  await deleteAstroWayBatchSession(interruptedSessionId);
+  resetAstroWayIsolateSessionsForTests();
+  regressionResults.push({ id: 'astroway_interrupted_8_of_72_session_recovery', status: 'PASSED' });
 
   // 3o. Rate-Limited / Unexecuted Timezone Probe MUST NOT be Marked a Mathematical Failure
   const rateLimitedTzCheck = compareAstroWayModeAVsModeBResponses({

@@ -462,6 +462,42 @@ function triggerJsonDownload(filename: string, data: unknown): void {
   URL.revokeObjectURL(url);
 }
 
+interface AstroWaySessionSummary {
+  sessionId: string;
+  providerId: 'astroway';
+  profileId: string | null;
+  profileName: string | null;
+  inputFingerprint: string;
+  includeTimezoneEquivalenceProbe: boolean;
+  batchIndex: number;
+  status: V2DiagnosticBatchState['status'];
+  totalPlannedCount: number;
+  successfulCount: number;
+  queuedCount: number;
+  failedCount: number;
+  remainingEligibleCount: number;
+  totalRateLimitWindowWaitMs: number;
+  createdAtMs: number;
+  updatedAtMs: number;
+  matchesFingerprint: boolean;
+  matchesProfileId: boolean;
+}
+
+function getSessionStorageKey(profileId: string): string {
+  return `cc_v2_aw_session:${profileId}`;
+}
+
+function createClientSessionId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // fallback
+  }
+  return `aw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAccessToken }) => {
   const [provider, setProvider] = useState<V2DiagnosticProvider>('freeastroapi');
   const [searchQuery, setSearchQuery] = useState('');
@@ -487,6 +523,8 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<V2DiagnosticRunResult | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [recoverableSession, setRecoverableSession] = useState<AstroWaySessionSummary | null>(null);
+  const [recoveringSession, setRecoveringSession] = useState(false);
   const [cooldownRemainingSec, setCooldownRemainingSec] = useState<number | null>(null);
   const [pausedByUser, setPausedByUser] = useState(false);
 
@@ -494,6 +532,7 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
   const pausedRef = useRef(false);
   const cooldownIntervalRef = useRef<number | null>(null);
   const resumeTimeoutRef = useRef<number | null>(null);
+  const autoHydratedSessionRef = useRef<string | null>(null);
 
   const clearBatchTimers = useCallback(() => {
     if (cooldownIntervalRef.current !== null) {
@@ -578,11 +617,138 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
     [profiles]
   );
 
+  const recoverPersistedSession = useCallback(
+    async (sessionId: string, profileId: string) => {
+      if (!profileId || !sessionId || inFlightRef.current) return;
+      setRecoveringSession(true);
+      try {
+        const token = await getAccessToken();
+        const res = await fetch('/api/admin/v2-diagnostics/recover', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          cache: 'no-store',
+          body: JSON.stringify({
+            profileId,
+            sessionId,
+            ianaTimezoneOverride: ianaTimezoneOverride.trim() || null,
+            dstFoldDisambiguation: dstFoldDisambiguation || null,
+            birthTimePrecision,
+            nodeConvention,
+          }),
+        });
+        if (!res.ok) return;
+        const recovered = (await res.json()) as V2DiagnosticRunResult;
+        setResult(recovered);
+        const bs = recovered.layerA.batchState;
+        if (bs?.sessionId) {
+          setActiveSessionId(bs.sessionId);
+          try {
+            window.localStorage.setItem(getSessionStorageKey(profileId), bs.sessionId);
+          } catch {
+            // ignore storage failure
+          }
+        }
+        if (bs && bs.remainingEligibleCount > 0) {
+          setPausedByUser(true);
+          setProgressStage(
+            `Recovered persisted session (${recovered.layerA.quotaAndPerformanceSummary.successfulCalls} acquired · ${
+              recovered.layerA.quotaAndPerformanceSummary.unexecutedCalls ?? 0
+            } queued · ${recovered.layerA.quotaAndPerformanceSummary.failedCalls} failed). Click Resume Acquisition to continue without re-calling settled endpoints.`
+          );
+        }
+      } catch {
+        // Non-fatal recovery probe
+      } finally {
+        setRecoveringSession(false);
+      }
+    },
+    [
+      birthTimePrecision,
+      dstFoldDisambiguation,
+      getAccessToken,
+      ianaTimezoneOverride,
+      nodeConvention,
+    ]
+  );
+
+  const checkRecoverableAstroWaySessions = useCallback(
+    async (profileId: string) => {
+      if (provider !== 'astroway' || !profileId || inFlightRef.current) return;
+      try {
+        const token = await getAccessToken();
+        const qs = new URLSearchParams({
+          profileId,
+          birthTimePrecision,
+          nodeConvention,
+        });
+        if (ianaTimezoneOverride.trim()) {
+          qs.set('ianaTimezoneOverride', ianaTimezoneOverride.trim());
+        }
+        const res = await fetch(`/api/admin/v2-diagnostics/sessions?${qs.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { sessions?: AstroWaySessionSummary[] };
+        const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+        let storedId: string | null = null;
+        try {
+          storedId = window.localStorage.getItem(getSessionStorageKey(profileId));
+        } catch {
+          storedId = null;
+        }
+        const matched =
+          sessions.find((s) => s.matchesFingerprint || s.matchesProfileId) ||
+          (storedId ? sessions.find((s) => s.sessionId === storedId) : undefined) ||
+          sessions.find((s) => s.profileId === null) ||
+          null;
+
+        setRecoverableSession(matched);
+        if (matched) {
+          setActiveSessionId((prev) => prev || matched.sessionId);
+          const shouldAutoHydrate =
+            autoHydratedSessionRef.current !== `${profileId}:${matched.sessionId}` &&
+            (!result ||
+              result.profileSummary.id !== profileId ||
+              result.layerA.providerId !== 'astroway');
+          if (shouldAutoHydrate) {
+            autoHydratedSessionRef.current = `${profileId}:${matched.sessionId}`;
+            void recoverPersistedSession(matched.sessionId, profileId);
+          }
+        }
+      } catch {
+        // Non-fatal session check
+      }
+    },
+    [
+      birthTimePrecision,
+      getAccessToken,
+      ianaTimezoneOverride,
+      nodeConvention,
+      provider,
+      recoverPersistedSession,
+      result,
+    ]
+  );
+
+  useEffect(() => {
+    if (provider === 'astroway' && selectedProfileId && !running) {
+      void checkRecoverableAstroWaySessions(selectedProfileId);
+    }
+  }, [checkRecoverableAstroWaySessions, provider, running, selectedProfileId]);
+
   const runSingleBatch = async (opts?: {
     sessionId?: string | null;
     resetSession?: boolean;
-  }): Promise<V2DiagnosticRunResult | null> => {
-    if (inFlightRef.current || !selectedProfileId) return null;
+    manualResume?: boolean;
+  }): Promise<{
+    data: V2DiagnosticRunResult | null;
+    lockConflict?: { code: string; retryAfterMs: number; message: string };
+  }> => {
+    if (inFlightRef.current || !selectedProfileId) return { data: null };
     inFlightRef.current = true;
     setRunning(true);
     setError(null);
@@ -609,6 +775,7 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
             ? {
                 sessionId: opts?.sessionId ?? null,
                 resetSession: Boolean(opts?.resetSession),
+                manualResume: Boolean(opts?.manualResume),
                 batchSize: 8,
               }
             : {}),
@@ -617,6 +784,20 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
 
       const data = await res.json();
       if (!res.ok) {
+        if (
+          res.status === 409 &&
+          (data.code === 'DIAGNOSTIC_RUN_IN_PROGRESS' ||
+            data.code === 'SAME_SESSION_BATCH_IN_PROGRESS')
+        ) {
+          return {
+            data: null,
+            lockConflict: {
+              code: String(data.code),
+              retryAfterMs: Number(data.retryAfterMs || 3000),
+              message: String(data.error || 'Diagnostic lock busy'),
+            },
+          };
+        }
         if (data.code === 'AMBIGUOUS_LOCAL_TIME' && Array.isArray(data.candidates)) {
           setAmbiguousCandidates(data.candidates);
         }
@@ -626,10 +807,10 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
       const typed = data as V2DiagnosticRunResult;
       setResult(typed);
       setAmbiguousCandidates([]);
-      return typed;
+      return { data: typed };
     } catch (err) {
       setError(err instanceof Error ? err.message : 'V2 diagnostic execution failed.');
-      return null;
+      return { data: null };
     } finally {
       inFlightRef.current = false;
       setRunning(false);
@@ -639,22 +820,87 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
   const executeAstroWayBatchLoop = async (opts?: {
     sessionId?: string | null;
     resetSession?: boolean;
+    manualResume?: boolean;
+    expectedBatchIndex?: number;
+    lockHandoverRetries?: number;
+    zeroProgressBatches?: number;
   }) => {
     clearBatchTimers();
     pausedRef.current = false;
     setPausedByUser(false);
 
-    const initialBatchNum =
-      opts?.resetSession || !opts?.sessionId
+    const targetSessionId =
+      opts?.resetSession || !opts?.sessionId ? createClientSessionId() : opts.sessionId;
+    setActiveSessionId(targetSessionId);
+    if (selectedProfileId) {
+      try {
+        window.localStorage.setItem(getSessionStorageKey(selectedProfileId), targetSessionId);
+      } catch {
+        // ignore
+      }
+    }
+
+    const batchNum =
+      opts?.expectedBatchIndex ??
+      (opts?.resetSession || !opts?.sessionId
         ? 1
-        : (result?.layerA.batchState?.batchIndex ?? 0) + 1;
+        : (result?.layerA.batchState?.batchIndex ?? 0) + 1);
     setProgressStage(
-      `Executing AstroWay Priority Batch #${initialBatchNum} (max 8–9 Worker subrequests)...`
+      `Executing AstroWay Priority Batch #${batchNum} (session ${targetSessionId.slice(0, 8)}..., max 8 Worker subrequests)...`
     );
 
-    const resData = await runSingleBatch(opts);
+    const { data: resData, lockConflict } = await runSingleBatch({
+      sessionId: targetSessionId,
+      resetSession: Boolean(opts?.resetSession),
+      manualResume: Boolean(opts?.manualResume),
+    });
+
+    if (lockConflict) {
+      const handoverRetries = opts?.lockHandoverRetries ?? 0;
+      const canRetryTransientLock =
+        (lockConflict.code === 'SAME_SESSION_BATCH_IN_PROGRESS' || Boolean(opts?.sessionId)) &&
+        handoverRetries < 2;
+      if (canRetryTransientLock && !pausedRef.current) {
+        const retryWaitMs = Math.min(5000, Math.max(1500, lockConflict.retryAfterMs || 2500));
+        const targetAtMs = Date.now() + retryWaitMs;
+        setCooldownRemainingSec(Math.ceil(retryWaitMs / 1000));
+        setProgressStage(
+          `Finishing lock handover for Batch #${batchNum} — retrying automatically in ${Math.ceil(
+            retryWaitMs / 1000
+          )}s...`
+        );
+        cooldownIntervalRef.current = window.setInterval(() => {
+          setCooldownRemainingSec(Math.max(0, Math.ceil((targetAtMs - Date.now()) / 1000)));
+        }, 400);
+        resumeTimeoutRef.current = window.setTimeout(() => {
+          clearBatchTimers();
+          if (!pausedRef.current) {
+            void executeAstroWayBatchLoop({
+              sessionId: targetSessionId,
+              resetSession: false,
+              manualResume: opts?.manualResume,
+              expectedBatchIndex: batchNum,
+              lockHandoverRetries: handoverRetries + 1,
+              zeroProgressBatches: opts?.zeroProgressBatches ?? 0,
+            });
+          }
+        }, retryWaitMs);
+        return;
+      }
+
+      setError(lockConflict.message);
+      setPausedByUser(true);
+      setProgressStage(
+        'Automatic continuation paused due to active server lock. Progress is saved — click Resume Acquisition when ready.'
+      );
+      return;
+    }
+
     if (!resData) {
-      setProgressStage(null);
+      setPausedByUser(true);
+      setProgressStage(
+        'Batch interrupted before completion — settled responses remain saved. Click Resume Acquisition to continue.'
+      );
       return;
     }
 
@@ -664,19 +910,53 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
       return;
     }
     setActiveSessionId(bs.sessionId);
+    if (selectedProfileId) {
+      try {
+        window.localStorage.setItem(getSessionStorageKey(selectedProfileId), bs.sessionId);
+      } catch {
+        // ignore
+      }
+    }
 
     if (
       bs.status === 'completed' ||
       bs.status === 'completed_with_restrictions' ||
       bs.remainingEligibleCount === 0
     ) {
-      setProgressStage(null);
+      setRecoverableSession(null);
+      const qSummary = resData.layerA.quotaAndPerformanceSummary;
+      setProgressStage(
+        `Acquisition finished (${bs.status}): ${qSummary.successfulCalls} acquired · ${qSummary.failedCalls} non-200/restricted · ${
+          qSummary.unexecutedCalls ?? 0
+        } queued.`
+      );
       return;
     }
 
+    setRecoverableSession({
+      sessionId: bs.sessionId,
+      providerId: 'astroway',
+      profileId: selectedProfileId || null,
+      profileName: resData.profileSummary.name || null,
+      inputFingerprint: resData.layerA.inputFingerprint,
+      includeTimezoneEquivalenceProbe: includeTimezoneProbe,
+      batchIndex: bs.batchIndex,
+      status: bs.status,
+      totalPlannedCount: bs.totalPlannedCount,
+      successfulCount: resData.layerA.quotaAndPerformanceSummary.successfulCalls,
+      queuedCount: resData.layerA.quotaAndPerformanceSummary.unexecutedCalls ?? 0,
+      failedCount: resData.layerA.quotaAndPerformanceSummary.failedCalls,
+      remainingEligibleCount: bs.remainingEligibleCount,
+      totalRateLimitWindowWaitMs: bs.totalRateLimitWindowWaitMs,
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+      matchesFingerprint: true,
+      matchesProfileId: true,
+    });
+
     if (pausedRef.current) {
       setProgressStage(
-        `Paused at Batch #${bs.batchIndex} (${bs.remainingEligibleCount} endpoints remaining).`
+        `Paused at Batch #${bs.batchIndex} (${bs.remainingEligibleCount} endpoints remaining — click Resume Acquisition to continue).`
       );
       return;
     }
@@ -697,20 +977,46 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
       resumeTimeoutRef.current = window.setTimeout(() => {
         clearBatchTimers();
         if (!pausedRef.current) {
-          void executeAstroWayBatchLoop({ sessionId: bs.sessionId, resetSession: false });
+          void executeAstroWayBatchLoop({
+            sessionId: bs.sessionId,
+            resetSession: false,
+            expectedBatchIndex: bs.batchIndex + 1,
+            lockHandoverRetries: 0,
+            zeroProgressBatches: 0,
+          });
         }
       }, waitTotalMs);
       return;
     }
 
+    const zeroProgressCount =
+      bs.executedThisBatch === 0 ? (opts?.zeroProgressBatches ?? 0) + 1 : 0;
+    if (zeroProgressCount >= 3) {
+      setPausedByUser(true);
+      setProgressStage(
+        `Paused after ${zeroProgressCount} zero-progress batches (${bs.remainingEligibleCount} remaining). Click Resume Acquisition to retry.`
+      );
+      return;
+    }
+
     // Bounded batch completed cleanly without 429; chain next batch cleanly after short pause
     setProgressStage(
-      `Batch #${bs.batchIndex} completed (${bs.remainingEligibleCount} endpoints left). Continuing to Batch #${bs.batchIndex + 1}...`
+      `Batch #${bs.batchIndex} completed (${resData.layerA.quotaAndPerformanceSummary.successfulCalls} OK · ${
+        resData.layerA.quotaAndPerformanceSummary.unexecutedCalls ?? 0
+      } queued · ${resData.layerA.quotaAndPerformanceSummary.failedCalls} failed). Continuing to Batch #${
+        bs.batchIndex + 1
+      }...`
     );
     resumeTimeoutRef.current = window.setTimeout(() => {
       clearBatchTimers();
       if (!pausedRef.current) {
-        void executeAstroWayBatchLoop({ sessionId: bs.sessionId, resetSession: false });
+        void executeAstroWayBatchLoop({
+          sessionId: bs.sessionId,
+          resetSession: false,
+          expectedBatchIndex: bs.batchIndex + 1,
+          lockHandoverRetries: 0,
+          zeroProgressBatches: zeroProgressCount,
+        });
       }
     }, 350);
   };
@@ -719,7 +1025,9 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
     pausedRef.current = true;
     setPausedByUser(true);
     clearBatchTimers();
-    const rem = result?.layerA.batchState?.remainingEligibleCount;
+    const rem =
+      result?.layerA.batchState?.remainingEligibleCount ??
+      recoverableSession?.remainingEligibleCount;
     setProgressStage(
       rem != null
         ? `Paused (${rem} endpoints remaining — existing responses preserved).`
@@ -727,26 +1035,65 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
     );
   };
 
-  const handleResetAstroWaySession = () => {
+  const handleResetAstroWaySession = async () => {
     pausedRef.current = true;
     setPausedByUser(false);
     clearBatchTimers();
+    const sidToDelete = activeSessionId || recoverableSession?.sessionId || null;
+    if (selectedProfileId) {
+      try {
+        window.localStorage.removeItem(getSessionStorageKey(selectedProfileId));
+      } catch {
+        // ignore
+      }
+    }
+    if (sidToDelete) {
+      try {
+        const token = await getAccessToken();
+        await fetch(`/api/admin/v2-diagnostics/sessions/${encodeURIComponent(sidToDelete)}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
+        // Non-fatal
+      }
+    }
+    autoHydratedSessionRef.current = null;
     setActiveSessionId(null);
+    setRecoverableSession(null);
+    setError(null);
     setProgressStage(null);
+  };
+
+  const handleResumeAstroWaySession = async () => {
+    if (inFlightRef.current || !selectedProfileId) return;
+    const resumeId = activeSessionId || recoverableSession?.sessionId || null;
+    if (!resumeId) return;
+    await executeAstroWayBatchLoop({
+      sessionId: resumeId,
+      resetSession: false,
+      manualResume: true,
+      expectedBatchIndex:
+        (result?.layerA.batchState?.batchIndex ?? recoverableSession?.batchIndex ?? 0) + 1,
+    });
   };
 
   const handleRunV2Diagnostic = async () => {
     if (inFlightRef.current || !selectedProfileId) return;
     if (provider === 'astroway') {
-      const shouldResume = Boolean(
-        activeSessionId &&
-          result?.layerA.providerId === 'astroway' &&
-          result?.layerA.batchState &&
-          result.layerA.batchState.remainingEligibleCount > 0
-      );
+      const resumeId = activeSessionId || recoverableSession?.sessionId || null;
+      const hasRemaining =
+        (result?.layerA.providerId === 'astroway' &&
+          (result?.layerA.batchState?.remainingEligibleCount ?? 0) > 0) ||
+        Boolean(recoverableSession && recoverableSession.remainingEligibleCount > 0);
+      const shouldResume = Boolean(resumeId && hasRemaining);
       await executeAstroWayBatchLoop({
-        sessionId: shouldResume ? activeSessionId : null,
+        sessionId: shouldResume ? resumeId : null,
         resetSession: !shouldResume,
+        manualResume: shouldResume,
+        expectedBatchIndex: shouldResume
+          ? (result?.layerA.batchState?.batchIndex ?? recoverableSession?.batchIndex ?? 0) + 1
+          : 1,
       });
       return;
     }
@@ -923,6 +1270,11 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
                 setSelectedProfileId(val);
                 setDstFoldDisambiguation('');
                 setAmbiguousCandidates([]);
+                setActiveSessionId(null);
+                setRecoverableSession(null);
+                setProgressStage(null);
+                setError(null);
+                autoHydratedSessionRef.current = null;
               }}
               ariaLabel="Select target birth profile"
               surface="canvas"
@@ -1077,6 +1429,51 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
           </div>
         )}
 
+        {provider === 'astroway' &&
+          recoverableSession &&
+          recoverableSession.remainingEligibleCount > 0 &&
+          !running && (
+            <div className="rounded-2xl border border-[#B8965A]/45 bg-[#B8965A]/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="space-y-0.5">
+                <div className="font-medium text-[#3D3830]">
+                  Persisted AstroWay Session Ready to Resume ({recoverableSession.successfulCount}/
+                  {recoverableSession.totalPlannedCount} acquired ·{' '}
+                  {recoverableSession.queuedCount} queued · {recoverableSession.failedCount} failed)
+                </div>
+                <div className="font-mono text-[11px] text-[#5C5449]">
+                  Session {recoverableSession.sessionId.slice(0, 12)} · Batch #
+                  {recoverableSession.batchIndex} ·{' '}
+                  {recoverableSession.remainingEligibleCount} remaining without repeating settled calls
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {(!result ||
+                  result.layerA.batchState?.sessionId !== recoverableSession.sessionId) && (
+                  <button
+                    type="button"
+                    disabled={recoveringSession}
+                    onClick={() =>
+                      void recoverPersistedSession(recoverableSession.sessionId, selectedProfileId)
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] cursor-pointer"
+                  >
+                    <Database className="h-3 w-3" />
+                    <span>{recoveringSession ? 'Loading...' : 'Load Saved Bundle'}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={!activeSecretConfigured || cooldownRemainingSec !== null}
+                  onClick={() => void handleResumeAstroWaySession()}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#4A453D] px-3.5 py-1.5 text-[11px] font-medium text-[#FAF7F2] hover:bg-[#38342E] cursor-pointer disabled:opacity-45"
+                >
+                  <Play className="h-3 w-3" />
+                  <span>Resume Acquisition ({recoverableSession.remainingEligibleCount} left)</span>
+                </button>
+              </div>
+            </div>
+          )}
+
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <div className="text-xs text-[#8B8275]">
             {progressStage ||
@@ -1097,12 +1494,12 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
             )}
 
             {provider === 'astroway' &&
-              activeSessionId &&
+              (activeSessionId || recoverableSession) &&
               !running &&
               cooldownRemainingSec === null && (
                 <button
                   type="button"
-                  onClick={handleResetAstroWaySession}
+                  onClick={() => void handleResetAstroWaySession()}
                   className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-3.5 py-2 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
@@ -1123,10 +1520,12 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
             >
               {cooldownRemainingSec !== null ? (
                 <Clock className="h-3.5 w-3.5 animate-pulse" />
-              ) : pausedByUser &&
+              ) : (pausedByUser || recoverableSession) &&
                 provider === 'astroway' &&
-                activeSessionId &&
-                (result?.layerA.batchState?.remainingEligibleCount ?? 0) > 0 ? (
+                (activeSessionId || recoverableSession) &&
+                ((result?.layerA.batchState?.remainingEligibleCount ??
+                  recoverableSession?.remainingEligibleCount ??
+                  0) > 0) ? (
                 <Play className="h-3.5 w-3.5" />
               ) : (
                 <FlaskConical className={`h-3.5 w-3.5 ${running ? 'animate-pulse' : ''}`} />
@@ -1137,10 +1536,15 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
                   : running
                   ? `Running Isolated ${provider === 'astroway' ? 'AstroWay Batch' : 'V2'}...`
                   : provider === 'astroway' &&
-                    activeSessionId &&
-                    result?.layerA.providerId === 'astroway' &&
-                    (result?.layerA.batchState?.remainingEligibleCount ?? 0) > 0
-                  ? `Resume AstroWay Batch (${result?.layerA.batchState?.remainingEligibleCount} left)`
+                    (activeSessionId || recoverableSession) &&
+                    ((result?.layerA.providerId === 'astroway' &&
+                      (result?.layerA.batchState?.remainingEligibleCount ?? 0) > 0) ||
+                      (recoverableSession?.remainingEligibleCount ?? 0) > 0)
+                  ? `Resume Acquisition (${
+                      result?.layerA.providerId === 'astroway'
+                        ? result?.layerA.batchState?.remainingEligibleCount
+                        : recoverableSession?.remainingEligibleCount
+                    } left)`
                   : `Generate Isolated ${provider === 'astroway' ? 'AstroWay' : 'FreeAstroAPI'} V2 Bundle`}
               </span>
             </button>
@@ -1165,8 +1569,11 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
               <div className="flex items-center gap-2 font-semibold text-[#3D3830]">
                 <AlertTriangle className="h-4 w-4 text-[#8B6B2E]" />
                 <span>
-                  Acquisition Status: {result.layerA.acquisitionStatus.toUpperCase()} — Successful
-                  endpoint responses were preserved
+                  Acquisition Status: {result.layerA.acquisitionStatus.toUpperCase()}
+                  {result.layerA.batchState ? ` (${result.layerA.batchState.status.toUpperCase()})` : ''} —{' '}
+                  {result.layerA.quotaAndPerformanceSummary.successfulCalls} acquired ·{' '}
+                  {result.layerA.quotaAndPerformanceSummary.unexecutedCalls ?? 0} queued ·{' '}
+                  {result.layerA.quotaAndPerformanceSummary.failedCalls} failed (successful responses preserved)
                 </span>
               </div>
               {result.layerA.missingDatasets.length > 0 && (

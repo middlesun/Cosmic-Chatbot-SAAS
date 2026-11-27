@@ -23,6 +23,7 @@ import { isFreeAstroApiConfigured } from '../services/astrologyProviders/freeAst
 import {
   acquireV2DiagnosticRunLock,
   releaseV2DiagnosticRunLock,
+  renewV2DiagnosticRunLock,
 } from '../services/astrologyProviders/freeAstroApiRateLimiter';
 import { runFreeAstroApiPocBenchmark } from '../services/freeAstroApiPocRunner';
 import { checkRateLimit } from '../services/abuseGuard';
@@ -33,14 +34,17 @@ import {
   buildLayerBMasterChartRecord,
   buildLayerCAnalyticalShell,
   buildLegacyVsV2ComparisonReport,
+  deleteAstroWayBatchSession,
   executeAstroWayBatchedBundle,
   generateSessionId,
   getAstroWayApiKey,
   getAstroWayApiSecretStatus,
   getFreeAstroApiKey,
   getFreeAstroApiSecretStatus,
+  listResumableAstroWaySessions,
   loadAstroWayBatchSession,
   readRuntimeHeapBytes,
+  reconstructAstroWayLayerAFromSession,
   redactSecretsDeep,
   resolveCanonicalBirthInstant,
   saveAstroWayBatchSession,
@@ -3460,6 +3464,376 @@ router.get('/v2-diagnostics/profiles', async (req: AuthenticatedRequest, res) =>
   }
 });
 
+async function resolveV2DiagnosticInstantForProfile(params: {
+  profile: Record<string, unknown>;
+  ianaTimezoneOverride?: string | null;
+  dstFoldDisambiguation?: DstFoldDisambiguation;
+  birthTimePrecision?: BirthTimePrecision;
+  nodeConvention?: 'mean' | 'true';
+}) {
+  const { profile } = params;
+  const lat = Number(profile.latitude);
+  const lng = Number(profile.longitude);
+  let resolvedIana: string | null = params.ianaTimezoneOverride || null;
+  let ianaInferenceNote: string | null = null;
+
+  if (!resolvedIana) {
+    const inferred = await resolveNonProviderIanaTimezone({
+      latitude: lat,
+      longitude: lng,
+      country: profile.birth_country ? String(profile.birth_country) : null,
+    });
+    if (inferred) {
+      resolvedIana = inferred.ianaTimezone;
+      ianaInferenceNote = `IANA timezone "${inferred.ianaTimezone}" resolved via ${inferred.source}.`;
+    }
+  }
+
+  const instant = resolveCanonicalBirthInstant({
+    profileId: String(profile.id),
+    name: String(profile.name || 'Unnamed Profile'),
+    birthDate: String(profile.birth_date),
+    birthTime: String(profile.birth_time),
+    latitude: lat,
+    longitude: lng,
+    city: profile.birth_city ? String(profile.birth_city) : '',
+    state: profile.birth_state ? String(profile.birth_state) : null,
+    country: profile.birth_country ? String(profile.birth_country) : '',
+    ianaTimezone: resolvedIana,
+    dstFoldDisambiguation: params.dstFoldDisambiguation,
+    explicitHistoricalUtcOffsetHours:
+      typeof profile.timezone_offset === 'number' && Number.isFinite(profile.timezone_offset)
+        ? profile.timezone_offset
+        : null,
+    birthTimePrecision: params.birthTimePrecision ?? 'exact',
+    nodeConvention: params.nodeConvention ?? 'mean',
+  });
+
+  return { instant, resolvedIana, ianaInferenceNote, lat, lng };
+}
+
+function assembleV2DiagnosticBundleResponse(params: {
+  provider: V2DiagnosticProviderId;
+  profile: Record<string, unknown>;
+  lat: number;
+  lng: number;
+  instant: ReturnType<typeof resolveCanonicalBirthInstant>;
+  layerA: Parameters<typeof buildLayerBMasterChartRecord>[0]['rawLayerA'];
+  ianaInferenceNote: string | null;
+  startedAtMs: number;
+  heapBeforeBytes: number | null;
+}) {
+  const { provider, profile, lat, lng, instant, layerA, ianaInferenceNote, startedAtMs, heapBeforeBytes } = params;
+  const layerB = buildLayerBMasterChartRecord({ instant, rawLayerA: layerA });
+  const layerC = buildLayerCAnalyticalShell(layerB);
+  const verificationReport = verifyMasterChartRecord(layerB, layerA);
+  const legacyVsV2Comparison = buildLegacyVsV2ComparisonReport({
+    profileId: String(profile.id),
+    profileName: String(profile.name || 'Unnamed Profile'),
+    legacyChartJson: profile.chart_json ?? null,
+    instant,
+    layerB,
+  });
+
+  const sanitizedPayload = redactSecretsDeep({
+    bundleMetadata: {
+      laboratory: 'Chart Engine Laboratory — Foundational Calculation Engine V2',
+      provider,
+      generatedAtUtc: new Date().toISOString(),
+      runtimeEnvironment:
+        typeof (globalThis as { WebSocketPair?: unknown }).WebSocketPair !== 'undefined' ||
+        (typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers')
+          ? 'cloudflare_worker'
+          : 'node_express',
+      readOnlyProfileSource: true,
+      profileMutated: false,
+      productionEngineModified: false,
+      ianaInferenceNote,
+    },
+    profileSummary: {
+      id: profile.id,
+      name: profile.name,
+      birthDate: profile.birth_date,
+      birthTime: profile.birth_time,
+      birthCity: profile.birth_city,
+      birthState: profile.birth_state,
+      birthCountry: profile.birth_country,
+      latitude: lat,
+      longitude: lng,
+      storedTimezoneOffset: profile.timezone_offset,
+      isActivated: Boolean(profile.is_activated),
+      hasLegacyChart: Boolean(profile.chart_json),
+    },
+    layerA,
+    layerB,
+    layerC,
+    verificationReport,
+    legacyVsV2Comparison,
+  });
+
+  const heapAfterBytes = readRuntimeHeapBytes();
+  const executionDurationMs = Math.max(0, Date.now() - startedAtMs);
+
+  const artifactSizesBytes = {
+    layerABytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerA)).length,
+    layerBBytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerB)).length,
+    layerCBytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerC)).length,
+    verificationReportBytes: v2TextEncoder.encode(
+      JSON.stringify(sanitizedPayload.verificationReport)
+    ).length,
+    legacyVsV2ComparisonBytes: v2TextEncoder.encode(
+      JSON.stringify(sanitizedPayload.legacyVsV2Comparison)
+    ).length,
+    totalResponseBytes: 0,
+  };
+
+  const heapTelemetry = summarizeRuntimeHeapTelemetry(heapBeforeBytes, heapAfterBytes);
+  const fullResponse = {
+    ...sanitizedPayload,
+    runtimeTelemetry: {
+      executionDurationMs,
+      ...heapTelemetry,
+      artifactSizesBytes,
+    },
+  };
+  fullResponse.runtimeTelemetry.artifactSizesBytes.totalResponseBytes =
+    v2TextEncoder.encode(JSON.stringify(fullResponse)).length;
+
+  return fullResponse;
+}
+
+router.get('/v2-diagnostics/sessions', async (req: AuthenticatedRequest, res) => {
+  setPrivateNoStoreHeaders(res);
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const profileId =
+      typeof req.query.profileId === 'string' && req.query.profileId.trim()
+        ? req.query.profileId.trim()
+        : null;
+    const includeCompleted = req.query.includeCompleted === 'true';
+    const overrideTz =
+      typeof req.query.ianaTimezoneOverride === 'string' && req.query.ianaTimezoneOverride.trim()
+        ? req.query.ianaTimezoneOverride.trim()
+        : null;
+    const nodeConvention: 'mean' | 'true' = req.query.nodeConvention === 'true' ? 'true' : 'mean';
+    const precisionRaw = String(req.query.birthTimePrecision || 'exact');
+    const birthTimePrecision: BirthTimePrecision =
+      precisionRaw === 'approximate' ||
+      precisionRaw === 'sunrise_unknown' ||
+      precisionRaw === 'unknown'
+        ? precisionRaw
+        : 'exact';
+
+    let inputFingerprint: string | null = null;
+    const supabaseAdmin = getSupabaseAdmin();
+    if (profileId && supabaseAdmin) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select(
+          'id, name, birth_date, birth_time, birth_city, birth_state, birth_country, latitude, longitude, timezone_offset'
+        )
+        .eq('id', profileId)
+        .maybeSingle();
+
+      if (
+        profile &&
+        profile.birth_date &&
+        profile.birth_time &&
+        Number.isFinite(Number(profile.latitude)) &&
+        Number.isFinite(Number(profile.longitude))
+      ) {
+        try {
+          const resolved = await resolveV2DiagnosticInstantForProfile({
+            profile: profile as Record<string, unknown>,
+            ianaTimezoneOverride: overrideTz,
+            birthTimePrecision,
+            nodeConvention,
+          });
+          inputFingerprint = resolved.instant.inputFingerprint;
+        } catch {
+          // Best-effort fingerprint matching; still return persisted sessions
+        }
+      }
+    }
+
+    const sessions = await listResumableAstroWaySessions({
+      profileId,
+      inputFingerprint,
+      includeCompleted,
+    });
+
+    res.json(redactSecretsDeep({ sessions, inputFingerprint }));
+  } catch {
+    res.status(500).json({ error: 'Failed to list recoverable AstroWay sessions.' });
+  }
+});
+
+router.post('/v2-diagnostics/recover', async (req: AuthenticatedRequest, res) => {
+  setPrivateNoStoreHeaders(res);
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Supabase admin client is not configured.' });
+    return;
+  }
+
+  const startedAtMs = Date.now();
+  const heapBeforeBytes = readRuntimeHeapBytes();
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const profileId = typeof body.profileId === 'string' ? body.profileId.trim() : '';
+  const requestedSessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
+
+  if (!profileId) {
+    res.status(400).json({ error: 'profileId is required.' });
+    return;
+  }
+
+  try {
+    const { data: profile, error: profErr } = await supabaseAdmin
+      .from('profiles')
+      .select(
+        'id, user_id, name, birth_date, birth_time, birth_city, birth_state, birth_country, latitude, longitude, timezone_offset, is_activated, chart_json, updated_at'
+      )
+      .eq('id', profileId)
+      .maybeSingle();
+
+    if (profErr) {
+      res.status(500).json({ error: 'Failed to load target profile.' });
+      return;
+    }
+    if (!profile) {
+      res.status(404).json({ error: 'Profile not found.' });
+      return;
+    }
+
+    const lat = Number(profile.latitude);
+    const lng = Number(profile.longitude);
+    if (
+      !profile.birth_date ||
+      !profile.birth_time ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng)
+    ) {
+      res.status(400).json({
+        error:
+          'Selected profile is missing birth_date, birth_time, latitude, or longitude required for canonical instant resolution.',
+      });
+      return;
+    }
+
+    const overrideTz =
+      typeof body.ianaTimezoneOverride === 'string' && body.ianaTimezoneOverride.trim()
+        ? body.ianaTimezoneOverride.trim()
+        : null;
+    const dstDisambigRaw = body.dstFoldDisambiguation;
+    const dstFoldDisambiguation: DstFoldDisambiguation | undefined =
+      dstDisambigRaw === 'earlier_occurrence' || dstDisambigRaw === 'later_occurrence'
+        ? dstDisambigRaw
+        : undefined;
+    const precisionRaw = String(body.birthTimePrecision || 'exact');
+    const birthTimePrecision: BirthTimePrecision =
+      precisionRaw === 'approximate' ||
+      precisionRaw === 'sunrise_unknown' ||
+      precisionRaw === 'unknown'
+        ? precisionRaw
+        : 'exact';
+    const nodeConvention: 'mean' | 'true' = body.nodeConvention === 'true' ? 'true' : 'mean';
+
+    let resolved;
+    try {
+      resolved = await resolveV2DiagnosticInstantForProfile({
+        profile: profile as Record<string, unknown>,
+        ianaTimezoneOverride: overrideTz,
+        dstFoldDisambiguation,
+        birthTimePrecision,
+        nodeConvention,
+      });
+    } catch (err) {
+      if (err instanceof BirthInstantTimezoneError) {
+        res.status(err.code === 'AMBIGUOUS_LOCAL_TIME' ? 409 : 422).json({
+          error: err.message,
+          code: err.code,
+          candidates: err.candidates || [],
+        });
+        return;
+      }
+      if (err instanceof BirthInstantValidationError) {
+        res.status(400).json({ error: err.message, code: 'BIRTH_INSTANT_VALIDATION_ERROR' });
+        return;
+      }
+      throw err;
+    }
+
+    let loadedSession = requestedSessionId
+      ? await loadAstroWayBatchSession(requestedSessionId)
+      : null;
+
+    if (!loadedSession) {
+      const candidates = await listResumableAstroWaySessions({
+        profileId,
+        inputFingerprint: resolved.instant.inputFingerprint,
+        includeCompleted: true,
+      });
+      const bestMatch =
+        candidates.find((c) => c.matchesFingerprint || c.matchesProfileId) || candidates[0];
+      if (bestMatch) {
+        loadedSession = await loadAstroWayBatchSession(bestMatch.sessionId);
+      }
+    }
+
+    if (!loadedSession) {
+      res.status(404).json({ error: 'No persisted AstroWay diagnostic session found to recover.' });
+      return;
+    }
+
+    const reconstructed = await reconstructAstroWayLayerAFromSession({
+      instant: resolved.instant,
+      session: loadedSession,
+      apiKeyForRedaction: getAstroWayApiKey() || undefined,
+    });
+
+    const fullResponse = assembleV2DiagnosticBundleResponse({
+      provider: 'astroway',
+      profile: profile as Record<string, unknown>,
+      lat: resolved.lat,
+      lng: resolved.lng,
+      instant: resolved.instant,
+      layerA: reconstructed.layerA,
+      ianaInferenceNote: resolved.ianaInferenceNote,
+      startedAtMs,
+      heapBeforeBytes,
+    });
+
+    res.json(fullResponse);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unable to recover persisted AstroWay session.';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.delete('/v2-diagnostics/sessions/:sessionId', async (req: AuthenticatedRequest, res) => {
+  setPrivateNoStoreHeaders(res);
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const sessionId = typeof req.params.sessionId === 'string' ? req.params.sessionId.trim() : '';
+  if (!sessionId) {
+    res.status(400).json({ error: 'sessionId is required.' });
+    return;
+  }
+  await deleteAstroWayBatchSession(sessionId);
+  res.json({ deleted: true, sessionId });
+});
+
 router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
   setPrivateNoStoreHeaders(res);
   if (!req.appUser) {
@@ -3504,17 +3878,49 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
+  const requestedSessionId =
+    typeof body.sessionId === 'string' && body.sessionId.trim() ? body.sessionId.trim() : '';
+  const resetSession = Boolean(body.resetSession);
+  const manualResume = Boolean(body.manualResume);
+
+  if (provider === 'astroway' && resetSession && requestedSessionId) {
+    await deleteAstroWayBatchSession(requestedSessionId);
+  }
+
+  const preassignedSessionId =
+    provider === 'astroway'
+      ? requestedSessionId && !resetSession
+        ? requestedSessionId
+        : generateSessionId()
+      : null;
+
   const lock = await acquireV2DiagnosticRunLock({
     adminUserId: req.appUser.id,
     profileId,
+    sessionId: preassignedSessionId,
+    provider,
+    allowSameSessionResume: manualResume,
   });
   if (!lock.acquired) {
     res.status(409).json({
       error: lock.reason || 'A V2 diagnostic run is already in progress.',
-      code: 'DIAGNOSTIC_RUN_IN_PROGRESS',
+      code: lock.code || 'DIAGNOSTIC_RUN_IN_PROGRESS',
+      retryAfterMs: lock.retryAfterMs ?? 3500,
     });
     return;
   }
+
+  let lockReleased = false;
+  const releaseLockOnce = async () => {
+    if (lockReleased) return;
+    lockReleased = true;
+    await releaseV2DiagnosticRunLock({
+      adminUserId: req.appUser!.id,
+      profileId,
+      lockId: lock.lockId,
+      sessionId: preassignedSessionId,
+    });
+  };
 
   const startedAtMs = Date.now();
   const heapBeforeBytes = readRuntimeHeapBytes();
@@ -3557,21 +3963,6 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
         ? body.ianaTimezoneOverride.trim()
         : null;
 
-    let resolvedIana: string | null = overrideTz;
-    let ianaInferenceNote: string | null = null;
-
-    if (!resolvedIana) {
-      const inferred = await resolveNonProviderIanaTimezone({
-        latitude: lat,
-        longitude: lng,
-        country: profile.birth_country,
-      });
-      if (inferred) {
-        resolvedIana = inferred.ianaTimezone;
-        ianaInferenceNote = `IANA timezone "${inferred.ianaTimezone}" resolved via ${inferred.source}.`;
-      }
-    }
-
     const dstDisambigRaw = body.dstFoldDisambiguation;
     const dstFoldDisambiguation: DstFoldDisambiguation | undefined =
       dstDisambigRaw === 'earlier_occurrence' || dstDisambigRaw === 'later_occurrence'
@@ -3589,24 +3980,12 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
     const nodeConvention: 'mean' | 'true' = body.nodeConvention === 'true' ? 'true' : 'mean';
     const includeTimezoneEquivalenceProbe = Boolean(body.includeTimezoneEquivalenceProbe);
 
-    let instant;
+    let resolved;
     try {
-      instant = resolveCanonicalBirthInstant({
-        profileId: String(profile.id),
-        name: String(profile.name || 'Unnamed Profile'),
-        birthDate: String(profile.birth_date),
-        birthTime: String(profile.birth_time),
-        latitude: lat,
-        longitude: lng,
-        city: profile.birth_city ? String(profile.birth_city) : '',
-        state: profile.birth_state ? String(profile.birth_state) : null,
-        country: profile.birth_country ? String(profile.birth_country) : '',
-        ianaTimezone: resolvedIana,
+      resolved = await resolveV2DiagnosticInstantForProfile({
+        profile: profile as Record<string, unknown>,
+        ianaTimezoneOverride: overrideTz,
         dstFoldDisambiguation,
-        explicitHistoricalUtcOffsetHours:
-          typeof profile.timezone_offset === 'number' && Number.isFinite(profile.timezone_offset)
-            ? profile.timezone_offset
-            : null,
         birthTimePrecision,
         nodeConvention,
       });
@@ -3616,7 +3995,7 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
           error: err.message,
           code: err.code,
           candidates: err.candidates || [],
-          resolvedIanaTried: resolvedIana,
+          resolvedIanaTried: overrideTz,
         });
         return;
       }
@@ -3627,13 +4006,10 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
       throw err;
     }
 
+    const { instant, ianaInferenceNote } = resolved;
+
     let layerA;
     if (provider === 'astroway') {
-      const requestedSessionId =
-        typeof body.sessionId === 'string' && body.sessionId.trim()
-          ? body.sessionId.trim()
-          : '';
-      const resetSession = Boolean(body.resetSession);
       const requestedBatchSize =
         typeof body.batchSize === 'number' && Number.isFinite(body.batchSize)
           ? body.batchSize
@@ -3652,14 +4028,13 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
 
       const activeSessionId = canResume
         ? loadedSession!.sessionId
-        : requestedSessionId && !resetSession
-        ? requestedSessionId
-        : generateSessionId();
+        : preassignedSessionId || generateSessionId();
 
       const batchIndex = canResume ? loadedSession!.batchIndex + 1 : 1;
       const priorRateLimitWindowWaitMs = canResume
         ? loadedSession!.totalRateLimitWindowWaitMs
         : 0;
+      const sessionCreatedAtMs = canResume ? loadedSession!.createdAtMs : Date.now();
 
       const batched = await executeAstroWayBatchedBundle(instant, {
         apiKey,
@@ -3671,16 +4046,45 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
         batchIndex,
         priorRateLimitWindowWaitMs,
         resumedFromSession: canResume,
+        onHeartbeat: async () => {
+          await renewV2DiagnosticRunLock({
+            lockId: lock.lockId,
+            sessionId: activeSessionId,
+          });
+        },
+        onCheckpoint: async (checkpointCalls, checkpointWaitMs) => {
+          await saveAstroWayBatchSession({
+            sessionId: activeSessionId,
+            providerId: 'astroway',
+            profileId: String(profile.id),
+            profileName: String(profile.name || 'Unnamed Profile'),
+            inputFingerprint: instant.inputFingerprint,
+            includeTimezoneEquivalenceProbe,
+            batchIndex,
+            totalRateLimitWindowWaitMs: checkpointWaitMs,
+            createdAtMs: sessionCreatedAtMs,
+            updatedAtMs: Date.now(),
+            calls: checkpointCalls,
+          });
+        },
       });
 
       await saveAstroWayBatchSession({
         sessionId: activeSessionId,
         providerId: 'astroway',
+        profileId: String(profile.id),
+        profileName: String(profile.name || 'Unnamed Profile'),
         inputFingerprint: instant.inputFingerprint,
         includeTimezoneEquivalenceProbe,
         batchIndex,
+        status: batched.batchState.status,
+        remainingEligibleCount: batched.batchState.remainingEligibleCount,
+        successfulCount: batched.layerA.quotaAndPerformanceSummary.successfulCalls,
+        queuedCount: batched.layerA.quotaAndPerformanceSummary.unexecutedCalls,
+        failedCount: batched.layerA.quotaAndPerformanceSummary.failedCalls,
+        totalPlannedCount: batched.batchState.totalPlannedCount,
         totalRateLimitWindowWaitMs: batched.batchState.totalRateLimitWindowWaitMs,
-        createdAtMs: canResume ? loadedSession!.createdAtMs : Date.now(),
+        createdAtMs: sessionCreatedAtMs,
         updatedAtMs: Date.now(),
         calls: batched.updatedCalls,
       });
@@ -3693,91 +4097,27 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
         includeTimezoneEquivalenceProbe,
       });
     }
-    const layerB = buildLayerBMasterChartRecord({ instant, rawLayerA: layerA });
-    const layerC = buildLayerCAnalyticalShell(layerB);
-    const verificationReport = verifyMasterChartRecord(layerB, layerA);
-    const legacyVsV2Comparison = buildLegacyVsV2ComparisonReport({
-      profileId: String(profile.id),
-      profileName: String(profile.name || 'Unnamed Profile'),
-      legacyChartJson: profile.chart_json ?? null,
+
+    const fullResponse = assembleV2DiagnosticBundleResponse({
+      provider,
+      profile: profile as Record<string, unknown>,
+      lat,
+      lng,
       instant,
-      layerB,
-    });
-
-    const sanitizedPayload = redactSecretsDeep({
-      bundleMetadata: {
-        laboratory: 'Chart Engine Laboratory — Foundational Calculation Engine V2',
-        provider,
-        generatedAtUtc: new Date().toISOString(),
-        runtimeEnvironment:
-          typeof (globalThis as { WebSocketPair?: unknown }).WebSocketPair !== 'undefined' ||
-          (typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers')
-            ? 'cloudflare_worker'
-            : 'node_express',
-        readOnlyProfileSource: true,
-        profileMutated: false,
-        productionEngineModified: false,
-        ianaInferenceNote,
-      },
-      profileSummary: {
-        id: profile.id,
-        name: profile.name,
-        birthDate: profile.birth_date,
-        birthTime: profile.birth_time,
-        birthCity: profile.birth_city,
-        birthState: profile.birth_state,
-        birthCountry: profile.birth_country,
-        latitude: lat,
-        longitude: lng,
-        storedTimezoneOffset: profile.timezone_offset,
-        isActivated: Boolean(profile.is_activated),
-        hasLegacyChart: Boolean(profile.chart_json),
-      },
       layerA,
-      layerB,
-      layerC,
-      verificationReport,
-      legacyVsV2Comparison,
+      ianaInferenceNote,
+      startedAtMs,
+      heapBeforeBytes,
     });
 
-    const heapAfterBytes = readRuntimeHeapBytes();
-    const executionDurationMs = Math.max(0, Date.now() - startedAtMs);
-
-    const artifactSizesBytes = {
-      layerABytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerA)).length,
-      layerBBytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerB)).length,
-      layerCBytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerC)).length,
-      verificationReportBytes: v2TextEncoder.encode(
-        JSON.stringify(sanitizedPayload.verificationReport)
-      ).length,
-      legacyVsV2ComparisonBytes: v2TextEncoder.encode(
-        JSON.stringify(sanitizedPayload.legacyVsV2Comparison)
-      ).length,
-      totalResponseBytes: 0,
-    };
-
-    const heapTelemetry = summarizeRuntimeHeapTelemetry(heapBeforeBytes, heapAfterBytes);
-    const fullResponse = {
-      ...sanitizedPayload,
-      runtimeTelemetry: {
-        executionDurationMs,
-        ...heapTelemetry,
-        artifactSizesBytes,
-      },
-    };
-    fullResponse.runtimeTelemetry.artifactSizesBytes.totalResponseBytes =
-      v2TextEncoder.encode(JSON.stringify(fullResponse)).length;
-
+    // Release execution lock BEFORE sending HTTP response so immediate subsequent batch continuation never races with finally()
+    await releaseLockOnce();
     res.json(fullResponse);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'V2 diagnostic execution failed.';
     res.status(502).json({ error: message });
   } finally {
-    await releaseV2DiagnosticRunLock({
-      adminUserId: req.appUser.id,
-      profileId,
-      lockId: lock.lockId,
-    });
+    await releaseLockOnce();
   }
 });
 

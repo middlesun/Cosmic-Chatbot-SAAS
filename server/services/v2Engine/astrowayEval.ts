@@ -966,7 +966,9 @@ export function classifyAstroWayCallOutcome(params: {
   if (ok && httpStatus >= 200 && httpStatus < 300) return 'successfully_acquired';
   if (httpStatus === 429) return 'rate_limited';
   if (httpStatus === 401 || httpStatus === 402 || httpStatus === 403) return 'tier_restricted';
-  if (httpStatus === 404 || httpStatus === 405 || httpStatus === 501) return 'not_offered_by_provider';
+  if (httpStatus === 404 || httpStatus === 405 || httpStatus === 410 || httpStatus === 501) {
+    return 'not_offered_by_provider';
+  }
   return 'runtime_execution_blocked';
 }
 
@@ -982,11 +984,20 @@ export function isSettledAstroWayCall(
       attempts: call.attempts,
       errorMessage: null,
     });
-  return (
+  if (
     cls === 'successfully_acquired' ||
     cls === 'tier_restricted' ||
     cls === 'not_offered_by_provider'
-  );
+  ) {
+    return true;
+  }
+  if (cls === 'runtime_execution_blocked' && (call.attempts || 0) >= 2) {
+    return true;
+  }
+  if (cls === 'rate_limited' && (call.attempts || 0) >= 6) {
+    return true;
+  }
+  return false;
 }
 
 export function buildAstroWayProbeSpecs(
@@ -1906,7 +1917,8 @@ export function buildAstroWayLayerAFromCalls(params: {
 
   const allCallValues = Object.values(calls);
   const successfulCalls = classificationCounts.successfully_acquired;
-  const failedCalls = allCallValues.length - successfulCalls;
+  const queuedCalls = classificationCounts.not_yet_tested;
+  const failedCalls = Math.max(0, allCallValues.length - successfulCalls - queuedCalls);
   const actualHttpRequestsSent = allCallValues.reduce(
     (s, c) => s + (typeof c.attempts === 'number' ? c.attempts : 0),
     0
@@ -2011,6 +2023,11 @@ export interface ExecuteAstroWayBatchedBundleOptions {
   fetchFn?: AstroWayFetchFn;
   endpointIds?: string[];
   skipGlobalCooldown?: boolean;
+  onHeartbeat?: () => Promise<void>;
+  onCheckpoint?: (
+    calls: Record<string, SanitizedProviderCallRecord>,
+    totalRateLimitWindowWaitMs: number
+  ) => Promise<void>;
 }
 
 /**
@@ -2140,6 +2157,10 @@ export async function executeAstroWayBatchedBundle(
         break;
       }
 
+      if (executedThisBatch > 0 && executedThisBatch % 2 === 0 && options?.onHeartbeat) {
+        await options.onHeartbeat().catch(() => undefined);
+      }
+
       const appliedWait = firstCallRateWaitMs;
       firstCallRateWaitMs = 0;
 
@@ -2151,7 +2172,9 @@ export async function executeAstroWayBatchedBundle(
       subrequestsUsed++;
       executedThisBatch++;
 
+      const prevAttempts = callsMap[spec.id]?.attempts ?? 0;
       const sanitizedCall = toSanitizedCallRecord(callResult);
+      sanitizedCall.attempts = prevAttempts + callResult.attempts;
       callsMap[spec.id] = sanitizedCall;
 
       const parsedHeaders = parseAstroWayRateLimitHeaders(callResult.creditAndMetaHeaders);
@@ -2204,6 +2227,11 @@ export async function executeAstroWayBatchedBundle(
         }
         break;
       }
+
+      // Persist an intermediate checkpoint halfway through the batch so no settled calls are lost on Worker timeout
+      if (executedThisBatch === 4 && options?.onCheckpoint) {
+        await options.onCheckpoint({ ...callsMap }, totalRateLimitWindowWaitMs).catch(() => undefined);
+      }
     }
   }
 
@@ -2235,7 +2263,10 @@ export async function executeAstroWayBatchedBundle(
   const batchStatus: V2DiagnosticBatchState['status'] =
     remainingEligibleCount === 0
       ? classificationCounts.tier_restricted > 0 ||
-        classificationCounts.not_offered_by_provider > 0
+        classificationCounts.not_offered_by_provider > 0 ||
+        classificationCounts.runtime_execution_blocked > 0 ||
+        classificationCounts.rate_limited > 0 ||
+        classificationCounts.mathematical_verification_failed > 0
         ? 'completed_with_restrictions'
         : 'completed'
       : retryAfterMs > 0
@@ -2277,6 +2308,131 @@ export async function executeAstroWayBatchedBundle(
     batchState,
     updatedCalls: layerA.calls,
   };
+}
+
+/**
+ * Reconstructs a consolidated Layer A record + batchState directly from a persisted
+ * AstroWayBatchSessionRecord without issuing any outbound HTTP calls to AstroWay.
+ */
+export async function reconstructAstroWayLayerAFromSession(params: {
+  instant: CanonicalBirthInstant;
+  session: {
+    sessionId: string;
+    includeTimezoneEquivalenceProbe: boolean;
+    batchIndex: number;
+    totalRateLimitWindowWaitMs: number;
+    calls: Record<string, SanitizedProviderCallRecord>;
+  };
+  apiKeyForRedaction?: string;
+  skipGlobalCooldownRead?: boolean;
+}): Promise<{
+  layerA: LayerARawProviderRecord;
+  batchState: V2DiagnosticBatchState;
+}> {
+  const { instant, session } = params;
+  const plan = buildAstroWayChris4EvaluationPlan(instant, {
+    timeMode: instant.timezone.ianaTimezone ? 'local_iana' : 'utc',
+  });
+  const runProbe = Boolean(
+    session.includeTimezoneEquivalenceProbe && instant.timezone.ianaTimezone
+  );
+  const probeSpecs = buildAstroWayProbeSpecs(instant, runProbe);
+  const orderedSpecs = orderAstroWaySpecsForPriorityVerification(plan.requests, probeSpecs);
+  const redactKey = params.apiKeyForRedaction || 'redacted-placeholder';
+
+  const callsMap: Record<string, SanitizedProviderCallRecord> = {};
+  for (const [k, v] of Object.entries(session.calls || {})) {
+    callsMap[k] = { ...v };
+  }
+  for (const spec of orderedSpecs) {
+    if (!callsMap[spec.id]) {
+      callsMap[spec.id] = makeNotYetTestedCallRecord(spec, redactKey, 'global_supabase_cas');
+    }
+  }
+
+  const classificationCounts = emptyClassificationCounts();
+  let remainingEligibleCount = 0;
+  for (const spec of orderedSpecs) {
+    const rec = callsMap[spec.id];
+    const cls =
+      rec.acquisitionClassification ||
+      classifyAstroWayCallOutcome({
+        httpStatus: rec.httpStatus,
+        ok: rec.ok,
+        attempts: rec.attempts,
+        errorMessage: rec.errorMessage,
+      });
+    classificationCounts[cls] = (classificationCounts[cls] || 0) + 1;
+    if (!isSettledAstroWayCall(rec)) {
+      remainingEligibleCount++;
+    }
+  }
+
+  let retryAfterMs = 0;
+  let nextAvailableAtUtc: string | null = null;
+  let rateLimitResetSource: string | null = null;
+  let rateLimitLimitObserved: number | null = null;
+  let rateLimitRemainingObserved: number | null = null;
+  let coordMode: 'global_supabase_cas' | 'isolate_memory_only' = 'isolate_memory_only';
+
+  if (!params.skipGlobalCooldownRead) {
+    const globalRead = await readAstroWayGlobalRateState();
+    coordMode = globalRead.coordinationMode;
+    rateLimitResetSource = globalRead.state.reset_source;
+    rateLimitLimitObserved = globalRead.state.limit;
+    rateLimitRemainingObserved = globalRead.state.remaining_in_window;
+    const rem = globalRead.state.window_reset_ms - Date.now();
+    if (rem > 2_500) {
+      retryAfterMs = rem;
+      nextAvailableAtUtc = new Date(globalRead.state.window_reset_ms).toISOString();
+    }
+  }
+
+  const batchStatus: V2DiagnosticBatchState['status'] =
+    remainingEligibleCount === 0
+      ? classificationCounts.tier_restricted > 0 ||
+        classificationCounts.not_offered_by_provider > 0 ||
+        classificationCounts.runtime_execution_blocked > 0 ||
+        classificationCounts.rate_limited > 0 ||
+        classificationCounts.mathematical_verification_failed > 0
+        ? 'completed_with_restrictions'
+        : 'completed'
+      : retryAfterMs > 0
+      ? 'waiting_rate_limit'
+      : 'paused_partial';
+
+  const batchState: V2DiagnosticBatchState = {
+    sessionId: session.sessionId,
+    status: batchStatus,
+    batchIndex: session.batchIndex,
+    batchSize: 8,
+    totalPlannedCount: orderedSpecs.length,
+    executedThisBatch: 0,
+    remainingEligibleCount,
+    retryAfterMs,
+    nextAvailableAtUtc,
+    rateLimitResetSource,
+    rateLimitLimitObserved,
+    rateLimitRemainingObserved,
+    totalRateLimitWindowWaitMs: session.totalRateLimitWindowWaitMs || 0,
+    classificationCounts,
+    haltedReason:
+      remainingEligibleCount === 0
+        ? 'Recovered completed session from persisted store.'
+        : `Recovered interrupted session (${classificationCounts.successfully_acquired} acquired, ${classificationCounts.not_yet_tested} queued, ${remainingEligibleCount} remaining). Ready to resume without re-calling settled endpoints.`,
+    resumedFromSession: true,
+  };
+
+  const layerA = buildAstroWayLayerAFromCalls({
+    instant,
+    orderedSpecs,
+    callsMap,
+    batchState,
+    totalRateLimitWindowWaitMs: session.totalRateLimitWindowWaitMs || 0,
+    coordinationModesObserved: [coordMode],
+  });
+
+  return { layerA, batchState };
 }
 
 /**

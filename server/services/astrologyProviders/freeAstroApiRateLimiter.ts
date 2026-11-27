@@ -19,6 +19,8 @@ const DIAGNOSTIC_LOCK_SETTINGS_KEY = 'lock:v2_diagnostic_run';
 const DEFAULT_MIN_INTERVAL_MS = 1150;
 const CAS_MAX_ATTEMPTS = 8;
 const LOCK_TTL_MS = 45_000;
+const STALE_HEARTBEAT_MS = 20_000;
+const SAME_SESSION_ACTIVE_HEARTBEAT_MS = 3_000;
 
 export type RateLimitCoordinationMode = 'global_supabase_cas' | 'isolate_memory_only';
 
@@ -35,17 +37,46 @@ interface RateLimitLeaseRecord {
   updated_at_ms: number;
 }
 
-interface DiagnosticLockRecord {
+export interface DiagnosticLockRecord {
   lock_id: string;
   owner_id: string;
   profile_id: string;
+  session_id: string | null;
+  provider: string;
+  status: 'running' | 'released';
   expires_at_ms: number;
+  heartbeat_at_ms: number;
   acquired_at_iso: string;
+  released_at_iso?: string | null;
+}
+
+interface IsolateLockEntry {
+  lockId: string;
+  ownerId: string;
+  profileId: string;
+  sessionId: string | null;
+  provider: string;
+  expiresAtMs: number;
+  heartbeatAtMs: number;
 }
 
 let isolateQueueTail: Promise<unknown> = Promise.resolve();
 let isolateNextAvailableMs = 0;
-const activeIsolateDiagnosticKeys = new Set<string>();
+const activeIsolateDiagnosticLocks = new Map<string, IsolateLockEntry>();
+let testClockOffsetMs = 0;
+
+function currentNowMs(): number {
+  return Date.now() + testClockOffsetMs;
+}
+
+export function setV2DiagnosticLockClockOffsetForTests(offsetMs: number): void {
+  testClockOffsetMs = offsetMs;
+}
+
+export function resetV2DiagnosticLockForTests(): void {
+  activeIsolateDiagnosticLocks.clear();
+  testClockOffsetMs = 0;
+}
 
 function sleep(ms: number): Promise<void> {
   if (ms <= 0) return Promise.resolve();
@@ -249,96 +280,338 @@ export async function reportFreeAstroApi429Backoff(backoffMs: number): Promise<v
   }
 }
 
-export async function acquireV2DiagnosticRunLock(params: {
+function pruneStaleIsolateLocks(now: number): boolean {
+  let prunedAny = false;
+  for (const [id, entry] of activeIsolateDiagnosticLocks.entries()) {
+    if (entry.expiresAtMs <= now || now - entry.heartbeatAtMs > STALE_HEARTBEAT_MS) {
+      activeIsolateDiagnosticLocks.delete(id);
+      prunedAny = true;
+    }
+  }
+  return prunedAny;
+}
+
+function isLockStaleOrReleased(prev: Partial<DiagnosticLockRecord>, now: number): boolean {
+  const prevLockId = typeof prev.lock_id === 'string' ? prev.lock_id.trim() : '';
+  if (!prevLockId || prev.status === 'released') return true;
+  const prevExpires = Number(prev.expires_at_ms || 0);
+  if (!Number.isFinite(prevExpires) || prevExpires <= now) return true;
+  const prevHeartbeat = Number(prev.heartbeat_at_ms || 0);
+  if (Number.isFinite(prevHeartbeat) && prevHeartbeat > 0 && now - prevHeartbeat > STALE_HEARTBEAT_MS) {
+    return true;
+  }
+  return false;
+}
+
+export interface AcquireV2DiagnosticLockParams {
   adminUserId: string;
   profileId: string;
-}): Promise<{ acquired: boolean; lockId: string | null; reason?: string }> {
-  const isolateKey = `${params.adminUserId}:${params.profileId}`;
-  if (activeIsolateDiagnosticKeys.has(isolateKey) || activeIsolateDiagnosticKeys.size > 0) {
-    return {
-      acquired: false,
-      lockId: null,
-      reason: 'A V2 Engine diagnostic bundle run is already in progress. Please wait for it to finish.',
-    };
+  sessionId?: string | null;
+  provider?: string;
+  allowSameSessionResume?: boolean;
+  lockTtlMs?: number;
+}
+
+export interface AcquireV2DiagnosticLockResult {
+  acquired: boolean;
+  lockId: string | null;
+  recoveredStaleLock?: boolean;
+  retryAfterMs?: number;
+  code?: 'DIAGNOSTIC_RUN_IN_PROGRESS' | 'SAME_SESSION_BATCH_IN_PROGRESS';
+  reason?: string;
+}
+
+export async function acquireV2DiagnosticRunLock(
+  params: AcquireV2DiagnosticLockParams
+): Promise<AcquireV2DiagnosticLockResult> {
+  const requestedSessionId =
+    typeof params.sessionId === 'string' && params.sessionId.trim()
+      ? params.sessionId.trim()
+      : null;
+  const provider = params.provider || 'freeastroapi';
+  const ttlMs = Math.max(10_000, params.lockTtlMs ?? LOCK_TTL_MS);
+
+  // Brief settle retry if the same session's previous batch is still flushing its release
+  const maxIsolateChecks = requestedSessionId ? 3 : 1;
+  let recoveredIsolateStale = false;
+
+  for (let check = 0; check < maxIsolateChecks; check++) {
+    const now = currentNowMs();
+    if (pruneStaleIsolateLocks(now)) {
+      recoveredIsolateStale = true;
+    }
+
+    const activeEntries = Array.from(activeIsolateDiagnosticLocks.values());
+    if (activeEntries.length === 0) break;
+
+    const sameSessionEntry = requestedSessionId
+      ? activeEntries.find((e) => e.sessionId === requestedSessionId)
+      : undefined;
+    const otherEntry = activeEntries.find(
+      (e) => !requestedSessionId || e.sessionId !== requestedSessionId
+    );
+
+    if (otherEntry) {
+      const remainingMs = Math.max(2000, otherEntry.expiresAtMs - now);
+      return {
+        acquired: false,
+        lockId: null,
+        retryAfterMs: remainingMs,
+        code: 'DIAGNOSTIC_RUN_IN_PROGRESS',
+        reason: `Another V2 Engine diagnostic run (${otherEntry.provider}) is currently in progress. Please wait for it to finish.`,
+      };
+    }
+
+    if (sameSessionEntry) {
+      const hbAgeMs = now - sameSessionEntry.heartbeatAtMs;
+      const canTakeover =
+        params.allowSameSessionResume && hbAgeMs >= SAME_SESSION_ACTIVE_HEARTBEAT_MS;
+      if (canTakeover) {
+        activeIsolateDiagnosticLocks.delete(sameSessionEntry.lockId);
+        recoveredIsolateStale = true;
+        break;
+      }
+      if (check < maxIsolateChecks - 1) {
+        await sleep(300);
+        continue;
+      }
+      return {
+        acquired: false,
+        lockId: null,
+        retryAfterMs: 3500,
+        code: 'SAME_SESSION_BATCH_IN_PROGRESS',
+        reason: `Batch for diagnostic session ${requestedSessionId} is still finishing. Retrying momentarily.`,
+      };
+    }
   }
 
   const lockId = randomToken();
-  activeIsolateDiagnosticKeys.add(isolateKey);
+  const nowInitial = currentNowMs();
+  const isolateEntry: IsolateLockEntry = {
+    lockId,
+    ownerId: params.adminUserId,
+    profileId: params.profileId,
+    sessionId: requestedSessionId,
+    provider,
+    expiresAtMs: nowInitial + ttlMs,
+    heartbeatAtMs: nowInitial,
+  };
+  activeIsolateDiagnosticLocks.set(lockId, isolateEntry);
 
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin) {
-    return { acquired: true, lockId };
+    return {
+      acquired: true,
+      lockId,
+      ...(recoveredIsolateStale ? { recoveredStaleLock: true } : {}),
+    };
   }
 
   try {
-    const now = Date.now();
+    const maxAttempts = requestedSessionId ? 4 : 1;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const now = currentNowMs();
+      const { data: existingRow } = await supabaseAdmin
+        .from('platform_settings')
+        .select('value_json')
+        .eq('key', DIAGNOSTIC_LOCK_SETTINGS_KEY)
+        .maybeSingle();
+
+      const lockRecord: DiagnosticLockRecord = {
+        lock_id: lockId,
+        owner_id: params.adminUserId,
+        profile_id: params.profileId,
+        session_id: requestedSessionId,
+        provider,
+        status: 'running',
+        expires_at_ms: now + ttlMs,
+        heartbeat_at_ms: now,
+        acquired_at_iso: new Date(now).toISOString(),
+        released_at_iso: null,
+      };
+
+      if (!existingRow) {
+        const { error: insErr } = await supabaseAdmin.from('platform_settings').insert({
+          key: DIAGNOSTIC_LOCK_SETTINGS_KEY,
+          value_json: lockRecord,
+          updated_at: new Date(now).toISOString(),
+        });
+        if (insErr) {
+          if (attempt < maxAttempts - 1) {
+            await sleep(250);
+            continue;
+          }
+          activeIsolateDiagnosticLocks.delete(lockId);
+          return {
+            acquired: false,
+            lockId: null,
+            retryAfterMs: 4000,
+            code: 'DIAGNOSTIC_RUN_IN_PROGRESS',
+            reason:
+              'Another V2 Engine diagnostic run is currently acquiring provider data. Please retry in a few seconds.',
+          };
+        }
+        return {
+          acquired: true,
+          lockId,
+          ...(recoveredIsolateStale ? { recoveredStaleLock: true } : {}),
+        };
+      }
+
+      const prev = (existingRow.value_json || {}) as Partial<DiagnosticLockRecord>;
+      const prevLockId = typeof prev.lock_id === 'string' ? prev.lock_id : '';
+      const prevSessionId =
+        typeof prev.session_id === 'string' && prev.session_id.trim()
+          ? prev.session_id.trim()
+          : null;
+      const prevHeartbeat = Number(prev.heartbeat_at_ms || 0);
+      const staleOrReleased = isLockStaleOrReleased(prev, now);
+      const sameSession = Boolean(requestedSessionId && prevSessionId === requestedSessionId);
+
+      if (!staleOrReleased) {
+        if (!sameSession) {
+          activeIsolateDiagnosticLocks.delete(lockId);
+          return {
+            acquired: false,
+            lockId: null,
+            retryAfterMs: Math.max(3000, Math.min(20_000, Number(prev.expires_at_ms || now) - now)),
+            code: 'DIAGNOSTIC_RUN_IN_PROGRESS',
+            reason: `Another V2 Engine diagnostic run (${prev.provider || 'active'}) is currently in progress across the server. Please wait for it to complete.`,
+          };
+        }
+
+        // Same session still shows a live row: allow brief wait for release or takeover if manual resume & stale heartbeat
+        const hbAgeMs = prevHeartbeat > 0 ? now - prevHeartbeat : STALE_HEARTBEAT_MS + 1;
+        const canTakeoverSameSession =
+          params.allowSameSessionResume &&
+          prev.owner_id === params.adminUserId &&
+          hbAgeMs >= SAME_SESSION_ACTIVE_HEARTBEAT_MS;
+
+        if (!canTakeoverSameSession) {
+          if (attempt < maxAttempts - 1) {
+            await sleep(350);
+            continue;
+          }
+          activeIsolateDiagnosticLocks.delete(lockId);
+          return {
+            acquired: false,
+            lockId: null,
+            retryAfterMs: 3500,
+            code: 'SAME_SESSION_BATCH_IN_PROGRESS',
+            reason:
+              'The previous batch for this diagnostic session is still completing on the server. Retrying shortly.',
+          };
+        }
+      }
+
+      const recoveredStale =
+        recoveredIsolateStale ||
+        Boolean(prevLockId && prev.status !== 'released' && (staleOrReleased || sameSession));
+
+      const updateQuery = supabaseAdmin
+        .from('platform_settings')
+        .update({
+          value_json: lockRecord,
+          updated_at: new Date(now).toISOString(),
+        })
+        .eq('key', DIAGNOSTIC_LOCK_SETTINGS_KEY);
+
+      const { data: updatedRows, error: updErr } = prevLockId
+        ? await updateQuery.eq('value_json->>lock_id', prevLockId).select('key')
+        : await updateQuery.select('key');
+
+      if (updErr || !Array.isArray(updatedRows) || updatedRows.length === 0) {
+        if (attempt < maxAttempts - 1) {
+          await sleep(250);
+          continue;
+        }
+        activeIsolateDiagnosticLocks.delete(lockId);
+        return {
+          acquired: false,
+          lockId: null,
+          retryAfterMs: 4000,
+          code: 'DIAGNOSTIC_RUN_IN_PROGRESS',
+          reason:
+            'Concurrent V2 Engine diagnostic submission detected. Please wait for the active run to complete.',
+        };
+      }
+
+      return {
+        acquired: true,
+        lockId,
+        ...(recoveredStale ? { recoveredStaleLock: true } : {}),
+      };
+    }
+
+    activeIsolateDiagnosticLocks.delete(lockId);
+    return {
+      acquired: false,
+      lockId: null,
+      retryAfterMs: 4000,
+      code: 'DIAGNOSTIC_RUN_IN_PROGRESS',
+      reason: 'Unable to acquire V2 diagnostic execution lock after retries.',
+    };
+  } catch {
+    return { acquired: true, lockId };
+  }
+}
+
+export async function renewV2DiagnosticRunLock(params: {
+  lockId: string | null;
+  sessionId?: string | null;
+  extendMs?: number;
+}): Promise<boolean> {
+  if (!params.lockId) return false;
+  const now = currentNowMs();
+  const extendMs = Math.max(10_000, params.extendMs ?? LOCK_TTL_MS);
+
+  const memEntry = activeIsolateDiagnosticLocks.get(params.lockId);
+  if (memEntry) {
+    memEntry.heartbeatAtMs = now;
+    memEntry.expiresAtMs = now + extendMs;
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) return Boolean(memEntry);
+
+  try {
     const { data: existingRow } = await supabaseAdmin
       .from('platform_settings')
       .select('value_json')
       .eq('key', DIAGNOSTIC_LOCK_SETTINGS_KEY)
       .maybeSingle();
 
-    const lockRecord: DiagnosticLockRecord = {
-      lock_id: lockId,
-      owner_id: params.adminUserId,
-      profile_id: params.profileId,
-      expires_at_ms: now + LOCK_TTL_MS,
-      acquired_at_iso: new Date(now).toISOString(),
+    const prev = (existingRow?.value_json || {}) as Partial<DiagnosticLockRecord>;
+    if (prev.lock_id !== params.lockId || prev.status === 'released') {
+      return false;
+    }
+
+    const renewed: DiagnosticLockRecord = {
+      lock_id: params.lockId,
+      owner_id: String(prev.owner_id || ''),
+      profile_id: String(prev.profile_id || ''),
+      session_id: params.sessionId ?? prev.session_id ?? null,
+      provider: String(prev.provider || 'astroway'),
+      status: 'running',
+      expires_at_ms: now + extendMs,
+      heartbeat_at_ms: now,
+      acquired_at_iso: String(prev.acquired_at_iso || new Date(now).toISOString()),
+      released_at_iso: null,
     };
 
-    if (!existingRow) {
-      const { error: insErr } = await supabaseAdmin.from('platform_settings').insert({
-        key: DIAGNOSTIC_LOCK_SETTINGS_KEY,
-        value_json: lockRecord,
-        updated_at: new Date(now).toISOString(),
-      });
-      if (insErr) {
-        activeIsolateDiagnosticKeys.delete(isolateKey);
-        return {
-          acquired: false,
-          lockId: null,
-          reason: 'Another V2 Engine diagnostic run is currently acquiring provider data. Please retry in a few seconds.',
-        };
-      }
-      return { acquired: true, lockId };
-    }
-
-    const prev = (existingRow.value_json || {}) as Partial<DiagnosticLockRecord>;
-    const prevExpires = Number(prev.expires_at_ms || 0);
-    const prevLockId = typeof prev.lock_id === 'string' ? prev.lock_id : '';
-    if (prevLockId && prevExpires > now) {
-      activeIsolateDiagnosticKeys.delete(isolateKey);
-      return {
-        acquired: false,
-        lockId: null,
-        reason: 'Another V2 Engine diagnostic run is currently in progress across the server. Please wait for it to complete.',
-      };
-    }
-
-    const updateQuery = supabaseAdmin
+    const { data: updatedRows, error } = await supabaseAdmin
       .from('platform_settings')
       .update({
-        value_json: lockRecord,
+        value_json: renewed,
         updated_at: new Date(now).toISOString(),
       })
-      .eq('key', DIAGNOSTIC_LOCK_SETTINGS_KEY);
+      .eq('key', DIAGNOSTIC_LOCK_SETTINGS_KEY)
+      .eq('value_json->>lock_id', params.lockId)
+      .select('key');
 
-    const { data: updatedRows, error: updErr } = prevLockId
-      ? await updateQuery.eq('value_json->>lock_id', prevLockId).select('key')
-      : await updateQuery.select('key');
-
-    if (updErr || !Array.isArray(updatedRows) || updatedRows.length === 0) {
-      activeIsolateDiagnosticKeys.delete(isolateKey);
-      return {
-        acquired: false,
-        lockId: null,
-        reason: 'Concurrent V2 Engine diagnostic submission detected. Please wait for the active run to complete.',
-      };
-    }
-
-    return { acquired: true, lockId };
+    return !error && Array.isArray(updatedRows) && updatedRows.length > 0;
   } catch {
-    return { acquired: true, lockId };
+    return Boolean(memEntry);
   }
 }
 
@@ -346,29 +619,40 @@ export async function releaseV2DiagnosticRunLock(params: {
   adminUserId: string;
   profileId: string;
   lockId: string | null;
+  sessionId?: string | null;
 }): Promise<void> {
-  activeIsolateDiagnosticKeys.delete(`${params.adminUserId}:${params.profileId}`);
+  if (params.lockId) {
+    activeIsolateDiagnosticLocks.delete(params.lockId);
+  }
   if (!params.lockId) return;
 
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin) return;
 
+  const now = currentNowMs();
   try {
+    const releasedRecord: DiagnosticLockRecord = {
+      lock_id: '',
+      owner_id: params.adminUserId,
+      profile_id: params.profileId,
+      session_id: params.sessionId ?? null,
+      provider: '',
+      status: 'released',
+      expires_at_ms: 0,
+      heartbeat_at_ms: now,
+      acquired_at_iso: '',
+      released_at_iso: new Date(now).toISOString(),
+    };
     await supabaseAdmin
       .from('platform_settings')
       .update({
-        value_json: {
-          lock_id: '',
-          owner_id: '',
-          profile_id: '',
-          expires_at_ms: 0,
-          acquired_at_iso: '',
-        },
-        updated_at: new Date().toISOString(),
+        value_json: releasedRecord,
+        updated_at: new Date(now).toISOString(),
       })
       .eq('key', DIAGNOSTIC_LOCK_SETTINGS_KEY)
       .eq('value_json->>lock_id', params.lockId);
   } catch {
-    // TTL safety expiry handles stale lock if release fails
+    // TTL + stale heartbeat safety expiry handles stale lock if release fails
   }
 }
+

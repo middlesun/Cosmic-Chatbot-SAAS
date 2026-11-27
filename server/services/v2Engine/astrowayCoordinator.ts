@@ -15,11 +15,11 @@
 
 import { getSupabaseAdmin } from '../../lib/supabaseAdmin';
 import type { RateLimitCoordinationMode } from '../astrologyProviders/freeAstroApiRateLimiter';
-import type { SanitizedProviderCallRecord } from './types';
+import type { SanitizedProviderCallRecord, V2DiagnosticBatchState } from './types';
 
 const ASTROWAY_RATE_LIMIT_KEY = 'rate_limit:astroway';
 const ASTROWAY_SESSION_PREFIX = 'v2_diag_session:';
-const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_RATE_WAIT_CLAMP_MS = 180_000;
 
 export interface AstroWayRateLimitState {
@@ -35,13 +35,42 @@ export interface AstroWayRateLimitState {
 export interface AstroWayBatchSessionRecord {
   sessionId: string;
   providerId: 'astroway';
+  profileId?: string;
+  profileName?: string;
   inputFingerprint: string;
   includeTimezoneEquivalenceProbe: boolean;
   batchIndex: number;
+  status?: V2DiagnosticBatchState['status'];
+  remainingEligibleCount?: number;
+  successfulCount?: number;
+  queuedCount?: number;
+  failedCount?: number;
+  totalPlannedCount?: number;
   totalRateLimitWindowWaitMs: number;
   createdAtMs: number;
   updatedAtMs: number;
   calls: Record<string, SanitizedProviderCallRecord>;
+}
+
+export interface AstroWaySessionSummary {
+  sessionId: string;
+  providerId: 'astroway';
+  profileId: string | null;
+  profileName: string | null;
+  inputFingerprint: string;
+  includeTimezoneEquivalenceProbe: boolean;
+  batchIndex: number;
+  status: V2DiagnosticBatchState['status'];
+  totalPlannedCount: number;
+  successfulCount: number;
+  queuedCount: number;
+  failedCount: number;
+  remainingEligibleCount: number;
+  totalRateLimitWindowWaitMs: number;
+  createdAtMs: number;
+  updatedAtMs: number;
+  matchesFingerprint: boolean;
+  matchesProfileId: boolean;
 }
 
 let isolateRateState: AstroWayRateLimitState = {
@@ -208,22 +237,16 @@ export async function writeAstroWayGlobalRateState(
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin) return 'isolate_memory_only';
   try {
-    const { data: existing } = await supabaseAdmin
-      .from('platform_settings')
-      .select('key')
-      .eq('key', ASTROWAY_RATE_LIMIT_KEY)
-      .maybeSingle();
-    const nowIso = new Date().toISOString();
-    if (existing) {
-      const { error } = await supabaseAdmin
-        .from('platform_settings')
-        .update({ value_json: next, updated_at: nowIso })
-        .eq('key', ASTROWAY_RATE_LIMIT_KEY);
-      return error ? 'isolate_memory_only' : 'global_supabase_cas';
-    }
     const { error } = await supabaseAdmin
       .from('platform_settings')
-      .insert({ key: ASTROWAY_RATE_LIMIT_KEY, value_json: next, updated_at: nowIso });
+      .upsert(
+        {
+          key: ASTROWAY_RATE_LIMIT_KEY,
+          value_json: next,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'key' }
+      );
     return error ? 'isolate_memory_only' : 'global_supabase_cas';
   } catch {
     return 'isolate_memory_only';
@@ -242,6 +265,10 @@ export async function resetAstroWayIsolateRateStateForTests(): Promise<void> {
   };
 }
 
+export function resetAstroWayIsolateSessionsForTests(): void {
+  isolateSessions.clear();
+}
+
 export function generateSessionId(): string {
   try {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -251,6 +278,75 @@ export function generateSessionId(): string {
     // fallback
   }
   return `aw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function summarizeAstroWaySessionRecord(
+  rec: AstroWayBatchSessionRecord,
+  matchOptions?: { inputFingerprint?: string | null; profileId?: string | null }
+): AstroWaySessionSummary {
+  const callValues = Object.values(rec.calls || {});
+  let successfulCount = 0;
+  let queuedCount = 0;
+  let failedCount = 0;
+  let remainingEligibleCount = 0;
+
+  for (const c of callValues) {
+    const cls = c.acquisitionClassification;
+    if (cls === 'successfully_acquired' || (c.ok && c.httpStatus >= 200 && c.httpStatus < 300)) {
+      successfulCount++;
+    } else if (cls === 'not_yet_tested' || c.attempts === 0) {
+      queuedCount++;
+      remainingEligibleCount++;
+    } else {
+      failedCount++;
+      const settled =
+        cls === 'tier_restricted' ||
+        cls === 'not_offered_by_provider' ||
+        (cls === 'runtime_execution_blocked' && (c.attempts || 0) >= 2) ||
+        (cls === 'rate_limited' && (c.attempts || 0) >= 6);
+      if (!settled) {
+        remainingEligibleCount++;
+      }
+    }
+  }
+
+  const totalPlannedCount = rec.totalPlannedCount ?? callValues.length;
+  const computedRemaining =
+    typeof rec.remainingEligibleCount === 'number'
+      ? rec.remainingEligibleCount
+      : remainingEligibleCount;
+  const status: V2DiagnosticBatchState['status'] =
+    rec.status ??
+    (computedRemaining === 0
+      ? failedCount > 0
+        ? 'completed_with_restrictions'
+        : 'completed'
+      : 'paused_partial');
+
+  return {
+    sessionId: rec.sessionId,
+    providerId: 'astroway',
+    profileId: rec.profileId ?? null,
+    profileName: rec.profileName ?? null,
+    inputFingerprint: rec.inputFingerprint,
+    includeTimezoneEquivalenceProbe: Boolean(rec.includeTimezoneEquivalenceProbe),
+    batchIndex: Number(rec.batchIndex || 1),
+    status,
+    totalPlannedCount,
+    successfulCount: typeof rec.successfulCount === 'number' ? rec.successfulCount : successfulCount,
+    queuedCount: typeof rec.queuedCount === 'number' ? rec.queuedCount : queuedCount,
+    failedCount: typeof rec.failedCount === 'number' ? rec.failedCount : failedCount,
+    remainingEligibleCount: computedRemaining,
+    totalRateLimitWindowWaitMs: Number(rec.totalRateLimitWindowWaitMs || 0),
+    createdAtMs: Number(rec.createdAtMs || rec.updatedAtMs || Date.now()),
+    updatedAtMs: Number(rec.updatedAtMs || Date.now()),
+    matchesFingerprint: Boolean(
+      matchOptions?.inputFingerprint && rec.inputFingerprint === matchOptions.inputFingerprint
+    ),
+    matchesProfileId: Boolean(
+      matchOptions?.profileId && rec.profileId && rec.profileId === matchOptions.profileId
+    ),
+  };
 }
 
 export async function loadAstroWayBatchSession(
@@ -286,8 +382,19 @@ export async function loadAstroWayBatchSession(
 
 export async function saveAstroWayBatchSession(
   record: AstroWayBatchSessionRecord
-): Promise<void> {
-  isolateSessions.set(record.sessionId, record);
+): Promise<{ savedToDb: boolean; error?: string }> {
+  const summary = summarizeAstroWaySessionRecord(record);
+  const enrichedRecord: AstroWayBatchSessionRecord = {
+    ...record,
+    status: record.status ?? summary.status,
+    remainingEligibleCount: record.remainingEligibleCount ?? summary.remainingEligibleCount,
+    successfulCount: record.successfulCount ?? summary.successfulCount,
+    queuedCount: record.queuedCount ?? summary.queuedCount,
+    failedCount: record.failedCount ?? summary.failedCount,
+    totalPlannedCount: record.totalPlannedCount ?? summary.totalPlannedCount,
+  };
+
+  isolateSessions.set(enrichedRecord.sessionId, enrichedRecord);
 
   // Prune stale isolate sessions
   const cutoff = Date.now() - SESSION_TTL_MS;
@@ -296,27 +403,115 @@ export async function saveAstroWayBatchSession(
   }
 
   const supabaseAdmin = getSupabaseAdmin();
-  if (!supabaseAdmin) return;
+  if (!supabaseAdmin) return { savedToDb: false };
 
-  const key = `${ASTROWAY_SESSION_PREFIX}${record.sessionId}`;
+  const key = `${ASTROWAY_SESSION_PREFIX}${enrichedRecord.sessionId}`;
   const nowIso = new Date().toISOString();
   try {
-    const { data: existing } = await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from('platform_settings')
-      .select('key')
-      .eq('key', key)
-      .maybeSingle();
-    if (existing) {
-      await supabaseAdmin
-        .from('platform_settings')
-        .update({ value_json: record, updated_at: nowIso })
-        .eq('key', key);
-    } else {
-      await supabaseAdmin
-        .from('platform_settings')
-        .insert({ key, value_json: record, updated_at: nowIso });
+      .upsert(
+        {
+          key,
+          value_json: enrichedRecord,
+          updated_at: nowIso,
+        },
+        { onConflict: 'key' }
+      );
+    if (error) {
+      return { savedToDb: false, error: error.message };
     }
-  } catch {
-    // Non-fatal: isolate store retains session
+    return { savedToDb: true };
+  } catch (err) {
+    return {
+      savedToDb: false,
+      error: err instanceof Error ? err.message : 'Failed to persist AstroWay batch session',
+    };
   }
 }
+
+export async function deleteAstroWayBatchSession(sessionId: string): Promise<void> {
+  const cleanId = sessionId.trim();
+  if (!cleanId) return;
+  isolateSessions.delete(cleanId);
+
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) return;
+  try {
+    await supabaseAdmin
+      .from('platform_settings')
+      .delete()
+      .eq('key', `${ASTROWAY_SESSION_PREFIX}${cleanId}`);
+  } catch {
+    // Non-fatal
+  }
+}
+
+export async function listResumableAstroWaySessions(options?: {
+  profileId?: string | null;
+  inputFingerprint?: string | null;
+  includeCompleted?: boolean;
+}): Promise<AstroWaySessionSummary[]> {
+  const byId = new Map<string, AstroWayBatchSessionRecord>();
+  const cutoff = Date.now() - SESSION_TTL_MS;
+
+  for (const rec of isolateSessions.values()) {
+    if (rec && rec.sessionId && Number(rec.updatedAtMs || 0) >= cutoff) {
+      byId.set(rec.sessionId, rec);
+    }
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('platform_settings')
+        .select('key, value_json')
+        .like('key', `${ASTROWAY_SESSION_PREFIX}%`)
+        .order('updated_at', { ascending: false })
+        .limit(20);
+
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          const rec = row?.value_json as AstroWayBatchSessionRecord | undefined;
+          if (
+            rec &&
+            typeof rec.sessionId === 'string' &&
+            rec.sessionId &&
+            Number(rec.updatedAtMs || 0) >= cutoff
+          ) {
+            const existing = byId.get(rec.sessionId);
+            if (!existing || Number(rec.updatedAtMs || 0) >= Number(existing.updatedAtMs || 0)) {
+              byId.set(rec.sessionId, rec);
+              isolateSessions.set(rec.sessionId, rec);
+            }
+          }
+        }
+      }
+    } catch {
+      // Fall back to isolate sessions if query fails
+    }
+  }
+
+  const summaries: AstroWaySessionSummary[] = [];
+  for (const rec of byId.values()) {
+    const summary = summarizeAstroWaySessionRecord(rec, {
+      inputFingerprint: options?.inputFingerprint,
+      profileId: options?.profileId,
+    });
+    if (!options?.includeCompleted && summary.remainingEligibleCount <= 0) {
+      continue;
+    }
+    summaries.push(summary);
+  }
+
+  summaries.sort((a, b) => {
+    const aMatch = (a.matchesProfileId ? 2 : 0) + (a.matchesFingerprint ? 1 : 0);
+    const bMatch = (b.matchesProfileId ? 2 : 0) + (b.matchesFingerprint ? 1 : 0);
+    if (bMatch !== aMatch) return bMatch - aMatch;
+    return b.updatedAtMs - a.updatedAtMs;
+  });
+
+  return summaries;
+}
+
