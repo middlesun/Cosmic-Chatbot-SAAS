@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import dotenv from 'dotenv';
 import {
   acquireV2NatalBundle,
   assessChartJsonDefects,
@@ -19,18 +20,32 @@ import {
   buildAndValidateV2Requests,
   buildLayerBMasterChartRecord,
   buildLayerCAnalyticalShell,
+  buildLegacyVsV2ComparisonReport,
   computeIndependentAstronomicalReference,
   getFreeAstroApiKey,
   getFreeAstroApiSecretStatus,
-  loadLocalEnvFilesIfPresent,
   READ_ONLY_SUPABASE_DIAGNOSTIC_SQL,
   redactSecretsDeep,
   resolveCanonicalBirthInstant,
   verify12CuspSequence,
   verifyMasterChartRecord,
   type CanonicalBirthInput,
+  type LayerARawProviderRecord,
 } from '../server/services/v2Engine';
 import { getNakshatraAndSubs } from '../server/services/jyotishMath';
+
+function loadLocalEnvFilesForCli(): { loadedFiles: string[] } {
+  const cwd = process.cwd();
+  const loadedFiles: string[] = [];
+  for (const name of ['.env.local', '.env']) {
+    const abs = path.resolve(cwd, name);
+    if (fs.existsSync(abs)) {
+      dotenv.config({ path: abs, override: false });
+      loadedFiles.push(name);
+    }
+  }
+  return { loadedFiles };
+}
 
 interface RegressionFixture {
   id: string;
@@ -159,7 +174,7 @@ function assert(cond: boolean, msg: string): void {
 
 async function main() {
   const requireLive = process.argv.includes('--require-live');
-  const envLoad = loadLocalEnvFilesIfPresent();
+  const envLoad = loadLocalEnvFilesForCli();
   const secretStatus = getFreeAstroApiSecretStatus();
 
   console.log('====================================================================');
@@ -276,10 +291,186 @@ async function main() {
   assert(threwTzError, 'Expected BirthInstantTimezoneError when timezone is omitted.');
   regressionResults.push({ id: 'no_silent_utc_default_guardrail', status: 'PASSED' });
 
-  // 4. Read-Only Existing Profile Defect Audit on Local Fixtures
+  // 3b. DST Spring-Forward Nonexistent Time & Fall-Back Ambiguous Fold Tests
+  let threwNonexistent = false;
+  try {
+    resolveCanonicalBirthInstant({
+      name: 'DST Gap (America/New_York)',
+      birthDate: '2024-03-10',
+      birthTime: '02:30:00',
+      latitude: 40.7128,
+      longitude: -74.006,
+      ianaTimezone: 'America/New_York',
+    });
+  } catch (err) {
+    threwNonexistent =
+      err instanceof BirthInstantTimezoneError && err.code === 'NONEXISTENT_LOCAL_TIME';
+  }
+  assert(threwNonexistent, 'Expected NONEXISTENT_LOCAL_TIME for 2024-03-10 02:30 America/New_York');
+
+  let threwAmbiguousWithCandidates = false;
+  try {
+    resolveCanonicalBirthInstant({
+      name: 'DST Fold (America/New_York)',
+      birthDate: '2024-11-03',
+      birthTime: '01:30:00',
+      latitude: 40.7128,
+      longitude: -74.006,
+      ianaTimezone: 'America/New_York',
+    });
+  } catch (err) {
+    threwAmbiguousWithCandidates =
+      err instanceof BirthInstantTimezoneError &&
+      err.code === 'AMBIGUOUS_LOCAL_TIME' &&
+      Array.isArray(err.candidates) &&
+      err.candidates.length === 2;
+  }
+  assert(
+    threwAmbiguousWithCandidates,
+    'Expected AMBIGUOUS_LOCAL_TIME with 2 candidates for 2024-11-03 01:30 America/New_York'
+  );
+
+  const foldEarlier = resolveCanonicalBirthInstant({
+    name: 'DST Fold Earlier',
+    birthDate: '2024-11-03',
+    birthTime: '01:30:00',
+    latitude: 40.7128,
+    longitude: -74.006,
+    ianaTimezone: 'America/New_York',
+    dstFoldDisambiguation: 'earlier_occurrence',
+  });
+  const foldLater = resolveCanonicalBirthInstant({
+    name: 'DST Fold Later',
+    birthDate: '2024-11-03',
+    birthTime: '01:30:00',
+    latitude: 40.7128,
+    longitude: -74.006,
+    ianaTimezone: 'America/New_York',
+    dstFoldDisambiguation: 'later_occurrence',
+  });
+  assert(
+    foldEarlier.utc.iso === '2024-11-03T05:30:00.000Z' &&
+      foldLater.utc.iso === '2024-11-03T06:30:00.000Z',
+    `Expected DST fold UTCs 05:30Z / 06:30Z, got ${foldEarlier.utc.iso} / ${foldLater.utc.iso}`
+  );
+  regressionResults.push({
+    id: 'dst_gap_and_fold_disambiguation',
+    status: 'PASSED',
+    earlierUtc: foldEarlier.utc.iso,
+    laterUtc: foldLater.utc.iso,
+  });
+
+  // 3c. Partial Acquisition Preservation + 5-Bucket Epistemic Verification + Shadbala Guard
+  const sampleInstant = resolveCanonicalBirthInstant(FIXTURES[0].input);
+  const sampleRef = computeIndependentAstronomicalReference(sampleInstant);
+  const syntheticPartialLayerA: LayerARawProviderRecord = {
+    schemaVersion: 'v2.raw.1.0',
+    capturedAtUtc: new Date().toISOString(),
+    providerId: 'freeastroapi',
+    providerBaseUrl: 'https://api.freeastroapi.com',
+    inputFingerprint: sampleInstant.inputFingerprint,
+    canonicalUtcIso: sampleInstant.utc.iso,
+    canonicalJulianDayUt: sampleInstant.utc.julianDayUt,
+    acquisitionStatus: 'partial',
+    missingDatasets: ['vedic_kp (/api/v2/vedic/kp): Simulated HTTP 500 failure'],
+    validationFailures: [],
+    calls: {
+      vedic_calculate: {
+        id: 'vedic_calculate',
+        endpoint: '/api/v2/vedic/calculate',
+        method: 'POST',
+        timestampUtc: new Date().toISOString(),
+        sanitizedRequest: { city: 'Bardhaman' },
+        httpStatus: 200,
+        ok: true,
+        attempts: 1,
+        rateWaitMs: 0,
+        coordinationMode: 'isolate_memory_only',
+        latencyMs: 120,
+        payloadBytes: 512,
+        quotaAndMetaHeaders: {},
+        errorMessage: null,
+        rawResponse: {
+          ayanamsha: 'lahiri',
+          timezone_used: 'Asia/Kolkata',
+          chart: {
+            ascendant: { degree: sampleRef.lahiriAscendantDeg, sign: 'Scorpio' },
+            planets: [
+              { name: 'Sun', absolute_degree: sampleRef.lahiriSunLonDeg, house: 2 },
+              { name: 'Moon', absolute_degree: sampleRef.lahiriMoonLonDeg, house: 7 },
+            ],
+            houses: [],
+          },
+        },
+      },
+      vedic_kp: {
+        id: 'vedic_kp',
+        endpoint: '/api/v2/vedic/kp',
+        method: 'POST',
+        timestampUtc: new Date().toISOString(),
+        sanitizedRequest: { city: 'Bardhaman' },
+        httpStatus: 500,
+        ok: false,
+        attempts: 1,
+        rateWaitMs: 1150,
+        coordinationMode: 'isolate_memory_only',
+        latencyMs: 90,
+        payloadBytes: 42,
+        quotaAndMetaHeaders: {},
+        errorMessage: 'HTTP 500',
+        rawResponse: { detail: 'Simulated error' },
+      },
+    },
+    timezoneEquivalenceCheck: null,
+    ephemerisTimestampCheck: null,
+    quotaAndPerformanceSummary: {
+      plannedRequestsCount: 4,
+      totalCalls: 2,
+      actualHttpRequestsSent: 2,
+      retryCount: 0,
+      successfulCalls: 1,
+      failedCalls: 1,
+      totalLatencyMs: 210,
+      totalRateWaitMs: 1150,
+      totalPayloadBytes: 554,
+      coordinationModesObserved: ['isolate_memory_only'],
+      quotaHeadersObserved: {
+        status: 'not_provided_by_provider',
+        observedHeadersByEndpoint: {},
+        remainingQuotaObserved: null,
+        rateLimitObserved: null,
+        note: 'Simulated test payload.',
+      },
+    },
+  };
+  const partialMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: syntheticPartialLayerA,
+  });
+  const partialVerification = verifyMasterChartRecord(partialMaster, syntheticPartialLayerA);
+  assert(
+    Boolean(partialMaster.frames.vedicLahiri.data) &&
+      partialMaster.frames.kpPlacidus.verificationStatus === 'unavailable' &&
+      partialVerification.mode === 'partial_live_and_offline' &&
+      partialMaster.shadbalaReconciliation.data?.authoritativeDesignation ===
+        'unassigned_pending_reconciliation' &&
+      partialVerification.epistemicClassification.providerDataAcquired.length >= 1 &&
+      partialVerification.epistemicClassification.methodologyUnresolved.length >= 1 &&
+      partialVerification.epistemicClassification.datasetUnavailable.length >= 1,
+    'Partial acquisition & 5-bucket epistemic classification check failed.'
+  );
+  regressionResults.push({
+    id: 'partial_acquisition_and_epistemic_classification',
+    status: 'PASSED',
+    verificationMode: partialVerification.mode,
+    shadbalaDesignation: partialMaster.shadbalaReconciliation.data?.authoritativeDesignation,
+  });
+
+  // 4. Read-Only Existing Profile Defect Audit + Legacy vs V2 Comparison on Local Fixtures
   const profileAudits: unknown[] = [];
   for (const [id, filePath] of [
     ['chris-3-bardhaman', 'public/assets/aistudio/chris-3-birth-chart_0f73e755.json'],
+    ['chris-4-bardhaman', 'public/assets/aistudio/chris-4-birth-chart_8e64429a.json'],
     ['chris-new-kolkata', 'public/assets/aistudio/chris-new-birth-chart_c00320ea.json'],
   ]) {
     const abs = path.resolve(process.cwd(), filePath);
@@ -287,6 +478,27 @@ async function main() {
       const json = JSON.parse(fs.readFileSync(abs, 'utf8'));
       const assessment = assessChartJsonDefects(id, String(json?.meta?.name || id), json);
       profileAudits.push(assessment);
+      if (id === 'chris-4-bardhaman') {
+        const startedAt = Date.now();
+        const cmp = buildLegacyVsV2ComparisonReport({
+          profileId: id,
+          profileName: String(json?.meta?.name || id),
+          legacyChartJson: json,
+          instant: sampleInstant,
+          layerB: partialMaster,
+        });
+        const cmpBytes = Buffer.byteLength(JSON.stringify(cmp), 'utf8');
+        regressionResults.push({
+          id: 'chris_4_legacy_comparison_check',
+          status: 'PASSED',
+          legacyProviderRecorded: cmp.legacyMeta.providerRecorded,
+          legacyAscDeg: cmp.primaryCoordinatesComparison.ascendant.legacyDeg,
+          independentRefAscDeg: cmp.primaryCoordinatesComparison.ascendant.independentRefDeg,
+          kpSignFlipsCount: cmp.kpCuspsComparison.filter((c) => c.signFlipBetweenLegacyAndRef).length,
+          comparisonDurationMs: Date.now() - startedAt,
+          comparisonBytes: cmpBytes,
+        });
+      }
     }
   }
 

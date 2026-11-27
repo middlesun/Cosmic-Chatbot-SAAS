@@ -7,9 +7,12 @@
 
 export type BirthTimePrecision = 'exact' | 'approximate' | 'sunrise_unknown' | 'unknown';
 
+export type DstFoldDisambiguation = 'earlier_occurrence' | 'later_occurrence';
+
 export type TimezoneResolutionMethod =
   | 'explicit_iana_intl'
   | 'provider_geo_iana_intl'
+  | 'coord_lookup_iana_intl'
   | 'explicit_historical_offset';
 
 export interface CanonicalBirthInput {
@@ -23,6 +26,7 @@ export interface CanonicalBirthInput {
   state?: string | null;
   country?: string;
   ianaTimezone?: string | null;
+  dstFoldDisambiguation?: DstFoldDisambiguation;
   explicitHistoricalUtcOffsetHours?: number | null;
   birthTimePrecision?: BirthTimePrecision;
   birthTimeUncertaintyMinutes?: number | null;
@@ -67,6 +71,7 @@ export interface CanonicalBirthInstant {
     isDst: boolean;
     standardUtcOffsetSeconds: number;
     dstTransitionNote: string | null;
+    dstFoldDisambiguationUsed?: DstFoldDisambiguation | null;
   };
   utc: {
     components: UtcDateComponents;
@@ -100,6 +105,9 @@ export interface SanitizedProviderCallRecord {
   sanitizedRequest: Record<string, unknown>;
   httpStatus: number;
   ok: boolean;
+  attempts: number;
+  rateWaitMs: number;
+  coordinationMode: 'global_supabase_cas' | 'isolate_memory_only';
   latencyMs: number;
   payloadBytes: number;
   quotaAndMetaHeaders: Record<string, string>;
@@ -134,6 +142,14 @@ export interface EphemerisTimestampCheck {
   limitationNotes: string[];
 }
 
+export interface ObservedQuotaHeadersSummary {
+  status: 'measured_from_headers' | 'not_provided_by_provider';
+  observedHeadersByEndpoint: Record<string, Record<string, string>>;
+  remainingQuotaObserved: string | null;
+  rateLimitObserved: string | null;
+  note: string;
+}
+
 /**
  * Layer A — Raw Provider Record
  * Preserves complete original provider responses, sanitized requests, metadata,
@@ -147,15 +163,24 @@ export interface LayerARawProviderRecord {
   inputFingerprint: string;
   canonicalUtcIso: string;
   canonicalJulianDayUt: number;
+  acquisitionStatus: 'complete' | 'partial' | 'failed';
+  missingDatasets: string[];
+  validationFailures: string[];
   calls: Record<string, SanitizedProviderCallRecord>;
   timezoneEquivalenceCheck?: TimezoneEquivalenceCheck | null;
   ephemerisTimestampCheck?: EphemerisTimestampCheck | null;
   quotaAndPerformanceSummary: {
+    plannedRequestsCount: number;
     totalCalls: number;
+    actualHttpRequestsSent: number;
+    retryCount: number;
     successfulCalls: number;
     failedCalls: number;
     totalLatencyMs: number;
+    totalRateWaitMs: number;
     totalPayloadBytes: number;
+    coordinationModesObserved: Array<'global_supabase_cas' | 'isolate_memory_only'>;
+    quotaHeadersObserved: ObservedQuotaHeadersSummary;
   };
 }
 
@@ -399,11 +424,35 @@ export interface LayerCAnalyticalShell {
   touchedIndices: [];
 }
 
+export type EpistemicCategory =
+  | 'provider_data_acquired'
+  | 'internal_math_consistency_verified'
+  | 'independently_validated_against_external_reference'
+  | 'methodology_unresolved'
+  | 'dataset_unavailable';
+
+export interface EpistemicClassificationItem {
+  key: string;
+  label: string;
+  category: EpistemicCategory;
+  status: 'verified' | 'partial' | 'unresolved' | 'unavailable';
+  detail: string;
+}
+
+export interface EpistemicClassificationSummary {
+  providerDataAcquired: EpistemicClassificationItem[];
+  internalMathConsistencyVerified: EpistemicClassificationItem[];
+  independentlyValidatedAgainstExternalReference: EpistemicClassificationItem[];
+  methodologyUnresolved: EpistemicClassificationItem[];
+  datasetUnavailable: EpistemicClassificationItem[];
+}
+
 export interface VerificationCheckResult {
   id: string;
   domain: string;
   passed: boolean;
   severity: 'critical' | 'major' | 'info';
+  epistemicCategory: EpistemicCategory;
   expected: string;
   observed: string;
   notes?: string;
@@ -412,9 +461,10 @@ export interface VerificationCheckResult {
 export interface MathematicalVerificationReport {
   profileName: string;
   inputFingerprint: string;
-  mode: 'live_and_offline' | 'offline_only';
+  mode: 'live_and_offline' | 'partial_live_and_offline' | 'offline_only';
   passedCount: number;
   failedCount: number;
+  epistemicClassification: EpistemicClassificationSummary;
   checks: VerificationCheckResult[];
 }
 
@@ -426,4 +476,110 @@ export interface ProfileDefectAssessment {
   severity: 'critical' | 'moderate' | 'clean';
   defects: string[];
   downstreamArtifactsToRegenerate: string[];
+}
+
+export interface LegacyVsV2ComparisonReport {
+  generatedAtUtc: string;
+  hasLegacyChart: boolean;
+  legacyMeta: {
+    providerRecorded: string | null;
+    providerLabelRecorded: string | null;
+    generatedAt: string | null;
+    birthDate: string | null;
+    birthTime: string | null;
+    timezoneOffset: number | null;
+  };
+  legacyDefectAudit: ProfileDefectAssessment | null;
+  primaryCoordinatesComparison: {
+    ascendant: {
+      legacyDeg: number | null;
+      v2ProviderDeg: number | null;
+      independentRefDeg: number;
+      legacyMinusRefDeg: number | null;
+      v2MinusRefDeg: number | null;
+    };
+    sun: {
+      legacyDeg: number | null;
+      v2ProviderDeg: number | null;
+      independentRefDeg: number;
+      legacyMinusRefDeg: number | null;
+      v2MinusRefDeg: number | null;
+    };
+    moon: {
+      legacyDeg: number | null;
+      v2ProviderDeg: number | null;
+      independentRefDeg: number;
+      legacyMinusRefDeg: number | null;
+      v2MinusRefDeg: number | null;
+    };
+    planets: Array<{
+      planet: string;
+      legacyDeg: number | null;
+      v2ProviderDeg: number | null;
+      deltaDeg: number | null;
+      legacySign: string | null;
+      v2Sign: string | null;
+    }>;
+  };
+  kpCuspsComparison: Array<{
+    house: number;
+    legacyDeg: number | null;
+    legacySign: string | null;
+    legacyStarLord: string | null;
+    legacySubLord: string | null;
+    v2ProviderDeg: number | null;
+    v2ProviderSign: string | null;
+    v2ProviderStarLord: string | null;
+    v2ProviderSubLord: string | null;
+    independentRefDeg: number;
+    independentRefSign: string;
+    legacyMinusRefDeg: number | null;
+    v2MinusRefDeg: number | null;
+    signFlipBetweenLegacyAndRef: boolean;
+  }>;
+  westernCuspsComparison: Array<{
+    house: number;
+    legacyDeg: number | null;
+    legacySign: string | null;
+    v2ProviderDeg: number | null;
+    v2ProviderSign: string | null;
+    independentRefDeg: number;
+    independentRefSign: string;
+    legacyMinusRefDeg: number | null;
+    v2MinusRefDeg: number | null;
+  }>;
+  bhavaChalitComparison: {
+    legacyShiftedCount: number | null;
+    legacyShiftedPlanets: string[];
+    v2ProviderShiftedCount: number | null;
+    v2ProviderCompatibleWithSripati: boolean | null;
+    independentSripatiShiftedCount: number;
+    independentSripatiShiftedPlanets: string[];
+    planetPlacements: Array<{
+      planet: string;
+      rashiHouse: number | null;
+      legacyChalitHouse: number | null;
+      v2ProviderChalitHouse: number | null;
+      independentSripatiHouse: number | null;
+    }>;
+  };
+  shadbalaComparison: {
+    authoritativeDesignation: 'unassigned_pending_reconciliation';
+    legacyLocalOrder: string[];
+    legacyApiSummaryOrder: string[];
+    v2ProviderOrder: string[];
+    maxVirupaConflictBetweenLegacyLocalAndApi: number | null;
+  };
+  datasetCompletenessComparison: {
+    legacyVargasCount: number;
+    legacyHasD5: boolean;
+    v2VargasCount: number;
+    v2HasD5: boolean;
+    legacyHasPrastharaAshtakavarga: boolean;
+    v2HasPrastharaAshtakavarga: boolean;
+    legacyHasEphemerisTelemetry: boolean;
+    v2HasEphemerisTelemetry: boolean;
+    legacyHasNativeKp4LevelSignificators: boolean;
+    v2HasNativeKp4LevelSignificators: boolean;
+  };
 }

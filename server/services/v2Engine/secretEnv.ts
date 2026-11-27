@@ -1,16 +1,13 @@
 /**
- * Isolated V2 Engine Secret Environment Configuration
+ * Isolated V2 Engine Secret Environment Configuration (Cloudflare Workers Safe)
  *
+ * - Pure Web / TypeScript (zero Node fs/path/dotenv dependencies).
  * - Reads FREE_ASTRO_API_KEY exclusively from server environment variables.
  * - Never falls back to FREE_ASTROLOGY_API_KEY (legacy production key).
  * - Never writes, echoes, logs, or serializes credentials into artifacts.
- * - Supports Node CLI (.env.local -> .env), AI Studio / Cloud Run env vars,
- *   and Cloudflare Worker secrets (bridged into process.env by worker.ts).
+ * - Works identically in Node CLI, AI Studio / Cloud Run, and Cloudflare Workers
+ *   (where worker.ts bridges Worker Secrets into process.env).
  */
-
-import fs from 'node:fs';
-import path from 'node:path';
-import dotenv from 'dotenv';
 
 export const FREE_ASTRO_API_ENV_VAR = 'FREE_ASTRO_API_KEY';
 
@@ -22,31 +19,11 @@ const SECRET_HEADER_KEYS = new Set([
   'set-cookie',
 ]);
 
-let cliEnvLoaded = false;
-
-/**
- * Safe CLI-only loader for `.env.local` and `.env` (both gitignored).
- * Does not override already-injected runtime environment variables.
- */
-export function loadLocalEnvFilesIfPresent(cwd: string = process.cwd()): {
-  loadedFiles: string[];
-} {
-  if (cliEnvLoaded) return { loadedFiles: [] };
-  cliEnvLoaded = true;
-  const loadedFiles: string[] = [];
-
-  for (const filename of ['.env.local', '.env']) {
-    const fullPath = path.resolve(cwd, filename);
-    if (fs.existsSync(fullPath)) {
-      dotenv.config({ path: fullPath, override: false });
-      loadedFiles.push(filename);
-    }
-  }
-  return { loadedFiles };
-}
-
 export function getFreeAstroApiKey(): string | null {
-  const raw = process.env[FREE_ASTRO_API_ENV_VAR];
+  const raw =
+    typeof process !== 'undefined' && process.env
+      ? process.env[FREE_ASTRO_API_ENV_VAR]
+      : undefined;
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;
@@ -85,19 +62,54 @@ export function redactHeaders(headers: Headers | Record<string, string>): Record
   return out;
 }
 
-export function redactSecretsInText(input: string): string {
-  const key = getFreeAstroApiKey();
-  if (!key) return input;
-  return input.split(key).join('[REDACTED]');
+function collectSecrets(extraSecrets?: Array<string | null | undefined>): string[] {
+  const out: string[] = [];
+  const envKey = getFreeAstroApiKey();
+  if (envKey) out.push(envKey);
+  if (Array.isArray(extraSecrets)) {
+    for (const s of extraSecrets) {
+      if (typeof s === 'string') {
+        const trimmed = s.trim();
+        if (trimmed.length > 0 && !out.includes(trimmed)) {
+          out.push(trimmed);
+        }
+      }
+    }
+  }
+  return out;
 }
 
-export function redactSecretsDeep<T>(value: T): T {
-  const key = getFreeAstroApiKey();
-  if (!key) return value;
+export function redactSecretsInText(
+  input: string,
+  extraSecrets?: Array<string | null | undefined>
+): string {
+  const secrets = collectSecrets(extraSecrets);
+  if (secrets.length === 0) return input;
+  let result = input;
+  for (const s of secrets) {
+    result = result.split(s).join('[REDACTED]');
+  }
+  return result;
+}
+
+export function redactSecretsDeep<T>(
+  value: T,
+  extraSecrets?: Array<string | null | undefined>
+): T {
+  const secrets = collectSecrets(extraSecrets);
+
+  const scrubStr = (str: string): string => {
+    if (secrets.length === 0) return str;
+    let out = str;
+    for (const s of secrets) {
+      if (out.includes(s)) out = out.split(s).join('[REDACTED]');
+    }
+    return out;
+  };
 
   const walk = (node: unknown): unknown => {
     if (typeof node === 'string') {
-      return node.includes(key) ? node.split(key).join('[REDACTED]') : node;
+      return scrubStr(node);
     }
     if (Array.isArray(node)) {
       return node.map(walk);

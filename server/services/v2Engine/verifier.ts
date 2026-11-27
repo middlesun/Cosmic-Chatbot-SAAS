@@ -17,6 +17,8 @@ import {
 import type {
   BhavaChalitMethodologyAudit,
   CanonicalBirthInstant,
+  EpistemicClassificationItem,
+  EpistemicClassificationSummary,
   LayerARawProviderRecord,
   LayerBMasterChartRecord,
   MathematicalVerificationReport,
@@ -442,6 +444,12 @@ export function verifyMasterChartRecord(
   const ref = computeIndependentAstronomicalReference(instant);
   const checks: VerificationCheckResult[] = [];
 
+  const providerDataAcquired: EpistemicClassificationItem[] = [];
+  const internalMathConsistencyVerified: EpistemicClassificationItem[] = [];
+  const independentlyValidatedAgainstExternalReference: EpistemicClassificationItem[] = [];
+  const methodologyUnresolved: EpistemicClassificationItem[] = [];
+  const datasetUnavailable: EpistemicClassificationItem[] = [];
+
   // 1. UTC & Julian Day consistency
   const expectedOffsetCheck =
     instant.utc.julianDayUt > 2400000 &&
@@ -451,8 +459,16 @@ export function verifyMasterChartRecord(
     domain: 'UTC & Julian Day',
     passed: expectedOffsetCheck,
     severity: 'critical',
+    epistemicCategory: 'internal_math_consistency_verified',
     expected: `${instant.utc.iso} / JD=${ref.julianDayUt}`,
     observed: `${instant.utc.iso} / JD=${instant.utc.julianDayUt}`,
+  });
+  internalMathConsistencyVerified.push({
+    key: 'canonical_utc_jd',
+    label: 'Canonical UTC & Julian Day Conversion',
+    category: 'internal_math_consistency_verified',
+    status: expectedOffsetCheck ? 'verified' : 'unresolved',
+    detail: `${instant.utc.iso} | JD=${instant.utc.julianDayUt} | TZ=${instant.timezone.ianaTimezone || `offset ${instant.timezone.historicalUtcOffsetHours}h`}`,
   });
 
   // 2. Mode A vs Mode B timezone equivalence (if executed live)
@@ -463,29 +479,60 @@ export function verifyMasterChartRecord(
       domain: 'Timezone Equivalence',
       passed: eq.equivalent,
       severity: 'critical',
+      epistemicCategory: 'independently_validated_against_external_reference',
       expected: 'Mode A (IANA) == Mode B (UTC) within 0.01°',
       observed: `ascDelta=${eq.ascendantDeltaDeg}°, maxPlanetDelta=${eq.maxPlanetDeltaDeg}°`,
       notes: eq.notes.join(' | '),
+    });
+    (eq.equivalent
+      ? independentlyValidatedAgainstExternalReference
+      : methodologyUnresolved
+    ).push({
+      key: 'timezone_mode_a_vs_b',
+      label: 'Provider Mode A (IANA) vs Mode B (UTC) Equivalence',
+      category: eq.equivalent
+        ? 'independently_validated_against_external_reference'
+        : 'methodology_unresolved',
+      status: eq.equivalent ? 'verified' : 'unresolved',
+      detail: eq.notes.join(' | '),
     });
   }
 
   // 3. Independent Placidus cusp invariants (offline reference)
   const refKpSeq = verify12CuspSequence(ref.kpPlacidusCuspsDeg);
   const refTropSeq = verify12CuspSequence(ref.tropicalPlacidusCusps);
+  const refSeqPassed =
+    refKpSeq.monotonicSequential &&
+    refTropSeq.monotonicSequential &&
+    refKpSeq.maxOppositionErrorDeg < 0.02;
   checks.push({
     id: 'independent_placidus_sequence',
     domain: 'Reference Placidus Cusps',
-    passed:
-      refKpSeq.monotonicSequential &&
-      refTropSeq.monotonicSequential &&
-      refKpSeq.maxOppositionErrorDeg < 0.02,
+    passed: refSeqPassed,
     severity: 'critical',
+    epistemicCategory: 'independently_validated_against_external_reference',
     expected: 'Monotonic 12 cusps summing to 360°, opposite cusps 180° ± 0.02°',
     observed: `KP span=${refKpSeq.totalSpanDeg}° oppErr=${refKpSeq.maxOppositionErrorDeg}°; Trop span=${refTropSeq.totalSpanDeg}°`,
   });
+  independentlyValidatedAgainstExternalReference.push({
+    key: 'independent_astronomical_solver',
+    label: 'Independent Solar/Lunar & Placidus Reference Solver',
+    category: 'independently_validated_against_external_reference',
+    status: refSeqPassed ? 'verified' : 'unresolved',
+    detail: `Lahiri Asc=${ref.lahiriAscendantDeg}°, Sun=${ref.lahiriSunLonDeg}°, Moon=${ref.lahiriMoonLonDeg}°; Placidus span=${refKpSeq.totalSpanDeg}°`,
+  });
 
+  // Track Endpoint 1: Vedic Lahiri
   const vedicData = master.frames.vedicLahiri.data;
   if (vedicData) {
+    providerDataAcquired.push({
+      key: 'provider_vedic_calculate',
+      label: 'FreeAstroAPI V2 Vedic Lahiri (/api/v2/vedic/calculate)',
+      category: 'provider_data_acquired',
+      status: master.frames.vedicLahiri.completeness === 'complete' ? 'verified' : 'partial',
+      detail: `${vedicData.planets.length} planets, ${vedicData.vargas?.supportedCount ?? 0} Vargas, ${vedicData.yogas?.items.length ?? 0} Yogas, Ashtakavarga=${vedicData.ashtakavarga ? 'yes' : 'no'}, Dasha=${vedicData.vimshottariDasha ? 'yes' : 'no'}`,
+    });
+
     // 4. Lahiri Ascendant, Sun & Moon vs independent astronomical reference
     const ascDeg = Number(vedicData.ascendant?.degree);
     const sunDeg = Number(
@@ -504,26 +551,46 @@ export function verifyMasterChartRecord(
       ? Math.abs(circularDiffDeg(moonDeg, ref.lahiriMoonLonDeg))
       : 999;
 
+    const lahiriRefPassed = ascErr < 0.25 && sunErr < 0.15 && moonErr < 0.35;
     checks.push({
       id: 'lahiri_asc_sun_moon_vs_reference',
       domain: 'Vedic Lahiri Positions',
-      passed: ascErr < 0.25 && sunErr < 0.15 && moonErr < 0.35,
+      passed: lahiriRefPassed,
       severity: 'critical',
+      epistemicCategory: 'independently_validated_against_external_reference',
       expected: `Asc~${ref.lahiriAscendantDeg}°, Sun~${ref.lahiriSunLonDeg}°, Moon~${ref.lahiriMoonLonDeg}°`,
       observed: `Asc=${ascDeg}° (Δ${ascErr.toFixed(3)}°), Sun=${sunDeg}° (Δ${sunErr.toFixed(3)}°), Moon=${moonDeg}° (Δ${moonErr.toFixed(3)}°)`,
+    });
+    independentlyValidatedAgainstExternalReference.push({
+      key: 'lahiri_asc_sun_moon_vs_reference',
+      label: 'Vedic Lahiri Ascendant, Sun & Moon vs Astronomical Reference',
+      category: 'independently_validated_against_external_reference',
+      status: lahiriRefPassed ? 'verified' : 'unresolved',
+      detail: `ΔAsc=${ascErr.toFixed(3)}°, ΔSun=${sunErr.toFixed(3)}°, ΔMoon=${moonErr.toFixed(3)}°`,
     });
 
     // 5. All 17 Vargas present (incl. D5)
     const vargaKeys = vedicData.vargas?.divisionsReturned || [];
     const hasD5 = vargaKeys.some((k) => k.toUpperCase() === 'D5' || k === '5');
+    const vargasOk = vargaKeys.length >= 17 && hasD5;
     checks.push({
       id: 'vargas_17_completeness',
       domain: 'Divisional Charts',
-      passed: vargaKeys.length >= 17 && hasD5,
+      passed: vargasOk,
       severity: 'major',
+      epistemicCategory: 'provider_data_acquired',
       expected: '17 Vargas including D5',
       observed: `${vargaKeys.length} Vargas (${vargaKeys.join(',')})`,
     });
+    if (!hasD5) {
+      datasetUnavailable.push({
+        key: 'varga_d5_missing',
+        label: 'D5 (Panchamsha) Divisional Chart',
+        category: 'dataset_unavailable',
+        status: 'unavailable',
+        detail: `Provider returned ${vargaKeys.length} Vargas without D5.`,
+      });
+    }
 
     // 6. Ashtakavarga Prasthara -> BAV -> SAV = 337 check
     const av = vedicData.ashtakavarga;
@@ -549,13 +616,22 @@ export function verifyMasterChartRecord(
           if (sumCell !== Number(row[i])) prastharaErrors++;
         }
       }
+      const avPassed = savSum === 337 && bavErrors === 0 && prastharaErrors === 0;
       checks.push({
         id: 'ashtakavarga_matrix_consistency',
         domain: 'Ashtakavarga',
-        passed: savSum === 337 && bavErrors === 0 && prastharaErrors === 0,
+        passed: avPassed,
         severity: 'critical',
+        epistemicCategory: 'internal_math_consistency_verified',
         expected: 'SAV=337, 0 BAV mismatches, 0 Prasthara mismatches',
         observed: `SAV=${savSum}, bavErrors=${bavErrors}, prastharaErrors=${prastharaErrors}`,
+      });
+      internalMathConsistencyVerified.push({
+        key: 'ashtakavarga_matrix',
+        label: 'Ashtakavarga Prasthara -> BAV -> SAV (337)',
+        category: 'internal_math_consistency_verified',
+        status: avPassed ? 'verified' : 'unresolved',
+        detail: `SAV=${savSum}, BAV mismatches=${bavErrors}, Prasthara mismatches=${prastharaErrors}`,
       });
     }
 
@@ -572,8 +648,16 @@ export function verifyMasterChartRecord(
         domain: 'Vimshottari Dasha',
         passed: balanceSumOk,
         severity: 'major',
+        epistemicCategory: 'internal_math_consistency_verified',
         expected: 'elapsed_years + remaining_years == full_duration_years',
         observed: `${elY} + ${remY} vs ${fullY}`,
+      });
+      internalMathConsistencyVerified.push({
+        key: 'vimshottari_balance',
+        label: 'Vimshottari Birth Balance Sum',
+        category: 'internal_math_consistency_verified',
+        status: balanceSumOk ? 'verified' : 'unresolved',
+        detail: `${elY} + ${remY} vs ${fullY} years`,
       });
     }
 
@@ -585,56 +669,226 @@ export function verifyMasterChartRecord(
         domain: 'Panchang',
         passed: hasSunTimes,
         severity: 'major',
+        epistemicCategory: 'provider_data_acquired',
         expected: 'Provider sunrise/sunset + tithi/nakshatra/yoga/karana present',
         observed: `sunrise=${vedicData.panchang.sunrise}, sunset=${vedicData.panchang.sunset}`,
       });
     }
+  } else {
+    datasetUnavailable.push({
+      key: 'provider_vedic_calculate',
+      label: 'Vedic Lahiri Frame (/api/v2/vedic/calculate)',
+      category: 'dataset_unavailable',
+      status: 'unavailable',
+      detail: master.frames.vedicLahiri.limitations.join(' ') || 'Endpoint unavailable or not executed.',
+    });
   }
 
-  // 9. KP Frame sequence & significators
+  // Track Endpoint 2: KP Frame sequence & significators
   const kpData = master.frames.kpPlacidus.data;
   if (kpData) {
+    providerDataAcquired.push({
+      key: 'provider_vedic_kp',
+      label: 'FreeAstroAPI V2 Dedicated KP (/api/v2/vedic/kp)',
+      category: 'provider_data_acquired',
+      status: master.frames.kpPlacidus.completeness === 'complete' ? 'verified' : 'partial',
+      detail: `${kpData.cusps.length} cusps, ${kpData.planets.length} planets, ayanamsha=${kpData.ayanamsha.name} (${kpData.ayanamsha.valueDegrees ?? 'N/A'}°)`,
+    });
+
     const kpCuspDegs = kpData.cusps.map((c) => Number(c.cusp_degree ?? c.absolute_degree));
     const kpSeq = verify12CuspSequence(kpCuspDegs);
+    const kpSeqOk = kpSeq.monotonicSequential && kpSeq.maxOppositionErrorDeg < 0.05;
     checks.push({
       id: 'kp_12_cusp_sequence',
       domain: 'KP Placidus Cusps',
-      passed: kpSeq.monotonicSequential && kpSeq.maxOppositionErrorDeg < 0.05,
+      passed: kpSeqOk,
       severity: 'critical',
+      epistemicCategory: 'internal_math_consistency_verified',
       expected: '12 strictly monotonic KP Placidus cusps summing to 360°',
       observed: `span=${kpSeq.totalSpanDeg}°, maxOppErr=${kpSeq.maxOppositionErrorDeg}°`,
     });
+    internalMathConsistencyVerified.push({
+      key: 'kp_12_cusp_sequence',
+      label: 'KP Placidus 12-Cusp Monotonic Order & 180° Opposition',
+      category: 'internal_math_consistency_verified',
+      status: kpSeqOk ? 'verified' : 'unresolved',
+      detail: `span=${kpSeq.totalSpanDeg}°, maxOppErr=${kpSeq.maxOppositionErrorDeg}°`,
+    });
+
+    if (kpCuspDegs.length === 12) {
+      const maxKpCuspRefDelta = kpCuspDegs.reduce((mx, deg, idx) => {
+        const d = Math.abs(circularDiffDeg(deg, ref.kpPlacidusCuspsDeg[idx]));
+        return Math.max(mx, d);
+      }, 0);
+      independentlyValidatedAgainstExternalReference.push({
+        key: 'kp_cusps_vs_reference',
+        label: 'KP Placidus Cusps vs Independent Semi-Arc Reference',
+        category: 'independently_validated_against_external_reference',
+        status: maxKpCuspRefDelta < 0.35 ? 'verified' : 'unresolved',
+        detail: `Max cusp delta vs independent Placidus KP reference: ${maxKpCuspRefDelta.toFixed(4)}°`,
+      });
+    }
+  } else {
+    datasetUnavailable.push({
+      key: 'provider_vedic_kp',
+      label: 'KP Placidus Frame (/api/v2/vedic/kp)',
+      category: 'dataset_unavailable',
+      status: 'unavailable',
+      detail: master.frames.kpPlacidus.limitations.join(' ') || 'Endpoint unavailable or not executed.',
+    });
   }
 
-  // 10. Bhava Chalit methodology verification
+  // Track Frame 3: Bhava Chalit methodology verification
   const bcData = master.frames.bhavaChalit.data;
   if (bcData) {
+    providerDataAcquired.push({
+      key: 'provider_bhava_chalit',
+      label: 'FreeAstroAPI V2 Bhava Chalit Frame',
+      category: 'provider_data_acquired',
+      status: bcData.houses.length === 12 ? 'verified' : 'partial',
+      detail: `house_basis=${bcData.houseBasis || 'unspecified'}, calibrated=${String(bcData.calibrated)}`,
+    });
+
+    const bcCompat = bcData.methodologyAudit.compatibleWithIntendedClassicalMethodology;
     checks.push({
       id: 'bhava_chalit_methodology',
       domain: 'Bhava Chalit',
-      passed: bcData.methodologyAudit.compatibleWithIntendedClassicalMethodology,
+      passed: bcCompat,
       severity: 'major',
+      epistemicCategory: bcCompat
+        ? 'independently_validated_against_external_reference'
+        : 'methodology_unresolved',
       expected: 'Midpoint-straddled boundaries matching classical Sripati within 1°',
       observed: bcData.methodologyAudit.notes.join(' | '),
     });
-  }
-
-  // 11. Western Tropical sequence & angles
-  const westData = master.frames.westernTropical.data;
-  if (westData) {
-    const wCusps = westData.houses.map((h) => Number(h.abs_pos));
-    const wSeq = verify12CuspSequence(wCusps);
-    checks.push({
-      id: 'western_placidus_cusp_sequence',
-      domain: 'Western Placidus Cusps',
-      passed: wSeq.monotonicSequential && wSeq.maxOppositionErrorDeg < 0.05,
-      severity: 'critical',
-      expected: '12 monotonic Tropical Placidus cusps independent of KP',
-      observed: `span=${wSeq.totalSpanDeg}°, maxOppErr=${wSeq.maxOppositionErrorDeg}°`,
+    if (bcCompat) {
+      independentlyValidatedAgainstExternalReference.push({
+        key: 'bhava_chalit_sripati',
+        label: 'Bhava Chalit vs Classical Sripati Trisection',
+        category: 'independently_validated_against_external_reference',
+        status: 'verified',
+        detail: bcData.methodologyAudit.notes.join(' | '),
+      });
+    } else {
+      methodologyUnresolved.push({
+        key: 'bhava_chalit_methodology',
+        label: 'Bhava Chalit Methodology Divergence',
+        category: 'methodology_unresolved',
+        status: 'unresolved',
+        detail: bcData.methodologyAudit.notes.join(' | '),
+      });
+    }
+  } else {
+    datasetUnavailable.push({
+      key: 'provider_bhava_chalit',
+      label: 'Bhava Chalit Frame',
+      category: 'dataset_unavailable',
+      status: 'unavailable',
+      detail: master.frames.bhavaChalit.limitations.join(' ') || 'Bhava Chalit frame unavailable.',
     });
   }
 
-  // 12. Shadbala component sum & reconciliation check
+  // Track Endpoint 3: Western Tropical sequence & angles
+  const westData = master.frames.westernTropical.data;
+  if (westData) {
+    providerDataAcquired.push({
+      key: 'provider_western_natal',
+      label: 'FreeAstroAPI V1 Western Tropical (/api/v1/natal/calculate)',
+      category: 'provider_data_acquired',
+      status: master.frames.westernTropical.completeness === 'complete' ? 'verified' : 'partial',
+      detail: `${westData.planets.length} bodies, ${westData.houses.length} Placidus cusps, ${westData.aspects.length} aspects`,
+    });
+
+    const wCusps = westData.houses.map((h) => Number(h.abs_pos));
+    const wSeq = verify12CuspSequence(wCusps);
+    const wSeqOk = wSeq.monotonicSequential && wSeq.maxOppositionErrorDeg < 0.05;
+    checks.push({
+      id: 'western_placidus_cusp_sequence',
+      domain: 'Western Placidus Cusps',
+      passed: wSeqOk,
+      severity: 'critical',
+      epistemicCategory: 'internal_math_consistency_verified',
+      expected: '12 monotonic Tropical Placidus cusps independent of KP',
+      observed: `span=${wSeq.totalSpanDeg}°, maxOppErr=${wSeq.maxOppositionErrorDeg}°`,
+    });
+    internalMathConsistencyVerified.push({
+      key: 'western_placidus_cusp_sequence',
+      label: 'Western Placidus 12-Cusp Monotonic Order & 180° Opposition',
+      category: 'internal_math_consistency_verified',
+      status: wSeqOk ? 'verified' : 'unresolved',
+      detail: `span=${wSeq.totalSpanDeg}°, maxOppErr=${wSeq.maxOppositionErrorDeg}°`,
+    });
+
+    if (westData.secondPrecisionDroppedByV1Endpoint) {
+      methodologyUnresolved.push({
+        key: 'western_v1_seconds_truncation',
+        label: 'Western V1 Birth-Time Second Precision Truncated',
+        category: 'methodology_unresolved',
+        status: 'partial',
+        detail: `Request 3 (/api/v1/natal/calculate) omits "second" parameter; ${instant.input.second}s truncated in Western response.`,
+      });
+    }
+  } else {
+    datasetUnavailable.push({
+      key: 'provider_western_natal',
+      label: 'Western Tropical Frame (/api/v1/natal/calculate)',
+      category: 'dataset_unavailable',
+      status: 'unavailable',
+      detail: master.frames.westernTropical.limitations.join(' ') || 'Endpoint unavailable or not executed.',
+    });
+  }
+
+  // Track Endpoint 4: Astronomical Telemetry
+  const ephData = master.frames.astronomicalTelemetry.data;
+  if (ephData) {
+    providerDataAcquired.push({
+      key: 'provider_ephemeris',
+      label: 'FreeAstroAPI V1 Ephemeris (/api/v1/ephemeris/calculate)',
+      category: 'provider_data_acquired',
+      status: master.frames.astronomicalTelemetry.completeness === 'complete' ? 'verified' : 'partial',
+      detail: `${Object.keys(ephData.bodies).length} celestial bodies with speed, latitude & distance_au`,
+    });
+
+    if (ephData.timestampVerification) {
+      const tsOk = ephData.timestampVerification.exactTimestampMatch;
+      checks.push({
+        id: 'ephemeris_timestamp_verification',
+        domain: 'Ephemeris Timestamp',
+        passed: tsOk,
+        severity: 'major',
+        epistemicCategory: tsOk
+          ? 'independently_validated_against_external_reference'
+          : 'methodology_unresolved',
+        expected: `${ephData.timestampVerification.expectedUtcIso} / JD=${ephData.timestampVerification.expectedJulianDayUt}`,
+        observed: `${ephData.timestampVerification.returnedUtcInstant ?? 'missing'} / Δ=${ephData.timestampVerification.deltaSecondsFromCanonical ?? 'N/A'}s`,
+        notes: ephData.timestampVerification.limitationNotes.join(' | '),
+      });
+      (tsOk
+        ? independentlyValidatedAgainstExternalReference
+        : methodologyUnresolved
+      ).push({
+        key: 'ephemeris_timestamp_verification',
+        label: 'Ephemeris Timestamp & Julian Day Match',
+        category: tsOk
+          ? 'independently_validated_against_external_reference'
+          : 'methodology_unresolved',
+        status: tsOk ? 'verified' : 'unresolved',
+        detail: `Canonical ${ephData.timestampVerification.expectedUtcIso} vs returned ${ephData.timestampVerification.returnedUtcInstant ?? 'N/A'} (Δ=${ephData.timestampVerification.deltaSecondsFromCanonical ?? 'N/A'}s)`,
+      });
+    }
+  } else {
+    datasetUnavailable.push({
+      key: 'provider_ephemeris',
+      label: 'Astronomical Ephemeris Frame (/api/v1/ephemeris/calculate)',
+      category: 'dataset_unavailable',
+      status: 'unavailable',
+      detail:
+        master.frames.astronomicalTelemetry.limitations.join(' ') ||
+        'Endpoint unavailable or not executed.',
+    });
+  }
+
+  // 12. Shadbala component sum & reconciliation check (Requirement #6: never prematurely designate authoritative)
   const sb = master.shadbalaReconciliation.data;
   if (sb) {
     const providerSumErr = sb.perPlanet.filter(
@@ -645,20 +899,68 @@ export function verifyMasterChartRecord(
       domain: 'Shadbala Reconciliation',
       passed: providerSumErr === 0,
       severity: 'major',
+      epistemicCategory: 'internal_math_consistency_verified',
       expected: 'All provider Shadbala components sum to total Virupas',
       observed: `sumErrors=${providerSumErr}, authoritativeDesignation=${sb.authoritativeDesignation}`,
+    });
+    if (sb.perPlanet.some((p) => p.provider)) {
+      internalMathConsistencyVerified.push({
+        key: 'shadbala_component_sum',
+        label: 'Provider Shadbala 6-Bala Component Sum',
+        category: 'internal_math_consistency_verified',
+        status: providerSumErr === 0 ? 'verified' : 'unresolved',
+        detail: `${sb.perPlanet.length - providerSumErr}/${sb.perPlanet.length} planets sum cleanly within 0.2V.`,
+      });
+    }
+    methodologyUnresolved.push({
+      key: 'shadbala_authoritative_source',
+      label: 'Shadbala Authoritative Model & Subcomponents',
+      category: 'methodology_unresolved',
+      status: 'unresolved',
+      detail: `Designation remains "${sb.authoritativeDesignation}". Provider omits subcomponents; Sun 5.0 vs 6.5 threshold (${sb.sunThresholdInvestigation.flipsPassFailStatus ? 'flips pass/fail' : 'investigated'}) and Legacy Local vs Provider Virupa deltas require independent JHora/PyJHora cross-check.`,
+    });
+  }
+
+  for (const gap of master.remainingClassicalGaps) {
+    datasetUnavailable.push({
+      key: `gap:${gap.capability.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 48)}`,
+      label: gap.capability,
+      category: 'dataset_unavailable',
+      status: 'unavailable',
+      detail: `FreeAstroAPI=${gap.freeAstroApiStatus}; local=${gap.localDerivedStatus}. ${gap.notes}`,
     });
   }
 
   const passedCount = checks.filter((c) => c.passed).length;
   const failedCount = checks.length - passedCount;
 
+  const liveFramesCount = [
+    master.frames.vedicLahiri.data,
+    master.frames.kpPlacidus.data,
+    master.frames.westernTropical.data,
+    master.frames.astronomicalTelemetry.data,
+  ].filter(Boolean).length;
+
+  const mode: MathematicalVerificationReport['mode'] =
+    liveFramesCount === 4
+      ? 'live_and_offline'
+      : liveFramesCount > 0
+      ? 'partial_live_and_offline'
+      : 'offline_only';
+
   return {
     profileName: instant.input.name,
     inputFingerprint: instant.inputFingerprint,
-    mode: vedicData ? 'live_and_offline' : 'offline_only',
+    mode,
     passedCount,
     failedCount,
+    epistemicClassification: {
+      providerDataAcquired,
+      internalMathConsistencyVerified,
+      independentlyValidatedAgainstExternalReference,
+      methodologyUnresolved,
+      datasetUnavailable,
+    },
     checks,
   };
 }

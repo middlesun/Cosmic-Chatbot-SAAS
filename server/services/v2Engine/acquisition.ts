@@ -14,16 +14,27 @@
  */
 
 import {
+  coordinateFreeAstroApiSlot,
+  reportFreeAstroApi429Backoff,
+  type RateLimitCoordinationMode,
+} from '../astrologyProviders/freeAstroApiRateLimiter';
+import {
   formatUtcOffsetString,
   normalizeDeg360,
   toModeALocalTimeFields,
   toModeBUtcTimeFields,
 } from './birthInstant';
-import { getFreeAstroApiKey, redactHeaders, redactSecretsDeep } from './secretEnv';
+import {
+  getFreeAstroApiKey,
+  redactHeaders,
+  redactSecretsDeep,
+  redactSecretsInText,
+} from './secretEnv';
 import type {
   CanonicalBirthInstant,
   EphemerisTimestampCheck,
   LayerARawProviderRecord,
+  ObservedQuotaHeadersSummary,
   SanitizedProviderCallRecord,
   TimezoneEquivalenceCheck,
   V2EndpointId,
@@ -35,8 +46,8 @@ export const ALL_V2_VARGAS = [
   1, 2, 3, 4, 5, 7, 9, 10, 12, 16, 20, 24, 27, 30, 40, 45, 60,
 ] as const;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const textEncoder = new TextEncoder();
+const DEFAULT_FETCH_TIMEOUT_MS = 12_000;
 
 export interface BuiltV2Requests {
   request1VedicCalculate: {
@@ -267,50 +278,121 @@ async function executeProviderPost(
   id: V2EndpointId,
   endpoint: string,
   body: Record<string, unknown>,
-  apiKey: string
+  apiKey: string,
+  options?: { rateWaitMs?: number; maxRetries?: number }
 ): Promise<SanitizedProviderCallRecord> {
-  const sanitizedRequest = redactSecretsDeep(structuredClone(body));
-  const started = Date.now();
-  const timestampUtc = new Date().toISOString();
+  const sanitizedRequest = redactSecretsDeep(structuredClone(body), [apiKey]);
+  const minIntervalMs = options?.rateWaitMs ?? 1150;
+  const maxRetries = options?.maxRetries ?? 1;
 
-  const res = await fetch(`${FREE_ASTRO_API_BASE_URL}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-    },
-    body: JSON.stringify(body),
-  });
+  let attempts = 0;
+  let totalRateWaitMs = 0;
+  let lastCoordMode: RateLimitCoordinationMode = 'isolate_memory_only';
+  let lastRecord: SanitizedProviderCallRecord | null = null;
 
-  const text = await res.text();
-  const latencyMs = Date.now() - started;
-  const payloadBytes = textEncoder.encode(text).length;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    attempts++;
+    const timestampUtc = new Date().toISOString();
+    const started = Date.now();
 
-  let parsed: unknown = text;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    // preserve non-JSON text
+    try {
+      const { result: res, slot } = await coordinateFreeAstroApiSlot(
+        () => {
+          const signal =
+            typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+              ? AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS)
+              : undefined;
+          return fetch(`${FREE_ASTRO_API_BASE_URL}${endpoint}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+            },
+            body: JSON.stringify(body),
+            ...(signal ? { signal } : {}),
+          });
+        },
+        {
+          minIntervalMs,
+          callerTag: `v2:${id}`,
+        }
+      );
+
+      totalRateWaitMs += slot.waitedMs;
+      lastCoordMode = slot.coordinationMode;
+
+      const text = await res.text();
+      const latencyMs = Math.max(0, Date.now() - slot.dispatchedAtMs);
+      const payloadBytes = textEncoder.encode(text).length;
+
+      let parsed: unknown = text;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // preserve non-JSON text
+      }
+
+      const headers = captureQuotaHeaders(res.headers);
+      const redactedParsed = redactSecretsDeep(parsed, [apiKey]);
+      lastRecord = {
+        id,
+        endpoint,
+        method: 'POST',
+        timestampUtc,
+        sanitizedRequest,
+        httpStatus: res.status,
+        ok: res.ok,
+        attempts,
+        rateWaitMs: totalRateWaitMs,
+        coordinationMode: lastCoordMode,
+        latencyMs,
+        payloadBytes,
+        quotaAndMetaHeaders: headers,
+        errorMessage: res.ok
+          ? null
+          : typeof redactedParsed === 'object' && redactedParsed && 'detail' in redactedParsed
+          ? redactSecretsInText(
+              JSON.stringify((redactedParsed as Record<string, unknown>).detail),
+              [apiKey]
+            )
+          : `HTTP ${res.status}`,
+        rawResponse: redactedParsed,
+      };
+
+      if (res.status === 429 && attempt < maxRetries) {
+        const retryAfterSec = Number(res.headers.get('retry-after') || '0');
+        const backoff = retryAfterSec > 0 ? retryAfterSec * 1000 : 1800 * (attempt + 1);
+        await reportFreeAstroApi429Backoff(backoff);
+        continue;
+      }
+
+      return lastRecord;
+    } catch (err) {
+      const latencyMs = Math.max(0, Date.now() - started);
+      const rawMsg = err instanceof Error ? err.message : 'Network error calling FreeAstroAPI';
+      const msg = redactSecretsInText(rawMsg, [apiKey]);
+      lastRecord = {
+        id,
+        endpoint,
+        method: 'POST',
+        timestampUtc,
+        sanitizedRequest,
+        httpStatus: 0,
+        ok: false,
+        attempts,
+        rateWaitMs: totalRateWaitMs,
+        coordinationMode: lastCoordMode,
+        latencyMs,
+        payloadBytes: 0,
+        quotaAndMetaHeaders: {},
+        errorMessage: msg,
+        rawResponse: null,
+      };
+      return lastRecord;
+    }
   }
 
-  return {
-    id,
-    endpoint,
-    method: 'POST',
-    timestampUtc,
-    sanitizedRequest,
-    httpStatus: res.status,
-    ok: res.ok,
-    latencyMs,
-    payloadBytes,
-    quotaAndMetaHeaders: captureQuotaHeaders(res.headers),
-    errorMessage: res.ok
-      ? null
-      : typeof parsed === 'object' && parsed && 'detail' in parsed
-      ? JSON.stringify((parsed as Record<string, unknown>).detail)
-      : `HTTP ${res.status}`,
-    rawResponse: redactSecretsDeep(parsed),
-  };
+  return lastRecord!;
 }
 
 function circularDeltaDeg(a: number, b: number): number {
@@ -398,26 +480,24 @@ export function evaluateEphemerisTimestampCheck(
   };
 }
 
-/**
- * Verifies Mode A (local wall clock + IANA tz_str) vs Mode B (UTC + tz_str='UTC')
- * on /api/v2/vedic/calculate produce equivalent astronomical longitudes & Ascendant.
- */
-export async function verifyTimezoneEquivalenceLive(
+async function runTimezoneEquivalenceProbeInternal(
   instant: CanonicalBirthInstant,
-  options?: { apiKey?: string; rateWaitMs?: number }
-): Promise<TimezoneEquivalenceCheck> {
-  const apiKey = (options?.apiKey || getFreeAstroApiKey() || '').trim();
-  if (!apiKey) {
-    throw new Error('FREE_ASTRO_API_KEY is not configured in server environment secrets.');
-  }
-  const rateWaitMs = options?.rateWaitMs ?? 1150;
-
+  apiKey: string,
+  rateWaitMs: number
+): Promise<{
+  check: TimezoneEquivalenceCheck;
+  callA: SanitizedProviderCallRecord;
+  callB: SanitizedProviderCallRecord;
+}> {
   const reqA = buildAndValidateV2Requests(instant, { timeMode: 'local_iana' }).request1VedicCalculate;
   const reqB = buildAndValidateV2Requests(instant, { timeMode: 'utc' }).request1VedicCalculate;
 
-  const callA = await executeProviderPost('timezone_probe_mode_a', reqA.endpoint, reqA.body, apiKey);
-  if (rateWaitMs > 0) await sleep(rateWaitMs);
-  const callB = await executeProviderPost('timezone_probe_mode_b', reqB.endpoint, reqB.body, apiKey);
+  const callA = await executeProviderPost('timezone_probe_mode_a', reqA.endpoint, reqA.body, apiKey, {
+    rateWaitMs,
+  });
+  const callB = await executeProviderPost('timezone_probe_mode_b', reqB.endpoint, reqB.body, apiKey, {
+    rateWaitMs,
+  });
 
   const chartA = ((callA.rawResponse as Record<string, unknown>)?.chart || {}) as Record<
     string,
@@ -487,23 +567,90 @@ export async function verifyTimezoneEquivalenceLive(
   }
 
   return {
-    executed: true,
-    modeARequest: callA.sanitizedRequest,
-    modeBRequest: callB.sanitizedRequest,
-    modeAStatus: callA.httpStatus,
-    modeBStatus: callB.httpStatus,
-    equivalent,
-    maxPlanetDeltaDeg,
-    ascendantDeltaDeg,
-    moonDeltaDeg,
-    perPlanetDeltasDeg,
-    notes,
+    check: {
+      executed: true,
+      modeARequest: callA.sanitizedRequest,
+      modeBRequest: callB.sanitizedRequest,
+      modeAStatus: callA.httpStatus,
+      modeBStatus: callB.httpStatus,
+      equivalent,
+      maxPlanetDeltaDeg,
+      ascendantDeltaDeg,
+      moonDeltaDeg,
+      perPlanetDeltasDeg,
+      notes,
+    },
+    callA,
+    callB,
+  };
+}
+
+/**
+ * Verifies Mode A (local wall clock + IANA tz_str) vs Mode B (UTC + tz_str='UTC')
+ * on /api/v2/vedic/calculate produce equivalent astronomical longitudes & Ascendant.
+ */
+export async function verifyTimezoneEquivalenceLive(
+  instant: CanonicalBirthInstant,
+  options?: { apiKey?: string; rateWaitMs?: number }
+): Promise<TimezoneEquivalenceCheck> {
+  const apiKey = (options?.apiKey || getFreeAstroApiKey() || '').trim();
+  if (!apiKey) {
+    throw new Error('FREE_ASTRO_API_KEY is not configured in server environment secrets.');
+  }
+  const rateWaitMs = options?.rateWaitMs ?? 1150;
+  const { check } = await runTimezoneEquivalenceProbeInternal(instant, apiKey, rateWaitMs);
+  return check;
+}
+
+export function summarizeObservedQuotaHeaders(
+  calls: SanitizedProviderCallRecord[]
+): ObservedQuotaHeadersSummary {
+  const observedHeadersByEndpoint: Record<string, Record<string, string>> = {};
+  let remainingQuotaObserved: string | null = null;
+  let rateLimitObserved: string | null = null;
+
+  for (const call of calls) {
+    const quotaEntries: Record<string, string> = {};
+    for (const [k, v] of Object.entries(call.quotaAndMetaHeaders || {})) {
+      const lk = k.toLowerCase();
+      if (
+        lk.includes('rate') ||
+        lk.includes('limit') ||
+        lk.includes('quota') ||
+        lk.includes('remaining') ||
+        lk.includes('reset') ||
+        lk.includes('retry')
+      ) {
+        quotaEntries[k] = v;
+        if (!remainingQuotaObserved && lk.includes('remaining')) {
+          remainingQuotaObserved = `${k}: ${v}`;
+        }
+        if (!rateLimitObserved && (lk.includes('limit') || lk.includes('quota'))) {
+          rateLimitObserved = `${k}: ${v}`;
+        }
+      }
+    }
+    if (Object.keys(quotaEntries).length > 0) {
+      observedHeadersByEndpoint[call.id] = quotaEntries;
+    }
+  }
+
+  const hasMeasuredHeaders = Object.keys(observedHeadersByEndpoint).length > 0;
+  return {
+    status: hasMeasuredHeaders ? 'measured_from_headers' : 'not_provided_by_provider',
+    observedHeadersByEndpoint,
+    remainingQuotaObserved,
+    rateLimitObserved,
+    note: hasMeasuredHeaders
+      ? 'Quota/rate-limit values below were directly observed in provider HTTP response headers.'
+      : 'FreeAstroAPI HTTP responses did not include rate-limit or remaining-quota headers; only client-measured request counts and payload sizes are reported.',
   };
 }
 
 /**
  * Executes the complete 4-request natal acquisition bundle against live FreeAstroAPI.
- * Zero silent fallbacks: returns exact HTTP results & preserved raw payloads.
+ * Zero silent fallbacks: preserves all successful endpoints even when another fails,
+ * uses global provider-wide rate-limit coordination, and measures exact HTTP counts.
  */
 export async function acquireV2NatalBundle(
   instant: CanonicalBirthInstant,
@@ -531,27 +678,28 @@ export async function acquireV2NatalBundle(
 
   const rateWaitMs = options?.rateWaitMs ?? 1150;
   const calls: Record<string, SanitizedProviderCallRecord> = {};
+  const runProbe = Boolean(
+    options?.includeTimezoneEquivalenceProbe && instant.timezone.ianaTimezone
+  );
+  const plannedRequestsCount = runProbe ? 6 : 4;
 
   const run = async (id: V2EndpointId, endpoint: string, body: Record<string, unknown>) => {
-    if (Object.keys(calls).length > 0 && rateWaitMs > 0) {
-      await sleep(rateWaitMs);
-    }
     options?.onProgress?.(`[V2 Acquisition] POST ${endpoint} (${id}) ...`);
-    const rec = await executeProviderPost(id, endpoint, body, apiKey);
+    const rec = await executeProviderPost(id, endpoint, body, apiKey, { rateWaitMs });
     calls[id] = rec;
     options?.onProgress?.(
-      `                 -> HTTP ${rec.httpStatus} | ${rec.latencyMs}ms | ${rec.payloadBytes} bytes`
+      `                 -> HTTP ${rec.httpStatus} | ${rec.latencyMs}ms | ${rec.payloadBytes} bytes | coord=${rec.coordinationMode}`
     );
     return rec;
   };
 
-  await run(
+  const r1 = await run(
     'vedic_calculate',
     built.request1VedicCalculate.endpoint,
     built.request1VedicCalculate.body
   );
-  await run('vedic_kp', built.request2VedicKp.endpoint, built.request2VedicKp.body);
-  await run(
+  const r2 = await run('vedic_kp', built.request2VedicKp.endpoint, built.request2VedicKp.body);
+  const r3 = await run(
     'western_natal',
     built.request3WesternNatal.endpoint,
     built.request3WesternNatal.body
@@ -562,24 +710,73 @@ export async function acquireV2NatalBundle(
     built.request4Ephemeris.body
   );
 
-  const ephemerisTimestampCheck = evaluateEphemerisTimestampCheck(
-    instant,
-    built.request4Ephemeris.body,
-    ephRec.rawResponse
-  );
+  const ephemerisTimestampCheck = ephRec.ok
+    ? evaluateEphemerisTimestampCheck(instant, built.request4Ephemeris.body, ephRec.rawResponse)
+    : null;
 
   let timezoneEquivalenceCheck: TimezoneEquivalenceCheck | null = null;
-  if (options?.includeTimezoneEquivalenceProbe && instant.timezone.ianaTimezone) {
-    if (rateWaitMs > 0) await sleep(rateWaitMs);
-    options?.onProgress?.('[V2 Acquisition] Running Mode A (IANA) vs Mode B (UTC) probe...');
-    timezoneEquivalenceCheck = await verifyTimezoneEquivalenceLive(instant, {
-      apiKey,
-      rateWaitMs,
-    });
+  const validationFailures: string[] = [];
+
+  if (runProbe) {
+    try {
+      options?.onProgress?.('[V2 Acquisition] Running Mode A (IANA) vs Mode B (UTC) probe...');
+      const probe = await runTimezoneEquivalenceProbeInternal(instant, apiKey, rateWaitMs);
+      timezoneEquivalenceCheck = probe.check;
+      calls.timezone_probe_mode_a = probe.callA;
+      calls.timezone_probe_mode_b = probe.callB;
+      if (!probe.check.equivalent) {
+        validationFailures.push(
+          `Timezone equivalence probe failed or incomplete: ${probe.check.notes.join(' ')}`
+        );
+      }
+    } catch (err) {
+      validationFailures.push(
+        `Timezone equivalence probe error: ${err instanceof Error ? err.message : 'unknown error'}`
+      );
+    }
   }
+
+  const missingDatasets: string[] = [];
+  if (!r1.ok) {
+    missingDatasets.push(
+      `vedic_calculate (${r1.endpoint}): Vedic Lahiri D1, 17 Vargas, Bhava Chalit, Ashtakavarga, Shadbala, Yogas, Panchang, Dasha unavailable (HTTP ${r1.httpStatus}${r1.errorMessage ? `: ${r1.errorMessage}` : ''})`
+    );
+  }
+  if (!r2.ok) {
+    missingDatasets.push(
+      `vedic_kp (${r2.endpoint}): KP Placidus cusps, sub-lords, 4-level significators & ruling planets unavailable (HTTP ${r2.httpStatus}${r2.errorMessage ? `: ${r2.errorMessage}` : ''})`
+    );
+  }
+  if (!r3.ok) {
+    missingDatasets.push(
+      `western_natal (${r3.endpoint}): Western Tropical Placidus chart, aspects & outer bodies unavailable (HTTP ${r3.httpStatus}${r3.errorMessage ? `: ${r3.errorMessage}` : ''})`
+    );
+  }
+  if (!ephRec.ok) {
+    missingDatasets.push(
+      `ephemeris (${ephRec.endpoint}): Geocentric astronomical telemetry & timestamp verification unavailable (HTTP ${ephRec.httpStatus}${ephRec.errorMessage ? `: ${ephRec.errorMessage}` : ''})`
+    );
+  }
+
+  if (ephemerisTimestampCheck && !ephemerisTimestampCheck.exactTimestampMatch) {
+    validationFailures.push(
+      `Ephemeris timestamp delta=${ephemerisTimestampCheck.deltaSecondsFromCanonical ?? 'N/A'}s (${ephemerisTimestampCheck.limitationNotes.join(' ')})`
+    );
+  }
+
+  const mainCalls = [r1, r2, r3, ephRec];
+  const mainSuccessCount = mainCalls.filter((c) => c.ok).length;
+  const acquisitionStatus: LayerARawProviderRecord['acquisitionStatus'] =
+    mainSuccessCount === 4 ? 'complete' : mainSuccessCount > 0 ? 'partial' : 'failed';
 
   const allCallValues = Object.values(calls);
   const successfulCalls = allCallValues.filter((c) => c.ok).length;
+  const actualHttpRequestsSent = allCallValues.reduce((s, c) => s + (c.attempts || 1), 0);
+  const retryCount = allCallValues.reduce((s, c) => s + Math.max(0, (c.attempts || 1) - 1), 0);
+  const totalRateWaitMs = allCallValues.reduce((s, c) => s + (c.rateWaitMs || 0), 0);
+  const coordinationModesObserved = Array.from(
+    new Set(allCallValues.map((c) => c.coordinationMode))
+  );
 
   return {
     schemaVersion: 'v2.raw.1.0',
@@ -589,15 +786,24 @@ export async function acquireV2NatalBundle(
     inputFingerprint: instant.inputFingerprint,
     canonicalUtcIso: instant.utc.iso,
     canonicalJulianDayUt: instant.utc.julianDayUt,
+    acquisitionStatus,
+    missingDatasets,
+    validationFailures,
     calls,
     timezoneEquivalenceCheck,
     ephemerisTimestampCheck,
     quotaAndPerformanceSummary: {
+      plannedRequestsCount,
       totalCalls: allCallValues.length,
+      actualHttpRequestsSent,
+      retryCount,
       successfulCalls,
       failedCalls: allCallValues.length - successfulCalls,
       totalLatencyMs: allCallValues.reduce((s, c) => s + c.latencyMs, 0),
+      totalRateWaitMs,
       totalPayloadBytes: allCallValues.reduce((s, c) => s + c.payloadBytes, 0),
+      coordinationModesObserved,
+      quotaHeadersObserved: summarizeObservedQuotaHeaders(allCallValues),
     },
   };
 }

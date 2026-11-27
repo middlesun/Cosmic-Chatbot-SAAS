@@ -13,29 +13,16 @@ import type {
   ProviderPlaceSuggestion,
 } from './types';
 
+import {
+  coordinateFreeAstroApiSlot,
+  reportFreeAstroApi429Backoff,
+} from './freeAstroApiRateLimiter';
+
 const FREE_ASTRO_BASE_URL = 'https://api.freeastroapi.com';
 const FREE_ASTRO_RATE_MS = Number(process.env.FREE_ASTRO_RATE_MS) || 1100;
 
-let queueTail: Promise<unknown> = Promise.resolve();
-let lastRequestTime = 0;
-
 export function isFreeAstroApiConfigured(): boolean {
   return Boolean((process.env.FREE_ASTRO_API_KEY || '').trim());
-}
-
-async function scheduleRateLimited<T>(fn: () => Promise<T>): Promise<T> {
-  const run = queueTail.then(async () => {
-    const now = Date.now();
-    const waitMs = Math.max(0, FREE_ASTRO_RATE_MS - (now - lastRequestTime));
-    if (waitMs > 0) {
-      await new Promise((r) => setTimeout(r, waitMs));
-    }
-    lastRequestTime = Date.now();
-    return fn();
-  });
-
-  queueTail = run.catch(() => undefined);
-  return run;
 }
 
 async function requestFreeAstroApi<T = unknown>(
@@ -54,34 +41,39 @@ async function requestFreeAstroApi<T = unknown>(
   const method = options?.method || 'POST';
   const retries = options?.retries ?? 2;
 
-  return scheduleRateLimited(async () => {
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      const response = await fetch(`${FREE_ASTRO_BASE_URL}${endpointPath}`, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
-        ...(method === 'POST' && options?.body ? { body: JSON.stringify(options.body) } : {}),
-      });
-
-      if (response.status === 429 && attempt < retries) {
-        const retryAfterSec = Number(response.headers.get('retry-after') || '0');
-        const backoff = retryAfterSec > 0 ? retryAfterSec * 1000 : 1500 * (attempt + 1);
-        await new Promise((r) => setTimeout(r, backoff));
-        continue;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const { result: response } = await coordinateFreeAstroApiSlot(
+      () =>
+        fetch(`${FREE_ASTRO_BASE_URL}${endpointPath}`, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+          ...(method === 'POST' && options?.body ? { body: JSON.stringify(options.body) } : {}),
+        }),
+      {
+        minIntervalMs: FREE_ASTRO_RATE_MS,
+        callerTag: `prod:${endpointPath}`,
       }
+    );
 
-      if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(`FreeAstroAPI ${endpointPath} failed (${response.status}): ${text.slice(0, 200)}`);
-      }
-
-      return (await response.json()) as T;
+    if (response.status === 429 && attempt < retries) {
+      const retryAfterSec = Number(response.headers.get('retry-after') || '0');
+      const backoff = retryAfterSec > 0 ? retryAfterSec * 1000 : 1500 * (attempt + 1);
+      await reportFreeAstroApi429Backoff(backoff);
+      continue;
     }
 
-    throw new Error(`FreeAstroAPI ${endpointPath} exceeded retries`);
-  });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`FreeAstroAPI ${endpointPath} failed (${response.status}): ${text.slice(0, 200)}`);
+    }
+
+    return (await response.json()) as T;
+  }
+
+  throw new Error(`FreeAstroAPI ${endpointPath} exceeded retries`);
 }
 
 function getTimezoneOffsetHoursForZone(

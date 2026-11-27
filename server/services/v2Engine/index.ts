@@ -10,3 +10,4 @@ export * from './shadbalaReconciliation';
 export * from './verifier';
 export * from './normalizer';
 export * from './profileImpactAudit';
+export * from './legacyComparison';

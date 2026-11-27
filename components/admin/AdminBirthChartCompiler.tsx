@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import CustomSelect from '../app/CustomSelect';
 import type { ModelChoiceOption } from './PromptLibraryManager';
+import V2ChartEngineLaboratory from './V2ChartEngineLaboratory';
 
 export type AstrologyProviderOptionId =
   | 'freeastrologyapi'
@@ -1020,6 +1021,8 @@ const AdminBirthChartCompiler: React.FC<AdminBirthChartCompilerProps> = ({
           </p>
         </div>
       </section>
+
+      <V2ChartEngineLaboratory getAccessToken={getAccessToken} />
     </div>
   );
 };

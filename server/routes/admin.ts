@@ -20,7 +20,27 @@ import {
   listAstrologyProviderStatuses,
 } from '../services/astrologyProviders/registry';
 import { isFreeAstroApiConfigured } from '../services/astrologyProviders/freeAstroApiAdapter';
+import {
+  acquireV2DiagnosticRunLock,
+  releaseV2DiagnosticRunLock,
+} from '../services/astrologyProviders/freeAstroApiRateLimiter';
 import { runFreeAstroApiPocBenchmark } from '../services/freeAstroApiPocRunner';
+import { checkRateLimit } from '../services/abuseGuard';
+import {
+  acquireV2NatalBundle,
+  BirthInstantTimezoneError,
+  BirthInstantValidationError,
+  buildLayerBMasterChartRecord,
+  buildLayerCAnalyticalShell,
+  buildLegacyVsV2ComparisonReport,
+  getFreeAstroApiKey,
+  getFreeAstroApiSecretStatus,
+  redactSecretsDeep,
+  resolveCanonicalBirthInstant,
+  verifyMasterChartRecord,
+  type BirthTimePrecision,
+  type DstFoldDisambiguation,
+} from '../services/v2Engine';
 import { sendClientInviteEmail, sendSupportReplyEmail } from '../services/email';
 import {
   ALL_DEFAULT_PROMPTS,
@@ -3332,6 +3352,373 @@ router.post('/settings/birth-chart/poc-benchmark', async (req: AuthenticatedRequ
   } catch (err) {
     const message = err instanceof Error ? err.message : 'FreeAstroAPI PoC benchmark failed';
     res.status(502).json({ error: message });
+  }
+});
+
+// 8B-bis. Chart Engine Laboratory — Foundational Calculation Engine V2 (Isolated, Read-Only)
+const v2TextEncoder = new TextEncoder();
+
+function setPrivateNoStoreHeaders(res: import('express').Response): void {
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Vary', 'Authorization');
+}
+
+function readRuntimeHeapBytes(): number | null {
+  try {
+    if (
+      typeof process !== 'undefined' &&
+      typeof process.memoryUsage === 'function'
+    ) {
+      const mem = process.memoryUsage();
+      return typeof mem?.heapUsed === 'number' ? mem.heapUsed : null;
+    }
+  } catch {
+    // Isolate runtimes without process.memoryUsage return null safely
+  }
+  return null;
+}
+
+async function resolveNonProviderIanaTimezone(params: {
+  latitude: number;
+  longitude: number;
+  country?: string | null;
+}): Promise<{ ianaTimezone: string; source: 'india_deterministic' | 'open_meteo_coord' } | null> {
+  const country = String(params.country || '').trim();
+  if (
+    /\bindia\b/i.test(country) &&
+    params.latitude >= 6 &&
+    params.latitude <= 38 &&
+    params.longitude >= 68 &&
+    params.longitude <= 98
+  ) {
+    return { ianaTimezone: 'Asia/Kolkata', source: 'india_deterministic' };
+  }
+
+  try {
+    const signal =
+      typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+        ? AbortSignal.timeout(3000)
+        : undefined;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(
+      params.latitude.toFixed(4)
+    )}&longitude=${encodeURIComponent(params.longitude.toFixed(4))}&timezone=auto&forecast_days=1`;
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      ...(signal ? { signal } : {}),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { timezone?: unknown };
+    if (typeof json?.timezone === 'string' && json.timezone.trim()) {
+      return { ianaTimezone: json.timezone.trim(), source: 'open_meteo_coord' };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+router.get('/v2-diagnostics/profiles', async (req: AuthenticatedRequest, res) => {
+  setPrivateNoStoreHeaders(res);
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Supabase admin client is not configured.' });
+    return;
+  }
+
+  const rawQ = String(req.query.q || '').trim().slice(0, 80);
+  const safeFilterQ = rawQ.replace(/[,()%*]/g, ' ').trim();
+
+  try {
+    let query = supabaseAdmin
+      .from('profiles')
+      .select(
+        'id, user_id, name, birth_date, birth_time, birth_city, birth_state, birth_country, latitude, longitude, timezone_offset, is_activated, updated_at'
+      )
+      .order('updated_at', { ascending: false })
+      .limit(50);
+
+    if (safeFilterQ.length > 0) {
+      query = query.or(
+        `name.ilike.%${safeFilterQ}%,birth_city.ilike.%${safeFilterQ}%,birth_country.ilike.%${safeFilterQ}%`
+      );
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      res.status(500).json({ error: 'Failed to load profiles for V2 diagnostics.' });
+      return;
+    }
+
+    res.json(
+      redactSecretsDeep({
+        profiles: data || [],
+        secretStatus: getFreeAstroApiSecretStatus(),
+      })
+    );
+  } catch {
+    res.status(500).json({ error: 'Unable to query profiles for V2 diagnostics.' });
+  }
+});
+
+router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
+  setPrivateNoStoreHeaders(res);
+  if (!req.appUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const burst = checkRateLimit(`v2_diag_run:${req.appUser.id}`, 12, 10 * 60 * 1000);
+  if (!burst.allowed) {
+    res.setHeader('Retry-After', String(burst.retryAfterSec));
+    res.status(429).json({
+      error: `Diagnostic rate limit reached. Retry in ${burst.retryAfterSec}s.`,
+    });
+    return;
+  }
+
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const profileId = typeof body.profileId === 'string' ? body.profileId.trim() : '';
+  if (!profileId) {
+    res.status(400).json({ error: 'profileId is required.' });
+    return;
+  }
+
+  const apiKey = getFreeAstroApiKey();
+  if (!apiKey) {
+    res.status(503).json({
+      error:
+        'FREE_ASTRO_API_KEY is not configured in the server runtime. Configure it as a Cloudflare Worker Secret before running live V2 diagnostics.',
+    });
+    return;
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Supabase admin client is not configured.' });
+    return;
+  }
+
+  const lock = await acquireV2DiagnosticRunLock({
+    adminUserId: req.appUser.id,
+    profileId,
+  });
+  if (!lock.acquired) {
+    res.status(409).json({
+      error: lock.reason || 'A V2 diagnostic run is already in progress.',
+      code: 'DIAGNOSTIC_RUN_IN_PROGRESS',
+    });
+    return;
+  }
+
+  const startedAtMs = Date.now();
+  const heapBeforeBytes = readRuntimeHeapBytes();
+
+  try {
+    const { data: profile, error: profErr } = await supabaseAdmin
+      .from('profiles')
+      .select(
+        'id, user_id, name, birth_date, birth_time, birth_city, birth_state, birth_country, latitude, longitude, timezone_offset, is_activated, chart_json, updated_at'
+      )
+      .eq('id', profileId)
+      .maybeSingle();
+
+    if (profErr) {
+      res.status(500).json({ error: 'Failed to load target profile.' });
+      return;
+    }
+    if (!profile) {
+      res.status(404).json({ error: 'Profile not found.' });
+      return;
+    }
+
+    const lat = Number(profile.latitude);
+    const lng = Number(profile.longitude);
+    if (
+      !profile.birth_date ||
+      !profile.birth_time ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng)
+    ) {
+      res.status(400).json({
+        error:
+          'Selected profile is missing birth_date, birth_time, latitude, or longitude required for canonical instant resolution.',
+      });
+      return;
+    }
+
+    const overrideTz =
+      typeof body.ianaTimezoneOverride === 'string' && body.ianaTimezoneOverride.trim()
+        ? body.ianaTimezoneOverride.trim()
+        : null;
+
+    let resolvedIana: string | null = overrideTz;
+    let ianaInferenceNote: string | null = null;
+
+    if (!resolvedIana) {
+      const inferred = await resolveNonProviderIanaTimezone({
+        latitude: lat,
+        longitude: lng,
+        country: profile.birth_country,
+      });
+      if (inferred) {
+        resolvedIana = inferred.ianaTimezone;
+        ianaInferenceNote = `IANA timezone "${inferred.ianaTimezone}" resolved via ${inferred.source}.`;
+      }
+    }
+
+    const dstDisambigRaw = body.dstFoldDisambiguation;
+    const dstFoldDisambiguation: DstFoldDisambiguation | undefined =
+      dstDisambigRaw === 'earlier_occurrence' || dstDisambigRaw === 'later_occurrence'
+        ? dstDisambigRaw
+        : undefined;
+
+    const precisionRaw = String(body.birthTimePrecision || 'exact');
+    const birthTimePrecision: BirthTimePrecision =
+      precisionRaw === 'approximate' ||
+      precisionRaw === 'sunrise_unknown' ||
+      precisionRaw === 'unknown'
+        ? precisionRaw
+        : 'exact';
+
+    const nodeConvention: 'mean' | 'true' = body.nodeConvention === 'true' ? 'true' : 'mean';
+    const includeTimezoneEquivalenceProbe = Boolean(body.includeTimezoneEquivalenceProbe);
+
+    let instant;
+    try {
+      instant = resolveCanonicalBirthInstant({
+        profileId: String(profile.id),
+        name: String(profile.name || 'Unnamed Profile'),
+        birthDate: String(profile.birth_date),
+        birthTime: String(profile.birth_time),
+        latitude: lat,
+        longitude: lng,
+        city: profile.birth_city ? String(profile.birth_city) : '',
+        state: profile.birth_state ? String(profile.birth_state) : null,
+        country: profile.birth_country ? String(profile.birth_country) : '',
+        ianaTimezone: resolvedIana,
+        dstFoldDisambiguation,
+        explicitHistoricalUtcOffsetHours:
+          typeof profile.timezone_offset === 'number' && Number.isFinite(profile.timezone_offset)
+            ? profile.timezone_offset
+            : null,
+        birthTimePrecision,
+        nodeConvention,
+      });
+    } catch (err) {
+      if (err instanceof BirthInstantTimezoneError) {
+        res.status(err.code === 'AMBIGUOUS_LOCAL_TIME' ? 409 : 422).json({
+          error: err.message,
+          code: err.code,
+          candidates: err.candidates || [],
+          resolvedIanaTried: resolvedIana,
+        });
+        return;
+      }
+      if (err instanceof BirthInstantValidationError) {
+        res.status(400).json({ error: err.message, code: 'BIRTH_INSTANT_VALIDATION_ERROR' });
+        return;
+      }
+      throw err;
+    }
+
+    const layerA = await acquireV2NatalBundle(instant, {
+      apiKey,
+      timeMode: instant.timezone.ianaTimezone ? 'local_iana' : 'utc',
+      includeTimezoneEquivalenceProbe,
+    });
+    const layerB = buildLayerBMasterChartRecord({ instant, rawLayerA: layerA });
+    const layerC = buildLayerCAnalyticalShell(layerB);
+    const verificationReport = verifyMasterChartRecord(layerB, layerA);
+    const legacyVsV2Comparison = buildLegacyVsV2ComparisonReport({
+      profileId: String(profile.id),
+      profileName: String(profile.name || 'Unnamed Profile'),
+      legacyChartJson: profile.chart_json ?? null,
+      instant,
+      layerB,
+    });
+
+    const sanitizedPayload = redactSecretsDeep({
+      bundleMetadata: {
+        laboratory: 'Chart Engine Laboratory — Foundational Calculation Engine V2',
+        generatedAtUtc: new Date().toISOString(),
+        runtimeEnvironment:
+          typeof (globalThis as { WebSocketPair?: unknown }).WebSocketPair !== 'undefined' ||
+          (typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers')
+            ? 'cloudflare_worker'
+            : 'node_express',
+        readOnlyProfileSource: true,
+        profileMutated: false,
+        productionEngineModified: false,
+        ianaInferenceNote,
+      },
+      profileSummary: {
+        id: profile.id,
+        name: profile.name,
+        birthDate: profile.birth_date,
+        birthTime: profile.birth_time,
+        birthCity: profile.birth_city,
+        birthState: profile.birth_state,
+        birthCountry: profile.birth_country,
+        latitude: lat,
+        longitude: lng,
+        storedTimezoneOffset: profile.timezone_offset,
+        isActivated: Boolean(profile.is_activated),
+        hasLegacyChart: Boolean(profile.chart_json),
+      },
+      layerA,
+      layerB,
+      layerC,
+      verificationReport,
+      legacyVsV2Comparison,
+    });
+
+    const heapAfterBytes = readRuntimeHeapBytes();
+    const executionDurationMs = Math.max(0, Date.now() - startedAtMs);
+
+    const artifactSizesBytes = {
+      layerABytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerA)).length,
+      layerBBytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerB)).length,
+      layerCBytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerC)).length,
+      verificationReportBytes: v2TextEncoder.encode(
+        JSON.stringify(sanitizedPayload.verificationReport)
+      ).length,
+      legacyVsV2ComparisonBytes: v2TextEncoder.encode(
+        JSON.stringify(sanitizedPayload.legacyVsV2Comparison)
+      ).length,
+      totalResponseBytes: 0,
+    };
+
+    const fullResponse = {
+      ...sanitizedPayload,
+      runtimeTelemetry: {
+        executionDurationMs,
+        heapBeforeBytes,
+        heapAfterBytes,
+        heapDeltaBytes:
+          heapBeforeBytes !== null && heapAfterBytes !== null
+            ? heapAfterBytes - heapBeforeBytes
+            : null,
+        artifactSizesBytes,
+      },
+    };
+    fullResponse.runtimeTelemetry.artifactSizesBytes.totalResponseBytes =
+      v2TextEncoder.encode(JSON.stringify(fullResponse)).length;
+
+    res.json(fullResponse);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'V2 diagnostic execution failed.';
+    res.status(502).json({ error: message });
+  } finally {
+    await releaseV2DiagnosticRunLock({
+      adminUserId: req.appUser.id,
+      profileId,
+      lockId: lock.lockId,
+    });
   }
 });
 
