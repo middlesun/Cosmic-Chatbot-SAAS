@@ -12,4 +12,5 @@ export * from './verifier';
 export * from './normalizer';
 export * from './profileImpactAudit';
 export * from './legacyComparison';
+export * from './astrowayCoordinator';
 export * from './astrowayEval';

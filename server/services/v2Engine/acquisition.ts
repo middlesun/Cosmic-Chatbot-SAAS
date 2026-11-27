@@ -467,7 +467,11 @@ export function evaluateEphemerisTimestampCheck(
       ? Number((returnedJd - instant.utc.julianDayUt).toFixed(8))
       : null;
 
+  const utcTimestampPresent = Boolean(returnedUtcInstant);
+  const julianDayMatch = deltaJd !== null ? Math.abs(deltaJd) < 0.00002 : undefined;
+
   const exactTimestampMatch =
+    utcTimestampPresent &&
     deltaSeconds !== null &&
     Math.abs(deltaSeconds) <= 1 &&
     (deltaJd === null || Math.abs(deltaJd) < 0.00002);
@@ -481,6 +485,8 @@ export function evaluateEphemerisTimestampCheck(
     expectedJulianDayUt: instant.utc.julianDayUt,
     deltaSecondsFromCanonical: deltaSeconds,
     deltaJulianDay: deltaJd,
+    utcTimestampPresent,
+    julianDayMatch,
     exactTimestampMatch,
     limitationNotes,
   };

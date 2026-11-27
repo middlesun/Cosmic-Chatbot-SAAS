@@ -2,10 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
+  Clock,
   Database,
   Download,
   FlaskConical,
+  Pause,
+  Play,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldCheck,
   XCircle,
@@ -51,6 +55,83 @@ interface EpistemicItem {
 }
 
 type V2DiagnosticProvider = 'freeastroapi' | 'astroway';
+
+type EndpointAcquisitionClassification =
+  | 'successfully_acquired'
+  | 'rate_limited'
+  | 'runtime_execution_blocked'
+  | 'tier_restricted'
+  | 'not_offered_by_provider'
+  | 'not_yet_tested'
+  | 'mathematical_verification_failed';
+
+interface V2DiagnosticBatchState {
+  sessionId: string;
+  status:
+    | 'completed'
+    | 'in_progress'
+    | 'waiting_rate_limit'
+    | 'paused_partial'
+    | 'completed_with_restrictions';
+  batchIndex: number;
+  batchSize: number;
+  totalPlannedCount: number;
+  executedThisBatch: number;
+  remainingEligibleCount: number;
+  retryAfterMs: number;
+  nextAvailableAtUtc: string | null;
+  rateLimitResetSource: string | null;
+  rateLimitLimitObserved: number | null;
+  rateLimitRemainingObserved: number | null;
+  totalRateLimitWindowWaitMs: number;
+  classificationCounts: Record<EndpointAcquisitionClassification, number>;
+  haltedReason: string | null;
+  resumedFromSession: boolean;
+}
+
+interface ShadbalaMethodologicalInvestigation {
+  referenceBasisSummary: string;
+  sthanaDeltaDrivers: Array<{
+    planet: string;
+    wholeSignHouse: number;
+    sripatiHouse: number;
+    placidusHouse: number | null;
+    kendradiWholeSign: number;
+    kendradiSripatiBhava: number;
+    kendradiDeltaSripatiMinusWholeSign: number;
+    saptavargajaNatural: number;
+    saptavargajaPanchadha: number;
+    saptavargajaDeltaPanchadhaMinusNatural: number;
+    explanation: string;
+  }>;
+  cheshtaBalaZeroLuminaries: {
+    detectedOnProvider: boolean;
+    sunProviderCheshta: number | null;
+    moonProviderCheshta: number | null;
+    sunLegacyLocalCheshta: number | null;
+    moonLegacyLocalCheshta: number | null;
+    conventionExplanation: string;
+    ishtaKashtaImpactNote: string;
+  };
+  kalaBalaRollupAudit: {
+    abdaMasaVaraHoraCombined: boolean;
+    rawKalaItemsPresent: boolean;
+    fieldsObserved: string[];
+    openApiKnownCaveats: string[];
+  };
+  thresholdReversals: Array<{
+    planet: string;
+    bphsRequiredRupas: number;
+    providerRupas: number | null;
+    providerRatioAtBphs: number | null;
+    providerPassesBphs: boolean | null;
+    legacyLocalRupas: number | null;
+    legacyLocalRequiredRupas: number;
+    legacyLocalPasses: boolean | null;
+    providerVsLocalPassMismatch: boolean;
+    notes: string;
+  }>;
+}
 
 interface V2DiagnosticRunResult {
   bundleMetadata: {
@@ -105,6 +186,7 @@ interface V2DiagnosticRunResult {
     acquisitionStatus: 'complete' | 'partial' | 'failed';
     missingDatasets: string[];
     validationFailures: string[];
+    batchState?: V2DiagnosticBatchState | null;
     calls: Record<
       string,
       {
@@ -125,6 +207,8 @@ interface V2DiagnosticRunResult {
         qualityCaveat?: string | null;
         accessRestricted?: boolean;
         creditsUsed?: number | null;
+        acquisitionClassification?: EndpointAcquisitionClassification;
+        priorityTier?: number;
         quotaAndMetaHeaders: Record<string, string>;
         sanitizedRequest: Record<string, unknown>;
         rawResponse: unknown;
@@ -132,6 +216,7 @@ interface V2DiagnosticRunResult {
     >;
     timezoneEquivalenceCheck?: {
       executed: boolean;
+      status?: string;
       equivalent: boolean;
       coordinatesEquivalent?: boolean;
       modeAStatus: number;
@@ -140,7 +225,7 @@ interface V2DiagnosticRunResult {
       maxPlanetDeltaDeg: number | null;
       shadbalaComparison?: {
         available: boolean;
-        equivalent: boolean;
+        equivalent: boolean | null;
         maxTotalDeltaVirupas: number | null;
         maxComponentDeltaVirupas: number | null;
         perPlanet: Array<{
@@ -163,9 +248,13 @@ interface V2DiagnosticRunResult {
       notes: string[];
     } | null;
     ephemerisTimestampCheck?: {
+      utcTimestampPresent?: boolean;
+      julianDayMatch?: boolean;
       exactTimestampMatch: boolean;
       returnedUtcInstant: string | null;
+      returnedJulianDay?: number | null;
       expectedUtcIso: string;
+      expectedJulianDayUt?: number;
       deltaSecondsFromCanonical: number | null;
       limitationNotes: string[];
     } | null;
@@ -177,6 +266,13 @@ interface V2DiagnosticRunResult {
       successfulCalls: number;
       failedCalls: number;
       tierRestrictedCalls?: number;
+      rateLimitedCalls?: number;
+      runtimeBlockedCalls?: number;
+      notOfferedCalls?: number;
+      unexecutedCalls?: number;
+      mathematicalVerificationFailedCalls?: number;
+      classificationCounts?: Record<string, number>;
+      rateLimitWindowWaitMs?: number;
       totalLatencyMs: number;
       totalRateWaitMs: number;
       totalPayloadBytes: number;
@@ -230,6 +326,7 @@ interface V2DiagnosticRunResult {
           classicalBphsMinRupasForSun: number;
           flipsPassFailStatus: boolean;
         };
+        methodologicalInvestigation?: ShadbalaMethodologicalInvestigation;
       } | null;
     };
     providerExtendedDatasets?: Record<string, unknown> | null;
@@ -389,8 +486,33 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
   const [progressStage, setProgressStage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<V2DiagnosticRunResult | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [cooldownRemainingSec, setCooldownRemainingSec] = useState<number | null>(null);
+  const [pausedByUser, setPausedByUser] = useState(false);
 
   const inFlightRef = useRef(false);
+  const pausedRef = useRef(false);
+  const cooldownIntervalRef = useRef<number | null>(null);
+  const resumeTimeoutRef = useRef<number | null>(null);
+
+  const clearBatchTimers = useCallback(() => {
+    if (cooldownIntervalRef.current !== null) {
+      window.clearInterval(cooldownIntervalRef.current);
+      cooldownIntervalRef.current = null;
+    }
+    if (resumeTimeoutRef.current !== null) {
+      window.clearTimeout(resumeTimeoutRef.current);
+      resumeTimeoutRef.current = null;
+    }
+    setCooldownRemainingSec(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      pausedRef.current = true;
+      clearBatchTimers();
+    };
+  }, [clearBatchTimers]);
 
   const loadProfiles = useCallback(
     async (q = '') => {
@@ -456,25 +578,15 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
     [profiles]
   );
 
-  const handleRunV2Diagnostic = async () => {
-    if (inFlightRef.current || !selectedProfileId) return;
+  const runSingleBatch = async (opts?: {
+    sessionId?: string | null;
+    resetSession?: boolean;
+  }): Promise<V2DiagnosticRunResult | null> => {
+    if (inFlightRef.current || !selectedProfileId) return null;
     inFlightRef.current = true;
     setRunning(true);
     setError(null);
     setAmbiguousCandidates([]);
-    if (provider === 'astroway') {
-      setProgressStage(
-        includeTimezoneProbe
-          ? 'Executing AstroWay classical suite (67 endpoints + 5 Mode A/B probes)...'
-          : 'Executing AstroWay maximum classical suite (67 endpoints)...'
-      );
-    } else {
-      setProgressStage(
-        includeTimezoneProbe
-          ? 'Coordinating rate-limited 4-request acquisition + Mode A/B probe (~8–11s)...'
-          : 'Coordinating rate-limited 4-request FreeAstroAPI V2 bundle (~5–7s)...'
-      );
-    }
 
     try {
       const token = await getAccessToken();
@@ -493,6 +605,13 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
           birthTimePrecision,
           nodeConvention,
           includeTimezoneEquivalenceProbe: includeTimezoneProbe,
+          ...(provider === 'astroway'
+            ? {
+                sessionId: opts?.sessionId ?? null,
+                resetSession: Boolean(opts?.resetSession),
+                batchSize: 8,
+              }
+            : {}),
         }),
       });
 
@@ -504,15 +623,142 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
         throw new Error(data.error || `Diagnostic failed (HTTP ${res.status})`);
       }
 
-      setResult(data as V2DiagnosticRunResult);
+      const typed = data as V2DiagnosticRunResult;
+      setResult(typed);
       setAmbiguousCandidates([]);
+      return typed;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'V2 diagnostic execution failed.');
+      return null;
     } finally {
       inFlightRef.current = false;
       setRunning(false);
-      setProgressStage(null);
     }
+  };
+
+  const executeAstroWayBatchLoop = async (opts?: {
+    sessionId?: string | null;
+    resetSession?: boolean;
+  }) => {
+    clearBatchTimers();
+    pausedRef.current = false;
+    setPausedByUser(false);
+
+    const initialBatchNum =
+      opts?.resetSession || !opts?.sessionId
+        ? 1
+        : (result?.layerA.batchState?.batchIndex ?? 0) + 1;
+    setProgressStage(
+      `Executing AstroWay Priority Batch #${initialBatchNum} (max 8–9 Worker subrequests)...`
+    );
+
+    const resData = await runSingleBatch(opts);
+    if (!resData) {
+      setProgressStage(null);
+      return;
+    }
+
+    const bs = resData.layerA.batchState;
+    if (!bs) {
+      setProgressStage(null);
+      return;
+    }
+    setActiveSessionId(bs.sessionId);
+
+    if (
+      bs.status === 'completed' ||
+      bs.status === 'completed_with_restrictions' ||
+      bs.remainingEligibleCount === 0
+    ) {
+      setProgressStage(null);
+      return;
+    }
+
+    if (pausedRef.current) {
+      setProgressStage(
+        `Paused at Batch #${bs.batchIndex} (${bs.remainingEligibleCount} endpoints remaining).`
+      );
+      return;
+    }
+
+    if (bs.status === 'waiting_rate_limit' && bs.retryAfterMs > 0) {
+      const waitTotalMs = Math.max(1500, bs.retryAfterMs + 600);
+      const targetAtMs = Date.now() + waitTotalMs;
+      setCooldownRemainingSec(Math.ceil(waitTotalMs / 1000));
+      setProgressStage(
+        `Rate-limit window active after Batch #${bs.batchIndex}. Waiting Retry-After before resuming Batch #${bs.batchIndex + 1} (${bs.remainingEligibleCount} remaining)...`
+      );
+
+      cooldownIntervalRef.current = window.setInterval(() => {
+        const rem = Math.max(0, Math.ceil((targetAtMs - Date.now()) / 1000));
+        setCooldownRemainingSec(rem);
+      }, 500);
+
+      resumeTimeoutRef.current = window.setTimeout(() => {
+        clearBatchTimers();
+        if (!pausedRef.current) {
+          void executeAstroWayBatchLoop({ sessionId: bs.sessionId, resetSession: false });
+        }
+      }, waitTotalMs);
+      return;
+    }
+
+    // Bounded batch completed cleanly without 429; chain next batch cleanly after short pause
+    setProgressStage(
+      `Batch #${bs.batchIndex} completed (${bs.remainingEligibleCount} endpoints left). Continuing to Batch #${bs.batchIndex + 1}...`
+    );
+    resumeTimeoutRef.current = window.setTimeout(() => {
+      clearBatchTimers();
+      if (!pausedRef.current) {
+        void executeAstroWayBatchLoop({ sessionId: bs.sessionId, resetSession: false });
+      }
+    }, 350);
+  };
+
+  const handlePauseAutoResume = () => {
+    pausedRef.current = true;
+    setPausedByUser(true);
+    clearBatchTimers();
+    const rem = result?.layerA.batchState?.remainingEligibleCount;
+    setProgressStage(
+      rem != null
+        ? `Paused (${rem} endpoints remaining — existing responses preserved).`
+        : 'Paused.'
+    );
+  };
+
+  const handleResetAstroWaySession = () => {
+    pausedRef.current = true;
+    setPausedByUser(false);
+    clearBatchTimers();
+    setActiveSessionId(null);
+    setProgressStage(null);
+  };
+
+  const handleRunV2Diagnostic = async () => {
+    if (inFlightRef.current || !selectedProfileId) return;
+    if (provider === 'astroway') {
+      const shouldResume = Boolean(
+        activeSessionId &&
+          result?.layerA.providerId === 'astroway' &&
+          result?.layerA.batchState &&
+          result.layerA.batchState.remainingEligibleCount > 0
+      );
+      await executeAstroWayBatchLoop({
+        sessionId: shouldResume ? activeSessionId : null,
+        resetSession: !shouldResume,
+      });
+      return;
+    }
+
+    clearBatchTimers();
+    setProgressStage(
+      includeTimezoneProbe
+        ? 'Coordinating rate-limited 4-request acquisition + Mode A/B probe (~8–11s)...'
+        : 'Coordinating rate-limited 4-request FreeAstroAPI V2 bundle (~5–7s)...'
+    );
+    await runSingleBatch();
+    setProgressStage(null);
   };
 
   const downloadPayloads = useMemo(() => {
@@ -835,22 +1081,70 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
           <div className="text-xs text-[#8B8275]">
             {progressStage ||
               (provider === 'astroway'
-                ? 'Executes 67 AstroWay classical endpoints (16 Vargas, Shadbala + 6 subcomponents, Ishta/Kashta, Bhavabala, Ashtakavarga + Shodhana, KP, Jaimini, Yogas/Doshas, Upagrahas, 6 Dashas, Western/Hellenistic).'
+                ? 'Priority-ordered, rate-limit-aware resumable batches (<= 8 endpoints/batch; verifies Chart, Shadbala, Kala & Mode B probes first before the remaining 67-endpoint suite).'
                 : 'Executes 4 isolated endpoints (/vedic/calculate, /vedic/kp, /natal/calculate, /ephemeris/calculate).')}
           </div>
-          <button
-            type="button"
-            disabled={running || !selectedProfileId || !activeSecretConfigured}
-            onClick={() => void handleRunV2Diagnostic()}
-            className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-45 transition-colors cursor-pointer"
-          >
-            <FlaskConical className={`h-3.5 w-3.5 ${running ? 'animate-pulse' : ''}`} />
-            <span>
-              {running
-                ? `Running Isolated ${provider === 'astroway' ? 'AstroWay' : 'V2'} Acquisition...`
-                : `Generate Isolated ${provider === 'astroway' ? 'AstroWay' : 'FreeAstroAPI'} V2 Bundle`}
-            </span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {(running || cooldownRemainingSec !== null) && provider === 'astroway' && (
+              <button
+                type="button"
+                onClick={handlePauseAutoResume}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-3.5 py-2 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
+              >
+                <Pause className="h-3.5 w-3.5" />
+                <span>Pause Auto-Resume</span>
+              </button>
+            )}
+
+            {provider === 'astroway' &&
+              activeSessionId &&
+              !running &&
+              cooldownRemainingSec === null && (
+                <button
+                  type="button"
+                  onClick={handleResetAstroWaySession}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/20 bg-[#FDFBF7] px-3.5 py-2 text-xs font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Reset Session</span>
+                </button>
+              )}
+
+            <button
+              type="button"
+              disabled={
+                running ||
+                cooldownRemainingSec !== null ||
+                !selectedProfileId ||
+                !activeSecretConfigured
+              }
+              onClick={() => void handleRunV2Diagnostic()}
+              className="inline-flex items-center gap-2 rounded-full bg-[#4A453D] px-5 py-2 text-xs font-medium text-[#FAF7F2] hover:bg-[#38342E] disabled:opacity-45 transition-colors cursor-pointer"
+            >
+              {cooldownRemainingSec !== null ? (
+                <Clock className="h-3.5 w-3.5 animate-pulse" />
+              ) : pausedByUser &&
+                provider === 'astroway' &&
+                activeSessionId &&
+                (result?.layerA.batchState?.remainingEligibleCount ?? 0) > 0 ? (
+                <Play className="h-3.5 w-3.5" />
+              ) : (
+                <FlaskConical className={`h-3.5 w-3.5 ${running ? 'animate-pulse' : ''}`} />
+              )}
+              <span>
+                {cooldownRemainingSec !== null
+                  ? `Retry-After Cooldown (${cooldownRemainingSec}s)...`
+                  : running
+                  ? `Running Isolated ${provider === 'astroway' ? 'AstroWay Batch' : 'V2'}...`
+                  : provider === 'astroway' &&
+                    activeSessionId &&
+                    result?.layerA.providerId === 'astroway' &&
+                    (result?.layerA.batchState?.remainingEligibleCount ?? 0) > 0
+                  ? `Resume AstroWay Batch (${result?.layerA.batchState?.remainingEligibleCount} left)`
+                  : `Generate Isolated ${provider === 'astroway' ? 'AstroWay' : 'FreeAstroAPI'} V2 Bundle`}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1015,6 +1309,104 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
             </div>
           </div>
 
+          {/* Batched Execution & 7-State Classification Summary */}
+          {result.layerA.batchState && (
+            <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-medium text-[#3D3830]">
+                  Resumable Batched Acquisition Coordinator — Batch #{result.layerA.batchState.batchIndex}
+                  {result.layerA.batchState.resumedFromSession ? ' (Resumed Session)' : ''}
+                </div>
+                <span
+                  className={`font-mono text-[11px] px-2 py-0.5 rounded-md border ${
+                    result.layerA.batchState.status === 'completed'
+                      ? 'border-[#2D6A4F]/30 bg-[#2D6A4F]/8 text-[#2D6A4F]'
+                      : result.layerA.batchState.status === 'completed_with_restrictions'
+                      ? 'border-[#B8965A]/40 bg-[#B8965A]/12 text-[#6B5120]'
+                      : 'border-[#B8965A]/45 bg-[#B8965A]/12 text-[#7A3E36]'
+                  }`}
+                >
+                  {result.layerA.batchState.status}
+                </span>
+              </div>
+
+              <div className="w-full h-2 rounded-full bg-[#EAE3D7] overflow-hidden">
+                <div
+                  className="h-full bg-[#4A453D] transition-all"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.round(
+                        ((result.layerA.batchState.totalPlannedCount -
+                          result.layerA.batchState.remainingEligibleCount) /
+                          Math.max(1, result.layerA.batchState.totalPlannedCount)) *
+                          100
+                      )
+                    )}%`,
+                  }}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-[11px] text-[#5C5449] tabular-nums">
+                <span>
+                  Settled:{' '}
+                  <strong className="text-[#3D3830]">
+                    {result.layerA.batchState.totalPlannedCount -
+                      result.layerA.batchState.remainingEligibleCount}
+                    /{result.layerA.batchState.totalPlannedCount}
+                  </strong>
+                </span>
+                <span>
+                  Executed This Batch: <strong className="text-[#3D3830]">{result.layerA.batchState.executedThisBatch}</strong>
+                </span>
+                <span>
+                  Cooldown Wait:{' '}
+                  <strong className="text-[#3D3830]">
+                    {(result.layerA.batchState.totalRateLimitWindowWaitMs / 1000).toFixed(1)}s
+                  </strong>
+                </span>
+                {result.layerA.batchState.rateLimitRemainingObserved !== null && (
+                  <span>
+                    Window Remaining:{' '}
+                    <strong className="text-[#3D3830]">
+                      {result.layerA.batchState.rateLimitRemainingObserved}
+                      {result.layerA.batchState.rateLimitLimitObserved !== null
+                        ? `/${result.layerA.batchState.rateLimitLimitObserved}`
+                        : ''}
+                    </strong>
+                  </span>
+                )}
+              </div>
+
+              {result.layerA.batchState.haltedReason && (
+                <div className="text-[11px] font-mono text-[#5C5449]">
+                  {result.layerA.batchState.haltedReason}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 font-mono text-[10px] tabular-nums">
+                {(
+                  [
+                    ['successfully_acquired', 'Acquired', 'text-[#2D6A4F] border-[#2D6A4F]/25 bg-[#2D6A4F]/5'],
+                    ['rate_limited', 'Rate Limited', 'text-[#8B6B2E] border-[#B8965A]/35 bg-[#B8965A]/10'],
+                    ['runtime_execution_blocked', 'Runtime Blocked', 'text-[#7A3E36] border-[#7A3E36]/25 bg-[#7A3E36]/5'],
+                    ['tier_restricted', 'Tier Restricted', 'text-[#7A3E36] border-[#B8965A]/35 bg-[#B8965A]/10'],
+                    ['not_offered_by_provider', 'Not Offered', 'text-[#5C5449] border-[#3D3830]/15 bg-[#FDFBF7]'],
+                    ['not_yet_tested', 'Not Yet Tested', 'text-[#8B8275] border-[#3D3830]/12 bg-[#FDFBF7]'],
+                    ['mathematical_verification_failed', 'Math Failed', 'text-[#7A3E36] border-[#7A3E36]/30 bg-[#7A3E36]/8'],
+                  ] as const
+                ).map(([key, label, tone]) => (
+                  <div key={key} className={`rounded-xl border px-2.5 py-2 ${tone}`}>
+                    <div className="font-sans text-[10px] opacity-85">{label}</div>
+                    <div className="text-sm font-medium mt-0.5">
+                      {result.layerA.batchState?.classificationCounts?.[key] ?? 0}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Measured API & Worker Telemetry */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-3.5">
@@ -1026,18 +1418,20 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
               <div className="font-mono text-[10px] text-[#8B8275] mt-0.5">
                 {result.layerA.quotaAndPerformanceSummary.successfulCalls} OK ·{' '}
                 {result.layerA.quotaAndPerformanceSummary.failedCalls} failed ·{' '}
-                {result.layerA.quotaAndPerformanceSummary.retryCount} retries
+                {result.layerA.quotaAndPerformanceSummary.unexecutedCalls ?? 0} queued
               </div>
             </div>
 
             <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-3.5">
               <div className="text-[11px] text-[#8B8275]">Measured Timing &amp; Coordination</div>
               <div className="font-mono text-sm font-medium text-[#3D3830] mt-0.5 tabular-nums">
-                {(result.runtimeTelemetry.executionDurationMs / 1000).toFixed(2)}s total
+                {(result.runtimeTelemetry.executionDurationMs / 1000).toFixed(2)}s batch
               </div>
               <div className="font-mono text-[10px] text-[#8B8275] mt-0.5">
-                HTTP {result.layerA.quotaAndPerformanceSummary.totalLatencyMs}ms · Queue wait{' '}
-                {result.layerA.quotaAndPerformanceSummary.totalRateWaitMs}ms
+                HTTP {result.layerA.quotaAndPerformanceSummary.totalLatencyMs}ms · Rate wait{' '}
+                {result.layerA.quotaAndPerformanceSummary.rateLimitWindowWaitMs ??
+                  result.layerA.quotaAndPerformanceSummary.totalRateWaitMs}
+                ms
               </div>
             </div>
 
@@ -1070,6 +1464,21 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
             </div>
           </div>
 
+          {/* Tier-Restricted Endpoints (Upgrade Evaluation) */}
+          {(result.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.tierRestrictedEndpoints
+            ?.length ?? 0) > 0 && (
+            <div className="rounded-2xl border border-[#B8965A]/40 bg-[#B8965A]/10 p-4 space-y-1.5 text-xs">
+              <div className="font-medium text-[#3D3830]">
+                Tier-Restricted Endpoints (Upgrade Evaluation Required)
+              </div>
+              <div className="font-mono text-[11px] text-[#5C5449]">
+                {result.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.tierRestrictedEndpoints!.join(
+                  ' · '
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Per-Endpoint Measured Call Table */}
           <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-2">
             <div className="flex items-center gap-2 text-xs font-medium text-[#3D3830]">
@@ -1081,7 +1490,8 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
                 <thead>
                   <tr className="border-b border-[#3D3830]/12 text-[#8B8275]">
                     <th className="py-1.5 pr-3">Endpoint</th>
-                    <th className="py-1.5 pr-3">Status</th>
+                    <th className="py-1.5 pr-3">Tier</th>
+                    <th className="py-1.5 pr-3">Status &amp; Classification</th>
                     <th className="py-1.5 pr-3">Quality / Note</th>
                     <th className="py-1.5 pr-3">Attempts</th>
                     <th className="py-1.5 pr-3">HTTP Latency</th>
@@ -1091,45 +1501,65 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#3D3830]/8 text-[#3D3830]">
-                  {Object.values(result.layerA.calls).map((call) => (
-                    <tr key={call.id}>
-                      <td className="py-1.5 pr-3">
-                        <span>{call.endpoint}</span>
-                        {call.category && (
-                          <span className="ml-1.5 text-[10px] text-[#8B8275]">[{call.category}]</span>
-                        )}
-                      </td>
-                      <td
-                        className={`py-1.5 pr-3 ${
-                          call.ok ? 'text-[#2D6A4F]' : 'text-[#7A3E36]'
-                        }`}
-                      >
-                        HTTP {call.httpStatus}
-                        {call.accessRestricted ? ' (Tier Restricted)' : ''}
-                      </td>
-                      <td className="py-1.5 pr-3 text-[10px]">
-                        {call.declaredQuality ? (
-                          <span
-                            className={
-                              call.declaredQuality === 'yellow'
-                                ? 'text-[#8B6B2E]'
-                                : 'text-[#2D6A4F]'
-                            }
-                          >
-                            {call.declaredQuality}
-                          </span>
-                        ) : (
-                          '—'
-                        )}
-                        {call.creditsUsed != null ? ` · ${call.creditsUsed}cr` : ''}
-                      </td>
-                      <td className="py-1.5 pr-3">{call.attempts}</td>
-                      <td className="py-1.5 pr-3">{call.latencyMs}ms</td>
-                      <td className="py-1.5 pr-3">{call.rateWaitMs}ms</td>
-                      <td className="py-1.5 pr-3">{call.coordinationMode}</td>
-                      <td className="py-1.5">{formatKb(call.payloadBytes)}</td>
-                    </tr>
-                  ))}
+                  {Object.values(result.layerA.calls).map((call) => {
+                    const cls =
+                      call.acquisitionClassification ||
+                      (call.attempts === 0
+                        ? 'not_yet_tested'
+                        : call.ok
+                        ? 'successfully_acquired'
+                        : call.httpStatus === 429
+                        ? 'rate_limited'
+                        : call.accessRestricted
+                        ? 'tier_restricted'
+                        : 'runtime_execution_blocked');
+                    const statusTone =
+                      cls === 'successfully_acquired'
+                        ? 'text-[#2D6A4F]'
+                        : cls === 'not_yet_tested' || cls === 'not_offered_by_provider'
+                        ? 'text-[#8B8275]'
+                        : cls === 'rate_limited' || cls === 'tier_restricted'
+                        ? 'text-[#8B6B2E]'
+                        : 'text-[#7A3E36]';
+
+                    return (
+                      <tr key={call.id}>
+                        <td className="py-1.5 pr-3">
+                          <span>{call.endpoint}</span>
+                          {call.category && (
+                            <span className="ml-1.5 text-[10px] text-[#8B8275]">[{call.category}]</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 pr-3 text-[#8B8275]">
+                          {call.priorityTier ? `T${call.priorityTier}` : '—'}
+                        </td>
+                        <td className={`py-1.5 pr-3 ${statusTone}`}>
+                          {call.attempts === 0 ? 'QUEUED' : `HTTP ${call.httpStatus}`} · {cls}
+                        </td>
+                        <td className="py-1.5 pr-3 text-[10px]">
+                          {call.declaredQuality ? (
+                            <span
+                              className={
+                                call.declaredQuality === 'yellow'
+                                  ? 'text-[#8B6B2E]'
+                                  : 'text-[#2D6A4F]'
+                              }
+                            >
+                              {call.declaredQuality}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                          {call.creditsUsed != null ? ` · ${call.creditsUsed}cr` : ''}
+                        </td>
+                        <td className="py-1.5 pr-3">{call.attempts}</td>
+                        <td className="py-1.5 pr-3">{call.latencyMs}ms</td>
+                        <td className="py-1.5 pr-3">{call.rateWaitMs}ms</td>
+                        <td className="py-1.5 pr-3">{call.coordinationMode}</td>
+                        <td className="py-1.5">{formatKb(call.payloadBytes)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1139,56 +1569,171 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
           </div>
 
           {/* Mode A vs Mode B Shadbala & Kala Subcomponents Probe Snapshot */}
-          {result.layerA.timezoneEquivalenceCheck?.shadbalaComparison?.available && (
+          {result.layerA.timezoneEquivalenceCheck && (
             <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                 <span className="font-medium text-[#3D3830]">
-                  Mode A (IANA) vs Mode B (UTC) Shadbala &amp; Kala Invariance Probe
+                  Mode A (IANA) vs Mode B (UTC) Timezone &amp; Shadbala Invariance Probe
                 </span>
                 <span
                   className={`font-mono text-[11px] ${
-                    result.layerA.timezoneEquivalenceCheck.shadbalaComparison.equivalent
+                    result.layerA.timezoneEquivalenceCheck.status === 'verified_equivalent' ||
+                    (result.layerA.timezoneEquivalenceCheck.executed &&
+                      result.layerA.timezoneEquivalenceCheck.equivalent)
                       ? 'text-[#2D6A4F]'
+                      : result.layerA.timezoneEquivalenceCheck.status === 'incomplete_due_to_rate_limit' ||
+                        result.layerA.timezoneEquivalenceCheck.status === 'not_yet_tested'
+                      ? 'text-[#8B6B2E]'
                       : 'text-[#7A3E36]'
                   }`}
                 >
-                  {result.layerA.timezoneEquivalenceCheck.shadbalaComparison.equivalent
+                  {result.layerA.timezoneEquivalenceCheck.status
+                    ? result.layerA.timezoneEquivalenceCheck.status.toUpperCase()
+                    : result.layerA.timezoneEquivalenceCheck.equivalent
                     ? 'INVARIANT'
-                    : `DIVERGED (maxTotalΔ=${result.layerA.timezoneEquivalenceCheck.shadbalaComparison.maxTotalDeltaVirupas ?? 0}V)`}
+                    : 'DIVERGED'}
                 </span>
               </div>
+
+              {result.layerA.timezoneEquivalenceCheck.shadbalaComparison?.available ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left font-mono text-[11px] tabular-nums">
+                    <thead>
+                      <tr className="border-b border-[#3D3830]/12 text-[#8B8275]">
+                        <th className="py-1.5 pr-3">Planet</th>
+                        <th className="py-1.5 pr-3">Mode A (IANA)</th>
+                        <th className="py-1.5 pr-3">Mode B (UTC)</th>
+                        <th className="py-1.5 pr-3">Total Δ</th>
+                        <th className="py-1.5 pr-3">Kala Δ</th>
+                        <th className="py-1.5">Driver / Subcomponents</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#3D3830]/8 text-[#3D3830]">
+                      {result.layerA.timezoneEquivalenceCheck.shadbalaComparison.perPlanet.map(
+                        (row) => (
+                          <tr key={row.planet}>
+                            <td className="py-1.5 pr-3 font-medium">{row.planet}</td>
+                            <td className="py-1.5 pr-3">{row.modeATotal.toFixed(2)}V</td>
+                            <td className="py-1.5 pr-3">{row.modeBTotal.toFixed(2)}V</td>
+                            <td
+                              className={`py-1.5 pr-3 ${
+                                Math.abs(row.totalDelta) > 0.02 ? 'text-[#7A3E36]' : 'text-[#2D6A4F]'
+                              }`}
+                            >
+                              {row.totalDelta}V
+                            </td>
+                            <td className="py-1.5 pr-3">{row.componentDeltas.kala_bala}V</td>
+                            <td className="py-1.5 text-[10px] text-[#5C5449]">
+                              {row.suspectedKalaBalaDriver ||
+                                (row.subcomponentDeltas ? 'All 6 Kala subcomponents 0.00V' : '—')}
+                            </td>
+                          </tr>
+                        )
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="font-mono text-[11px] text-[#5C5449]">
+                  {result.layerA.timezoneEquivalenceCheck.notes.join(' | ')}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Shadbala Methodological Investigation */}
+          {result.layerB.shadbalaReconciliation.data?.methodologicalInvestigation && (
+            <div className="rounded-2xl border border-[#3D3830]/12 bg-[#FAF7F2] p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-medium text-[#3D3830]">
+                  Shadbala Methodological Investigation (Unassigned Pending Reconciliation)
+                </div>
+                <span className="font-mono text-[11px] text-[#8B6B2E]">
+                  {result.layerB.shadbalaReconciliation.data.authoritativeDesignation}
+                </span>
+              </div>
+              <p className="text-[11px] text-[#5C5449]">
+                {result.layerB.shadbalaReconciliation.data.methodologicalInvestigation.referenceBasisSummary}
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                <div className="rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] p-3 space-y-1">
+                  <div className="font-medium text-[#3D3830]">
+                    Zero Luminary Cheshta Bala Convention
+                  </div>
+                  <div className="font-mono text-[10px] text-[#5C5449]">
+                    Provider Sun={result.layerB.shadbalaReconciliation.data.methodologicalInvestigation.cheshtaBalaZeroLuminaries.sunProviderCheshta ?? '—'}V, Moon={result.layerB.shadbalaReconciliation.data.methodologicalInvestigation.cheshtaBalaZeroLuminaries.moonProviderCheshta ?? '—'}V · Legacy Sun={result.layerB.shadbalaReconciliation.data.methodologicalInvestigation.cheshtaBalaZeroLuminaries.sunLegacyLocalCheshta ?? '—'}V, Moon={result.layerB.shadbalaReconciliation.data.methodologicalInvestigation.cheshtaBalaZeroLuminaries.moonLegacyLocalCheshta ?? '—'}V
+                  </div>
+                  <p className="text-[#5C5449]">
+                    {result.layerB.shadbalaReconciliation.data.methodologicalInvestigation.cheshtaBalaZeroLuminaries.conventionExplanation}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-[#3D3830]/10 bg-[#FDFBF7] p-3 space-y-1">
+                  <div className="font-medium text-[#3D3830]">Kala Bala 6-Field Rollup Audit</div>
+                  <div className="font-mono text-[10px] text-[#5C5449]">
+                    abdaMasaVaraHora combined:{' '}
+                    {String(
+                      result.layerB.shadbalaReconciliation.data.methodologicalInvestigation
+                        .kalaBalaRollupAudit.abdaMasaVaraHoraCombined
+                    )}
+                  </div>
+                  <ul className="list-disc pl-4 text-[#5C5449] space-y-0.5">
+                    {result.layerB.shadbalaReconciliation.data.methodologicalInvestigation.kalaBalaRollupAudit.openApiKnownCaveats.map(
+                      (c) => (
+                        <li key={c}>{c}</li>
+                      )
+                    )}
+                  </ul>
+                </div>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-left font-mono text-[11px] tabular-nums">
                   <thead>
                     <tr className="border-b border-[#3D3830]/12 text-[#8B8275]">
                       <th className="py-1.5 pr-3">Planet</th>
-                      <th className="py-1.5 pr-3">Mode A (IANA)</th>
-                      <th className="py-1.5 pr-3">Mode B (UTC)</th>
-                      <th className="py-1.5 pr-3">Total Δ</th>
-                      <th className="py-1.5 pr-3">Kala Δ</th>
-                      <th className="py-1.5">Driver / Subcomponents</th>
+                      <th className="py-1.5 pr-3">WS vs Sripati House</th>
+                      <th className="py-1.5 pr-3">Kendradi Δ</th>
+                      <th className="py-1.5 pr-3">Saptavargaja Δ</th>
+                      <th className="py-1.5 pr-3">BPHS Min</th>
+                      <th className="py-1.5">Threshold / Pass-Fail</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#3D3830]/8 text-[#3D3830]">
-                    {result.layerA.timezoneEquivalenceCheck.shadbalaComparison.perPlanet.map((row) => (
-                      <tr key={row.planet}>
-                        <td className="py-1.5 pr-3 font-medium">{row.planet}</td>
-                        <td className="py-1.5 pr-3">{row.modeATotal.toFixed(2)}V</td>
-                        <td className="py-1.5 pr-3">{row.modeBTotal.toFixed(2)}V</td>
-                        <td
-                          className={`py-1.5 pr-3 ${
-                            Math.abs(row.totalDelta) > 0.02 ? 'text-[#7A3E36]' : 'text-[#2D6A4F]'
-                          }`}
-                        >
-                          {row.totalDelta}V
-                        </td>
-                        <td className="py-1.5 pr-3">{row.componentDeltas.kala_bala}V</td>
-                        <td className="py-1.5 text-[10px] text-[#5C5449]">
-                          {row.suspectedKalaBalaDriver ||
-                            (row.subcomponentDeltas ? 'All 6 Kala subcomponents 0.00V' : '—')}
-                        </td>
-                      </tr>
-                    ))}
+                    {result.layerB.shadbalaReconciliation.data.methodologicalInvestigation.sthanaDeltaDrivers.map(
+                      (drv) => {
+                        const rev =
+                          result.layerB.shadbalaReconciliation.data?.methodologicalInvestigation?.thresholdReversals.find(
+                            (r) => r.planet === drv.planet
+                          );
+                        return (
+                          <tr key={drv.planet}>
+                            <td className="py-1.5 pr-3 font-medium">{drv.planet}</td>
+                            <td className="py-1.5 pr-3">
+                              H{drv.wholeSignHouse} / Bh{drv.sripatiHouse}
+                              {drv.placidusHouse ? ` / Pl${drv.placidusHouse}` : ''}
+                            </td>
+                            <td className="py-1.5 pr-3">
+                              {drv.kendradiDeltaSripatiMinusWholeSign > 0 ? '+' : ''}
+                              {drv.kendradiDeltaSripatiMinusWholeSign}V
+                            </td>
+                            <td className="py-1.5 pr-3">
+                              {drv.saptavargajaDeltaPanchadhaMinusNatural > 0 ? '+' : ''}
+                              {drv.saptavargajaDeltaPanchadhaMinusNatural}V
+                            </td>
+                            <td className="py-1.5 pr-3">{rev?.bphsRequiredRupas ?? '—'}R</td>
+                            <td
+                              className={`py-1.5 text-[10px] ${
+                                rev?.providerVsLocalPassMismatch ? 'text-[#7A3E36]' : 'text-[#5C5449]'
+                              }`}
+                            >
+                              {rev?.notes || drv.explanation}
+                            </td>
+                          </tr>
+                        );
+                      }
+                    )}
                   </tbody>
                 </table>
               </div>

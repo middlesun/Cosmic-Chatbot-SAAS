@@ -100,6 +100,15 @@ export type V2EndpointId =
   | 'timezone_probe_mode_b'
   | (string & {});
 
+export type EndpointAcquisitionClassification =
+  | 'successfully_acquired'
+  | 'rate_limited'
+  | 'runtime_execution_blocked'
+  | 'tier_restricted'
+  | 'not_offered_by_provider'
+  | 'not_yet_tested'
+  | 'mathematical_verification_failed';
+
 export interface SanitizedProviderCallRecord {
   id: V2EndpointId;
   endpoint: string;
@@ -120,6 +129,8 @@ export interface SanitizedProviderCallRecord {
   qualityCaveat?: string | null;
   accessRestricted?: boolean;
   creditsUsed?: number | null;
+  acquisitionClassification?: EndpointAcquisitionClassification;
+  priorityTier?: number;
   rawResponse: unknown;
 }
 
@@ -142,8 +153,16 @@ export interface ShadbalaModeDeltaRow {
   suspectedKalaBalaDriver: string | null;
 }
 
+export type TimezoneEquivalenceStatus =
+  | 'verified_equivalent'
+  | 'mathematical_verification_failed'
+  | 'not_yet_tested'
+  | 'incomplete_due_to_rate_limit'
+  | 'incomplete_due_to_runtime_block';
+
 export interface TimezoneEquivalenceCheck {
   executed: boolean;
+  status?: TimezoneEquivalenceStatus;
   modeARequest: Record<string, unknown>;
   modeBRequest: Record<string, unknown>;
   modeAStatus: number;
@@ -156,7 +175,7 @@ export interface TimezoneEquivalenceCheck {
   perPlanetDeltasDeg: Array<{ planet: string; modeALon: number; modeBLon: number; deltaDeg: number }>;
   shadbalaComparison?: {
     available: boolean;
-    equivalent: boolean;
+    equivalent: boolean | null;
     maxTotalDeltaVirupas: number | null;
     maxComponentDeltaVirupas: number | null;
     perPlanet: ShadbalaModeDeltaRow[];
@@ -211,6 +230,8 @@ export interface EphemerisTimestampCheck {
   expectedJulianDayUt: number;
   deltaSecondsFromCanonical: number | null;
   deltaJulianDay: number | null;
+  utcTimestampPresent?: boolean;
+  julianDayMatch?: boolean;
   exactTimestampMatch: boolean;
   limitationNotes: string[];
 }
@@ -228,6 +249,30 @@ export interface ObservedQuotaHeadersSummary {
   creditsResetObserved?: string | null;
   tierRestrictedEndpoints?: string[];
   note: string;
+}
+
+export interface V2DiagnosticBatchState {
+  sessionId: string;
+  status:
+    | 'completed'
+    | 'in_progress'
+    | 'waiting_rate_limit'
+    | 'paused_partial'
+    | 'completed_with_restrictions';
+  batchIndex: number;
+  batchSize: number;
+  totalPlannedCount: number;
+  executedThisBatch: number;
+  remainingEligibleCount: number;
+  retryAfterMs: number;
+  nextAvailableAtUtc: string | null;
+  rateLimitResetSource: string | null;
+  rateLimitLimitObserved: number | null;
+  rateLimitRemainingObserved: number | null;
+  totalRateLimitWindowWaitMs: number;
+  classificationCounts: Record<EndpointAcquisitionClassification, number>;
+  haltedReason: string | null;
+  resumedFromSession: boolean;
 }
 
 /**
@@ -250,6 +295,7 @@ export interface LayerARawProviderRecord {
   calls: Record<string, SanitizedProviderCallRecord>;
   timezoneEquivalenceCheck?: TimezoneEquivalenceCheck | null;
   ephemerisTimestampCheck?: EphemerisTimestampCheck | null;
+  batchState?: V2DiagnosticBatchState | null;
   quotaAndPerformanceSummary: {
     plannedRequestsCount: number;
     totalCalls: number;
@@ -258,6 +304,13 @@ export interface LayerARawProviderRecord {
     successfulCalls: number;
     failedCalls: number;
     tierRestrictedCalls?: number;
+    rateLimitedCalls?: number;
+    runtimeBlockedCalls?: number;
+    notOfferedCalls?: number;
+    unexecutedCalls?: number;
+    mathematicalVerificationFailedCalls?: number;
+    classificationCounts?: Record<EndpointAcquisitionClassification, number>;
+    rateLimitWindowWaitMs?: number;
     totalLatencyMs: number;
     totalRateWaitMs: number;
     totalPayloadBytes: number;
@@ -435,12 +488,85 @@ export interface ShadbalaPlanetComparison {
     ishtaPhalaClassicalApprox: number | null;
     kashtaPhalaClassicalApprox: number | null;
   };
+  independentSthanaSubcomponents?: {
+    uchchaBala: number;
+    ojayugmaBala: number;
+    drekkanaBala: number;
+    kendradiWholeSign: number;
+    kendradiSripatiBhava: number;
+    kendradiPlacidus: number | null;
+    saptavargajaNatural: number;
+    saptavargajaPanchadha: number;
+    wholeSignHouse: number;
+    sripatiHouse: number;
+    placidusHouse: number | null;
+    sthanaTotalWholeSignNatural: number;
+    sthanaTotalSripatiPanchadha: number;
+  };
   deltas: {
     totalVirupasProviderMinusLocal: number | null;
     ratioProviderMinusLocal: number | null;
     digBalaProviderVsPlacidus: number | null;
     digBalaProviderVsEqual90: number | null;
+    sthanaBalaProviderMinusLocal?: number | null;
+    kalaBalaProviderMinusLocal?: number | null;
+    cheshtaBalaProviderMinusLocal?: number | null;
+    naisargikaBalaProviderMinusLocal?: number | null;
+    drikBalaProviderMinusLocal?: number | null;
   };
+}
+
+export interface ShadbalaMethodologicalInvestigation {
+  referenceBasisSummary: string;
+  sthanaDeltaDrivers: Array<{
+    planet: string;
+    wholeSignHouse: number;
+    sripatiHouse: number;
+    placidusHouse: number | null;
+    kendradiWholeSign: number;
+    kendradiSripatiBhava: number;
+    kendradiDeltaSripatiMinusWholeSign: number;
+    saptavargajaNatural: number;
+    saptavargajaPanchadha: number;
+    saptavargajaDeltaPanchadhaMinusNatural: number;
+    providerSthanaSubcomponents: Record<string, unknown> | null;
+    explanation: string;
+  }>;
+  cheshtaBalaZeroLuminaries: {
+    detectedOnProvider: boolean;
+    sunProviderCheshta: number | null;
+    moonProviderCheshta: number | null;
+    sunLegacyLocalCheshta: number | null;
+    moonLegacyLocalCheshta: number | null;
+    conventionExplanation: string;
+    ishtaKashtaImpactNote: string;
+  };
+  kalaBalaRollupAudit: {
+    abdaMasaVaraHoraCombined: boolean;
+    rawKalaItemsPresent: boolean;
+    fieldsObserved: string[];
+    openApiKnownCaveats: string[];
+    perPlanetKalaComparison: Array<{
+      planet: string;
+      providerKalaTotal: number | null;
+      providerSubcomponents: Record<string, number> | null;
+      independentPakshaBala: number | null;
+      independentNatonnataApprox: number | null;
+      legacyLocalKala: number | null;
+    }>;
+  };
+  thresholdReversals: Array<{
+    planet: string;
+    bphsRequiredRupas: number;
+    providerRupas: number | null;
+    providerRatioAtBphs: number | null;
+    providerPassesBphs: boolean | null;
+    legacyLocalRupas: number | null;
+    legacyLocalRequiredRupas: number;
+    legacyLocalPasses: boolean | null;
+    providerVsLocalPassMismatch: boolean;
+    notes: string;
+  }>;
 }
 
 export interface ShadbalaReconciliationReport {
@@ -463,6 +589,7 @@ export interface ShadbalaReconciliationReport {
     legacyLocalOrder: string[];
     rankDifferences: Array<{ planet: string; providerRank: number; localRank: number }>;
   };
+  methodologicalInvestigation?: ShadbalaMethodologicalInvestigation;
 }
 
 export interface RemainingClassicalGapItem {
@@ -474,7 +601,10 @@ export interface RemainingClassicalGapItem {
     | 'available_yellow'
     | 'partial_only'
     | 'unavailable'
-    | 'tier_restricted';
+    | 'tier_restricted'
+    | 'not_yet_tested'
+    | 'rate_limited'
+    | 'runtime_execution_blocked';
   localDerivedStatus: 'verified_deterministic' | 'approximation_only' | 'unavailable';
   candidateProviders: Array<'AstroWay' | 'Astrology-API.io' | 'RoxyAPI'>;
   notes: string;

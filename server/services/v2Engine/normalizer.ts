@@ -843,7 +843,7 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     const telemetryData: AstronomicalTelemetryFrame = {
       zodiacType: 'sidereal',
       siderealAyanamsa: 'lahiri',
-      timestamp: instant.utc.iso,
+      timestamp: tsCheck?.returnedUtcInstant ?? null,
       localTimestamp: `${instant.input.birthDate}T${instant.input.birthTime}`,
       resolvedTime: {
         julianDay: chartSidereal.julianDay ?? null,
@@ -917,6 +917,11 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       ? buildPlanetPositionsFromVedicFrame(vedicPlanets, vedicAscDeg)
       : [];
 
+  const kpCusps12 =
+    kpPlacidus.data?.cusps && kpPlacidus.data.cusps.length === 12
+      ? kpPlacidus.data.cusps.map((c) => Number(c.cusp_degree))
+      : null;
+
   const reconciliationData = buildShadbalaReconciliationReport({
     instant,
     providerShadbalaRaw: hasAwShadbala ? providerShadbalaMap : null,
@@ -929,6 +934,11 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     lahiriAscDeg: vedicAscDeg,
     lahiriMcDeg: indepRef.lahiriMcDeg,
     placidusLahiriCusps: null,
+    placidusLahiriCusps12:
+      kpCusps12 && kpCusps12.every((n) => Number.isFinite(n)) ? kpCusps12 : null,
+    providerSthanaRaw: unwrapAstroWayCall(calls.shadbala_sthana),
+    providerKalaRaw: unwrapAstroWayCall(calls.shadbala_kala),
+    providerIshtaKashtaRaw: unwrapAstroWayCall(calls.shadbala_ishta_kashta),
   });
 
   // Override the FreeAstroAPI-specific unavailable list with AstroWay's actual omissions
@@ -946,9 +956,11 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     'shadbala_ishta_kashta',
     'bhavabala',
   ]) {
-    if (!calls[subId]?.ok) {
+    const c = calls[subId];
+    if (!c?.ok) {
+      const tag = c?.acquisitionClassification ? `[${c.acquisitionClassification}] ` : '';
       awUnavailableStrengthItems.push(
-        `${subId} (${calls[subId]?.errorMessage || 'failed or restricted'})`
+        `${subId} (${tag}${c?.errorMessage || 'not yet acquired'})`
       );
     }
   }
@@ -1050,10 +1062,24 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
   } => {
     const matched = callIds.map((id) => calls[id]).filter(Boolean);
     if (matched.length === 0) {
-      return { status: 'unavailable', note: overrideNote || 'Not requested.' };
+      return { status: 'not_yet_tested', note: overrideNote || 'Queued in later batch.' };
     }
     const okList = matched.filter((c) => c.ok);
-    const restricted = matched.filter((c) => c.accessRestricted);
+    const getCls = (c: (typeof matched)[number]) =>
+      c.acquisitionClassification ||
+      (c.attempts === 0
+        ? 'not_yet_tested'
+        : c.ok
+        ? 'successfully_acquired'
+        : c.httpStatus === 429
+        ? 'rate_limited'
+        : c.accessRestricted || [401, 402, 403].includes(c.httpStatus)
+        ? 'tier_restricted'
+        : [404, 405, 501].includes(c.httpStatus)
+        ? 'not_offered_by_provider'
+        : 'runtime_execution_blocked');
+
+    const classes = matched.map(getCls);
     if (okList.length === matched.length) {
       const anyYellow = okList.some((c) => c.declaredQuality === 'yellow');
       return {
@@ -1063,23 +1089,39 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
         }.${overrideNote ? ` ${overrideNote}` : ''}`,
       };
     }
-    if (restricted.length > 0 && okList.length === 0) {
-      return {
-        status: 'tier_restricted',
-        note: `AstroWay returned HTTP ${restricted[0].httpStatus} (tier/credit restricted).`,
-      };
-    }
     if (okList.length > 0) {
       return {
         status: 'partial_only',
-        note: `${okList.length}/${matched.length} AstroWay endpoint(s) succeeded; ${
-          matched.length - okList.length
-        } failed or restricted.`,
+        note: `${okList.length}/${matched.length} AstroWay endpoint(s) succeeded; remaining states: ${classes.filter((x) => x !== 'successfully_acquired').join(', ')}.`,
+      };
+    }
+    if (classes.some((x) => x === 'rate_limited')) {
+      return {
+        status: 'rate_limited',
+        note: `Rate-limited (HTTP 429) across ${matched.length} AstroWay endpoint(s); queued to resume after cooldown.`,
+      };
+    }
+    if (classes.every((x) => x === 'not_yet_tested')) {
+      return {
+        status: 'not_yet_tested',
+        note: `Not yet tested (${matched.length} endpoint(s) queued for upcoming bounded batch).`,
+      };
+    }
+    if (classes.some((x) => x === 'tier_restricted')) {
+      return {
+        status: 'tier_restricted',
+        note: `Tier/credit restricted (${matched.find((c) => getCls(c) === 'tier_restricted')?.httpStatus ?? '402/403'}).`,
+      };
+    }
+    if (classes.some((x) => x === 'runtime_execution_blocked')) {
+      return {
+        status: 'runtime_execution_blocked',
+        note: `Runtime execution blocked on ${matched.length} AstroWay endpoint(s) (${matched[0].errorMessage || `HTTP ${matched[0].httpStatus}`}).`,
       };
     }
     return {
       status: 'unavailable',
-      note: `All ${matched.length} AstroWay endpoint(s) failed (last HTTP ${matched[0].httpStatus}).`,
+      note: `Not offered by provider across ${matched.length} AstroWay endpoint(s) (last HTTP ${matched[0].httpStatus}).`,
     };
   };
 

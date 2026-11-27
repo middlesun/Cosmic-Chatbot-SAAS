@@ -27,20 +27,23 @@ import {
 import { runFreeAstroApiPocBenchmark } from '../services/freeAstroApiPocRunner';
 import { checkRateLimit } from '../services/abuseGuard';
 import {
-  acquireAstroWayV2Bundle,
   acquireV2NatalBundle,
   BirthInstantTimezoneError,
   BirthInstantValidationError,
   buildLayerBMasterChartRecord,
   buildLayerCAnalyticalShell,
   buildLegacyVsV2ComparisonReport,
+  executeAstroWayBatchedBundle,
+  generateSessionId,
   getAstroWayApiKey,
   getAstroWayApiSecretStatus,
   getFreeAstroApiKey,
   getFreeAstroApiSecretStatus,
+  loadAstroWayBatchSession,
   readRuntimeHeapBytes,
   redactSecretsDeep,
   resolveCanonicalBirthInstant,
+  saveAstroWayBatchSession,
   summarizeRuntimeHeapTelemetry,
   verifyMasterChartRecord,
   type BirthTimePrecision,
@@ -3464,7 +3467,7 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
     return;
   }
 
-  const burst = checkRateLimit(`v2_diag_run:${req.appUser.id}`, 12, 10 * 60 * 1000);
+  const burst = checkRateLimit(`v2_diag_run:${req.appUser.id}`, 80, 15 * 60 * 1000);
   if (!burst.allowed) {
     res.setHeader('Retry-After', String(burst.retryAfterSec));
     res.status(429).json({
@@ -3624,18 +3627,72 @@ router.post('/v2-diagnostics/run', async (req: AuthenticatedRequest, res) => {
       throw err;
     }
 
-    const layerA =
-      provider === 'astroway'
-        ? await acquireAstroWayV2Bundle(instant, {
-            apiKey,
-            timeMode: instant.timezone.ianaTimezone ? 'local_iana' : 'utc',
-            includeTimezoneEquivalenceProbe,
-          })
-        : await acquireV2NatalBundle(instant, {
-            apiKey,
-            timeMode: instant.timezone.ianaTimezone ? 'local_iana' : 'utc',
-            includeTimezoneEquivalenceProbe,
-          });
+    let layerA;
+    if (provider === 'astroway') {
+      const requestedSessionId =
+        typeof body.sessionId === 'string' && body.sessionId.trim()
+          ? body.sessionId.trim()
+          : '';
+      const resetSession = Boolean(body.resetSession);
+      const requestedBatchSize =
+        typeof body.batchSize === 'number' && Number.isFinite(body.batchSize)
+          ? body.batchSize
+          : undefined;
+
+      const loadedSession =
+        requestedSessionId && !resetSession
+          ? await loadAstroWayBatchSession(requestedSessionId)
+          : null;
+
+      const canResume = Boolean(
+        loadedSession &&
+          loadedSession.inputFingerprint === instant.inputFingerprint &&
+          loadedSession.includeTimezoneEquivalenceProbe === includeTimezoneEquivalenceProbe
+      );
+
+      const activeSessionId = canResume
+        ? loadedSession!.sessionId
+        : requestedSessionId && !resetSession
+        ? requestedSessionId
+        : generateSessionId();
+
+      const batchIndex = canResume ? loadedSession!.batchIndex + 1 : 1;
+      const priorRateLimitWindowWaitMs = canResume
+        ? loadedSession!.totalRateLimitWindowWaitMs
+        : 0;
+
+      const batched = await executeAstroWayBatchedBundle(instant, {
+        apiKey,
+        timeMode: instant.timezone.ianaTimezone ? 'local_iana' : 'utc',
+        includeTimezoneEquivalenceProbe,
+        existingCalls: canResume ? loadedSession!.calls : undefined,
+        sessionId: activeSessionId,
+        batchSize: requestedBatchSize,
+        batchIndex,
+        priorRateLimitWindowWaitMs,
+        resumedFromSession: canResume,
+      });
+
+      await saveAstroWayBatchSession({
+        sessionId: activeSessionId,
+        providerId: 'astroway',
+        inputFingerprint: instant.inputFingerprint,
+        includeTimezoneEquivalenceProbe,
+        batchIndex,
+        totalRateLimitWindowWaitMs: batched.batchState.totalRateLimitWindowWaitMs,
+        createdAtMs: canResume ? loadedSession!.createdAtMs : Date.now(),
+        updatedAtMs: Date.now(),
+        calls: batched.updatedCalls,
+      });
+
+      layerA = batched.layerA;
+    } else {
+      layerA = await acquireV2NatalBundle(instant, {
+        apiKey,
+        timeMode: instant.timezone.ianaTimezone ? 'local_iana' : 'utc',
+        includeTimezoneEquivalenceProbe,
+      });
+    }
     const layerB = buildLayerBMasterChartRecord({ instant, rawLayerA: layerA });
     const layerC = buildLayerCAnalyticalShell(layerB);
     const verificationReport = verifyMasterChartRecord(layerB, layerA);

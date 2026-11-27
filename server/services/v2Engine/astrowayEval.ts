@@ -13,6 +13,13 @@
  * - Keeps Bucket 3 reserved strictly for external JHora / PyJHora / Swiss Ephemeris validation
  */
 
+import {
+  generateSessionId,
+  parseAstroWayRateLimitHeaders,
+  readAstroWayGlobalRateState,
+  writeAstroWayGlobalRateState,
+  type AstroWayRateLimitState,
+} from './astrowayCoordinator';
 import { normalizeDeg360 } from './birthInstant';
 import {
   getAstroWayApiKey,
@@ -23,12 +30,15 @@ import {
 } from './secretEnv';
 import type {
   CanonicalBirthInstant,
+  EndpointAcquisitionClassification,
   EphemerisTimestampCheck,
   LayerARawProviderRecord,
   ObservedQuotaHeadersSummary,
   SanitizedProviderCallRecord,
   ShadbalaModeDeltaRow,
   TimezoneEquivalenceCheck,
+  TimezoneEquivalenceStatus,
+  V2DiagnosticBatchState,
 } from './types';
 
 export const ASTROWAY_BASE_URL = 'https://api.astroway.info/v1';
@@ -67,6 +77,7 @@ export interface AstroWayEvalEndpointSpec {
   category: AstroWayEndpointCategory;
   declaredQuality: 'green' | 'yellow';
   qualityCaveat: string | null;
+  priorityTier?: 1 | 2 | 3 | 4;
   body: Record<string, unknown>;
 }
 
@@ -88,10 +99,14 @@ export interface AstroWayEndpointCallResult {
   category: AstroWayEndpointCategory;
   declaredQuality: 'green' | 'yellow';
   qualityCaveat: string | null;
+  priorityTier?: 1 | 2 | 3 | 4;
   httpStatus: number;
   ok: boolean;
   attempts: number;
+  rateWaitMs?: number;
+  coordinationMode?: 'global_supabase_cas' | 'isolate_memory_only';
   accessRestricted: boolean;
+  acquisitionClassification?: EndpointAcquisitionClassification;
   creditsUsed: number | null;
   latencyMs: number;
   payloadBytes: number;
@@ -811,288 +826,420 @@ export function buildAstroWayChris4EvaluationPlan(
   };
 }
 
+export type AstroWayFetchFn = (
+  input: string,
+  init?: RequestInit
+) => Promise<Response>;
+
+const TIER_1_PRIORITY_IDS = [
+  'chart_sidereal',
+  'timezone_probe_mode_b_chart',
+  'shadbala_full',
+  'timezone_probe_mode_b_shadbala_full',
+  'shadbala_kala',
+  'timezone_probe_mode_b_shadbala_kala',
+  'shadbala_drik',
+  'shadbala_ishta_kashta',
+  'bhavabala',
+] as const;
+
+const TIER_2_PRIORITY_IDS = [
+  'shadbala_sthana',
+  'shadbala_dig',
+  'shadbala_cheshta',
+  'shadbala_naisargika',
+  'varga_D9',
+  'vedic_kundli',
+  'yogas_parashara_full',
+  'doshas_parashara_full',
+  'yogas_jaimini_full',
+  'doshas_kp_full',
+] as const;
+
+const TIER_3_PRIORITY_IDS = [
+  'jaimini_karakas',
+  'jaimini_chara_karakas',
+  'jaimini_padas',
+  'jaimini_upapada',
+  'jaimini_aspects',
+  'jaimini_drishti_rasi',
+  'jaimini_drishti_graha',
+  'jaimini_atmakaraka_navamsa',
+  'jaimini_argala_analysis',
+  'jaimini_yogas',
+  'varga_D1',
+  'varga_D2',
+  'varga_D3',
+  'varga_D4',
+  'varga_D7',
+  'varga_D10',
+  'varga_D12',
+] as const;
+
+const TIER_4_PRIORITY_IDS = [
+  'varga_D16',
+  'varga_D20',
+  'varga_D24',
+  'varga_D27',
+  'varga_D30',
+  'varga_D40',
+  'varga_D45',
+  'varga_D60',
+  'kp_sub_lords',
+  'kp_cusps',
+  'kp_significators',
+  'kp_planet_cuspal_position',
+  'kp_ruling_planets',
+  'kp_asc_sub',
+  'kp_fortuna',
+  'ashtakavarga_basic',
+  'ashtakavarga_prastara',
+  'ashtakavarga_shodhana',
+  'vedic_panchang_full',
+  'timezone_probe_mode_b_panchang',
+  'dashas_vimshottari_prana',
+  'timezone_probe_mode_b_dasha',
+  'dashas_chara_maha',
+  'dashas_yogini_maha',
+  'dashas_ashtottari_maha',
+  'dashas_kalachakra_maha',
+  'dashas_tribhagi_maha',
+  'vedic_upagrahas',
+  'chart_tropical',
+  'western_essential_dignities',
+  'western_firdaria',
+  'western_profections',
+  'hellenistic_brennan_lots_15',
+  'hellenistic_brennan_zr_fortune',
+  'hellenistic_brennan_zr_spirit',
+  'hellenistic_brennan_profections_detail',
+] as const;
+
+export function orderAstroWaySpecsForPriorityVerification(
+  planRequests: AstroWayEvalEndpointSpec[],
+  probeSpecs: AstroWayEvalEndpointSpec[] = []
+): AstroWayEvalEndpointSpec[] {
+  const byId = new Map<string, AstroWayEvalEndpointSpec>();
+  for (const spec of [...planRequests, ...probeSpecs]) {
+    if (!byId.has(spec.id)) {
+      byId.set(spec.id, spec);
+    }
+  }
+
+  const ordered: AstroWayEvalEndpointSpec[] = [];
+  const seen = new Set<string>();
+
+  const pushTier = (ids: readonly string[], tier: 1 | 2 | 3 | 4) => {
+    for (const id of ids) {
+      const spec = byId.get(id);
+      if (spec && !seen.has(id)) {
+        seen.add(id);
+        ordered.push({ ...spec, priorityTier: tier });
+      }
+    }
+  };
+
+  pushTier(TIER_1_PRIORITY_IDS, 1);
+  pushTier(TIER_2_PRIORITY_IDS, 2);
+  pushTier(TIER_3_PRIORITY_IDS, 3);
+  pushTier(TIER_4_PRIORITY_IDS, 4);
+
+  // Append any remaining specs so nothing is ever omitted
+  for (const spec of byId.values()) {
+    if (!seen.has(spec.id)) {
+      seen.add(spec.id);
+      ordered.push({ ...spec, priorityTier: 4 });
+    }
+  }
+
+  return ordered;
+}
+
+export function classifyAstroWayCallOutcome(params: {
+  httpStatus: number;
+  ok: boolean;
+  attempts?: number;
+  errorMessage?: string | null;
+}): EndpointAcquisitionClassification {
+  const { httpStatus, ok, attempts } = params;
+  if (attempts === 0) return 'not_yet_tested';
+  if (ok && httpStatus >= 200 && httpStatus < 300) return 'successfully_acquired';
+  if (httpStatus === 429) return 'rate_limited';
+  if (httpStatus === 401 || httpStatus === 402 || httpStatus === 403) return 'tier_restricted';
+  if (httpStatus === 404 || httpStatus === 405 || httpStatus === 501) return 'not_offered_by_provider';
+  return 'runtime_execution_blocked';
+}
+
+export function isSettledAstroWayCall(
+  call: Pick<SanitizedProviderCallRecord, 'ok' | 'httpStatus' | 'attempts' | 'acquisitionClassification'> | undefined
+): boolean {
+  if (!call || call.attempts === 0) return false;
+  const cls =
+    call.acquisitionClassification ||
+    classifyAstroWayCallOutcome({
+      httpStatus: call.httpStatus,
+      ok: call.ok,
+      attempts: call.attempts,
+      errorMessage: null,
+    });
+  return (
+    cls === 'successfully_acquired' ||
+    cls === 'tier_restricted' ||
+    cls === 'not_offered_by_provider'
+  );
+}
+
+export function buildAstroWayProbeSpecs(
+  instant: CanonicalBirthInstant,
+  includeTimezoneEquivalenceProbe: boolean
+): AstroWayEvalEndpointSpec[] {
+  if (!includeTimezoneEquivalenceProbe || !instant.timezone.ianaTimezone) return [];
+
+  const utcSiderealWholeSign = buildAstroWayChartInputPayload(instant, {
+    timeMode: 'utc',
+    zodiacType: 'sidereal',
+    ayanamsa: 'lahiri',
+    houseSystem: 'W',
+  });
+  const utcSiderealBase = buildAstroWayChartInputPayload(instant, {
+    timeMode: 'utc',
+    zodiacType: 'sidereal',
+    ayanamsa: 'lahiri',
+  });
+  const targetDate = new Date().toISOString().slice(0, 10);
+
+  return [
+    {
+      id: 'timezone_probe_mode_b_chart',
+      path: '/chart',
+      method: 'POST',
+      category: 'timezone_probe',
+      declaredQuality: 'green',
+      qualityCaveat: 'Mode B UTC probe for /chart longitude/ascendant equivalence.',
+      priorityTier: 1,
+      body: utcSiderealWholeSign,
+    },
+    {
+      id: 'timezone_probe_mode_b_shadbala_full',
+      path: '/vedic/shadbala/full',
+      method: 'POST',
+      category: 'timezone_probe',
+      declaredQuality: 'green',
+      qualityCaveat: 'Mode B UTC probe for /vedic/shadbala/full invariance.',
+      priorityTier: 1,
+      body: utcSiderealBase,
+    },
+    {
+      id: 'timezone_probe_mode_b_shadbala_kala',
+      path: '/vedic/shadbala/kala',
+      method: 'POST',
+      category: 'timezone_probe',
+      declaredQuality: 'green',
+      qualityCaveat: 'Mode B UTC probe for /vedic/shadbala/kala subcomponent invariance.',
+      priorityTier: 1,
+      body: utcSiderealBase,
+    },
+    {
+      id: 'timezone_probe_mode_b_panchang',
+      path: '/vedic/panchang/full',
+      method: 'POST',
+      category: 'timezone_probe',
+      declaredQuality: 'green',
+      qualityCaveat: 'Mode B UTC probe for /vedic/panchang/full (at=moment) invariance.',
+      priorityTier: 4,
+      body: { ...utcSiderealBase, at: 'moment' },
+    },
+    {
+      id: 'timezone_probe_mode_b_dasha',
+      path: '/vedic/dashas/vimshottari/prana',
+      method: 'POST',
+      category: 'timezone_probe',
+      declaredQuality: 'green',
+      qualityCaveat: 'Mode B UTC probe for /vedic/dashas/vimshottari/prana invariance.',
+      priorityTier: 4,
+      body: { ...utcSiderealBase, targetDate },
+    },
+  ];
+}
+
 async function executeSingleAstroWaySpec(
   spec: AstroWayEvalEndpointSpec,
   apiKey: string,
-  maxRetries = 1
+  options?: {
+    fetchFn?: AstroWayFetchFn;
+    coordinationMode?: 'global_supabase_cas' | 'isolate_memory_only';
+    rateWaitMs?: number;
+  }
 ): Promise<AstroWayEndpointCallResult> {
   const sanitizedRequest = redactSecretsDeep(spec.body, [apiKey]);
-  let attempts = 0;
-  let lastResult: AstroWayEndpointCallResult | null = null;
+  const startedAt = Date.now();
+  const fetchImpl = options?.fetchFn ?? fetch;
+  const signal =
+    !options?.fetchFn &&
+    typeof AbortSignal !== 'undefined' &&
+    typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS)
+      : undefined;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    attempts++;
-    const startedAt = Date.now();
-    const signal =
-      typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-        ? AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS)
-        : undefined;
-
-    try {
-      const res = await fetch(`${ASTROWAY_BASE_URL}${spec.path}`, {
-        method: spec.method,
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'X-Api-Key': apiKey,
-        },
-        body: JSON.stringify(spec.body),
-        ...(signal ? { signal } : {}),
-      });
-      const text = await res.text();
-      const latencyMs = Math.max(0, Date.now() - startedAt);
-      const payloadBytes = textEncoder.encode(text).length;
-
-      const safeHeaders = redactHeaders(res.headers);
-      const creditHeaders: Record<string, string> = {};
-      for (const [hk, hv] of Object.entries(safeHeaders)) {
-        if (
-          hk.includes('credit') ||
-          hk.includes('rate') ||
-          hk.includes('limit') ||
-          hk.includes('remaining') ||
-          hk.includes('reset') ||
-          hk.includes('retry') ||
-          hk.includes('request-id')
-        ) {
-          creditHeaders[hk] = hv;
-        }
-      }
-
-      const rawUsed = Number(safeHeaders['x-credits-used']);
-      const creditsUsed = Number.isFinite(rawUsed) ? rawUsed : null;
-      const accessRestricted = res.status === 401 || res.status === 402 || res.status === 403;
-
-      let parsed: unknown = null;
-      try {
-        parsed = text ? JSON.parse(text) : null;
-      } catch {
-        parsed = redactSecretsInText(text.slice(0, 1000), [apiKey]);
-      }
-
-      const parsedObj = asRec(parsed);
-      const errDetail =
-        parsedObj.error && typeof parsedObj.error === 'object'
-          ? JSON.stringify(parsedObj.error)
-          : typeof parsedObj.message === 'string'
-          ? parsedObj.message
-          : typeof parsedObj.detail === 'string'
-          ? parsedObj.detail
-          : null;
-
-      lastResult = {
-        id: spec.id,
-        path: spec.path,
-        category: spec.category,
-        declaredQuality: spec.declaredQuality,
-        qualityCaveat: spec.qualityCaveat,
-        httpStatus: res.status,
-        ok: res.ok,
-        attempts,
-        accessRestricted,
-        creditsUsed,
-        latencyMs,
-        payloadBytes,
-        creditAndMetaHeaders: creditHeaders,
-        sanitizedRequest,
-        errorMessage: res.ok
-          ? null
-          : redactSecretsInText(
-              accessRestricted
-                ? `HTTP ${res.status} (${res.status === 402 ? 'credits_exhausted' : 'tier_restricted'}${errDetail ? `: ${errDetail}` : ''})`
-                : `HTTP ${res.status}${errDetail ? `: ${errDetail}` : ''}`,
-              [apiKey]
-            ),
-        rawResponse: redactSecretsDeep(parsed, [apiKey]),
-      };
-
-      if (res.status === 429 && attempt < maxRetries) {
-        const retryAfterSec = Number(res.headers.get('retry-after') || '0');
-        const backoffMs =
-          retryAfterSec > 0 ? Math.min(4_000, Math.max(500, retryAfterSec * 1000)) : 1_200;
-        await new Promise((r) => setTimeout(r, backoffMs));
-        continue;
-      }
-
-      return lastResult;
-    } catch (err) {
-      lastResult = {
-        id: spec.id,
-        path: spec.path,
-        category: spec.category,
-        declaredQuality: spec.declaredQuality,
-        qualityCaveat: spec.qualityCaveat,
-        httpStatus: 0,
-        ok: false,
-        attempts,
-        accessRestricted: false,
-        creditsUsed: null,
-        latencyMs: Math.max(0, Date.now() - startedAt),
-        payloadBytes: 0,
-        creditAndMetaHeaders: {},
-        sanitizedRequest,
-        errorMessage: redactSecretsInText(
-          err instanceof Error ? err.message : 'Network error calling AstroWay',
-          [apiKey]
-        ),
-        rawResponse: null,
-      };
-      return lastResult;
-    }
-  }
-
-  return lastResult!;
-}
-
-async function runSpecsWithBoundedPool(
-  specs: AstroWayEvalEndpointSpec[],
-  apiKey: string,
-  options?: { concurrency?: number; delayBetweenBatchesMs?: number }
-): Promise<Record<string, AstroWayEndpointCallResult>> {
-  const concurrency = Math.max(1, Math.min(6, options?.concurrency ?? 4));
-  const delayMs = Math.max(0, options?.delayBetweenBatchesMs ?? 0);
-  const results: Record<string, AstroWayEndpointCallResult> = {};
-  let cursor = 0;
-
-  const workers = Array.from({ length: Math.min(concurrency, specs.length) }, async () => {
-    while (cursor < specs.length) {
-      const idx = cursor++;
-      const spec = specs[idx];
-      if (!spec) break;
-      if (idx > 0 && delayMs > 0) {
-        await new Promise((r) => setTimeout(r, delayMs));
-      }
-      results[spec.id] = await executeSingleAstroWaySpec(spec, apiKey);
-    }
-  });
-
-  await Promise.all(workers);
-  return results;
-}
-
-/**
- * Isolated live evaluation runner (for CLI or diagnostic bundle execution).
- * Never stores credentials, never silently substitutes mock data, and preserves partial results.
- */
-export async function executeAstroWayEvaluationBundle(
-  instant: CanonicalBirthInstant,
-  options?: {
-    apiKey?: string;
-    endpointIds?: string[];
-    delayBetweenCallsMs?: number;
-    concurrency?: number;
-    timeMode?: 'local_iana' | 'utc';
-  }
-): Promise<AstroWayEvaluationBundle> {
-  const plan = buildAstroWayChris4EvaluationPlan(instant, {
-    timeMode: options?.timeMode,
-  });
-  if (plan.validationErrors.length > 0) {
-    throw new Error(`AstroWay preflight failed: ${plan.validationErrors.join('; ')}`);
-  }
-
-  const apiKey = (options?.apiKey || getAstroWayApiKey() || '').trim();
-  const epistemicBoundaryNote =
-    'Cross-checking FreeAstroAPI vs AstroWay evaluates inter-provider agreement only. Authoritative ground-truth remains pending external validation against JHora, PyJHora, or Swiss Ephemeris.';
-
-  const targetRequests = options?.endpointIds?.length
-    ? plan.requests.filter((r) => options.endpointIds!.includes(r.id))
-    : plan.requests;
-
-  if (!apiKey) {
-    return {
-      schemaVersion: 'v2.astroway_eval.1.0',
-      executedAtUtc: new Date().toISOString(),
-      status: 'blocked_missing_api_key',
-      inputFingerprint: instant.inputFingerprint,
-      canonicalUtcIso: instant.utc.iso,
-      secretStatus: getAstroWayApiSecretStatus(),
-      accessRequirements: ASTROWAY_ACCESS_REQUIREMENTS,
-      epistemicBoundaryNote,
-      plannedRequestsCount: targetRequests.length,
-      successfulCallsCount: 0,
-      failedCallsCount: 0,
-      observedCreditHeadersSummary: {
-        creditsUsedHeaderObserved: null,
-        creditsUsedTotal: null,
-        creditsRemainingHeaderObserved: null,
-        creditsLimitHeaderObserved: null,
-        creditsResetHeaderObserved: null,
+  try {
+    const res = await fetchImpl(`${ASTROWAY_BASE_URL}${spec.path}`, {
+      method: spec.method,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Api-Key': apiKey,
       },
-      results: {},
-      shadbalaCrossCheckNote:
-        'Blocked: configure ASTROWAY_API_KEY (Free tier: 10,000 credits/month, no credit card) to run live Shadbala & missing-dataset verification.',
+      body: JSON.stringify(spec.body),
+      ...(signal ? { signal } : {}),
+    });
+    const text = await res.text();
+    const latencyMs = Math.max(0, Date.now() - startedAt);
+    const payloadBytes = textEncoder.encode(text).length;
+
+    const safeHeaders = redactHeaders(res.headers);
+    const creditHeaders: Record<string, string> = {};
+    for (const [hk, hv] of Object.entries(safeHeaders)) {
+      if (
+        hk.includes('credit') ||
+        hk.includes('rate') ||
+        hk.includes('limit') ||
+        hk.includes('remaining') ||
+        hk.includes('reset') ||
+        hk.includes('retry') ||
+        hk.includes('request-id')
+      ) {
+        creditHeaders[hk] = hv;
+      }
+    }
+
+    const rawUsed = Number(safeHeaders['x-credits-used']);
+    const creditsUsed = Number.isFinite(rawUsed) ? rawUsed : null;
+    const accessRestricted = res.status === 401 || res.status === 402 || res.status === 403;
+    const classification = classifyAstroWayCallOutcome({
+      httpStatus: res.status,
+      ok: res.ok,
+      attempts: 1,
+    });
+
+    let parsed: unknown = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = redactSecretsInText(text.slice(0, 1000), [apiKey]);
+    }
+
+    const parsedObj = asRec(parsed);
+    const errDetail =
+      parsedObj.error && typeof parsedObj.error === 'object'
+        ? JSON.stringify(parsedObj.error)
+        : typeof parsedObj.message === 'string'
+        ? parsedObj.message
+        : typeof parsedObj.detail === 'string'
+        ? parsedObj.detail
+        : null;
+
+    return {
+      id: spec.id,
+      path: spec.path,
+      category: spec.category,
+      declaredQuality: spec.declaredQuality,
+      qualityCaveat: spec.qualityCaveat,
+      priorityTier: spec.priorityTier,
+      httpStatus: res.status,
+      ok: res.ok,
+      attempts: 1,
+      rateWaitMs: options?.rateWaitMs ?? 0,
+      coordinationMode: options?.coordinationMode ?? 'isolate_memory_only',
+      accessRestricted,
+      acquisitionClassification: classification,
+      creditsUsed,
+      latencyMs,
+      payloadBytes,
+      creditAndMetaHeaders: creditHeaders,
+      sanitizedRequest,
+      errorMessage: res.ok
+        ? null
+        : redactSecretsInText(
+            classification === 'rate_limited'
+              ? `HTTP 429 (rate_limited${errDetail ? `: ${errDetail}` : ''})`
+              : classification === 'tier_restricted'
+              ? `HTTP ${res.status} (${res.status === 402 ? 'credits_exhausted' : 'tier_restricted'}${errDetail ? `: ${errDetail}` : ''})`
+              : classification === 'not_offered_by_provider'
+              ? `HTTP ${res.status} (not_offered_by_provider${errDetail ? `: ${errDetail}` : ''})`
+              : `HTTP ${res.status}${errDetail ? `: ${errDetail}` : ''}`,
+            [apiKey]
+          ),
+      rawResponse: redactSecretsDeep(parsed, [apiKey]),
+    };
+  } catch (err) {
+    return {
+      id: spec.id,
+      path: spec.path,
+      category: spec.category,
+      declaredQuality: spec.declaredQuality,
+      qualityCaveat: spec.qualityCaveat,
+      priorityTier: spec.priorityTier,
+      httpStatus: 0,
+      ok: false,
+      attempts: 1,
+      rateWaitMs: options?.rateWaitMs ?? 0,
+      coordinationMode: options?.coordinationMode ?? 'isolate_memory_only',
+      accessRestricted: false,
+      acquisitionClassification: 'runtime_execution_blocked',
+      creditsUsed: null,
+      latencyMs: Math.max(0, Date.now() - startedAt),
+      payloadBytes: 0,
+      creditAndMetaHeaders: {},
+      sanitizedRequest,
+      errorMessage: redactSecretsInText(
+        err instanceof Error ? err.message : 'Network or timeout error calling AstroWay',
+        [apiKey]
+      ),
+      rawResponse: null,
     };
   }
+}
 
-  const results = await runSpecsWithBoundedPool(targetRequests, apiKey, {
-    concurrency: options?.concurrency ?? 4,
-    delayBetweenBatchesMs: options?.delayBetweenCallsMs ?? 0,
-  });
-
-  let creditsUsedHeaderObserved: string | null = null;
-  let creditsRemainingHeaderObserved: string | null = null;
-  let creditsLimitHeaderObserved: string | null = null;
-  let creditsResetHeaderObserved: string | null = null;
-  let creditsUsedTotal = 0;
-  let hasCreditSum = false;
-
-  for (const r of Object.values(results)) {
-    if (typeof r.creditsUsed === 'number' && Number.isFinite(r.creditsUsed)) {
-      creditsUsedTotal += r.creditsUsed;
-      hasCreditSum = true;
-    }
-    if (r.creditAndMetaHeaders['x-credits-used']) {
-      creditsUsedHeaderObserved = r.creditAndMetaHeaders['x-credits-used'];
-    }
-    if (r.creditAndMetaHeaders['x-credits-remaining']) {
-      creditsRemainingHeaderObserved = r.creditAndMetaHeaders['x-credits-remaining'];
-    }
-    if (r.creditAndMetaHeaders['x-credits-limit']) {
-      creditsLimitHeaderObserved = r.creditAndMetaHeaders['x-credits-limit'];
-    }
-    if (r.creditAndMetaHeaders['x-credits-reset']) {
-      creditsResetHeaderObserved = r.creditAndMetaHeaders['x-credits-reset'];
-    }
-  }
-
-  const allVals = Object.values(results);
-  const successfulCallsCount = allVals.filter((r) => r.ok).length;
-  const failedCallsCount = allVals.length - successfulCallsCount;
-  const status: AstroWayEvaluationBundle['status'] =
-    successfulCallsCount === allVals.length
-      ? 'complete'
-      : successfulCallsCount > 0
-      ? 'partial'
-      : 'failed';
-
+function makeNotYetTestedCallRecord(
+  spec: AstroWayEvalEndpointSpec,
+  apiKey: string,
+  coordinationMode: 'global_supabase_cas' | 'isolate_memory_only'
+): SanitizedProviderCallRecord {
   return {
-    schemaVersion: 'v2.astroway_eval.1.0',
-    executedAtUtc: new Date().toISOString(),
-    status,
-    inputFingerprint: instant.inputFingerprint,
-    canonicalUtcIso: instant.utc.iso,
-    secretStatus: getAstroWayApiSecretStatus(),
-    accessRequirements: ASTROWAY_ACCESS_REQUIREMENTS,
-    epistemicBoundaryNote,
-    plannedRequestsCount: targetRequests.length,
-    successfulCallsCount,
-    failedCallsCount,
-    observedCreditHeadersSummary: {
-      creditsUsedHeaderObserved,
-      creditsUsedTotal: hasCreditSum ? creditsUsedTotal : null,
-      creditsRemainingHeaderObserved,
-      creditsLimitHeaderObserved,
-      creditsResetHeaderObserved,
-    },
-    results,
-    shadbalaCrossCheckNote: results.shadbala_kala?.ok
-      ? 'AstroWay /vedic/shadbala/kala acquired; inspect abdaMasaVaraHora & nathonnatha against FreeAstroAPI Mode A/B kala_bala (subject to external JHora/PyJHora validation).'
-      : null,
+    id: spec.id,
+    endpoint: spec.path,
+    method: 'POST',
+    timestampUtc: new Date().toISOString(),
+    sanitizedRequest: redactSecretsDeep(spec.body, [apiKey]),
+    httpStatus: 0,
+    ok: false,
+    attempts: 0,
+    rateWaitMs: 0,
+    coordinationMode,
+    latencyMs: 0,
+    payloadBytes: 0,
+    quotaAndMetaHeaders: {},
+    errorMessage: 'Not yet tested (queued for next bounded batch)',
+    category: spec.category,
+    declaredQuality: spec.declaredQuality,
+    qualityCaveat: spec.qualityCaveat,
+    accessRestricted: false,
+    creditsUsed: null,
+    acquisitionClassification: 'not_yet_tested',
+    priorityTier: spec.priorityTier,
+    rawResponse: null,
   };
 }
 
 function toSanitizedCallRecord(r: AstroWayEndpointCallResult): SanitizedProviderCallRecord {
+  const cls =
+    r.acquisitionClassification ||
+    classifyAstroWayCallOutcome({
+      httpStatus: r.httpStatus,
+      ok: r.ok,
+      attempts: r.attempts,
+      errorMessage: r.errorMessage,
+    });
   return {
     id: r.id,
     endpoint: r.path,
@@ -1102,8 +1249,8 @@ function toSanitizedCallRecord(r: AstroWayEndpointCallResult): SanitizedProvider
     httpStatus: r.httpStatus,
     ok: r.ok,
     attempts: r.attempts,
-    rateWaitMs: 0,
-    coordinationMode: 'isolate_memory_only',
+    rateWaitMs: r.rateWaitMs ?? 0,
+    coordinationMode: r.coordinationMode ?? 'isolate_memory_only',
     latencyMs: r.latencyMs,
     payloadBytes: r.payloadBytes,
     quotaAndMetaHeaders: r.creditAndMetaHeaders,
@@ -1113,26 +1260,88 @@ function toSanitizedCallRecord(r: AstroWayEndpointCallResult): SanitizedProvider
     qualityCaveat: r.qualityCaveat,
     accessRestricted: r.accessRestricted,
     creditsUsed: r.creditsUsed,
+    acquisitionClassification: cls,
+    priorityTier: r.priorityTier,
     rawResponse: r.rawResponse,
+  };
+}
+
+function toEvalCallResult(c: SanitizedProviderCallRecord): AstroWayEndpointCallResult {
+  const cls =
+    c.acquisitionClassification ||
+    classifyAstroWayCallOutcome({
+      httpStatus: c.httpStatus,
+      ok: c.ok,
+      attempts: c.attempts,
+      errorMessage: c.errorMessage,
+    });
+  return {
+    id: c.id,
+    path: c.endpoint,
+    category: (c.category as AstroWayEndpointCategory) || 'natal_core',
+    declaredQuality: c.declaredQuality === 'yellow' ? 'yellow' : 'green',
+    qualityCaveat: c.qualityCaveat ?? null,
+    priorityTier: c.priorityTier as 1 | 2 | 3 | 4 | undefined,
+    httpStatus: c.httpStatus,
+    ok: c.ok,
+    attempts: c.attempts,
+    rateWaitMs: c.rateWaitMs,
+    coordinationMode: c.coordinationMode,
+    accessRestricted: Boolean(c.accessRestricted),
+    acquisitionClassification: cls,
+    creditsUsed: c.creditsUsed ?? null,
+    latencyMs: c.latencyMs,
+    payloadBytes: c.payloadBytes,
+    creditAndMetaHeaders: c.quotaAndMetaHeaders || {},
+    sanitizedRequest: c.sanitizedRequest || {},
+    errorMessage: c.errorMessage ?? null,
+    rawResponse: c.rawResponse,
   };
 }
 
 export function evaluateAstroWayJulianDayCheck(
   instant: CanonicalBirthInstant,
-  chartSiderealCall: AstroWayEndpointCallResult | undefined
+  chartSiderealCall: Pick<
+    AstroWayEndpointCallResult,
+    'ok' | 'rawResponse' | 'sanitizedRequest'
+  > | undefined
 ): EphemerisTimestampCheck | null {
   if (!chartSiderealCall?.ok) return null;
   const data = unwrapAstroWayData(chartSiderealCall.rawResponse);
+  const returnedUtcInstant =
+    typeof data.utcInstant === 'string'
+      ? data.utcInstant
+      : typeof data.utcTimestamp === 'string'
+      ? data.utcTimestamp
+      : typeof data.timestamp === 'string'
+      ? data.timestamp
+      : null;
   const returnedJd = typeof data.julianDay === 'number' ? data.julianDay : null;
   const deltaJd =
     returnedJd !== null ? Number((returnedJd - instant.utc.julianDayUt).toFixed(8)) : null;
   const deltaSeconds =
     deltaJd !== null ? Number((deltaJd * 86_400).toFixed(3)) : null;
-  const exactTimestampMatch = deltaJd !== null && Math.abs(deltaJd) < 0.00002;
+  const utcTimestampPresent = Boolean(returnedUtcInstant);
+  const julianDayMatch = deltaJd !== null ? Math.abs(deltaJd) < 0.00002 : false;
+  // Strict truthfulness: ephemeris_timestamp_verification cannot pass when returnedUtcInstant is absent
+  let exactTimestampMatch = false;
+  if (utcTimestampPresent && returnedUtcInstant) {
+    const parsedMs = Date.parse(returnedUtcInstant);
+    if (!Number.isNaN(parsedMs)) {
+      const utcDeltaSec = Math.abs((parsedMs - instant.utc.timestampMs) / 1000);
+      exactTimestampMatch = utcDeltaSec <= 1 && julianDayMatch;
+    }
+  }
+
   const limitationNotes: string[] = [];
+  if (!utcTimestampPresent) {
+    limitationNotes.push(
+      'AstroWay /chart returns numeric julianDay without an explicit UTC ISO timestamp string (returnedUtcInstant=null); julianDayMatch is reported separately from ephemeris_timestamp_verification.'
+    );
+  }
   if (returnedJd === null) {
     limitationNotes.push('AstroWay /chart response did not include numeric julianDay.');
-  } else if (!exactTimestampMatch) {
+  } else if (!julianDayMatch) {
     limitationNotes.push(
       `AstroWay julianDay ${returnedJd} differs from canonical ${instant.utc.julianDayUt} by Δ=${deltaSeconds}s.`
     );
@@ -1147,12 +1356,14 @@ export function evaluateAstroWayJulianDayCheck(
         chartSiderealCall.sanitizedRequest.timezoneOffset ??
         ''
     ),
-    returnedUtcInstant: null,
+    returnedUtcInstant,
     returnedJulianDay: returnedJd,
     expectedUtcIso: instant.utc.iso,
     expectedJulianDayUt: instant.utc.julianDayUt,
     deltaSecondsFromCanonical: deltaSeconds,
     deltaJulianDay: deltaJd,
+    utcTimestampPresent,
+    julianDayMatch,
     exactTimestampMatch,
     limitationNotes,
   };
@@ -1191,13 +1402,27 @@ export function compareAstroWayModeAVsModeBResponses(params: {
     dashaB,
   } = params;
 
-  const dataChartA = unwrapAstroWayData(chartA?.rawResponse);
-  const dataChartB = unwrapAstroWayData(chartB?.rawResponse);
+  const getCls = (c?: AstroWayEndpointCallResult): EndpointAcquisitionClassification | null => {
+    if (!c) return null;
+    return (
+      c.acquisitionClassification ||
+      classifyAstroWayCallOutcome({
+        httpStatus: c.httpStatus,
+        ok: c.ok,
+        attempts: c.attempts,
+        errorMessage: c.errorMessage,
+      })
+    );
+  };
+
+  const chartBothOk = Boolean(chartA?.ok && chartB?.ok);
+  const dataChartA = chartA?.ok ? unwrapAstroWayData(chartA.rawResponse) : {};
+  const dataChartB = chartB?.ok ? unwrapAstroWayData(chartB.rawResponse) : {};
 
   const ascA = Number(asRec(dataChartA.houses).ascendant);
   const ascB = Number(asRec(dataChartB.houses).ascendant);
   const ascendantDeltaDeg =
-    Number.isFinite(ascA) && Number.isFinite(ascB)
+    chartBothOk && Number.isFinite(ascA) && Number.isFinite(ascB)
       ? Number(circularDeltaDeg(ascA, ascB).toFixed(6))
       : null;
 
@@ -1212,21 +1437,23 @@ export function compareAstroWayModeAVsModeBResponses(params: {
   let maxPlanetDeltaDeg: number | null = null;
   let moonDeltaDeg: number | null = null;
 
-  for (const pA of planetsA) {
-    const name = String(pA.name || '');
-    const pB = planetsB.find((x) => String(x.name || '') === name);
-    if (!pB) continue;
-    const lonA = Number(pA.longitude);
-    const lonB = Number(pB.longitude);
-    if (!Number.isFinite(lonA) || !Number.isFinite(lonB)) continue;
-    const delta = Number(circularDeltaDeg(lonA, lonB).toFixed(6));
-    perPlanetDeltasDeg.push({ planet: name, modeALon: lonA, modeBLon: lonB, deltaDeg: delta });
-    if (maxPlanetDeltaDeg === null || delta > maxPlanetDeltaDeg) maxPlanetDeltaDeg = delta;
-    if (name.toLowerCase() === 'moon') moonDeltaDeg = delta;
+  if (chartBothOk) {
+    for (const pA of planetsA) {
+      const name = String(pA.name || '');
+      const pB = planetsB.find((x) => String(x.name || '') === name);
+      if (!pB) continue;
+      const lonA = Number(pA.longitude);
+      const lonB = Number(pB.longitude);
+      if (!Number.isFinite(lonA) || !Number.isFinite(lonB)) continue;
+      const delta = Number(circularDeltaDeg(lonA, lonB).toFixed(6));
+      perPlanetDeltasDeg.push({ planet: name, modeALon: lonA, modeBLon: lonB, deltaDeg: delta });
+      if (maxPlanetDeltaDeg === null || delta > maxPlanetDeltaDeg) maxPlanetDeltaDeg = delta;
+      if (name.toLowerCase() === 'moon') moonDeltaDeg = delta;
+    }
   }
 
   const coordinatesEquivalent =
-    Boolean(chartA?.ok && chartB?.ok) &&
+    chartBothOk &&
     ascendantDeltaDeg !== null &&
     ascendantDeltaDeg < 0.01 &&
     maxPlanetDeltaDeg !== null &&
@@ -1312,9 +1539,9 @@ export function compareAstroWayModeAVsModeBResponses(params: {
   }
 
   const shadbalaAvailable = shadbalaRows.length > 0;
-  const shadbalaEquivalent =
-    !shadbalaAvailable ||
-    ((maxSbTotalDelta ?? 0) <= 0.02 && (maxSbCompDelta ?? 0) <= 0.02);
+  const shadbalaEquivalent: boolean | null = shadbalaAvailable
+    ? (maxSbTotalDelta ?? 0) <= 0.02 && (maxSbCompDelta ?? 0) <= 0.02
+    : null;
 
   // Panchang Mode A vs Mode B
   let panchangAudit: TimezoneEquivalenceCheck['panchangAudit'] = null;
@@ -1442,14 +1669,45 @@ export function compareAstroWayModeAVsModeBResponses(params: {
     dashaEquivalent = dashaMismatches.length === 0;
   }
 
-  const equivalent =
-    coordinatesEquivalent &&
-    shadbalaEquivalent &&
-    (panchangAudit ? panchangAudit.equivalent : true) &&
-    (dashaEquivalent !== false);
+  // Classify overall probe execution vs true mathematical failure
+  const coreProbeList = [chartA, chartB, shadbalaFullA, shadbalaFullB, shadbalaKalaA, shadbalaKalaB];
+  const anyCoreRateLimited = coreProbeList.some((c) => getCls(c) === 'rate_limited');
+  const anyCoreNotYetTested = coreProbeList.some((c) => !c || getCls(c) === 'not_yet_tested');
+  const anyCoreRuntimeBlocked = coreProbeList.some((c) => {
+    const cls = getCls(c);
+    return cls === 'runtime_execution_blocked' || cls === 'tier_restricted' || cls === 'not_offered_by_provider';
+  });
+
+  const hasTrueMathDivergence =
+    (chartBothOk && !coordinatesEquivalent) ||
+    shadbalaEquivalent === false ||
+    (panchangAudit !== null && !panchangAudit.equivalent) ||
+    dashaEquivalent === false;
+
+  let status: TimezoneEquivalenceStatus;
+  if (hasTrueMathDivergence) {
+    status = 'mathematical_verification_failed';
+  } else if (anyCoreRateLimited) {
+    status = 'incomplete_due_to_rate_limit';
+  } else if (anyCoreNotYetTested) {
+    status = 'not_yet_tested';
+  } else if (anyCoreRuntimeBlocked) {
+    status = 'incomplete_due_to_runtime_block';
+  } else {
+    status = 'verified_equivalent';
+  }
+
+  const executed = status === 'verified_equivalent' || status === 'mathematical_verification_failed';
+  const equivalent = status === 'verified_equivalent';
 
   const notes: string[] = [];
-  if (coordinatesEquivalent) {
+  if (!chartBothOk) {
+    const clsA = getCls(chartA) ?? 'not_yet_tested';
+    const clsB = getCls(chartB) ?? 'not_yet_tested';
+    notes.push(
+      `AstroWay /chart Mode A vs Mode B probe incomplete (${clsA} / ${clsB}; ModeA HTTP ${chartA?.httpStatus ?? 0}, ModeB HTTP ${chartB?.httpStatus ?? 0}) — NOT a mathematical failure.`
+    );
+  } else if (coordinatesEquivalent) {
     notes.push(
       `AstroWay /chart coordinates invariant across Mode A (${instant.timezone.ianaTimezone}) and Mode B (UTC) within ${Math.max(
         ascendantDeltaDeg || 0,
@@ -1458,7 +1716,7 @@ export function compareAstroWayModeAVsModeBResponses(params: {
     );
   } else {
     notes.push(
-      `AstroWay coordinate equivalence failed or incomplete (ModeA HTTP ${chartA?.httpStatus ?? 0}, ModeB HTTP ${chartB?.httpStatus ?? 0}, ΔAsc=${ascendantDeltaDeg}°, maxPlΔ=${maxPlanetDeltaDeg}°).`
+      `AstroWay /chart coordinate mathematical divergence: ΔAsc=${ascendantDeltaDeg}°, maxPlΔ=${maxPlanetDeltaDeg}°.`
     );
   }
 
@@ -1472,6 +1730,12 @@ export function compareAstroWayModeAVsModeBResponses(params: {
         `AstroWay SHADBALA TIMEZONE INVARIANCE FAILURE: maxTotalΔ=${maxSbTotalDelta}V, maxCompΔ=${maxSbCompDelta}V.`
       );
     }
+  } else {
+    const sbBCls = getCls(shadbalaFullB) ?? 'not_yet_tested';
+    const kalaBCls = getCls(shadbalaKalaB) ?? 'not_yet_tested';
+    notes.push(
+      `AstroWay Shadbala Mode A vs Mode B comparison incomplete (shadbala_full Mode B: ${sbBCls}; shadbala_kala Mode B: ${kalaBCls}).`
+    );
   }
 
   if (panchangAudit) {
@@ -1490,7 +1754,8 @@ export function compareAstroWayModeAVsModeBResponses(params: {
   }
 
   return {
-    executed: true,
+    executed,
+    status,
     modeARequest: chartA?.sanitizedRequest || {},
     modeBRequest: chartB?.sanitizedRequest || {},
     modeAStatus: chartA?.httpStatus ?? 0,
@@ -1516,119 +1781,32 @@ export function compareAstroWayModeAVsModeBResponses(params: {
   };
 }
 
-/**
- * Executes maximum AstroWay acquisition + optional Mode A vs Mode B equivalence probe,
- * returning a unified LayerARawProviderRecord compatible with Layer B, Verification,
- * Legacy Comparison, and all 7 downloadable Chart Engine Laboratory artifacts.
- */
-export async function acquireAstroWayV2Bundle(
-  instant: CanonicalBirthInstant,
-  options?: {
-    apiKey?: string;
-    timeMode?: 'local_iana' | 'utc';
-    includeTimezoneEquivalenceProbe?: boolean;
-    concurrency?: number;
-  }
-): Promise<LayerARawProviderRecord> {
-  const apiKey = (options?.apiKey || getAstroWayApiKey() || '').trim();
-  if (!apiKey) {
-    throw new Error(
-      'ASTROWAY_API_KEY is not configured in server environment secrets. Live AstroWay acquisition aborted (no silent fallback).'
-    );
-  }
+function emptyClassificationCounts(): Record<EndpointAcquisitionClassification, number> {
+  return {
+    successfully_acquired: 0,
+    rate_limited: 0,
+    runtime_execution_blocked: 0,
+    tier_restricted: 0,
+    not_offered_by_provider: 0,
+    not_yet_tested: 0,
+    mathematical_verification_failed: 0,
+  };
+}
 
-  const plan = buildAstroWayChris4EvaluationPlan(instant, {
-    timeMode: options?.timeMode ?? (instant.timezone.ianaTimezone ? 'local_iana' : 'utc'),
-  });
-  if (plan.validationErrors.length > 0) {
-    throw new Error(`AstroWay preflight failed: ${plan.validationErrors.join('; ')}`);
-  }
-
-  const runProbe = Boolean(
-    options?.includeTimezoneEquivalenceProbe && instant.timezone.ianaTimezone
-  );
-
-  const probeSpecs: AstroWayEvalEndpointSpec[] = [];
-  if (runProbe) {
-    const utcSiderealWholeSign = buildAstroWayChartInputPayload(instant, {
-      timeMode: 'utc',
-      zodiacType: 'sidereal',
-      ayanamsa: 'lahiri',
-      houseSystem: 'W',
-    });
-    const utcSiderealBase = buildAstroWayChartInputPayload(instant, {
-      timeMode: 'utc',
-      zodiacType: 'sidereal',
-      ayanamsa: 'lahiri',
-    });
-    const targetDate = new Date().toISOString().slice(0, 10);
-
-    probeSpecs.push(
-      {
-        id: 'timezone_probe_mode_b_chart',
-        path: '/chart',
-        method: 'POST',
-        category: 'timezone_probe',
-        declaredQuality: 'green',
-        qualityCaveat: 'Mode B UTC probe for /chart longitude/ascendant equivalence.',
-        body: utcSiderealWholeSign,
-      },
-      {
-        id: 'timezone_probe_mode_b_shadbala_full',
-        path: '/vedic/shadbala/full',
-        method: 'POST',
-        category: 'timezone_probe',
-        declaredQuality: 'green',
-        qualityCaveat: 'Mode B UTC probe for /vedic/shadbala/full invariance.',
-        body: utcSiderealBase,
-      },
-      {
-        id: 'timezone_probe_mode_b_shadbala_kala',
-        path: '/vedic/shadbala/kala',
-        method: 'POST',
-        category: 'timezone_probe',
-        declaredQuality: 'green',
-        qualityCaveat: 'Mode B UTC probe for /vedic/shadbala/kala subcomponent invariance.',
-        body: utcSiderealBase,
-      },
-      {
-        id: 'timezone_probe_mode_b_panchang',
-        path: '/vedic/panchang/full',
-        method: 'POST',
-        category: 'timezone_probe',
-        declaredQuality: 'green',
-        qualityCaveat: 'Mode B UTC probe for /vedic/panchang/full (at=moment) invariance.',
-        body: { ...utcSiderealBase, at: 'moment' },
-      },
-      {
-        id: 'timezone_probe_mode_b_dasha',
-        path: '/vedic/dashas/vimshottari/prana',
-        method: 'POST',
-        category: 'timezone_probe',
-        declaredQuality: 'green',
-        qualityCaveat: 'Mode B UTC probe for /vedic/dashas/vimshottari/prana invariance.',
-        body: { ...utcSiderealBase, targetDate },
-      }
-    );
-  }
-
-  // Execute priority endpoints + probes first, followed by Vargas & Western/Hellenistic
-  const coreRequests = plan.requests.filter(
-    (r) => r.category !== 'varga' && r.category !== 'hellenistic_traditional'
-  );
-  const secondaryRequests = plan.requests.filter(
-    (r) => r.category === 'varga' || r.category === 'hellenistic_traditional'
-  );
-  const orderedSpecs = [...coreRequests, ...probeSpecs, ...secondaryRequests];
-
-  const rawResults = await runSpecsWithBoundedPool(orderedSpecs, apiKey, {
-    concurrency: options?.concurrency ?? 4,
-  });
-
+export function buildAstroWayLayerAFromCalls(params: {
+  instant: CanonicalBirthInstant;
+  orderedSpecs: AstroWayEvalEndpointSpec[];
+  callsMap: Record<string, SanitizedProviderCallRecord>;
+  batchState?: V2DiagnosticBatchState | null;
+  totalRateLimitWindowWaitMs?: number;
+  coordinationModesObserved?: Array<'global_supabase_cas' | 'isolate_memory_only'>;
+}): LayerARawProviderRecord {
+  const { instant, orderedSpecs, callsMap, batchState } = params;
   const calls: Record<string, SanitizedProviderCallRecord> = {};
   const missingDatasets: string[] = [];
   const tierRestrictedEndpoints: string[] = [];
   const observedHeadersByEndpoint: Record<string, Record<string, string>> = {};
+  const classificationCounts = emptyClassificationCounts();
 
   let creditsUsedTotal = 0;
   let hasAnyCreditsUsed = false;
@@ -1637,85 +1815,113 @@ export async function acquireAstroWayV2Bundle(
   let creditsResetObserved: string | null = null;
 
   for (const spec of orderedSpecs) {
-    const r = rawResults[spec.id];
-    if (!r) continue;
-    const callRec = toSanitizedCallRecord(r);
-    calls[spec.id] = callRec;
+    const rec = callsMap[spec.id];
+    if (!rec) continue;
+    const cls: EndpointAcquisitionClassification =
+      rec.acquisitionClassification ||
+      classifyAstroWayCallOutcome({
+        httpStatus: rec.httpStatus,
+        ok: rec.ok,
+        attempts: rec.attempts,
+        errorMessage: rec.errorMessage,
+      });
+    const normalizedRec: SanitizedProviderCallRecord = {
+      ...rec,
+      acquisitionClassification: cls,
+      priorityTier: rec.priorityTier ?? spec.priorityTier,
+    };
+    calls[spec.id] = normalizedRec;
+    classificationCounts[cls] = (classificationCounts[cls] || 0) + 1;
 
-    if (Object.keys(r.creditAndMetaHeaders).length > 0) {
-      observedHeadersByEndpoint[spec.id] = r.creditAndMetaHeaders;
+    if (normalizedRec.quotaAndMetaHeaders && Object.keys(normalizedRec.quotaAndMetaHeaders).length > 0) {
+      observedHeadersByEndpoint[spec.id] = normalizedRec.quotaAndMetaHeaders;
     }
-    if (typeof r.creditsUsed === 'number' && Number.isFinite(r.creditsUsed)) {
-      creditsUsedTotal += r.creditsUsed;
+    if (typeof normalizedRec.creditsUsed === 'number' && Number.isFinite(normalizedRec.creditsUsed)) {
+      creditsUsedTotal += normalizedRec.creditsUsed;
       hasAnyCreditsUsed = true;
     }
-    if (r.creditAndMetaHeaders['x-credits-remaining']) {
-      creditsRemainingFinal = r.creditAndMetaHeaders['x-credits-remaining'];
+    if (normalizedRec.quotaAndMetaHeaders?.['x-credits-remaining']) {
+      creditsRemainingFinal = normalizedRec.quotaAndMetaHeaders['x-credits-remaining'];
     }
-    if (!creditsLimitObserved && r.creditAndMetaHeaders['x-credits-limit']) {
-      creditsLimitObserved = r.creditAndMetaHeaders['x-credits-limit'];
+    if (!creditsLimitObserved && normalizedRec.quotaAndMetaHeaders?.['x-credits-limit']) {
+      creditsLimitObserved = normalizedRec.quotaAndMetaHeaders['x-credits-limit'];
     }
-    if (!creditsResetObserved && r.creditAndMetaHeaders['x-credits-reset']) {
-      creditsResetObserved = r.creditAndMetaHeaders['x-credits-reset'];
+    if (!creditsResetObserved && normalizedRec.quotaAndMetaHeaders?.['x-credits-reset']) {
+      creditsResetObserved = normalizedRec.quotaAndMetaHeaders['x-credits-reset'];
     }
 
-    if (!r.ok) {
-      if (r.accessRestricted) {
-        tierRestrictedEndpoints.push(`${spec.id} (${spec.path}: HTTP ${r.httpStatus})`);
+    if (!normalizedRec.ok) {
+      if (cls === 'tier_restricted') {
+        tierRestrictedEndpoints.push(`${spec.id} (${spec.path}: HTTP ${normalizedRec.httpStatus})`);
       }
-      missingDatasets.push(
-        `${spec.id} (${spec.path}): ${r.accessRestricted ? '[TIER_RESTRICTED] ' : ''}HTTP ${
-          r.httpStatus
-        }${r.errorMessage ? ` — ${r.errorMessage}` : ''}`
-      );
+      if (cls !== 'not_yet_tested') {
+        missingDatasets.push(
+          `${spec.id} (${spec.path}): [${cls.toUpperCase()}] HTTP ${normalizedRec.httpStatus}${
+            normalizedRec.errorMessage ? ` — ${normalizedRec.errorMessage}` : ''
+          }`
+        );
+      }
     }
+  }
+
+  const evalMap: Record<string, AstroWayEndpointCallResult> = {};
+  for (const [k, v] of Object.entries(calls)) {
+    evalMap[k] = toEvalCallResult(v);
   }
 
   const ephemerisTimestampCheck = evaluateAstroWayJulianDayCheck(
     instant,
-    rawResults.chart_sidereal
+    evalMap.chart_sidereal
   );
 
+  const hasAnyProbeSpec = orderedSpecs.some((s) => s.category === 'timezone_probe');
   const validationFailures: string[] = [];
   let timezoneEquivalenceCheck: TimezoneEquivalenceCheck | null = null;
-  if (runProbe) {
+  if (hasAnyProbeSpec) {
     timezoneEquivalenceCheck = compareAstroWayModeAVsModeBResponses({
       instant,
-      chartA: rawResults.chart_sidereal,
-      chartB: rawResults.timezone_probe_mode_b_chart,
-      shadbalaFullA: rawResults.shadbala_full,
-      shadbalaFullB: rawResults.timezone_probe_mode_b_shadbala_full,
-      shadbalaKalaA: rawResults.shadbala_kala,
-      shadbalaKalaB: rawResults.timezone_probe_mode_b_shadbala_kala,
-      panchangA: rawResults.vedic_panchang_full,
-      panchangB: rawResults.timezone_probe_mode_b_panchang,
-      dashaA: rawResults.dashas_vimshottari_prana,
-      dashaB: rawResults.timezone_probe_mode_b_dasha,
+      chartA: evalMap.chart_sidereal,
+      chartB: evalMap.timezone_probe_mode_b_chart,
+      shadbalaFullA: evalMap.shadbala_full,
+      shadbalaFullB: evalMap.timezone_probe_mode_b_shadbala_full,
+      shadbalaKalaA: evalMap.shadbala_kala,
+      shadbalaKalaB: evalMap.timezone_probe_mode_b_shadbala_kala,
+      panchangA: evalMap.vedic_panchang_full,
+      panchangB: evalMap.timezone_probe_mode_b_panchang,
+      dashaA: evalMap.dashas_vimshottari_prana,
+      dashaB: evalMap.timezone_probe_mode_b_dasha,
     });
-    if (!timezoneEquivalenceCheck.equivalent) {
+    if (timezoneEquivalenceCheck.status === 'mathematical_verification_failed') {
       validationFailures.push(
-        `AstroWay Mode A vs Mode B probe flagged discrepancy: ${timezoneEquivalenceCheck.notes.join(
-          ' '
-        )}`
+        `AstroWay Mode A vs Mode B mathematical divergence: ${timezoneEquivalenceCheck.notes.join(' ')}`
       );
     }
   }
 
-  if (ephemerisTimestampCheck && !ephemerisTimestampCheck.exactTimestampMatch) {
+  if (ephemerisTimestampCheck && ephemerisTimestampCheck.julianDayMatch === false) {
     validationFailures.push(
       `AstroWay Julian Day delta=${ephemerisTimestampCheck.deltaSecondsFromCanonical ?? 'N/A'}s (${ephemerisTimestampCheck.limitationNotes.join(' ')})`
     );
   }
 
   const allCallValues = Object.values(calls);
-  const successfulCalls = allCallValues.filter((c) => c.ok).length;
+  const successfulCalls = classificationCounts.successfully_acquired;
   const failedCalls = allCallValues.length - successfulCalls;
-  const tierRestrictedCalls = allCallValues.filter((c) => c.accessRestricted).length;
-  const actualHttpRequestsSent = allCallValues.reduce((s, c) => s + (c.attempts || 1), 0);
-  const retryCount = allCallValues.reduce((s, c) => s + Math.max(0, (c.attempts || 1) - 1), 0);
+  const actualHttpRequestsSent = allCallValues.reduce(
+    (s, c) => s + (typeof c.attempts === 'number' ? c.attempts : 0),
+    0
+  );
+  const retryCount = allCallValues.reduce(
+    (s, c) => s + Math.max(0, (typeof c.attempts === 'number' ? c.attempts : 0) - 1),
+    0
+  );
+  const totalRateWaitMs = Math.max(
+    params.totalRateLimitWindowWaitMs ?? 0,
+    allCallValues.reduce((s, c) => s + (c.rateWaitMs || 0), 0)
+  );
 
   const acquisitionStatus: LayerARawProviderRecord['acquisitionStatus'] =
-    successfulCalls === allCallValues.length
+    successfulCalls === allCallValues.length && allCallValues.length > 0
       ? 'complete'
       : successfulCalls > 0
       ? 'partial'
@@ -1735,11 +1941,20 @@ export async function acquireAstroWayV2Bundle(
     creditsResetObserved,
     tierRestrictedEndpoints,
     note: hasObservedHeaders
-      ? `AstroWay headers measured across ${allCallValues.length} calls (credits used=${
+      ? `AstroWay headers measured across ${actualHttpRequestsSent} HTTP call(s) (credits used=${
           hasAnyCreditsUsed ? creditsUsedTotal : 'N/A'
-        }, remaining=${creditsRemainingFinal ?? 'N/A'}, limit=${creditsLimitObserved ?? 'N/A'}, tierRestricted=${tierRestrictedCalls}).`
+        }, remaining=${creditsRemainingFinal ?? 'N/A'}, tierRestricted=${
+          classificationCounts.tier_restricted
+        }, rateLimited=${classificationCounts.rate_limited}, notYetTested=${
+          classificationCounts.not_yet_tested
+        }).`
       : 'AstroWay HTTP responses did not include credit headers.',
   };
+
+  const coordModes =
+    params.coordinationModesObserved && params.coordinationModesObserved.length > 0
+      ? params.coordinationModesObserved
+      : Array.from(new Set(allCallValues.map((c) => c.coordinationMode)));
 
   return {
     schemaVersion: 'v2.raw.1.0',
@@ -1756,6 +1971,7 @@ export async function acquireAstroWayV2Bundle(
     calls,
     timezoneEquivalenceCheck,
     ephemerisTimestampCheck,
+    batchState: batchState ?? null,
     quotaAndPerformanceSummary: {
       plannedRequestsCount: orderedSpecs.length,
       totalCalls: allCallValues.length,
@@ -1763,12 +1979,435 @@ export async function acquireAstroWayV2Bundle(
       retryCount,
       successfulCalls,
       failedCalls,
-      tierRestrictedCalls,
+      tierRestrictedCalls: classificationCounts.tier_restricted,
+      rateLimitedCalls: classificationCounts.rate_limited,
+      runtimeBlockedCalls: classificationCounts.runtime_execution_blocked,
+      notOfferedCalls: classificationCounts.not_offered_by_provider,
+      unexecutedCalls: classificationCounts.not_yet_tested,
+      mathematicalVerificationFailedCalls: classificationCounts.mathematical_verification_failed,
+      classificationCounts,
+      rateLimitWindowWaitMs: params.totalRateLimitWindowWaitMs ?? totalRateWaitMs,
       totalLatencyMs: allCallValues.reduce((s, c) => s + c.latencyMs, 0),
-      totalRateWaitMs: 0,
+      totalRateWaitMs,
       totalPayloadBytes: allCallValues.reduce((s, c) => s + c.payloadBytes, 0),
-      coordinationModesObserved: ['isolate_memory_only'],
+      coordinationModesObserved: coordModes,
       quotaHeadersObserved,
     },
   };
+}
+
+export interface ExecuteAstroWayBatchedBundleOptions {
+  apiKey?: string;
+  timeMode?: 'local_iana' | 'utc';
+  includeTimezoneEquivalenceProbe?: boolean;
+  existingCalls?: Record<string, SanitizedProviderCallRecord>;
+  sessionId?: string;
+  batchSize?: number;
+  batchIndex?: number;
+  priorRateLimitWindowWaitMs?: number;
+  resumedFromSession?: boolean;
+  allowSinglePassOverride?: boolean;
+  maxSubrequestsBudget?: number;
+  fetchFn?: AstroWayFetchFn;
+  endpointIds?: string[];
+  skipGlobalCooldown?: boolean;
+}
+
+/**
+ * Executes a single bounded, rate-limit-aware, priority-ordered AstroWay batch,
+ * preserving all prior settled responses and halting immediately on HTTP 429 or
+ * `x-ratelimit-remaining === 0` so Worker subrequest limits are never exhausted.
+ */
+export async function executeAstroWayBatchedBundle(
+  instant: CanonicalBirthInstant,
+  options?: ExecuteAstroWayBatchedBundleOptions
+): Promise<{
+  layerA: LayerARawProviderRecord;
+  batchState: V2DiagnosticBatchState;
+  updatedCalls: Record<string, SanitizedProviderCallRecord>;
+}> {
+  const apiKey = (options?.apiKey || getAstroWayApiKey() || '').trim();
+  if (!apiKey) {
+    throw new Error(
+      'ASTROWAY_API_KEY is not configured in server environment secrets. Live AstroWay acquisition aborted (no silent fallback).'
+    );
+  }
+
+  const plan = buildAstroWayChris4EvaluationPlan(instant, {
+    timeMode: options?.timeMode ?? (instant.timezone.ianaTimezone ? 'local_iana' : 'utc'),
+  });
+  if (plan.validationErrors.length > 0) {
+    throw new Error(`AstroWay preflight failed: ${plan.validationErrors.join('; ')}`);
+  }
+
+  const runProbe = Boolean(
+    options?.includeTimezoneEquivalenceProbe && instant.timezone.ianaTimezone
+  );
+  const probeSpecs = buildAstroWayProbeSpecs(instant, runProbe);
+  let orderedSpecs = orderAstroWaySpecsForPriorityVerification(plan.requests, probeSpecs);
+  if (options?.endpointIds?.length) {
+    const filterSet = new Set(options.endpointIds);
+    orderedSpecs = orderedSpecs.filter((s) => filterSet.has(s.id));
+  }
+
+  const sessionId = (options?.sessionId || '').trim() || generateSessionId();
+  const batchIndex = (options?.batchIndex ?? 0) + 1;
+  const effectiveBatchSize = options?.allowSinglePassOverride
+    ? orderedSpecs.length
+    : Math.max(1, Math.min(9, options?.batchSize ?? 8));
+  const maxSubrequestsBudget = options?.maxSubrequestsBudget ?? 32;
+
+  const callsMap: Record<string, SanitizedProviderCallRecord> = {};
+  if (options?.existingCalls) {
+    for (const [k, v] of Object.entries(options.existingCalls)) {
+      callsMap[k] = { ...v };
+    }
+  }
+
+  let totalRateLimitWindowWaitMs = Math.max(0, options?.priorRateLimitWindowWaitMs ?? 0);
+  let retryAfterMs = 0;
+  let nextAvailableAtUtc: string | null = null;
+  let rateLimitResetSource: string | null = null;
+  let rateLimitLimitObserved: number | null = null;
+  let rateLimitRemainingObserved: number | null = null;
+  let haltedReason: string | null = null;
+  let executedThisBatch = 0;
+  let subrequestsUsed = 0;
+  let firstCallRateWaitMs = 0;
+  const coordModes = new Set<'global_supabase_cas' | 'isolate_memory_only'>();
+
+  const globalRead = options?.skipGlobalCooldown
+    ? {
+        state: {
+          window_reset_ms: 0,
+          remaining_in_window: null,
+          limit: null,
+          last_retry_after_ms: null,
+          reset_source: null,
+          total_window_wait_ms: 0,
+          updated_at_ms: 0,
+        } satisfies AstroWayRateLimitState,
+        coordinationMode: 'isolate_memory_only' as const,
+      }
+    : await readAstroWayGlobalRateState();
+
+  coordModes.add(globalRead.coordinationMode);
+  let currentRateState = globalRead.state;
+  rateLimitLimitObserved = currentRateState.limit;
+  rateLimitRemainingObserved = currentRateState.remaining_in_window;
+  rateLimitResetSource = currentRateState.reset_source;
+
+  const nowMs = Date.now();
+  let cooldownActive = false;
+  if (currentRateState.window_reset_ms > nowMs) {
+    const remainingCooldownMs = currentRateState.window_reset_ms - nowMs;
+    if (remainingCooldownMs <= 2_500) {
+      await new Promise((r) => setTimeout(r, remainingCooldownMs));
+      firstCallRateWaitMs = remainingCooldownMs;
+      totalRateLimitWindowWaitMs += remainingCooldownMs;
+      currentRateState = {
+        ...currentRateState,
+        window_reset_ms: 0,
+        remaining_in_window: null,
+        total_window_wait_ms: currentRateState.total_window_wait_ms + remainingCooldownMs,
+        updated_at_ms: Date.now(),
+      };
+      if (!options?.skipGlobalCooldown) {
+        const wMode = await writeAstroWayGlobalRateState(currentRateState);
+        coordModes.add(wMode);
+      }
+    } else {
+      cooldownActive = true;
+      retryAfterMs = remainingCooldownMs;
+      nextAvailableAtUtc = new Date(currentRateState.window_reset_ms).toISOString();
+      haltedReason = `AstroWay provider rate-limit window active; resume after ${Math.ceil(
+        remainingCooldownMs / 1000
+      )}s (${nextAvailableAtUtc}).`;
+    }
+  }
+
+  if (!cooldownActive) {
+    for (const spec of orderedSpecs) {
+      if (isSettledAstroWayCall(callsMap[spec.id])) {
+        continue;
+      }
+      if (executedThisBatch >= effectiveBatchSize) {
+        haltedReason = `Bounded batch size (${effectiveBatchSize}) completed cleanly within Worker limits.`;
+        break;
+      }
+      if (subrequestsUsed >= maxSubrequestsBudget) {
+        haltedReason = `Subrequest safety ceiling (${maxSubrequestsBudget}) reached.`;
+        break;
+      }
+
+      const appliedWait = firstCallRateWaitMs;
+      firstCallRateWaitMs = 0;
+
+      const callResult = await executeSingleAstroWaySpec(spec, apiKey, {
+        fetchFn: options?.fetchFn,
+        coordinationMode: globalRead.coordinationMode,
+        rateWaitMs: appliedWait,
+      });
+      subrequestsUsed++;
+      executedThisBatch++;
+
+      const sanitizedCall = toSanitizedCallRecord(callResult);
+      callsMap[spec.id] = sanitizedCall;
+
+      const parsedHeaders = parseAstroWayRateLimitHeaders(callResult.creditAndMetaHeaders);
+      if (parsedHeaders.limit !== null) rateLimitLimitObserved = parsedHeaders.limit;
+      if (parsedHeaders.remaining !== null) rateLimitRemainingObserved = parsedHeaders.remaining;
+      if (parsedHeaders.resetSource) rateLimitResetSource = parsedHeaders.resetSource;
+
+      if (callResult.httpStatus === 429) {
+        const waitMs = parsedHeaders.retryAfterMs ?? 50_000;
+        const resetAtMs = parsedHeaders.windowResetAtMs ?? Date.now() + waitMs;
+        retryAfterMs = Math.max(0, resetAtMs - Date.now());
+        nextAvailableAtUtc = new Date(resetAtMs).toISOString();
+        haltedReason = `HTTP 429 received on ${spec.id}; halting batch immediately without retry until ${nextAvailableAtUtc}.`;
+
+        currentRateState = {
+          window_reset_ms: resetAtMs,
+          remaining_in_window: 0,
+          limit: rateLimitLimitObserved,
+          last_retry_after_ms: retryAfterMs,
+          reset_source: rateLimitResetSource || 'http_429_default_50s',
+          total_window_wait_ms: currentRateState.total_window_wait_ms,
+          updated_at_ms: Date.now(),
+        };
+        if (!options?.skipGlobalCooldown) {
+          const wMode = await writeAstroWayGlobalRateState(currentRateState);
+          coordModes.add(wMode);
+        }
+        break;
+      }
+
+      if (parsedHeaders.remaining === 0) {
+        const waitMs = parsedHeaders.retryAfterMs ?? 50_000;
+        const resetAtMs = parsedHeaders.windowResetAtMs ?? Date.now() + waitMs;
+        retryAfterMs = Math.max(0, resetAtMs - Date.now());
+        nextAvailableAtUtc = new Date(resetAtMs).toISOString();
+        haltedReason = `AstroWay window allowance reached (x-ratelimit-remaining=0 after ${spec.id}); halting proactively until ${nextAvailableAtUtc}.`;
+
+        currentRateState = {
+          window_reset_ms: resetAtMs,
+          remaining_in_window: 0,
+          limit: rateLimitLimitObserved,
+          last_retry_after_ms: retryAfterMs,
+          reset_source: rateLimitResetSource || 'x-ratelimit-remaining-zero',
+          total_window_wait_ms: currentRateState.total_window_wait_ms,
+          updated_at_ms: Date.now(),
+        };
+        if (!options?.skipGlobalCooldown) {
+          const wMode = await writeAstroWayGlobalRateState(currentRateState);
+          coordModes.add(wMode);
+        }
+        break;
+      }
+    }
+  }
+
+  // Ensure every planned endpoint has an explicit call record ('not_yet_tested' when untouched)
+  for (const spec of orderedSpecs) {
+    if (!callsMap[spec.id]) {
+      callsMap[spec.id] = makeNotYetTestedCallRecord(spec, apiKey, globalRead.coordinationMode);
+    }
+  }
+
+  const classificationCounts = emptyClassificationCounts();
+  let remainingEligibleCount = 0;
+  for (const spec of orderedSpecs) {
+    const rec = callsMap[spec.id];
+    const cls =
+      rec.acquisitionClassification ||
+      classifyAstroWayCallOutcome({
+        httpStatus: rec.httpStatus,
+        ok: rec.ok,
+        attempts: rec.attempts,
+        errorMessage: rec.errorMessage,
+      });
+    classificationCounts[cls] = (classificationCounts[cls] || 0) + 1;
+    if (!isSettledAstroWayCall(rec)) {
+      remainingEligibleCount++;
+    }
+  }
+
+  const batchStatus: V2DiagnosticBatchState['status'] =
+    remainingEligibleCount === 0
+      ? classificationCounts.tier_restricted > 0 ||
+        classificationCounts.not_offered_by_provider > 0
+        ? 'completed_with_restrictions'
+        : 'completed'
+      : retryAfterMs > 0
+      ? 'waiting_rate_limit'
+      : executedThisBatch === 0 && cooldownActive
+      ? 'waiting_rate_limit'
+      : 'in_progress';
+
+  const batchState: V2DiagnosticBatchState = {
+    sessionId,
+    status: batchStatus,
+    batchIndex,
+    batchSize: effectiveBatchSize,
+    totalPlannedCount: orderedSpecs.length,
+    executedThisBatch,
+    remainingEligibleCount,
+    retryAfterMs,
+    nextAvailableAtUtc,
+    rateLimitResetSource,
+    rateLimitLimitObserved,
+    rateLimitRemainingObserved,
+    totalRateLimitWindowWaitMs,
+    classificationCounts,
+    haltedReason,
+    resumedFromSession: Boolean(options?.resumedFromSession),
+  };
+
+  const layerA = buildAstroWayLayerAFromCalls({
+    instant,
+    orderedSpecs,
+    callsMap,
+    batchState,
+    totalRateLimitWindowWaitMs,
+    coordinationModesObserved: Array.from(coordModes),
+  });
+
+  return {
+    layerA,
+    batchState,
+    updatedCalls: layerA.calls,
+  };
+}
+
+/**
+ * Isolated evaluation runner (for CLI or diagnostic bundle execution).
+ * Uses the rate-limit-aware, priority-ordered coordinator without blind 429 retry loops.
+ */
+export async function executeAstroWayEvaluationBundle(
+  instant: CanonicalBirthInstant,
+  options?: {
+    apiKey?: string;
+    endpointIds?: string[];
+    delayBetweenCallsMs?: number;
+    concurrency?: number;
+    timeMode?: 'local_iana' | 'utc';
+    fetchFn?: AstroWayFetchFn;
+  }
+): Promise<AstroWayEvaluationBundle> {
+  const plan = buildAstroWayChris4EvaluationPlan(instant, {
+    timeMode: options?.timeMode,
+  });
+  if (plan.validationErrors.length > 0) {
+    throw new Error(`AstroWay preflight failed: ${plan.validationErrors.join('; ')}`);
+  }
+
+  const apiKey = (options?.apiKey || getAstroWayApiKey() || '').trim();
+  const epistemicBoundaryNote =
+    'Cross-checking FreeAstroAPI vs AstroWay evaluates inter-provider agreement only. Authoritative ground-truth remains pending external validation against JHora, PyJHora, or Swiss Ephemeris.';
+
+  const targetRequests = options?.endpointIds?.length
+    ? plan.requests.filter((r) => options.endpointIds!.includes(r.id))
+    : plan.requests;
+
+  if (!apiKey) {
+    return {
+      schemaVersion: 'v2.astroway_eval.1.0',
+      executedAtUtc: new Date().toISOString(),
+      status: 'blocked_missing_api_key',
+      inputFingerprint: instant.inputFingerprint,
+      canonicalUtcIso: instant.utc.iso,
+      secretStatus: getAstroWayApiSecretStatus(),
+      accessRequirements: ASTROWAY_ACCESS_REQUIREMENTS,
+      epistemicBoundaryNote,
+      plannedRequestsCount: targetRequests.length,
+      successfulCallsCount: 0,
+      failedCallsCount: 0,
+      observedCreditHeadersSummary: {
+        creditsUsedHeaderObserved: null,
+        creditsUsedTotal: null,
+        creditsRemainingHeaderObserved: null,
+        creditsLimitHeaderObserved: null,
+        creditsResetHeaderObserved: null,
+      },
+      results: {},
+      shadbalaCrossCheckNote:
+        'Blocked: configure ASTROWAY_API_KEY (Free tier: 10,000 credits/month, no credit card) to run live Shadbala & missing-dataset verification.',
+    };
+  }
+
+  const batched = await executeAstroWayBatchedBundle(instant, {
+    apiKey,
+    timeMode: options?.timeMode,
+    includeTimezoneEquivalenceProbe: false,
+    endpointIds: options?.endpointIds,
+    allowSinglePassOverride: true,
+    maxSubrequestsBudget: targetRequests.length + 5,
+    fetchFn: options?.fetchFn,
+    skipGlobalCooldown: true,
+  });
+
+  const results: Record<string, AstroWayEndpointCallResult> = {};
+  for (const [id, c] of Object.entries(batched.layerA.calls)) {
+    results[id] = toEvalCallResult(c);
+  }
+
+  const successfulCallsCount = batched.layerA.quotaAndPerformanceSummary.successfulCalls;
+  const failedCallsCount = batched.layerA.quotaAndPerformanceSummary.failedCalls;
+  const status: AstroWayEvaluationBundle['status'] =
+    successfulCallsCount === targetRequests.length
+      ? 'complete'
+      : successfulCallsCount > 0
+      ? 'partial'
+      : 'failed';
+
+  return {
+    schemaVersion: 'v2.astroway_eval.1.0',
+    executedAtUtc: new Date().toISOString(),
+    status,
+    inputFingerprint: instant.inputFingerprint,
+    canonicalUtcIso: instant.utc.iso,
+    secretStatus: getAstroWayApiSecretStatus(),
+    accessRequirements: ASTROWAY_ACCESS_REQUIREMENTS,
+    epistemicBoundaryNote,
+    plannedRequestsCount: targetRequests.length,
+    successfulCallsCount,
+    failedCallsCount,
+    observedCreditHeadersSummary: {
+      creditsUsedHeaderObserved: null,
+      creditsUsedTotal: batched.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.creditsUsedTotal ?? null,
+      creditsRemainingHeaderObserved:
+        batched.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.creditsRemainingFinal ?? null,
+      creditsLimitHeaderObserved:
+        batched.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.creditsLimitObserved ?? null,
+      creditsResetHeaderObserved:
+        batched.layerA.quotaAndPerformanceSummary.quotaHeadersObserved.creditsResetObserved ?? null,
+    },
+    results,
+    shadbalaCrossCheckNote: results.shadbala_kala?.ok
+      ? 'AstroWay /vedic/shadbala/kala acquired; inspect abdaMasaVaraHora & nathonnatha against FreeAstroAPI Mode A/B kala_bala (subject to external JHora/PyJHora validation).'
+      : null,
+  };
+}
+
+/**
+ * Executes a bounded AstroWay diagnostic acquisition batch (default 8 endpoints,
+ * Worker subrequest & rate-limit safe) and returns a consolidated LayerARawProviderRecord.
+ */
+export async function acquireAstroWayV2Bundle(
+  instant: CanonicalBirthInstant,
+  options?: {
+    apiKey?: string;
+    timeMode?: 'local_iana' | 'utc';
+    includeTimezoneEquivalenceProbe?: boolean;
+    existingCalls?: Record<string, SanitizedProviderCallRecord>;
+    sessionId?: string;
+    batchSize?: number;
+    batchIndex?: number;
+    priorRateLimitWindowWaitMs?: number;
+    resumedFromSession?: boolean;
+    fetchFn?: AstroWayFetchFn;
+  }
+): Promise<LayerARawProviderRecord> {
+  const { layerA } = await executeAstroWayBatchedBundle(instant, options);
+  return layerA;
 }

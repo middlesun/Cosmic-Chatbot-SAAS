@@ -893,18 +893,23 @@ export function verifyKpFrameDetailed(
     }
   }
 
+  const occupancyVerified = occupancyChecked > 0 && occupancyMismatches.length === 0;
+
   const coordsPassed =
     cuspSequenceOk &&
     (maxCuspRefDeltaDeg === null || maxCuspRefDeltaDeg < 0.45) &&
     (sunDeltaDeg === null || sunDeltaDeg < 0.25) &&
     (moonDeltaDeg === null || moonDeltaDeg < 0.45) &&
     cuspLordMismatches.length === 0 &&
-    occupancyMismatches.length === 0 &&
+    occupancyVerified &&
     significatorInconsistencies.length === 0;
 
   const notes: string[] = [
     `KP span=${seq.totalSpanDeg}°, maxCuspΔvsRef=${maxCuspRefDeltaDeg ?? 'N/A'}°, ΔAsc=${ascDeltaDeg ?? 'N/A'}°, ΔSun=${sunDeltaDeg ?? 'N/A'}°, ΔMoon=${moonDeltaDeg ?? 'N/A'}°.`,
     `Occupancy=${occupancyMatches}/${occupancyChecked} cusp containment; Cusp lords mismatches=${cuspLordMismatches.length}; Significator houses=${houseSignificators.length}, planets=${planetSignificators.length}, inconsistencies=${significatorInconsistencies.length}.`,
+    ...(occupancyChecked === 0
+      ? ['KP planetary house occupancy could not be verified (0/0 planets carried kp_house/house).']
+      : []),
   ];
 
   return {
@@ -1093,6 +1098,8 @@ export function verifyWesternFrameDetailed(
     }
   }
 
+  const occupancyVerified = occupancyChecked > 0 && occupancyMismatches.length === 0;
+
   const passed =
     cuspSequenceOk &&
     (maxCuspRefDeltaDeg === null || maxCuspRefDeltaDeg <= angleTolDeg + 0.15) &&
@@ -1100,12 +1107,15 @@ export function verifyWesternFrameDetailed(
     (mcDeltaDeg === null || mcDeltaDeg <= angleTolDeg) &&
     (sunDeltaDeg === null || sunDeltaDeg < 0.25) &&
     (moonDeltaDeg === null || moonDeltaDeg < 0.45) &&
-    occupancyMismatches.length === 0 &&
+    occupancyVerified &&
     aspectMismatches.length === 0;
 
   const notes: string[] = [
     `Western Tropical span=${seq.totalSpanDeg}°, maxCuspΔ=${maxCuspRefDeltaDeg ?? 'N/A'}°, ΔAsc=${ascDeltaDeg ?? 'N/A'}°, ΔMC=${mcDeltaDeg ?? 'N/A'}°, ΔSun=${sunDeltaDeg ?? 'N/A'}°, ΔMoon=${moonDeltaDeg ?? 'N/A'}° (tol=${angleTolDeg}°).`,
     `Occupancy=${occupancyMatches}/${occupancyChecked}; Aspects=${aspectsMatched}/${aspectsChecked} verified (mismatches=${aspectMismatches.length}).`,
+    ...(occupancyChecked === 0
+      ? ['Western Placidus house occupancy could not be verified (0/0 planets carried house field).']
+      : []),
     ...occupancyBoundaryOrbNotes,
   ];
 
@@ -1170,49 +1180,80 @@ export function verifyMasterChartRecord(
   // 2. Mode A vs Mode B timezone equivalence (Provider self-consistency across all birth-instant outputs)
   if (rawLayerA?.timezoneEquivalenceCheck) {
     const eq = rawLayerA.timezoneEquivalenceCheck;
-    const sbNote = eq.shadbalaComparison?.available
-      ? `Shadbala maxΔ=${eq.shadbalaComparison.maxTotalDeltaVirupas ?? 0}V`
-      : 'Shadbala absent';
-    const panNote = eq.panchangAudit?.available
-      ? eq.panchangAudit.requestTimePanchangAvailable
-        ? `BirthTimePanchang(request_time_panchang)=${String(eq.panchangAudit.requestTimePanchangEquivalent)} (dailyCalendarDiffs=${eq.panchangAudit.dailyCalendarDifferences.length})`
-        : `Panchang nonClockErr=${eq.panchangAudit.nonClockMismatches.length}`
-      : 'Panchang absent';
-    const dashaNote = eq.dashaAudit?.available
-      ? `Dasha durErr=${eq.dashaAudit.durationMismatches.length}, remΔ=${eq.dashaAudit.birthBalanceRemainingYearsDelta ?? 0}y, rolloverShifts=${eq.dashaAudit.calendarDateRolloverShifts.length}`
-      : `DashaEq=${String(eq.dashaEquivalent)}`;
+    const tzStatus =
+      eq.status ||
+      (eq.executed
+        ? eq.equivalent
+          ? 'verified_equivalent'
+          : 'mathematical_verification_failed'
+        : 'not_yet_tested');
 
-    checks.push({
-      id: 'timezone_mode_a_vs_b',
-      domain: 'Timezone Equivalence (Full Payload)',
-      passed: eq.equivalent,
-      severity: 'critical',
-      epistemicCategory: eq.equivalent
-        ? 'internal_math_consistency_verified'
-        : 'methodology_unresolved',
-      verificationBasis: 'provider_self_consistency',
-      expected: 'Mode A (IANA) == Mode B (UTC) across coordinates, Shadbala, Bhava Chalit, Ashtakavarga, Vargas, Yogas, Dasha durations & birth-time Panchang',
-      observed: `coordsEq=${eq.coordinatesEquivalent} (ascΔ=${eq.ascendantDeltaDeg}°, maxPlΔ=${eq.maxPlanetDeltaDeg}°); ${sbNote}; bhavaChalitEq=${String(eq.bhavaChalitEquivalent)}; AV_Eq=${String(eq.ashtakavargaEquivalent)}; ${dashaNote}; ${panNote}`,
-      notes: eq.notes.join(' | '),
-    });
-    if (eq.equivalent) {
-      internalMathConsistencyVerified.push({
-        key: 'timezone_mode_a_vs_b',
-        label: 'Provider Mode A (IANA) vs Mode B (UTC) Full Self-Consistency',
-        category: 'internal_math_consistency_verified',
-        verificationBasis: 'provider_self_consistency',
-        status: 'verified',
-        detail: eq.notes.join(' | '),
+    if (
+      tzStatus === 'not_yet_tested' ||
+      tzStatus === 'incomplete_due_to_rate_limit' ||
+      tzStatus === 'incomplete_due_to_runtime_block'
+    ) {
+      const prefix =
+        tzStatus === 'incomplete_due_to_rate_limit'
+          ? '[RATE LIMITED]'
+          : tzStatus === 'incomplete_due_to_runtime_block'
+          ? '[RUNTIME BLOCKED]'
+          : '[NOT YET TESTED]';
+      datasetUnavailable.push({
+        key: 'timezone_mode_a_vs_b_incomplete',
+        label: `${prefix} Mode A (IANA) vs Mode B (UTC) Timezone Equivalence Probe`,
+        category: 'dataset_unavailable',
+        verificationBasis: 'none',
+        status: 'unavailable',
+        detail:
+          eq.notes.join(' | ') ||
+          `Probe incomplete (${tzStatus}); resume batch acquisition before evaluating timezone invariance.`,
       });
     } else {
-      methodologyUnresolved.push({
-        key: 'timezone_mode_a_vs_b',
-        label: 'Provider Mode A (IANA) vs Mode B (UTC) Timezone Invariance Failure',
-        category: 'methodology_unresolved',
+      const sbNote = eq.shadbalaComparison?.available
+        ? `Shadbala maxΔ=${eq.shadbalaComparison.maxTotalDeltaVirupas ?? 0}V`
+        : 'Shadbala absent';
+      const panNote = eq.panchangAudit?.available
+        ? eq.panchangAudit.requestTimePanchangAvailable
+          ? `BirthTimePanchang(request_time_panchang)=${String(eq.panchangAudit.requestTimePanchangEquivalent)} (dailyCalendarDiffs=${eq.panchangAudit.dailyCalendarDifferences.length})`
+          : `Panchang nonClockErr=${eq.panchangAudit.nonClockMismatches.length}`
+        : 'Panchang absent';
+      const dashaNote = eq.dashaAudit?.available
+        ? `Dasha durErr=${eq.dashaAudit.durationMismatches.length}, remΔ=${eq.dashaAudit.birthBalanceRemainingYearsDelta ?? 0}y, rolloverShifts=${eq.dashaAudit.calendarDateRolloverShifts.length}`
+        : `DashaEq=${String(eq.dashaEquivalent)}`;
+
+      checks.push({
+        id: 'timezone_mode_a_vs_b',
+        domain: 'Timezone Equivalence (Full Payload)',
+        passed: eq.equivalent,
+        severity: 'critical',
+        epistemicCategory: eq.equivalent
+          ? 'internal_math_consistency_verified'
+          : 'methodology_unresolved',
         verificationBasis: 'provider_self_consistency',
-        status: 'unresolved',
-        detail: eq.notes.join(' | '),
+        expected: 'Mode A (IANA) == Mode B (UTC) across coordinates, Shadbala, Bhava Chalit, Ashtakavarga, Vargas, Yogas, Dasha durations & birth-time Panchang',
+        observed: `coordsEq=${eq.coordinatesEquivalent} (ascΔ=${eq.ascendantDeltaDeg}°, maxPlΔ=${eq.maxPlanetDeltaDeg}°); ${sbNote}; bhavaChalitEq=${String(eq.bhavaChalitEquivalent)}; AV_Eq=${String(eq.ashtakavargaEquivalent)}; ${dashaNote}; ${panNote}`,
+        notes: eq.notes.join(' | '),
       });
+      if (eq.equivalent) {
+        internalMathConsistencyVerified.push({
+          key: 'timezone_mode_a_vs_b',
+          label: 'Provider Mode A (IANA) vs Mode B (UTC) Full Self-Consistency',
+          category: 'internal_math_consistency_verified',
+          verificationBasis: 'provider_self_consistency',
+          status: 'verified',
+          detail: eq.notes.join(' | '),
+        });
+      } else {
+        methodologyUnresolved.push({
+          key: 'timezone_mode_a_vs_b',
+          label: 'Provider Mode A (IANA) vs Mode B (UTC) Timezone Invariance Failure',
+          category: 'methodology_unresolved',
+          verificationBasis: 'provider_self_consistency',
+          status: 'unresolved',
+          detail: eq.notes.join(' | '),
+        });
+      }
     }
 
     if (eq.panchangAudit?.available && eq.panchangAudit.requestTimePanchangAvailable) {
@@ -1585,6 +1626,7 @@ export function verifyMasterChartRecord(
     const kpGeomAndSignificatorsOk =
       (kpDetail.maxCuspRefDeltaDeg === null || kpDetail.maxCuspRefDeltaDeg < 0.45) &&
       kpDetail.cuspLordMismatches.length === 0 &&
+      kpDetail.occupancyChecked > 0 &&
       kpDetail.occupancyMismatches.length === 0 &&
       kpDetail.significatorInconsistencies.length === 0;
 
@@ -1786,7 +1828,9 @@ export function verifyMasterChartRecord(
     });
 
     if (ephData.timestampVerification) {
-      const tsOk = ephData.timestampVerification.exactTimestampMatch;
+      const tv = ephData.timestampVerification;
+      const utcPresent = tv.utcTimestampPresent ?? Boolean(tv.returnedUtcInstant);
+      const tsOk = utcPresent && tv.exactTimestampMatch;
       checks.push({
         id: 'ephemeris_timestamp_verification',
         domain: 'Ephemeris Timestamp',
@@ -1796,9 +1840,9 @@ export function verifyMasterChartRecord(
           ? 'internal_math_consistency_verified'
           : 'methodology_unresolved',
         verificationBasis: 'cosmiccouncil_internal_solver',
-        expected: `${ephData.timestampVerification.expectedUtcIso} / JD=${ephData.timestampVerification.expectedJulianDayUt}`,
-        observed: `${ephData.timestampVerification.returnedUtcInstant ?? 'missing'} / Δ=${ephData.timestampVerification.deltaSecondsFromCanonical ?? 'N/A'}s`,
-        notes: ephData.timestampVerification.limitationNotes.join(' | '),
+        expected: `${tv.expectedUtcIso} / JD=${tv.expectedJulianDayUt}`,
+        observed: `${tv.returnedUtcInstant ?? 'missing (returnedUtcInstant=null)'} / JD=${tv.returnedJulianDay ?? 'N/A'} / Δ=${tv.deltaSecondsFromCanonical ?? 'N/A'}s`,
+        notes: tv.limitationNotes.join(' | '),
       });
       (tsOk ? internalMathConsistencyVerified : methodologyUnresolved).push({
         key: 'ephemeris_timestamp_verification',
@@ -1806,8 +1850,31 @@ export function verifyMasterChartRecord(
         category: tsOk ? 'internal_math_consistency_verified' : 'methodology_unresolved',
         verificationBasis: 'cosmiccouncil_internal_solver',
         status: tsOk ? 'verified' : 'unresolved',
-        detail: `Canonical ${ephData.timestampVerification.expectedUtcIso} vs returned ${ephData.timestampVerification.returnedUtcInstant ?? 'N/A'} (Δ=${ephData.timestampVerification.deltaSecondsFromCanonical ?? 'N/A'}s)`,
+        detail: utcPresent
+          ? `Canonical ${tv.expectedUtcIso} vs returned ${tv.returnedUtcInstant ?? 'N/A'} (Δ=${tv.deltaSecondsFromCanonical ?? 'N/A'}s)`
+          : `Provider returned julianDay=${tv.returnedJulianDay ?? 'N/A'} without explicit returnedUtcInstant string (UTC timestamp absent).`,
       });
+
+      if (!tsOk && tv.julianDayMatch) {
+        checks.push({
+          id: 'ephemeris_julian_day_verification',
+          domain: 'Ephemeris Julian Day',
+          passed: true,
+          severity: 'major',
+          epistemicCategory: 'internal_math_consistency_verified',
+          verificationBasis: 'cosmiccouncil_internal_solver',
+          expected: `JD=${tv.expectedJulianDayUt}`,
+          observed: `JD=${tv.returnedJulianDay} (Δ=${tv.deltaSecondsFromCanonical ?? 0}s)`,
+        });
+        internalMathConsistencyVerified.push({
+          key: 'ephemeris_julian_day_verification',
+          label: 'Ephemeris Numeric Julian Day Match vs Canonical Solver',
+          category: 'internal_math_consistency_verified',
+          verificationBasis: 'cosmiccouncil_internal_solver',
+          status: 'verified',
+          detail: `Returned JD=${tv.returnedJulianDay} matches canonical JD=${tv.expectedJulianDayUt} (Δ=${tv.deltaSecondsFromCanonical ?? 0}s).`,
+        });
+      }
     }
   } else {
     datasetUnavailable.push({
@@ -1966,9 +2033,28 @@ export function verifyMasterChartRecord(
         });
       }
       if (!c.ok) {
+        const cls =
+          c.acquisitionClassification ||
+          (c.attempts === 0
+            ? 'not_yet_tested'
+            : c.httpStatus === 429
+            ? 'rate_limited'
+            : c.accessRestricted || [401, 402, 403].includes(c.httpStatus)
+            ? 'tier_restricted'
+            : [404, 405, 501].includes(c.httpStatus)
+            ? 'not_offered_by_provider'
+            : 'runtime_execution_blocked');
+        const prefixMap: Record<string, string> = {
+          tier_restricted: '[TIER RESTRICTED] ',
+          rate_limited: '[RATE LIMITED] ',
+          runtime_execution_blocked: '[RUNTIME BLOCKED] ',
+          not_offered_by_provider: '[NOT OFFERED] ',
+          not_yet_tested: '[NOT YET TESTED] ',
+          mathematical_verification_failed: '[MATH FAILED] ',
+        };
         datasetUnavailable.push({
           key: `astroway_failed_${c.id}`,
-          label: `${c.accessRestricted ? '[TIER RESTRICTED] ' : ''}${c.endpoint}`,
+          label: `${prefixMap[cls] || ''}${c.endpoint}`,
           category: 'dataset_unavailable',
           verificationBasis: 'none',
           status: 'unavailable',

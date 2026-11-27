@@ -23,17 +23,24 @@ import {
   buildLayerBMasterChartRecord,
   buildLayerCAnalyticalShell,
   buildLegacyVsV2ComparisonReport,
+  buildAstroWayProbeSpecs,
+  buildShadbalaReconciliationReport,
   compareAstroWayModeAVsModeBResponses,
   compareModeAVsModeBResponses,
   computeIndependentAstronomicalReference,
+  evaluateAstroWayJulianDayCheck,
+  executeAstroWayBatchedBundle,
   executeAstroWayEvaluationBundle,
   getAstroWayApiKey,
   getAstroWayApiSecretStatus,
   getFreeAstroApiKey,
   getFreeAstroApiSecretStatus,
   normalizePositiveHeapBytes,
+  orderAstroWaySpecsForPriorityVerification,
+  parseAstroWayRateLimitHeaders,
   READ_ONLY_SUPABASE_DIAGNOSTIC_SQL,
   redactSecretsDeep,
+  resetAstroWayIsolateRateStateForTests,
   resolveCanonicalBirthInstant,
   summarizeObservedQuotaHeaders,
   summarizeRuntimeHeapTelemetry,
@@ -1188,6 +1195,274 @@ async function main() {
     externalBucketCount: awVerif.epistemicClassification.independentlyValidatedAgainstExternalReference.length,
     detectedSunAbdaMasaVaraHoraDelta: awKalaProbe.shadbalaComparison?.perPlanet[0]?.subcomponentDeltas?.abdaMasaVaraHora,
   });
+
+  // 3m. AstroWay Rate-Limit Header Parsing (Retry-After + x-ratelimit-reset + remaining=0)
+  const fixedNow = Date.UTC(2026, 10, 27, 10, 0, 0);
+  const parsedSec = parseAstroWayRateLimitHeaders(
+    {
+      'retry-after': '47',
+      'x-ratelimit-remaining': '0',
+      'x-ratelimit-limit': '10',
+    },
+    fixedNow
+  );
+  const parsedEpochReset = parseAstroWayRateLimitHeaders(
+    {
+      'x-ratelimit-reset': String(Math.floor(fixedNow / 1000) + 52),
+      'x-ratelimit-remaining': '0',
+    },
+    fixedNow
+  );
+  assert(
+    parsedSec.retryAfterMs === 47_000 &&
+      parsedSec.remaining === 0 &&
+      parsedSec.limit === 10 &&
+      parsedEpochReset.retryAfterMs !== null &&
+      parsedEpochReset.retryAfterMs >= 51_000 &&
+      parsedEpochReset.retryAfterMs <= 52_500,
+    'AstroWay rate-limit header parser failed.'
+  );
+  regressionResults.push({ id: 'astroway_rate_limit_header_parsing', status: 'PASSED' });
+
+  // 3n. Priority Tier 1 Order + Cooldown Halt & Resumable Batch without Re-Calling Settled Endpoints
+  const awPlanSpecs = buildAstroWayChris4EvaluationPlan(sampleInstant, { timeMode: 'local_iana' });
+  const awProbeSpecs = buildAstroWayProbeSpecs(sampleInstant, true);
+  const orderedSpecs = orderAstroWaySpecsForPriorityVerification(awPlanSpecs.requests, awProbeSpecs);
+  assert(
+    orderedSpecs[0].id === 'chart_sidereal' &&
+      orderedSpecs[1].id === 'timezone_probe_mode_b_chart' &&
+      orderedSpecs[2].id === 'shadbala_full' &&
+      orderedSpecs[3].id === 'timezone_probe_mode_b_shadbala_full' &&
+      orderedSpecs[4].id === 'shadbala_kala' &&
+      orderedSpecs[5].id === 'timezone_probe_mode_b_shadbala_kala' &&
+      orderedSpecs[8].id === 'bhavabala',
+    'Priority Tier 1 ordering for AstroWay failed.'
+  );
+
+  await resetAstroWayIsolateRateStateForTests();
+  const calledPathsBatch1: string[] = [];
+  const mockFetchBatch1 = async (url: string, _init?: RequestInit): Promise<Response> => {
+    const pathname = new URL(url).pathname;
+    calledPathsBatch1.push(pathname);
+    if (calledPathsBatch1.length === 1) {
+      return new Response(
+        JSON.stringify({ ok: true, data: mockAwLayerA.calls.chart_sidereal.rawResponse }),
+        { status: 200, headers: { 'x-ratelimit-remaining': '8', 'x-ratelimit-limit': '10' } }
+      );
+    }
+    if (calledPathsBatch1.length === 2) {
+      return new Response(JSON.stringify({ ok: false, message: 'Upgrade required' }), {
+        status: 402,
+        headers: { 'x-ratelimit-remaining': '7', 'x-ratelimit-limit': '10' },
+      });
+    }
+    return new Response(JSON.stringify({ ok: false, message: 'Rate limit exceeded' }), {
+      status: 429,
+      headers: {
+        'retry-after': '48',
+        'x-ratelimit-remaining': '0',
+        'x-ratelimit-limit': '10',
+      },
+    });
+  };
+
+  const batch1 = await executeAstroWayBatchedBundle(sampleInstant, {
+    apiKey: 'test-key-redacted',
+    includeTimezoneEquivalenceProbe: true,
+    sessionId: 'sess-test-1',
+    batchSize: 8,
+    fetchFn: mockFetchBatch1,
+  });
+  assert(
+    calledPathsBatch1.length === 3 &&
+      batch1.batchState.status === 'waiting_rate_limit' &&
+      batch1.batchState.retryAfterMs > 40_000 &&
+      batch1.layerA.quotaAndPerformanceSummary.actualHttpRequestsSent === 3 &&
+      batch1.layerA.calls.shadbala_kala.attempts === 0 &&
+      batch1.layerA.calls.shadbala_kala.acquisitionClassification === 'not_yet_tested' &&
+      batch1.layerA.calls.shadbala_full.acquisitionClassification === 'rate_limited' &&
+      batch1.layerA.calls.timezone_probe_mode_b_chart.acquisitionClassification === 'tier_restricted',
+    'Batched AstroWay cooldown halt & 7-state classification failed.'
+  );
+
+  // Attempting resume inside active cooldown must NOT send any HTTP request
+  let calledDuringCooldown = 0;
+  const blockedDuringCooldown = await executeAstroWayBatchedBundle(sampleInstant, {
+    apiKey: 'test-key-redacted',
+    includeTimezoneEquivalenceProbe: true,
+    sessionId: 'sess-test-1',
+    existingCalls: batch1.updatedCalls,
+    batchSize: 8,
+    batchIndex: 2,
+    fetchFn: async () => {
+      calledDuringCooldown++;
+      return new Response('{}', { status: 200 });
+    },
+  });
+  assert(
+    calledDuringCooldown === 0 &&
+      blockedDuringCooldown.batchState.executedThisBatch === 0 &&
+      blockedDuringCooldown.batchState.status === 'waiting_rate_limit',
+    'Cooldown guard failed to block early request.'
+  );
+
+  // After reset window expires, resume must skip settled 200 & 402 and retry 429 shadbala_full first
+  await resetAstroWayIsolateRateStateForTests();
+  const calledPathsBatch2: string[] = [];
+  const batch2 = await executeAstroWayBatchedBundle(sampleInstant, {
+    apiKey: 'test-key-redacted',
+    includeTimezoneEquivalenceProbe: true,
+    sessionId: 'sess-test-1',
+    existingCalls: batch1.updatedCalls,
+    batchSize: 3,
+    batchIndex: 2,
+    resumedFromSession: true,
+    fetchFn: async (url: string) => {
+      calledPathsBatch2.push(new URL(url).pathname);
+      return new Response(JSON.stringify({ ok: true, data: { items: [] } }), {
+        status: 200,
+        headers: { 'x-ratelimit-remaining': '7', 'x-ratelimit-limit': '10' },
+      });
+    },
+  });
+  assert(
+    calledPathsBatch2.length === 3 &&
+      calledPathsBatch2[0].endsWith('/vedic/shadbala/full') &&
+      batch2.updatedCalls.chart_sidereal.ok &&
+      batch2.updatedCalls.timezone_probe_mode_b_chart.acquisitionClassification === 'tier_restricted',
+    `Batched resume failed to preserve settled 200/402 calls and retry 429 (paths=${JSON.stringify(calledPathsBatch2)}).`
+  );
+  await resetAstroWayIsolateRateStateForTests();
+  regressionResults.push({ id: 'astroway_batched_cooldown_halt_and_resume', status: 'PASSED' });
+
+  // 3o. Rate-Limited / Unexecuted Timezone Probe MUST NOT be Marked a Mathematical Failure
+  const rateLimitedTzCheck = compareAstroWayModeAVsModeBResponses({
+    instant: sampleInstant,
+    chartA: { id: 'chart_sidereal', path: '/chart', category: 'natal_core', declaredQuality: 'green', qualityCaveat: null, httpStatus: 200, ok: true, attempts: 1, accessRestricted: false, acquisitionClassification: 'successfully_acquired', creditsUsed: 1, latencyMs: 10, payloadBytes: 10, creditAndMetaHeaders: {}, sanitizedRequest: {}, errorMessage: null, rawResponse: mockAwLayerA.calls.chart_sidereal.rawResponse },
+    chartB: { id: 'timezone_probe_mode_b_chart', path: '/chart', category: 'timezone_probe', declaredQuality: 'green', qualityCaveat: null, httpStatus: 429, ok: false, attempts: 1, accessRestricted: false, acquisitionClassification: 'rate_limited', creditsUsed: 0, latencyMs: 10, payloadBytes: 10, creditAndMetaHeaders: {}, sanitizedRequest: {}, errorMessage: 'HTTP 429', rawResponse: null },
+  });
+  const rlMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: { ...mockAwLayerA, timezoneEquivalenceCheck: rateLimitedTzCheck },
+  });
+  const rlVerif = verifyMasterChartRecord(rlMaster, {
+    ...mockAwLayerA,
+    timezoneEquivalenceCheck: rateLimitedTzCheck,
+  });
+  assert(
+    rateLimitedTzCheck.status === 'incomplete_due_to_rate_limit' &&
+      rateLimitedTzCheck.executed === false &&
+      !rlVerif.checks.some((c) => c.id === 'timezone_mode_a_vs_b' && !c.passed) &&
+      !rlVerif.epistemicClassification.methodologyUnresolved.some((i) => i.key === 'timezone_mode_a_vs_b') &&
+      rlVerif.epistemicClassification.datasetUnavailable.some((i) => i.key === 'timezone_mode_a_vs_b_incomplete'),
+    'Rate-limited TZ probe was falsely flagged as mathematical failure.'
+  );
+  regressionResults.push({ id: 'astroway_incomplete_tz_probe_not_math_failure', status: 'PASSED' });
+
+  // 3p. 0/0 Occupancy Must Fail Both KP and Western Verification
+  const zeroOccKp = verifyKpFrameDetailed(
+    {
+      ...kpFrameGood,
+      planets: kpFrameGood.planets.map(({ kp_house: _kh, house: _h, ...rest }) => rest),
+    },
+    sampleRef
+  );
+  const zeroOccWest = verifyWesternFrameDetailed(
+    {
+      ...westGood,
+      planets: westGood.planets.map(({ house: _h, ...rest }) => rest),
+    },
+    sampleRef,
+    false
+  );
+  assert(
+    zeroOccKp.occupancyChecked === 0 &&
+      zeroOccKp.passed === false &&
+      zeroOccWest.occupancyChecked === 0 &&
+      zeroOccWest.passed === false,
+    '0/0 occupancy check falsely passed on KP or Western.'
+  );
+  regressionResults.push({ id: 'zero_of_zero_occupancy_fails_kp_and_western', status: 'PASSED' });
+
+  // 3q. Absent UTC Timestamp Fails Strict Ephemeris Timestamp Verification While Crediting julianDayMatch
+  const jdOnlyCheck = evaluateAstroWayJulianDayCheck(sampleInstant, {
+    ok: true,
+    sanitizedRequest: { date: '1985-12-25', time: '04:33:00', timezone: 'Asia/Kolkata' },
+    rawResponse: { ok: true, data: { julianDay: sampleInstant.utc.julianDayUt } },
+  });
+  const jdOnlyVerif = verifyMasterChartRecord(
+    buildLayerBMasterChartRecord({
+      instant: sampleInstant,
+      rawLayerA: { ...mockAwLayerA, ephemerisTimestampCheck: jdOnlyCheck },
+    }),
+    { ...mockAwLayerA, ephemerisTimestampCheck: jdOnlyCheck }
+  );
+  const tsCheckRow = jdOnlyVerif.checks.find((c) => c.id === 'ephemeris_timestamp_verification');
+  const jdCheckRow = jdOnlyVerif.checks.find((c) => c.id === 'ephemeris_julian_day_verification');
+  assert(
+    jdOnlyCheck?.utcTimestampPresent === false &&
+      jdOnlyCheck?.julianDayMatch === true &&
+      jdOnlyCheck?.exactTimestampMatch === false &&
+      tsCheckRow?.passed === false &&
+      jdCheckRow?.passed === true,
+    'Absent UTC timestamp ephemeris check did not separate exact timestamp vs Julian Day.'
+  );
+  regressionResults.push({ id: 'absent_utc_timestamp_ephemeris_check', status: 'PASSED' });
+
+  // 3r. Shadbala Methodological Investigation (Kendradi shift, Zero Luminary Cheshta, Kala 6-field rollup, Thresholds)
+  const makeTestPlanet = (name: string, lon: number, isRetrograde: boolean, dignity: string) => {
+    const signIndex = Math.floor(normalizeDeg(lon) / 30) % 12;
+    const ascIdx = Math.floor(normalizeDeg(sampleRef.lahiriAscendantDeg) / 30) % 12;
+    const nak = getNakshatraAndSubs(lon);
+    return {
+      name,
+      longitude: normalizeDeg(lon),
+      isRetrograde,
+      sign: SIGNS[signIndex],
+      signIndex,
+      degreeInSign: Number((normalizeDeg(lon) % 30).toFixed(4)),
+      dms: `${Math.floor(normalizeDeg(lon) % 30)}°00'`,
+      house: ((signIndex - ascIdx + 12) % 12) + 1,
+      nakshatra: nak.nakshatra,
+      nakshatraIndex: nak.nakshatraIndex,
+      nakshatraLord: nak.nakshatraLord,
+      pada: nak.pada,
+      subLord: nak.subLord,
+      subSubLord: nak.subSubLord,
+      dignity,
+    };
+  };
+  const sbReportZeroLum = buildShadbalaReconciliationReport({
+    instant: sampleInstant,
+    providerShadbalaRaw: {
+      Sun: { sthana_bala: 220, dig_bala: 24, kala_bala: 105, cheshta_bala: 0, naisargika_bala: 60, drik_bala: 8, total: 417, shadbala_in_rupas: 6.95, minimum_requirements: 6.5, ratio: 1.0692 },
+      Moon: { sthana_bala: 210, dig_bala: 33, kala_bala: 123, cheshta_bala: 0, naisargika_bala: 51.43, drik_bala: -30, total: 387.43, shadbala_in_rupas: 6.46, minimum_requirements: 6.0, ratio: 1.0767 },
+    },
+    providerStrengthMetadata: { provider: 'astroway' },
+    canonicalLahiriPlanets: [
+      makeTestPlanet('Sun', sampleRef.lahiriSunLonDeg, false, 'Neutral'),
+      makeTestPlanet('Moon', sampleRef.lahiriMoonLonDeg, false, 'Exalted'),
+      makeTestPlanet('Mars', 185, false, 'Neutral'),
+      makeTestPlanet('Mercury', 230, false, 'Neutral'),
+      makeTestPlanet('Jupiter', 295, false, 'Debilitated'),
+      makeTestPlanet('Venus', 245, false, 'Neutral'),
+      makeTestPlanet('Saturn', 221, false, 'Neutral'),
+      makeTestPlanet('Rahu', 11.5, true, 'Neutral'),
+      makeTestPlanet('Ketu', 191.5, true, 'Neutral'),
+    ],
+    lahiriAscDeg: sampleRef.lahiriAscendantDeg,
+    lahiriMcDeg: sampleRef.lahiriMcDeg,
+    providerKalaRaw: mockAwLayerA.calls.shadbala_kala.rawResponse as Record<string, unknown>,
+  });
+  assert(
+    sbReportZeroLum.authoritativeDesignation === 'unassigned_pending_reconciliation' &&
+      sbReportZeroLum.methodologicalInvestigation?.cheshtaBalaZeroLuminaries.detectedOnProvider === true &&
+      sbReportZeroLum.methodologicalInvestigation?.kalaBalaRollupAudit.abdaMasaVaraHoraCombined === true &&
+      sbReportZeroLum.methodologicalInvestigation?.sthanaDeltaDrivers.length === 7 &&
+      sbReportZeroLum.methodologicalInvestigation?.thresholdReversals.length === 7,
+    'Shadbala methodological investigation audit failed.'
+  );
+  regressionResults.push({ id: 'shadbala_methodological_investigation_checks', status: 'PASSED' });
 
   // 4. Read-Only Existing Profile Defect Audit + Legacy vs V2 Comparison on Local Fixtures
   const profileAudits: unknown[] = [];
