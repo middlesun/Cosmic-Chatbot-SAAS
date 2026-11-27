@@ -27,6 +27,7 @@ import {
   buildShadbalaReconciliationReport,
   compareAstroWayModeAVsModeBResponses,
   compareModeAVsModeBResponses,
+  computeCompletedAgeYears,
   computeIndependentAstronomicalReference,
   deleteAstroWayBatchSession,
   evaluateAstroWayJulianDayCheck,
@@ -38,6 +39,7 @@ import {
   getFreeAstroApiSecretStatus,
   listResumableAstroWaySessions,
   loadAstroWayBatchSession,
+  normalizeAstroWayYogas,
   normalizePositiveHeapBytes,
   orderAstroWaySpecsForPriorityVerification,
   parseAstroWayRateLimitHeaders,
@@ -1051,11 +1053,32 @@ async function main() {
           { name: 'Neptune', longitude: 273 },
           { name: 'Pluto', longitude: 216 },
         ],
-        aspects: [],
+        aspects: [
+          {
+            planet1: { name: 'Sun' },
+            planet2: { name: 'Venus' },
+            type: { name: 'Conjunction', angle: 0 },
+            orb: Number(
+              (() => {
+                let d = Math.abs(sampleRef.tropicalSunLonDeg - 269);
+                if (d > 180) d = 360 - d;
+                return d;
+              })().toFixed(2)
+            ),
+          },
+        ],
+        parallelAspects: [{ planet1: 'Sun', planet2: 'Venus', type: 'Parallel', orb: 0.4 }],
+        houseAspects: [{ planet: 'Sun', house: 10, aspect: 'Conjunction' }],
+        antiscia: [{ planet: 'Sun', antiscionLongitude: 86.9 }],
+        antisciaAspects: [],
       }),
       vedic_kundli: makeAwCall('vedic_kundli', '/vedic/kundli', 'natal_core', {
         ayanamsa: 'lahiri',
         lagna: { longitude: sampleRef.lahiriAscendantDeg, signName: SIGNS[Math.floor(sampleRef.lahiriAscendantDeg / 30) % 12] },
+        nakshatra: { name: 'Rohini', pada: 2 },
+        dasha: { current: { maha: 'Saturn', antar: 'Mercury' } },
+        yogas: { present: ['Raja Yoga', 'Hamsa Mahapurusha Yoga'], dhana: { present: true, contributingPlanets: ['Jupiter', 'Venus'] } },
+        doshas: { present: [] },
         grahas: [
           { name: 'Sun', longitude: sampleRef.lahiriSunLonDeg },
           { name: 'Moon', longitude: sampleRef.lahiriMoonLonDeg },
@@ -1064,10 +1087,30 @@ async function main() {
           { name: 'Jupiter', longitude: 295 },
           { name: 'Venus', longitude: 245 },
           { name: 'Saturn', longitude: 221 },
-          { name: 'Rahu', longitude: 11.5, isRetrograde: true },
-          { name: 'Ketu', longitude: 191.5, isRetrograde: true },
+          { name: 'Rahu', longitude: 12.5352, isRetrograde: true },
+          { name: 'Ketu', longitude: 192.5352, isRetrograde: true },
         ],
       }),
+      vedic_panchang_full: makeAwCall('vedic_panchang_full', '/vedic/panchang/full', 'natal_core', {
+        sunrise: '06:17:00',
+        sunset: '16:56:00',
+        tithi: { name: 'Shukla Chaturdashi' },
+        nakshatra: { name: 'Rohini', pada: 2 },
+      }),
+      ...Object.fromEntries(
+        [1, 2, 3, 4, 7, 9, 10, 12, 16, 20, 24, 27, 30, 40, 45, 60].map((div) => [
+          `varga_D${div}`,
+          makeAwCall(`varga_D${div}`, `/vedic/varga/D${div}`, 'varga', {
+            varga: `D${div}`,
+            ayanamsa: 23.66,
+            lagna: { signName: SIGNS[getVargaSignIndex(sampleRef.lahiriAscendantDeg, div)] },
+            planets: [
+              { name: 'Sun', signName: SIGNS[getVargaSignIndex(sampleRef.lahiriSunLonDeg, div)], longitude: sampleRef.lahiriSunLonDeg },
+              { name: 'Moon', signName: SIGNS[getVargaSignIndex(sampleRef.lahiriMoonLonDeg, div)], longitude: sampleRef.lahiriMoonLonDeg },
+            ],
+          }),
+        ])
+      ),
       shadbala_full: makeAwCall('shadbala_full', '/vedic/shadbala/full', 'shadbala', {
         items: [
           { planetName: 'Sun', sthana: 220, dig: 24, kala: 105, cheshta: 1, naisargika: 60, drik: 8, totalVirupa: 418, totalRupa: 6.97 },
@@ -1079,6 +1122,7 @@ async function main() {
           { planetName: 'Saturn', sthana: 214, dig: 2, kala: 104, cheshta: 11, naisargika: 8.57, drik: 15, totalVirupa: 354.57, totalRupa: 5.91 },
         ],
       }),
+      shadbala_sthana: makeAwCall('shadbala_sthana', '/vedic/shadbala/sthana', 'shadbala', { items: [] }),
       shadbala_kala: makeAwCall('shadbala_kala', '/vedic/shadbala/kala', 'shadbala', {
         items: [
           { planetName: 'Sun', nathonnatha: 20, paksha: 30, tribhaga: 10, abdaMasaVaraHora: 15, ayana: 30, yuddha: 0, total: 105 },
@@ -1090,7 +1134,32 @@ async function main() {
           { planetName: 'Saturn', nathonnatha: 40, paksha: 30, tribhaga: 10, abdaMasaVaraHora: 12, ayana: 12, yuddha: 0, total: 104 },
         ],
       }),
+      shadbala_ishta_kashta: makeAwCall('shadbala_ishta_kashta', '/vedic/shadbala/ishta-kashta', 'shadbala', { items: [{ planetName: 'Sun', ishta: 32, kashta: 28 }] }, { declaredQuality: 'yellow' }),
       bhavabala: makeAwCall('bhavabala', '/vedic/bhavabala', 'bhavabala', { houses: [] }, { declaredQuality: 'yellow' }),
+      yogas_parashara_full: makeAwCall('yogas_parashara_full', '/vedic/yogas/parashara/full', 'yoga_dosha', {
+        raja: { present: true, strength: 'strong', contributingPlanets: ['Jupiter', 'Venus'], details: ['9L + 10L link'] },
+        dhana: { present: true, strength: 'moderate', contributingPlanets: ['Jupiter', 'Mercury'], details: ['2L + 11L link'] },
+        dharmaKarmadhipati: { present: false, contributingPlanets: [] },
+        gajakesari: { present: false, details: [] },
+        adhi: { present: false, contributingPlanets: [] },
+        panchaMahapurusha: {
+          presentCount: 1,
+          yogas: [
+            { yogaName: 'Hamsa Mahapurusha Yoga', planetName: 'Jupiter', present: false },
+            { yogaName: 'Ruchaka Mahapurusha Yoga', planetName: 'Mars', present: true, sign: 'Capricorn', house: 10 },
+          ],
+        },
+      }),
+      yogas_jaimini_full: makeAwCall('yogas_jaimini_full', '/vedic/yogas/jaimini/full', 'yoga_dosha', {
+        raja: { present: true, description: 'AK + AmK mutual aspect' },
+        dhana: { present: false },
+        daridra: { present: false },
+        viparita: { present: false },
+      }),
+      doshas_parashara_full: makeAwCall('doshas_parashara_full', '/vedic/doshas/parashara/full', 'yoga_dosha', {
+        mangal: { present: false },
+        kaalSarp: { present: false },
+      }),
       kp_sub_lords: makeAwCall('kp_sub_lords', '/vedic/kp/sub-lords', 'kp', {
         cusps: awKpCusps,
         planets: [
@@ -1121,11 +1190,11 @@ async function main() {
     timezoneEquivalenceCheck: null,
     ephemerisTimestampCheck: null,
     quotaAndPerformanceSummary: {
-      plannedRequestsCount: 12,
-      totalCalls: 12,
-      actualHttpRequestsSent: 12,
+      plannedRequestsCount: 33,
+      totalCalls: 33,
+      actualHttpRequestsSent: 33,
       retryCount: 0,
-      successfulCalls: 11,
+      successfulCalls: 32,
       failedCalls: 1,
       tierRestrictedCalls: 1,
       totalLatencyMs: 660,
@@ -1137,7 +1206,7 @@ async function main() {
         observedHeadersByEndpoint: {},
         remainingQuotaObserved: 'x-credits-remaining: 9950',
         rateLimitObserved: null,
-        creditsUsedTotal: 11,
+        creditsUsedTotal: 32,
         creditsRemainingFinal: '9950',
         tierRestrictedEndpoints: ['jaimini_yogas (/vedic/jaimini/yogas: HTTP 402)'],
         note: 'Mocked AstroWay test',
@@ -1186,25 +1255,30 @@ async function main() {
     },
   });
 
+  const awFailedChecks = awVerif.checks.filter((c) => !c.passed).map((c) => `${c.id}: ${c.observed}`);
   assert(
     awMaster.providerId === 'astroway' &&
       awMaster.frames.vedicLahiri.data?.planets.some((p) => p.name === 'Rahu') &&
+      awMaster.frames.vedicLahiri.data?.yogas?.items.length === 4 &&
       awMaster.frames.kpPlacidus.data?.cusps.length === 12 &&
       awMaster.frames.westernTropical.data?.houses.length === 12 &&
       awMaster.frames.astronomicalTelemetry.data?.bodies.Sun !== undefined &&
       awMaster.shadbalaReconciliation.data?.authoritativeDesignation === 'unassigned_pending_reconciliation' &&
       awVerif.mode === 'live_and_offline' &&
+      awVerif.failedCount === 0 &&
       awVerif.epistemicClassification.independentlyValidatedAgainstExternalReference.length === 0 &&
       awVerif.epistemicClassification.methodologyUnresolved.some((i) => i.key === 'astroway_yellow_bhavabala') &&
       awVerif.epistemicClassification.datasetUnavailable.some((i) => i.key === 'astroway_failed_jaimini_yogas') &&
       awCmp.primaryCoordinatesComparison.ascendant.v2ProviderDeg !== null &&
       awKalaProbe.shadbalaComparison?.perPlanet[0]?.subcomponentDeltas?.abdaMasaVaraHora === -15,
-    'AstroWay normalization, epistemic audit, and Kala Mode A/B probe test failed.'
+    `AstroWay normalization, epistemic audit, and Kala Mode A/B probe test failed. failedChecks=${JSON.stringify(awFailedChecks)}`
   );
   regressionResults.push({
     id: 'astroway_normalization_epistemic_and_kala_probe',
     status: 'PASSED',
     verificationMode: awVerif.mode,
+    failedCount: awVerif.failedCount,
+    normalizedActiveYogas: awMaster.frames.vedicLahiri.data?.yogas?.items.length ?? 0,
     externalBucketCount: awVerif.epistemicClassification.independentlyValidatedAgainstExternalReference.length,
     detectedSunAbdaMasaVaraHoraDelta: awKalaProbe.shadbalaComparison?.perPlanet[0]?.subcomponentDeltas?.abdaMasaVaraHora,
   });
@@ -1768,6 +1842,120 @@ async function main() {
     'Shadbala methodological investigation audit failed.'
   );
   regressionResults.push({ id: 'shadbala_methodological_investigation_checks', status: 'PASSED' });
+
+  // 3w. AstroWay Nested Parashara/Jaimini/Kundli Yoga Extraction & Non-Zero Reporting Regression Test
+  const yogasResNested = normalizeAstroWayYogas({
+    yogasParashara: {
+      raja: { present: true, contributingPlanets: ['Sun', 'Jupiter'], details: ['10L + 5L'] },
+      dhana: { present: false, contributingPlanets: [] },
+      dharmaKarmadhipati: { present: true, contributingPlanets: ['Sun', 'Mercury'] },
+      gajakesari: { present: true, details: ['Jupiter 9th from Moon'] },
+      adhi: { present: false, contributingPlanets: [] },
+      panchaMahapurusha: {
+        presentCount: 1,
+        yogas: [
+          { yogaName: 'Sasa Mahapurusha Yoga', planetName: 'Saturn', present: true, sign: 'Scorpio' },
+          { yogaName: 'Malavya Mahapurusha Yoga', planetName: 'Venus', present: false },
+        ],
+      },
+    },
+    yogasJaimini: {
+      raja: { present: true },
+      dhana: { present: false },
+      daridra: { present: false },
+      viparita: { present: false },
+    },
+    jaiminiYogas: {
+      yogas: [
+        { name: 'AK in Kendra', present: true },
+        { name: 'DK in Trikona', present: false },
+      ],
+    },
+    kundli: null,
+  });
+  const yogasResKundliFallback = normalizeAstroWayYogas({
+    yogasParashara: null,
+    yogasJaimini: null,
+    jaiminiYogas: null,
+    kundli: {
+      yogas: {
+        present: ['Budhaditya Yoga', 'Gajakesari Yoga'],
+        dhana: { present: true, contributingPlanets: ['Jupiter', 'Venus'] },
+      },
+    },
+  });
+  const nestedCounts = (yogasResNested?.summary?.counts ?? {}) as Record<string, number>;
+  assert(
+    yogasResNested !== null &&
+      yogasResNested.items.length === 6 &&
+      nestedCounts.totalEvaluatedDetectors === 13 &&
+      nestedCounts.totalActiveYogas === 6 &&
+      yogasResKundliFallback !== null &&
+      yogasResKundliFallback.items.length === 3,
+    `Nested AstroWay Yoga normalization regression failed (nested=${yogasResNested?.items.length}, kundliFallback=${yogasResKundliFallback?.items.length}).`
+  );
+  regressionResults.push({
+    id: 'astroway_nested_yogas_extraction_and_preservation',
+    status: 'PASSED',
+    nestedActiveYogas: yogasResNested?.items.length ?? 0,
+    nestedEvaluatedDetectors: nestedCounts.totalEvaluatedDetectors ?? 0,
+    kundliFallbackActiveYogas: yogasResKundliFallback?.items.length ?? 0,
+  });
+
+  // 3x. Hellenistic Profections targetAge Calculation & Preflight Validation Test
+  const ageBeforeBday = computeCompletedAgeYears(sampleInstant.input, '2026-12-24');
+  const ageExactBday = computeCompletedAgeYears(sampleInstant.input, '2026-12-25');
+  const ageDayAfterBday = computeCompletedAgeYears(sampleInstant.input, '2026-12-26');
+  const profPlan = buildAstroWayChris4EvaluationPlan(sampleInstant, {
+    timeMode: 'local_iana',
+    targetDateIso: '2026-11-27',
+  });
+  const profDetailReq = profPlan.requests.find((r) => r.id === 'hellenistic_brennan_profections_detail');
+  const profBasicReq = profPlan.requests.find((r) => r.id === 'western_profections');
+  assert(
+    ageBeforeBday === 40 &&
+      ageExactBday === 41 &&
+      ageDayAfterBday === 41 &&
+      profPlan.validationErrors.length === 0 &&
+      profDetailReq?.body.targetAge === 40 &&
+      profDetailReq?.body.targetDate === undefined &&
+      profBasicReq?.body.targetDate === '2026-11-27',
+    `Hellenistic profections targetAge test failed (ages=${ageBeforeBday}/${ageExactBday}/${ageDayAfterBday}, body=${JSON.stringify(profDetailReq?.body)}).`
+  );
+  regressionResults.push({
+    id: 'astroway_hellenistic_profections_target_age',
+    status: 'PASSED',
+    targetAgeOn20261127: profDetailReq?.body.targetAge,
+    ageOnExactBirthday: ageExactBday,
+  });
+
+  // 3y. Full Dataset Preservation Across LayerBMasterChartRecord
+  const ext = (awMaster.providerExtendedDatasets ?? {}) as Record<string, unknown>;
+  assert(
+    Boolean(ext.vedicKundli) &&
+      Boolean(ext.siderealChartExtras) &&
+      Boolean(ext.shadbalaFull) &&
+      Boolean(ext.shadbalaSubcomponents) &&
+      Boolean(ext.ishtaKashtaPhala) &&
+      Boolean(ext.bhavabala) &&
+      Boolean(ext.kpExtended) &&
+      Boolean(ext.jaimini) &&
+      Boolean(ext.yogasAndDoshas) &&
+      Boolean(ext.advancedDashas) &&
+      Boolean(ext.westernAndHellenistic) &&
+      (awMaster.frames.westernTropical.data?.declinationAspects?.length ?? 0) === 1 &&
+      Boolean(awMaster.frames.westernTropical.data?.tables) &&
+      awMaster.frames.westernTropical.data?.planets.every((p) => Number.isInteger(p.house)) &&
+      (awMaster.frames.kpPlacidus.data?.houseSignificators?.length ?? 0) === 12,
+    'AstroWay full dataset preservation in LayerBMasterChartRecord failed.'
+  );
+  regressionResults.push({
+    id: 'astroway_full_dataset_preservation',
+    status: 'PASSED',
+    extendedBucketsCount: Object.keys(ext).length,
+    kpHouseSignificators: awMaster.frames.kpPlacidus.data?.houseSignificators?.length ?? 0,
+    westernTablesPreserved: Boolean(awMaster.frames.westernTropical.data?.tables),
+  });
 
   // 4. Read-Only Existing Profile Defect Audit + Legacy vs V2 Comparison on Local Fixtures
   const profileAudits: unknown[] = [];

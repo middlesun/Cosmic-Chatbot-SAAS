@@ -1034,6 +1034,7 @@ export function verifyWesternFrameDetailed(
   // Western Planetary Occupancy (Placidus Cusp Containment)
   let occupancyChecked = 0;
   let occupancyMatches = 0;
+  let derivedHouseCount = 0;
   const occupancyMismatches: string[] = [];
   const occupancyBoundaryOrbNotes: string[] = [];
 
@@ -1041,6 +1042,7 @@ export function verifyWesternFrameDetailed(
     const name = String(p.name || p.id || '').trim();
     const lon = extractNumericDeg(p, ['abs_pos', 'absolute_degree', 'degree', 'longitude']);
     const reportedHouse = Number(p.house ?? NaN);
+    if (p.house_derived_from_provider_cusps === true) derivedHouseCount++;
     if (!name || !Number.isFinite(lon) || !validCusps) continue;
     if (Number.isInteger(reportedHouse) && reportedHouse >= 1 && reportedHouse <= 12) {
       occupancyChecked++;
@@ -1112,7 +1114,9 @@ export function verifyWesternFrameDetailed(
 
   const notes: string[] = [
     `Western Tropical span=${seq.totalSpanDeg}°, maxCuspΔ=${maxCuspRefDeltaDeg ?? 'N/A'}°, ΔAsc=${ascDeltaDeg ?? 'N/A'}°, ΔMC=${mcDeltaDeg ?? 'N/A'}°, ΔSun=${sunDeltaDeg ?? 'N/A'}°, ΔMoon=${moonDeltaDeg ?? 'N/A'}° (tol=${angleTolDeg}°).`,
-    `Occupancy=${occupancyMatches}/${occupancyChecked}; Aspects=${aspectsMatched}/${aspectsChecked} verified (mismatches=${aspectMismatches.length}).`,
+    `Occupancy=${occupancyMatches}/${occupancyChecked}${
+      derivedHouseCount > 0 ? ` (${derivedHouseCount} derived from provider Placidus cusps because /chart omits planet.house)` : ''
+    }; Aspects=${aspectsMatched}/${aspectsChecked} verified (mismatches=${aspectMismatches.length}).`,
     ...(occupancyChecked === 0
       ? ['Western Placidus house occupancy could not be verified (0/0 planets carried house field).']
       : []),
@@ -1346,6 +1350,19 @@ export function verifyMasterChartRecord(
   // Track Endpoint 1: Vedic Lahiri
   const vedicData = master.frames.vedicLahiri.data;
   if (vedicData) {
+    const yogaCountsObj =
+      vedicData.yogas?.summary &&
+      typeof vedicData.yogas.summary.counts === 'object' &&
+      vedicData.yogas.summary.counts !== null
+        ? (vedicData.yogas.summary.counts as Record<string, unknown>)
+        : null;
+    const totalEvalDetectors = Number(yogaCountsObj?.totalEvaluatedDetectors ?? 0);
+    const activeYogaCount = vedicData.yogas?.items.length ?? 0;
+    const yogaSummaryStr =
+      totalEvalDetectors > 0
+        ? `${activeYogaCount} active Yogas (${totalEvalDetectors} evaluated)`
+        : `${activeYogaCount} Yogas`;
+
     providerDataAcquired.push({
       key: 'provider_vedic_calculate',
       label: isAstroWay
@@ -1354,7 +1371,7 @@ export function verifyMasterChartRecord(
       category: 'provider_data_acquired',
       verificationBasis: 'provider_payload',
       status: master.frames.vedicLahiri.completeness === 'complete' ? 'verified' : 'partial',
-      detail: `${vedicData.planets.length} planets, ${vedicData.vargas?.supportedCount ?? 0} Vargas, ${vedicData.yogas?.items.length ?? 0} Yogas, Ashtakavarga=${vedicData.ashtakavarga ? 'yes' : 'no'}, Dasha=${vedicData.vimshottariDasha ? 'yes' : 'no'}`,
+      detail: `${vedicData.planets.length} planets, ${vedicData.vargas?.supportedCount ?? 0} Vargas, ${yogaSummaryStr}, Ashtakavarga=${vedicData.ashtakavarga ? 'yes' : 'no'}, Dasha=${vedicData.vimshottariDasha ? 'yes' : 'no'}`,
     });
 
     // 4. Lahiri Ascendant, Sun & Moon vs CosmicCouncil internal reference solver (Bucket 2)
@@ -1559,7 +1576,7 @@ export function verifyMasterChartRecord(
       });
     }
 
-    // 8. Panchang sunrise/sunset & natal request_time_panchang presence check
+    // 8. Panchang sunrise/sunset & natal birth-instant Panchang presence check
     if (vedicData.panchang) {
       const hasSunTimes = Boolean(vedicData.panchang.sunrise && vedicData.panchang.sunset);
       const hasRequestTimePanchang = Boolean(
@@ -1573,9 +1590,60 @@ export function verifyMasterChartRecord(
         severity: 'major',
         epistemicCategory: 'provider_data_acquired',
         verificationBasis: 'provider_payload',
-        expected: 'Provider daily sunrise/sunset + natal request_time_panchang present',
-        observed: `sunrise=${vedicData.panchang.sunrise}, sunset=${vedicData.panchang.sunset}, request_time_panchang=${hasRequestTimePanchang ? 'present' : 'absent'}`,
+        expected: isAstroWay
+          ? 'AstroWay /vedic/panchang/full (at=moment) sunrise/sunset & natal Panchang elements present'
+          : 'Provider daily sunrise/sunset + natal request_time_panchang present',
+        observed: isAstroWay
+          ? `sunrise=${vedicData.panchang.sunrise}, sunset=${vedicData.panchang.sunset}, mode=at:moment`
+          : `sunrise=${vedicData.panchang.sunrise}, sunset=${vedicData.panchang.sunset}, request_time_panchang=${hasRequestTimePanchang ? 'present' : 'absent'}`,
       });
+    }
+
+    // 8b. AstroWay Yogas Normalization Integrity Check (ensure nested Parashara/Jaimini detectors aren't dropped to 0)
+    if (isAstroWay && rawLayerA?.calls) {
+      const yogaCallCandidates = [
+        rawLayerA.calls.yogas_parashara_full,
+        rawLayerA.calls.yogas_jaimini_full,
+        rawLayerA.calls.jaimini_yogas,
+        rawLayerA.calls.vedic_kundli,
+      ].filter((c) => Boolean(c?.ok));
+
+      if (yogaCallCandidates.length > 0) {
+        const evalItems = Array.isArray(vedicData.yogas?.summary?.evaluatedItems)
+          ? (vedicData.yogas!.summary!.evaluatedItems as Array<Record<string, unknown>>)
+          : [];
+        const expectedPresentCount = evalItems.filter((i) => i.present === true).length;
+        const normalizedActiveCount = vedicData.yogas?.items.length ?? 0;
+        const hasEvaluatedDetectors =
+          evalItems.length > 0 ||
+          Boolean(vedicData.yogas?.summary?.parashara || vedicData.yogas?.summary?.jaiminiFull);
+        const yogasIntegrityOk =
+          Boolean(vedicData.yogas) &&
+          hasEvaluatedDetectors &&
+          normalizedActiveCount >= expectedPresentCount;
+
+        checks.push({
+          id: 'astroway_yogas_normalization_integrity',
+          domain: 'Vedic Yogas Normalization',
+          passed: yogasIntegrityOk,
+          severity: 'major',
+          epistemicCategory: yogasIntegrityOk
+            ? 'internal_math_consistency_verified'
+            : 'methodology_unresolved',
+          verificationBasis: 'provider_self_consistency',
+          expected:
+            'All AstroWay nested Parashara/Jaimini/Kundli Yoga detectors extracted; present===true Yogas preserved in vedicLahiri.data.yogas.items',
+          observed: `normalizedActive=${normalizedActiveCount}, expectedPresent=${expectedPresentCount}, totalEvaluatedDetectors=${evalItems.length}`,
+        });
+        (yogasIntegrityOk ? internalMathConsistencyVerified : methodologyUnresolved).push({
+          key: 'astroway_yogas_normalization_integrity',
+          label: 'AstroWay Nested Yoga Detector Extraction & Preservation',
+          category: yogasIntegrityOk ? 'internal_math_consistency_verified' : 'methodology_unresolved',
+          verificationBasis: 'provider_self_consistency',
+          status: yogasIntegrityOk ? 'verified' : 'unresolved',
+          detail: `${normalizedActiveCount} active Yoga(s) preserved across ${evalItems.length} evaluated Parashara/Jaimini/Kundli detectors.`,
+        });
+      }
     }
   } else {
     datasetUnavailable.push({

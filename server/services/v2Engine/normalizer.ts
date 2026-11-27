@@ -274,6 +274,214 @@ function findArrayInAstroWayData(
   return [];
 }
 
+function findHouseFrom12Cusps(cuspsDeg: number[], lonDeg: number): number | undefined {
+  if (cuspsDeg.length !== 12 || !cuspsDeg.every((c) => Number.isFinite(c))) return undefined;
+  const lon = normalizeDeg(lonDeg);
+  for (let i = 0; i < 12; i++) {
+    const start = normalizeDeg(cuspsDeg[i]);
+    const end = normalizeDeg(cuspsDeg[(i + 1) % 12]);
+    const inside = start < end ? lon >= start && lon < end : lon >= start || lon < end;
+    if (inside) return i + 1;
+  }
+  return undefined;
+}
+
+export function normalizeAstroWayYogas(params: {
+  yogasParashara: Record<string, unknown> | null;
+  yogasJaimini: Record<string, unknown> | null;
+  jaiminiYogas: Record<string, unknown> | null;
+  kundli: Record<string, unknown> | null;
+}): {
+  summary: Record<string, unknown>;
+  items: Array<Record<string, unknown>>;
+  metadata: Record<string, unknown>;
+} | null {
+  const { yogasParashara, yogasJaimini, jaiminiYogas, kundli } = params;
+  const kundliYogas = asObj(kundli?.yogas);
+  if (!yogasParashara && !yogasJaimini && !jaiminiYogas && !kundliYogas) {
+    return null;
+  }
+
+  const evaluatedItems: Array<Record<string, unknown>> = [];
+  const activeSources: string[] = [];
+
+  if (yogasParashara) {
+    activeSources.push('/vedic/yogas/parashara/full');
+    const parasharaNamedDetectors: Array<[string, string]> = [
+      ['raja', 'Raja Yoga'],
+      ['dhana', 'Dhana Yoga'],
+      ['dharmaKarmadhipati', 'Dharma-Karmadhipati Yoga'],
+      ['gajakesari', 'Gajakesari Yoga'],
+      ['adhi', 'Adhi Yoga'],
+    ];
+    for (const [key, displayName] of parasharaNamedDetectors) {
+      const det = asObj(yogasParashara[key]);
+      if (!det) continue;
+      evaluatedItems.push({
+        id: `parashara_${key}`,
+        name: displayName,
+        school: 'parashara',
+        category: key,
+        endpoint: '/vedic/yogas/parashara/full',
+        present: Boolean(det.present),
+        contributingPlanets: Array.isArray(det.contributingPlanets)
+          ? det.contributingPlanets
+          : [],
+        details: Array.isArray(det.details) ? det.details : [],
+        ...(det.strength !== undefined ? { strength: det.strength } : {}),
+      });
+    }
+
+    const panchaObj = asObj(yogasParashara.panchaMahapurusha);
+    const panchaArr = asObjArr(panchaObj?.yogas);
+    for (const py of panchaArr) {
+      const yName = String(py.yogaName ?? py.name ?? 'Pancha Mahapurusha Yoga').trim();
+      const slug = yName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      evaluatedItems.push({
+        id: `parashara_pancha_${slug || 'yoga'}`,
+        name: yName,
+        school: 'parashara',
+        category: 'panchaMahapurusha',
+        endpoint: '/vedic/yogas/parashara/full',
+        present: Boolean(py.present),
+        planetName: normalizeAstroWayPlanetName(py.planetName ?? py.graha),
+        ...(py.graha !== undefined ? { graha: py.graha } : {}),
+        ...(py.sign !== undefined ? { sign: py.sign } : {}),
+        ...(py.house !== undefined ? { house: py.house } : {}),
+        ...(py.reason !== undefined ? { reason: py.reason } : {}),
+      });
+    }
+
+    // Fallback if any mock/variant passes a top-level array under yogas/items
+    for (const row of findArrayInAstroWayData(yogasParashara, ['yogas', 'items'])) {
+      const yName = String(row.yogaName ?? row.name ?? '').trim();
+      if (!yName) continue;
+      evaluatedItems.push({
+        id: `parashara_arr_${yName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+        name: yName,
+        school: 'parashara',
+        category: 'other',
+        endpoint: '/vedic/yogas/parashara/full',
+        present: row.present === undefined ? true : Boolean(row.present),
+        ...row,
+      });
+    }
+  }
+
+  if (yogasJaimini) {
+    activeSources.push('/vedic/yogas/jaimini/full');
+    const jaiminiFullDetectors: Array<[string, string]> = [
+      ['raja', 'Jaimini Raja Yoga'],
+      ['dhana', 'Jaimini Dhana Yoga'],
+      ['daridra', 'Jaimini Daridra Yoga'],
+      ['viparita', 'Jaimini Viparita Raja Yoga'],
+    ];
+    for (const [key, displayName] of jaiminiFullDetectors) {
+      const det = asObj(yogasJaimini[key]);
+      if (!det) continue;
+      evaluatedItems.push({
+        id: `jaimini_full_${key}`,
+        name: displayName,
+        school: 'jaimini',
+        category: key,
+        endpoint: '/vedic/yogas/jaimini/full',
+        present: Boolean(det.present),
+        ...det,
+      });
+    }
+  }
+
+  if (jaiminiYogas) {
+    activeSources.push('/vedic/jaimini/yogas');
+    for (const jy of asObjArr(jaiminiYogas.yogas)) {
+      const yName = String(jy.name ?? jy.yogaName ?? '').trim();
+      if (!yName) continue;
+      const slug = yName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      evaluatedItems.push({
+        id: `jaimini_basic_${slug || 'yoga'}`,
+        name: yName,
+        school: 'jaimini',
+        category: 'jaimini_karaka',
+        endpoint: '/vedic/jaimini/yogas',
+        present: Boolean(jy.present),
+        ...(jy.description !== undefined ? { description: jy.description } : {}),
+      });
+    }
+  }
+
+  if (kundliYogas) {
+    activeSources.push('/vedic/kundli#yogas');
+    // Only synthesize items from /vedic/kundli when /vedic/yogas/parashara/full was not acquired
+    if (!yogasParashara) {
+      const kundliPresentArr = Array.isArray(kundliYogas.present) ? kundliYogas.present : [];
+      for (const entry of kundliPresentArr) {
+        if (typeof entry === 'string' && entry.trim()) {
+          evaluatedItems.push({
+            id: `kundli_${entry.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+            name: entry.trim(),
+            school: 'parashara',
+            category: 'kundli_summary',
+            endpoint: '/vedic/kundli',
+            present: true,
+          });
+        } else if (entry && typeof entry === 'object') {
+          const rec = entry as Record<string, unknown>;
+          evaluatedItems.push({
+            id: `kundli_${String(rec.name ?? 'yoga').toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+            name: String(rec.name ?? rec.yogaName ?? 'Yoga'),
+            school: 'parashara',
+            category: 'kundli_summary',
+            endpoint: '/vedic/kundli',
+            present: rec.present === undefined ? true : Boolean(rec.present),
+            ...rec,
+          });
+        }
+      }
+      const kDhana = asObj(kundliYogas.dhana);
+      if (kDhana && !evaluatedItems.some((e) => e.category === 'dhana')) {
+        evaluatedItems.push({
+          id: 'kundli_dhana',
+          name: 'Dhana Yoga',
+          school: 'parashara',
+          category: 'dhana',
+          endpoint: '/vedic/kundli',
+          present: Boolean(kDhana.present),
+          contributingPlanets: Array.isArray(kDhana.contributingPlanets)
+            ? kDhana.contributingPlanets
+            : [],
+        });
+      }
+    }
+  }
+
+  const activeItems = evaluatedItems.filter((item) => item.present === true);
+  const parasharaEvaluated = evaluatedItems.filter((item) => item.school === 'parashara');
+  const jaiminiEvaluated = evaluatedItems.filter((item) => item.school === 'jaimini');
+
+  return {
+    summary: {
+      parashara: yogasParashara,
+      jaiminiFull: yogasJaimini,
+      jaiminiBasic: jaiminiYogas,
+      kundliYogas,
+      counts: {
+        totalEvaluatedDetectors: evaluatedItems.length,
+        totalActiveYogas: activeItems.length,
+        parasharaEvaluated: parasharaEvaluated.length,
+        parasharaActive: parasharaEvaluated.filter((i) => i.present === true).length,
+        jaiminiEvaluated: jaiminiEvaluated.length,
+        jaiminiActive: jaiminiEvaluated.filter((i) => i.present === true).length,
+      },
+      evaluatedItems,
+    },
+    items: activeItems,
+    metadata: {
+      source: activeSources[0] || '/vedic/yogas/parashara/full',
+      sources: activeSources,
+    },
+  };
+}
+
 function normalizeAstroWayLayerBMasterChartRecord(params: {
   instant: CanonicalBirthInstant;
   rawLayerA: LayerARawProviderRecord;
@@ -291,6 +499,8 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
   const avPrastara = unwrapAstroWayCall(calls.ashtakavarga_prastara);
   const avBasic = unwrapAstroWayCall(calls.ashtakavarga_basic);
   const yogasParashara = unwrapAstroWayCall(calls.yogas_parashara_full);
+  const yogasJaimini = unwrapAstroWayCall(calls.yogas_jaimini_full);
+  const jaiminiYogas = unwrapAstroWayCall(calls.jaimini_yogas);
   const vimshottariPrana = unwrapAstroWayCall(calls.dashas_vimshottari_prana);
 
   // =========================================================================
@@ -438,10 +648,13 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     };
   }
 
-  // Normalize Parashara Yogas
-  const yogaItems = yogasParashara
-    ? findArrayInAstroWayData(yogasParashara, ['yogas', 'items', 'present', 'detected'])
-    : [];
+  // Normalize Parashara + Jaimini + Kundli Yogas (handling nested detectors cleanly)
+  const normalizedYogas = normalizeAstroWayYogas({
+    yogasParashara,
+    yogasJaimini,
+    jaiminiYogas,
+    kundli,
+  });
 
   // Normalize Vimshottari Prana Dasha
   let normalizedVimshottari: Record<string, unknown> | null = null;
@@ -512,13 +725,7 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
             }
           : null,
       ashtakavarga: vedicAshtakavarga,
-      yogas: yogasParashara
-        ? {
-            summary: yogasParashara,
-            items: yogaItems,
-            metadata: { source: '/vedic/yogas/parashara/full' },
-          }
-        : null,
+      yogas: normalizedYogas,
       panchang,
       vimshottariDasha: normalizedVimshottari,
       providerMetadata: asObj(chartSidereal?.meta) || null,
@@ -652,6 +859,35 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
         : kpCusps[0]?.cusp_degree ?? null;
     const kpMcDeg = kpCusps[9]?.cusp_degree ?? null;
 
+    const rawHouseSignificators = Array.isArray(kpSigRaw?.houseSignificators)
+      ? asObjArr(kpSigRaw?.houseSignificators)
+      : [];
+    const houseSignificators =
+      rawHouseSignificators.length > 0
+        ? rawHouseSignificators
+        : planetSignificators.length > 0
+        ? Array.from({ length: 12 }, (_, idx) => {
+            const house = idx + 1;
+            const collectLevel = (lk: 'level_1' | 'level_2' | 'level_3' | 'level_4') =>
+              planetSignificators
+                .filter((ps) => Array.isArray(ps[lk]) && (ps[lk] as unknown[]).map(Number).includes(house))
+                .map((ps) => String(ps.planet || ''));
+            const l1 = collectLevel('level_1');
+            const l2 = collectLevel('level_2');
+            const l3 = collectLevel('level_3');
+            const l4 = collectLevel('level_4');
+            return {
+              house,
+              level_1: l1,
+              level_2: l2,
+              level_3: l3,
+              level_4: l4,
+              significators: Array.from(new Set([...l1, ...l2, ...l3, ...l4])),
+              source: 'derived_from_provider_planet_significators',
+            };
+          })
+        : [];
+
     const kpFrameData: KpPlacidusFrame = {
       ayanamsha: {
         id: 'kp',
@@ -667,14 +903,14 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       cusps: kpCusps,
       cuspalSubLordTable: kpCusps,
       planetSignificators,
-      houseSignificators: Array.isArray(kpSigRaw?.houseSignificators)
-        ? asObjArr(kpSigRaw?.houseSignificators)
-        : [],
+      houseSignificators,
       rulingPlanets: kpRulingRaw,
       dasha: null,
       metadata: {
         method: kpCuspsRaw?.method ?? 'placidus',
         nodeConventionNote: 'ChartInput omits nodeType',
+        ascSub: unwrapAstroWayCall(calls.kp_asc_sub),
+        fortuna: unwrapAstroWayCall(calls.kp_fortuna),
       },
     };
 
@@ -736,8 +972,15 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     const tAsc = typeof tHousesObj?.ascendant === 'number' ? normalizeDeg(tHousesObj.ascendant) : null;
     const tMc = typeof tHousesObj?.mc === 'number' ? normalizeDeg(tHousesObj.mc) : null;
 
+    const tCuspsDeg12 = tCuspsArr.map((c) => c.abs_pos);
     const tPlanets = asObjArr(chartTropical.planets).map((p) => {
       const lon = normalizeDeg(Number(p.longitude ?? 0));
+      const providerHouse =
+        typeof p.house === 'number' && Number.isInteger(p.house) && p.house >= 1 && p.house <= 12
+          ? p.house
+          : undefined;
+      const derivedHouse =
+        providerHouse === undefined ? findHouseFrom12Cusps(tCuspsDeg12, lon) : undefined;
       return {
         ...p,
         name: normalizeAstroWayPlanetName(p.name || p.id),
@@ -746,6 +989,11 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
         longitude: lon,
         sign: SIGNS[Math.floor(lon / 30) % 12],
         is_retrograde: Boolean(p.isRetrograde),
+        ...(providerHouse !== undefined
+          ? { house: providerHouse }
+          : derivedHouse !== undefined
+          ? { house: derivedHouse, house_derived_from_provider_cusps: true }
+          : {}),
       };
     });
 
@@ -753,13 +1001,27 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       const typeObj = asObj(a.type);
       return {
         ...a,
-        p1_name: normalizeAstroWayPlanetName(a.planet1),
-        p2_name: normalizeAstroWayPlanetName(a.planet2),
+        p1_name: normalizeAstroWayPlanetName(
+          asObj(a.planet1)?.name ?? a.planet1
+        ),
+        p2_name: normalizeAstroWayPlanetName(
+          asObj(a.planet2)?.name ?? a.planet2
+        ),
         aspect: String(typeObj?.name ?? a.type ?? ''),
         aspect_degrees: typeof typeObj?.angle === 'number' ? typeObj.angle : undefined,
         orb: Number(a.orb ?? Number.NaN),
       };
     });
+
+    const tParallelAspects = asObjArr(chartTropical.parallelAspects);
+    const tHouseAspects = asObjArr(chartTropical.houseAspects);
+    const tAntiscia = asObjArr(chartTropical.antiscia);
+    const tAntisciaAspects = asObjArr(chartTropical.antisciaAspects);
+    const tTables: Record<string, unknown> = {
+      ...(tHouseAspects.length > 0 ? { houseAspects: tHouseAspects } : {}),
+      ...(tAntiscia.length > 0 ? { antiscia: tAntiscia } : {}),
+      ...(tAntisciaAspects.length > 0 ? { antisciaAspects: tAntisciaAspects } : {}),
+    };
 
     const westData: WesternTropicalFrame = {
       zodiacType: 'tropical',
@@ -782,14 +1044,17 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       planets: tPlanets,
       houses: tCuspsArr,
       aspects: tAspects,
-      aspectsSummary: null,
-      declinationAspects: [],
-      declinationAspectsSummary: null,
+      aspectsSummary:
+        asObj(chartTropical.aspectsSummary) ||
+        (tAspects.length > 0 ? { total: tAspects.length } : null),
+      declinationAspects: tParallelAspects,
+      declinationAspectsSummary:
+        tParallelAspects.length > 0 ? { total: tParallelAspects.length } : null,
       configurations: null,
       stelliums: null,
       dominants: null,
       dominantsProfile: null,
-      tables: null,
+      tables: Object.keys(tTables).length > 0 ? tTables : null,
     };
 
     westernTropical = {
@@ -986,6 +1251,26 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
   // EXTENDED CLASSICAL DATASETS + UPDATED GAPS MATRIX
   // =========================================================================
   const providerExtendedDatasets: Record<string, unknown> = {
+    vedicKundli: kundli
+      ? {
+          ayanamsa: kundli.ayanamsa ?? null,
+          lagna: kundli.lagna ?? null,
+          nakshatra: kundli.nakshatra ?? null,
+          dasha: kundli.dasha ?? null,
+          yogas: kundli.yogas ?? null,
+          doshas: kundli.doshas ?? null,
+        }
+      : null,
+    siderealChartExtras: chartSidereal
+      ? {
+          aspects: asObjArr(chartSidereal.aspects),
+          houseAspects: asObjArr(chartSidereal.houseAspects),
+          parallelAspects: asObjArr(chartSidereal.parallelAspects),
+          antiscia: asObjArr(chartSidereal.antiscia),
+          antisciaAspects: asObjArr(chartSidereal.antisciaAspects),
+        }
+      : null,
+    shadbalaFull: shadbalaFullData,
     shadbalaSubcomponents: {
       sthana: unwrapAstroWayCall(calls.shadbala_sthana),
       dig: unwrapAstroWayCall(calls.shadbala_dig),
@@ -996,6 +1281,7 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     },
     ishtaKashtaPhala: unwrapAstroWayCall(calls.shadbala_ishta_kashta),
     bhavabala: unwrapAstroWayCall(calls.bhavabala),
+    ashtakavargaBasic: avBasic,
     ashtakavargaShodhana: unwrapAstroWayCall(calls.ashtakavarga_shodhana),
     kpExtended: {
       rulingPlanets: kpRulingRaw,
@@ -1013,13 +1299,14 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       drishtiGraha: unwrapAstroWayCall(calls.jaimini_drishti_graha),
       atmakarakaNavamsa: unwrapAstroWayCall(calls.jaimini_atmakaraka_navamsa),
       argalaAnalysis: unwrapAstroWayCall(calls.jaimini_argala_analysis),
-      yogas: unwrapAstroWayCall(calls.jaimini_yogas),
+      yogas: jaiminiYogas,
     },
     yogasAndDoshas: {
       yogasParashara,
-      yogasJaimini: unwrapAstroWayCall(calls.yogas_jaimini_full),
+      yogasJaimini,
       doshasParashara: unwrapAstroWayCall(calls.doshas_parashara_full),
       doshasKp: unwrapAstroWayCall(calls.doshas_kp_full),
+      normalizedYogas,
     },
     upagrahas: unwrapAstroWayCall(calls.vedic_upagrahas),
     advancedDashas: {

@@ -201,6 +201,26 @@ function parseIsoDateOnlyUtcMs(raw: unknown): number | null {
   return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
+export function computeCompletedAgeYears(
+  birth: Pick<CanonicalBirthInstant['input'], 'year' | 'month' | 'day'>,
+  targetDateIso: string
+): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(targetDateIso.trim());
+  if (!m) return 0;
+  const targetYear = Number(m[1]);
+  const targetMonth = Number(m[2]);
+  const targetDay = Number(m[3]);
+  let age = targetYear - birth.year;
+  if (
+    targetMonth < birth.month ||
+    (targetMonth === birth.month && targetDay < birth.day)
+  ) {
+    age -= 1;
+  }
+  if (!Number.isFinite(age)) return 0;
+  return Math.max(0, Math.min(120, Math.trunc(age)));
+}
+
 export function buildAstroWayChartInputPayload(
   instant: CanonicalBirthInstant,
   options?: {
@@ -294,12 +314,18 @@ export function buildAstroWayChris4EvaluationPlan(
   });
 
   const targetDate = options?.targetDateIso || new Date().toISOString().slice(0, 10);
+  const targetAge = computeCompletedAgeYears(instant.input, targetDate);
   const validationErrors: string[] = [];
 
   for (const field of ['date', 'time', 'latitude', 'longitude'] as const) {
     if (siderealBase[field] === undefined || siderealBase[field] === null || siderealBase[field] === '') {
       validationErrors.push(`AstroWay ChartInput missing required field "${field}".`);
     }
+  }
+  if (!Number.isInteger(targetAge) || targetAge < 0 || targetAge > 120) {
+    validationErrors.push(
+      `AstroWay /hellenistic/brennan/profections-detail requires integer targetAge in [0, 120]; got ${String(targetAge)}.`
+    );
   }
   for (const forbiddenShort of ['lat', 'lon', 'lng', 'tz']) {
     if (
@@ -803,7 +829,7 @@ export function buildAstroWayChris4EvaluationPlan(
       category: 'hellenistic_traditional',
       declaredQuality: 'green',
       qualityCaveat: null,
-      body: { ...hellenisticWholeSignBase, targetDate },
+      body: { ...hellenisticWholeSignBase, targetAge },
     },
   ];
 
