@@ -4235,6 +4235,134 @@ async function main() {
     layerCPhiBlockedOnPartialChart: !phiReadyPartial.ok,
   });
 
+  // 3af. Real AstroWay Payload Shapes: Nested Ishta/Kashta, Plural Bhavabala, Prana Dasha Separation, Nested Western Dignities & Varga Ketu
+  const realShapeCheckLayerA: LayerARawProviderRecord = {
+    ...mockAwLayerA,
+    calls: {
+      ...mockAwLayerA.calls,
+      shadbala_ishta_kashta: makeAwCall('shadbala_ishta_kashta', '/vedic/shadbala/ishta-kashta', 'shadbala', {
+        items: [
+          { planetName: 'Sun', parashara: { ishta: 39.39, kashta: 20.61 }, geometric: { ishta: 34.18, kashta: 6.44 } },
+          { planetName: 'Moon', parashara: { ishta: 31.2, kashta: 28.8 } },
+        ],
+      }),
+      bhavabala: makeAwCall('bhavabala', '/vedic/bhavabala', 'bhavabala', {
+        houses: Array.from({ length: 12 }, (_, idx) => ({
+          house: idx + 1,
+          totalVirupas: 420 + idx * 5,
+          totalRupas: Number(((420 + idx * 5) / 60).toFixed(2)),
+          bhavaDigBala: 30,
+        })),
+      }),
+      varga_D9: makeAwCall('varga_D9', '/vedic/varga/D9', 'varga', {
+        varga: 'D9',
+        ayanamsa: 'lahiri',
+        lagna: { signName: 'Leo' },
+        planets: [
+          { name: 'Sun', signName: 'Gemini', longitude: 249.44 },
+          { name: 'true Node', signName: 'Leo', longitude: 14.28 },
+        ],
+        grahas: [
+          { name: 'Sun', signName: 'Gemini', longitude: 249.44 },
+          { name: 'Rahu', signName: 'Leo', longitude: 14.28 },
+          { name: 'Ketu', signName: 'Aquarius', longitude: 194.28 },
+        ],
+      }),
+      western_essential_dignities: makeAwCall('western_essential_dignities', '/western/essential-dignities', 'hellenistic_traditional', {
+        items: [
+          { planetName: 'Sun', dignity: { score: 0, peregrine: true, term: 'Saturn', decan: 'Jupiter', rulership: false } },
+          { planetName: 'Mercury', dignity: { score: 2, peregrine: false, term: 'Mercury', decan: 'Jupiter', rulership: false } },
+          { planetName: 'Saturn', dignity: { score: 5, peregrine: false, rulership: true } },
+        ],
+      }),
+      dashas_vimshottari_prana: {
+        ...makeAwCall('dashas_vimshottari_prana', '/vedic/dashas/vimshottari/prana', 'dasha', {
+          level: 'prana',
+          initial: { initialPlanetName: 'Moon', balanceYears: 7.4358 },
+          currentMaha: { planetName: 'Jupiter', startDate: '2020-06-01', endDate: '2036-06-01' },
+          currentAntar: { planetName: 'Venus', startDate: '2024-08-01', endDate: '2027-04-01' },
+          currentPratyantar: { planetName: 'Moon', startDate: '2026-10-01', endDate: '2026-12-20' },
+          currentSookshma: { planetName: 'Rahu', startDate: '2026-11-22', endDate: '2026-11-29' },
+          periods: [
+            { planetName: 'Saturn', startDate: '2026-11-26', endDate: '2026-11-28', durationYears: 0.0049 },
+          ],
+        }),
+        sanitizedRequest: { latitude: sampleInstant.input.latitude, longitude: sampleInstant.input.longitude, targetDate: '2026-11-27' },
+      },
+    },
+  };
+  const realShapeMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: realShapeCheckLayerA,
+  });
+  const realShapeK01 = buildAnalyticalEvidenceRepository(prepareLayerCAnalyticalInput(realShapeMaster));
+  const realShapeIkSun = realShapeK01.natalEvidence.find(
+    (e) => e.subject.id === 'Sun' && e.observation.code === 'ISHTA_KASHTA_PHALA'
+  );
+  const realShapeWestSun = realShapeK01.natalEvidence.find(
+    (e) => e.subject.id === 'Sun' && e.observation.code === 'WESTERN_ESSENTIAL_DIGNITY'
+  );
+  const realShapeWestMerc = realShapeK01.natalEvidence.find(
+    (e) => e.subject.id === 'Mercury' && e.observation.code === 'WESTERN_ESSENTIAL_DIGNITY'
+  );
+  const realShapeKetuD9 = realShapeK01.natalEvidence.find(
+    (e) => e.subject.id === 'Ketu' && e.observation.code === 'VEDIC_VARGA_PLACEMENT' && e.measurements.some((m) => m.metric === 'division' && m.value === 'D9')
+  );
+  const realShapeMdCount = realShapeK01.natalEvidence.filter((e) => e.observation.code === 'VIMSHOTTARI_NATAL_MAHADASHA').length;
+  const realShapeRefDasha = realShapeK01.temporalEvidence.find((e) => e.observation.code === 'REFERENCE_DATE_VIMSHOTTARI_ACTIVE');
+  const realShapeRefMaha = realShapeRefDasha?.measurements.find((m) => m.metric === 'mahadasha_lord')?.value;
+  const realShapeRefPrana = realShapeRefDasha?.measurements.find((m) => m.metric === 'prana_lord')?.value;
+
+  const nullBhavaLayerA: LayerARawProviderRecord = {
+    ...realShapeCheckLayerA,
+    calls: {
+      ...realShapeCheckLayerA.calls,
+      bhavabala: makeAwCall('bhavabala', '/vedic/bhavabala', 'bhavabala', {
+        houses: Array.from({ length: 12 }, (_, idx) => ({ house: idx + 1, totalVirupas: null, totalRupas: null })),
+      }),
+    },
+  };
+  const nullBhavaMaster = buildLayerBMasterChartRecord({
+    instant: sampleInstant,
+    rawLayerA: nullBhavaLayerA,
+  });
+  const nullBhavaVerif = verifyMasterChartRecord(nullBhavaMaster, nullBhavaLayerA);
+  const bhavaObsCount = realShapeK01.natalEvidence.filter((e) => e.observation.code === 'BHAVABALA_HOUSE_STRENGTH').length;
+  const nullBhavaStatus = nullBhavaMaster.datasetManifest?.entries.find((e) => e.key === 'bhavabala')?.canonicalStatus;
+  const nullBhavaVerifPassed = nullBhavaVerif.checks.find((c) => c.id === 'bhavabala_external_verification_status')?.passed;
+  assert(
+    realShapeIkSun?.measurements.find((m) => m.metric === 'ishta_phala')?.value === 39.39 &&
+      bhavaObsCount === 12 &&
+      Boolean(realShapeKetuD9) &&
+      realShapeWestSun?.measurements.find((m) => m.metric === 'dignity_status')?.value === 'Peregrine' &&
+      realShapeWestMerc?.measurements.find((m) => m.metric === 'dignity_status')?.value === 'Term' &&
+      realShapeMdCount === 9 &&
+      realShapeRefMaha === 'Jupiter' &&
+      realShapeRefPrana === 'Saturn' &&
+      nullBhavaStatus === 'unavailable' &&
+      nullBhavaVerifPassed === false,
+    `3af Real AstroWay payload shape regression check failed: ${JSON.stringify({
+      ikSun: realShapeIkSun?.measurements.find((m) => m.metric === 'ishta_phala')?.value,
+      bhavaObsCount,
+      ketuD9: Boolean(realShapeKetuD9),
+      westSun: realShapeWestSun?.measurements.find((m) => m.metric === 'dignity_status')?.value,
+      westMerc: realShapeWestMerc?.measurements.find((m) => m.metric === 'dignity_status')?.value,
+      mdCount: realShapeMdCount,
+      refMaha: realShapeRefMaha,
+      refPrana: realShapeRefPrana,
+      nullBhavaStatus,
+      nullBhavaVerifPassed,
+    })}`
+  );
+  regressionResults.push({
+    id: 'real_astroway_payload_shapes_regression',
+    status: 'PASSED',
+    ishtaSunParashara: realShapeIkSun?.measurements.find((m) => m.metric === 'ishta_phala')?.value,
+    ketuD9Preserved: Boolean(realShapeKetuD9),
+    natalMahadashasDerived: realShapeMdCount,
+    refPranaMatched: realShapeRefPrana,
+  });
+
   // 4. Read-Only Existing Profile Defect Audit + Legacy vs V2 Comparison on Local Fixtures
   const profileAudits: unknown[] = [];
   for (const [id, filePath] of [

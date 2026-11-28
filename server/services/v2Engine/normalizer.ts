@@ -819,7 +819,9 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
       requestedAyanamsa: callRec?.sanitizedRequest?.ayanamsa ?? 'lahiri',
       expectedLahiriDeg: instant.astronomy.lahiriAyanamsaApproxDeg,
     });
-    const vPlanets = asObjArr(vData.planets).map((vp) => ({
+    const rawVargaBodies =
+      asObjArr(vData.grahas).length > 0 ? asObjArr(vData.grahas) : asObjArr(vData.planets);
+    const vPlanets = rawVargaBodies.map((vp) => ({
       name: normalizeAstroWayPlanetName(vp.name || vp.id),
       raw_name: vp.name ?? vp.id,
       sign: resolveSignNameFromAstroWayEntry(vp),
@@ -927,7 +929,11 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
   // Normalize Vimshottari 5-Level Dasha Hierarchy (separating natal timeline from reference-date snapshot)
   const normalizedVimshottari = normalizeAstroWayVimshottari5Level(
     vimshottariPrana,
-    normalizeAstroWayPlanetName
+    normalizeAstroWayPlanetName,
+    {
+      birthDateIso: instant.input.birthDate,
+      referenceDateIso: effectiveRefDateIso,
+    }
   );
   const normalizedPanchang = normalizeAstroWayPanchang(panchang);
 

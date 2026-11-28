@@ -639,7 +639,7 @@ function recomputeAndAuditK02Math(label: string, k02: AnalyticalKernelK02StateRe
     }
 
     // 4. Ishta/Kashta net balance
-    const ikSig = st.dimensions.capacity.signals.find((s) => s.signalKey === 'ishta_kashta_net_balance');
+    const ikSig = st.dimensions.capacity.signals.find((s) => s.signalKey === 'ishta_kashta_balance');
     if (ikSig) {
       const ikEv = findEv(subj, 'ISHTA_KASHTA_PHALA');
       const ishta = metricNum(ikEv, 'ishta_phala');
@@ -835,12 +835,34 @@ async function main() {
 
   const synthAw = buildDurableSyntheticFixtures();
 
+  const realAwFixturePath = path.join(fixturesDir, 'astroway-chris4-sanitized.json');
+  const realAwRaw = JSON.parse(fs.readFileSync(realAwFixturePath, 'utf8')) as {
+    originType: 'real_astroway_capture_sanitized';
+    targetDateIso: string;
+    canonicalInput: CanonicalBirthInput;
+    sourceStats: Record<string, unknown>;
+    layerA: LayerARawProviderRecord;
+  };
+  const realAwInstant = resolveCanonicalBirthInstant(realAwRaw.canonicalInput);
+  const compiledRealAwRawOnly = compileV2FoundationalChart({
+    instant: realAwInstant,
+    astroWayRaw: realAwRaw.layerA,
+    options: { targetDateIso: realAwRaw.targetDateIso, includeLocalModules: true, preferLocalAshtakavarga: false },
+  });
+  const compiledRealAwHybrid = compileV2FoundationalChart({
+    instant: realAwInstant,
+    astroWayRaw: realAwRaw.layerA,
+    options: { targetDateIso: realAwRaw.targetDateIso, includeLocalModules: true, preferLocalAshtakavarga: true },
+  });
+  const realAwLayerCRawOnly = prepareLayerCAnalyticalInput(compiledRealAwRawOnly);
+  const realAwLayerCHybrid = prepareLayerCAnalyticalInput(compiledRealAwHybrid);
+
   const durableFixturesPayload = redactSecretsDeep({
     schemaVersion: 'v2.offline_verification_fixtures.1.0',
     generatedAtUtc: new Date().toISOString(),
-    realAstroWayCapturePresentOnDisk: false,
+    realAstroWayCapturePresentOnDisk: true,
     astroWayCacheBlockerNote:
-      'Complete 62/64-endpoint AstroWay capture was not present in repo or /tmp, and SUPABASE_URL / ASTROWAY_API_KEY / FREE_ASTRO_API_KEY are unset. Export a real chris4-consolidated-foundational-chart.json or chris4-astroway-cache.json from Admin V2 Laboratory into scripts/fixtures/ to verify the full live AstroWay capture offline.',
+      'Sanitized real 72-endpoint AstroWay capture for Chris 4 is present on disk at scripts/fixtures/astroway-chris4-sanitized.json (68/72 OK, 3 HTTP 402 tier-restricted Ashtakavarga, 1 pre-fix HTTP 400 profections).',
     fixtures: [
       {
         fixtureId: realChris4.fixtureId,
@@ -848,6 +870,13 @@ async function main() {
         sourceAssetFile: realChris4.sourceAssetFile,
         astroWayPopulated: false,
         layerCInput: realChris4.layerCInput,
+      },
+      {
+        fixtureId: 'real_astroway_capture_chris4',
+        originType: realAwRaw.originType,
+        sourceAssetFile: 'scripts/fixtures/astroway-chris4-sanitized.json',
+        astroWayPopulated: true,
+        layerCInput: realAwLayerCRawOnly,
       },
       {
         fixtureId: realChrisNew.fixtureId,
@@ -1069,10 +1098,12 @@ async function main() {
   // Verify all 19 K02 rules + independent K02 math recomputation across Real + Synthetic charts
   const chartsToAudit: Array<{
     id: string;
-    origin: 'real_freeastroapi_export' | 'synthetic';
+    origin: 'real_freeastroapi_export' | 'real_astroway_capture_sanitized' | 'synthetic';
     source: Parameters<typeof buildAnalyticalKernelK02Bundle>[0];
   }> = [
     { id: 'real_freeastroapi_chris4', origin: 'real_freeastroapi_export', source: realChris4.layerCInput },
+    { id: 'real_astroway_chris4', origin: 'real_astroway_capture_sanitized', source: realAwLayerCRawOnly },
+    { id: 'real_astroway_chris4_hybrid_local_av', origin: 'real_astroway_capture_sanitized', source: realAwLayerCHybrid },
     { id: 'real_freeastroapi_chrisnew', origin: 'real_freeastroapi_export', source: realChrisNew.layerCInput },
     { id: 'real_freeastroapi_chris3_legacy_tz_defect', origin: 'real_freeastroapi_export', source: realChris3.layerCInput },
     { id: 'synthetic_full_astroway_shape', origin: 'synthetic', source: synthAw.layerCInput },
@@ -1181,12 +1212,27 @@ async function main() {
     assert(uniqExec.size === bA.k02State.ruleExecutionSummary.records.length, `${ch.id}: duplicate executionId`);
     assert(bA.k02State.ruleExecutionSummary.unregisteredRuleRejections === 0, `${ch.id}: unregistered rule`);
 
-    // Verify Jaimini Chara Karaka + Arudha Pada extraction on real Chris 4
+    // Verify Jaimini Chara Karaka + Arudha Pada extraction on real Chris 4 & real AstroWay Chris 4
     if (ch.id === 'real_freeastroapi_chris4') {
       const charaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'JAIMINI_CHARA_KARAKA');
       const padaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'JAIMINI_ARUDHA_PADA');
       assert(charaEvs.length === 7, `Chris 4 expected 7 JAIMINI_CHARA_KARAKA items, got ${charaEvs.length}`);
       assert(padaEvs.length === 12, `Chris 4 expected 12 JAIMINI_ARUDHA_PADA items, got ${padaEvs.length}`);
+    }
+    if (ch.id === 'real_astroway_chris4') {
+      const charaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'JAIMINI_CHARA_KARAKA');
+      const padaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'JAIMINI_ARUDHA_PADA');
+      const bhavaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'BHAVABALA_HOUSE_STRENGTH');
+      const vargaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'VEDIC_VARGA_PLACEMENT');
+      const ishtaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'ISHTA_KASHTA_PHALA');
+      const dashaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'VIMSHOTTARI_NATAL_MAHADASHA');
+      const ketuVargas = vargaEvs.filter((e) => e.subject.id === 'Ketu');
+      assert(charaEvs.length === 8, `Real AstroWay Chris 4 expected 8 JAIMINI_CHARA_KARAKA items, got ${charaEvs.length}`);
+      assert(padaEvs.length === 12, `Real AstroWay Chris 4 expected 12 JAIMINI_ARUDHA_PADA items, got ${padaEvs.length}`);
+      assert(bhavaEvs.length === 12, `Real AstroWay Chris 4 expected 12 BHAVABALA_HOUSE_STRENGTH items, got ${bhavaEvs.length}`);
+      assert(vargaEvs.length === 160 && ketuVargas.length === 16, `Real AstroWay Chris 4 expected 160 varga items (16 Ketu), got ${vargaEvs.length} (${ketuVargas.length} Ketu)`);
+      assert(ishtaEvs.length === 7, `Real AstroWay Chris 4 expected 7 ISHTA_KASHTA_PHALA items, got ${ishtaEvs.length}`);
+      assert(dashaEvs.length === 9, `Real AstroWay Chris 4 expected 9 VIMSHOTTARI_NATAL_MAHADASHA items, got ${dashaEvs.length}`);
     }
 
     // Verify Graha Yuddha + Retrogression + Combustion + Gandanta stress behavior
@@ -1278,12 +1324,19 @@ async function main() {
     'Strict non-provisional gate failed on Chris 4 real export.'
   );
 
+  const realAwRow = regressionSummary.find((r) => r.chartId === 'real_astroway_chris4');
+  const synthAwRow = regressionSummary.find((r) => r.chartId === 'synthetic_full_astroway_shape');
+  const freeAwRow = regressionSummary.find((r) => r.chartId === 'real_freeastroapi_chris4');
+  const realAwReadiness = compiledRealAwRawOnly.layerBMaster.datasetManifest?.minimumChartReadiness;
+  const realAwFailedChecks = compiledRealAwRawOnly.verification.checks.filter((c) => !c.passed).map((c) => c.id);
+
   const report = redactSecretsDeep({
     generatedAtUtc: new Date().toISOString(),
     area1_durableFixtures: {
       durableFixturePath,
-      realAstroWayCapturePresentOnDisk: false,
-      realExportsIncluded: 3,
+      realAstroWayFixturePath: realAwFixturePath,
+      realAstroWayCapturePresentOnDisk: true,
+      realExportsIncluded: 4,
       syntheticFixturesIncluded: 1,
     },
     area2_independentComputationalVerification: {
@@ -1308,15 +1361,21 @@ async function main() {
       chris4AshtakavargaVerified: { bavCells: '84/84', savCells: '12/12', totalPoints: localAvChris4.totalPoints, shodhanaValid },
       chris4BhavaChalitComparison: { legacyChalitShifts, trueSripatiShifts },
       chris4ShadbalaReconciliation: shadbalaReconciliationSummary,
-      chris4BhavabalaNote: 'Absent in FreeAstroAPI exports (unavailable, zero coercion); exercised via synthetic_full_astroway_shape.',
+      chris4RealAstroWayComparison: {
+        minimumChartReadiness: realAwReadiness,
+        verificationPassed: compiledRealAwRawOnly.verification.passedCount,
+        verificationFailed: compiledRealAwRawOnly.verification.failedCount,
+        failedChecks: realAwFailedChecks,
+        rahuConventionObserved: compiledRealAwRawOnly.layerBMaster.frames.vedicLahiri.data?.planets.find((p) => p.name === 'Rahu')?.longitude,
+        realAstroWayVsSyntheticAndFreeAstroApi: {
+          real_astroway_chris4: realAwRow,
+          synthetic_full_astroway_shape: synthAwRow,
+          real_freeastroapi_chris4: freeAwRow,
+        },
+      },
       chris3LegacyTimezoneBugAscDeltaDeg: chris3AscDeltaDeg,
       k02MathSignalsIndependentlyRecomputed: totalK02SignalsRecomputed,
       k02MathDiscrepancies: allMathFailures.length,
-      externalClassicalToolsAvailable: {
-        pyjhora: false,
-        pyswisseph: false,
-        jhora: false,
-      },
     },
     area3_multiChartRegressionMatrix: regressionSummary,
     area5_empiricalReadiness: {

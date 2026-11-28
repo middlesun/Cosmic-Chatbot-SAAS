@@ -12,6 +12,18 @@
  * - Panchang & Planetary Conditions (without fabricating unverified local calculations)
  */
 
+const VIMSHOTTARI_SEQUENCE = [
+  'Ketu',
+  'Venus',
+  'Sun',
+  'Moon',
+  'Mars',
+  'Rahu',
+  'Jupiter',
+  'Saturn',
+  'Mercury',
+] as const;
+
 const VIMSHOTTARI_FULL_YEARS: Record<string, number> = {
   Ketu: 7,
   Venus: 20,
@@ -23,6 +35,13 @@ const VIMSHOTTARI_FULL_YEARS: Record<string, number> = {
   Saturn: 19,
   Mercury: 17,
 };
+
+function addDaysIso(baseDateIso: string, deltaDays: number): string | null {
+  const baseMs = Date.parse(`${baseDateIso.slice(0, 10)}T00:00:00.000Z`);
+  if (!Number.isFinite(baseMs)) return null;
+  const target = new Date(baseMs + Math.round(deltaDays * 86400 * 1000));
+  return target.toISOString().slice(0, 10);
+}
 
 const LEVEL_NAMES = [
   'mahadasha',
@@ -216,7 +235,8 @@ function normalizeDashaTree(
 
 export function normalizeAstroWayVimshottari5Level(
   raw: Record<string, unknown> | null,
-  planetNormalizer: (raw: unknown) => string = normalizeNameFallback
+  planetNormalizer: (raw: unknown) => string = normalizeNameFallback,
+  options?: { birthDateIso?: string | null; referenceDateIso?: string | null }
 ): Record<string, unknown> | null {
   if (!raw) return null;
   const init = asObj(raw.initial) || {};
@@ -245,9 +265,14 @@ export function normalizeAstroWayVimshottari5Level(
   }
 
   const rawPeriods = asObjArr(raw.periods ?? raw.mahadashas);
-  const tree = normalizeDashaTree(rawPeriods, 1, planetNormalizer);
-  const maxDepthObserved = rawPeriods.length > 0 ? tree.maxDepth : 0;
-  const levelsObserved = LEVEL_NAMES.slice(0, Math.min(5, maxDepthObserved));
+  const rawLevel = String(raw.level ?? '').trim().toLowerCase();
+  const looksLikePranaSliceOnly =
+    rawLevel === 'prana' &&
+    rawPeriods.length > 0 &&
+    rawPeriods.every((p) => {
+      const dur = Number(p.durationYears ?? p.duration_years ?? Number.NaN);
+      return Number.isFinite(dur) && dur > 0 && dur < 0.05;
+    });
 
   const birthBalance = {
     lord,
@@ -268,20 +293,119 @@ export function normalizeAstroWayVimshottari5Level(
         : init.balanceDays ?? null,
   };
 
-  const referenceDateSnapshot = asObj(raw.current) ?? asObj(raw.active) ?? null;
+  let natalMahadashas: NormalizedDashaPeriodNode[] = [];
+  let maxDepthObserved = 0;
+  let pranaWindowPeriods: NormalizedDashaPeriodNode[] = [];
+  let natalTimelineSource: 'provider_periods' | 'derived_from_provider_birth_balance' = 'provider_periods';
+
+  if (looksLikePranaSliceOnly) {
+    pranaWindowPeriods = normalizeDashaTree(rawPeriods, 5, planetNormalizer).nodes;
+    const startIdx = VIMSHOTTARI_SEQUENCE.indexOf(lord as (typeof VIMSHOTTARI_SEQUENCE)[number]);
+    if (startIdx >= 0 && remYFractional !== null && remYFractional >= 0) {
+      natalTimelineSource = 'derived_from_provider_birth_balance';
+      let cursorDays = 0;
+      const birthDate = options?.birthDateIso ? String(options.birthDateIso).slice(0, 10) : null;
+      for (let i = 0; i < 9; i++) {
+        const mdLord = VIMSHOTTARI_SEQUENCE[(startIdx + i) % 9];
+        const durY = i === 0 ? remYFractional : VIMSHOTTARI_FULL_YEARS[mdLord];
+        const durDays = durY * 365.2425;
+        const startDate = birthDate ? addDaysIso(birthDate, cursorDays) : null;
+        const endDate = birthDate ? addDaysIso(birthDate, cursorDays + durDays) : null;
+        cursorDays += durDays;
+        natalMahadashas.push({
+          level: 1,
+          levelName: 'mahadasha',
+          lord: mdLord,
+          start_date: startDate,
+          end_date: endDate,
+          duration_years: Number(durY.toFixed(4)),
+          source: 'derived_from_provider_birth_balance',
+          subPeriods: [],
+        });
+      }
+      maxDepthObserved = 5;
+    } else {
+      maxDepthObserved = 5;
+    }
+  } else {
+    const tree = normalizeDashaTree(rawPeriods, 1, planetNormalizer);
+    natalMahadashas = tree.nodes;
+    maxDepthObserved = rawPeriods.length > 0 ? tree.maxDepth : 0;
+  }
+
+  const levelsObserved = LEVEL_NAMES.slice(0, Math.min(5, maxDepthObserved));
+
+  const normalizeStackNode = (nodeObj: Record<string, unknown> | null): Record<string, unknown> | null => {
+    if (!nodeObj) return null;
+    const nodeLord = planetNormalizer(nodeObj.planetName ?? nodeObj.planet ?? nodeObj.lord ?? nodeObj.name);
+    if (!nodeLord) return null;
+    return {
+      lord: nodeLord,
+      start_date: typeof (nodeObj.startDate ?? nodeObj.start_date) === 'string' ? (nodeObj.startDate ?? nodeObj.start_date) : null,
+      end_date: typeof (nodeObj.endDate ?? nodeObj.end_date) === 'string' ? (nodeObj.endDate ?? nodeObj.end_date) : null,
+      duration_years: Number.isFinite(Number(nodeObj.durationYears ?? nodeObj.duration_years ?? Number.NaN))
+        ? Number(nodeObj.durationYears ?? nodeObj.duration_years)
+        : null,
+    };
+  };
+
+  let referenceDateSnapshot = asObj(raw.current) ?? asObj(raw.active) ?? null;
+  if (!referenceDateSnapshot && (raw.currentMaha || raw.currentAntar || raw.currentPratyantar || raw.currentSookshma)) {
+    const refDateIso = options?.referenceDateIso ? String(options.referenceDateIso).slice(0, 10) : null;
+    let matchedPrana: NormalizedDashaPeriodNode | null = null;
+    if (pranaWindowPeriods.length > 0) {
+      if (refDateIso) {
+        const refMidMs = Date.parse(`${refDateIso}T12:00:00Z`);
+        matchedPrana =
+          pranaWindowPeriods.find((p) => {
+            const sMs = p.start_date ? Date.parse(p.start_date.replace(' ', 'T') + (p.start_date.includes('T') ? '' : 'Z')) : Number.NaN;
+            const eMs = p.end_date ? Date.parse(p.end_date.replace(' ', 'T') + (p.end_date.includes('T') ? '' : 'Z')) : Number.NaN;
+            return Number.isFinite(sMs) && Number.isFinite(eMs) && Number.isFinite(refMidMs) && refMidMs >= sMs && refMidMs <= eMs;
+          }) ?? null;
+      }
+      if (!matchedPrana && pranaWindowPeriods.length > 0) {
+        matchedPrana = pranaWindowPeriods[Math.floor(pranaWindowPeriods.length / 2)] ?? pranaWindowPeriods[0];
+      }
+    }
+
+    const maha = normalizeStackNode(asObj(raw.currentMaha));
+    const antar = normalizeStackNode(asObj(raw.currentAntar));
+    const pratyantar = normalizeStackNode(asObj(raw.currentPratyantar));
+    const sookshma = normalizeStackNode(asObj(raw.currentSookshma));
+    const prana = matchedPrana
+      ? {
+          lord: matchedPrana.lord,
+          start_date: matchedPrana.start_date,
+          end_date: matchedPrana.end_date,
+          duration_years: matchedPrana.duration_years,
+        }
+      : null;
+
+    if (maha || antar || pratyantar || sookshma || prana) {
+      referenceDateSnapshot = {
+        ...(maha ? { mahadasha: maha, maha: maha.lord } : {}),
+        ...(antar ? { antardasha: antar, antar: antar.lord } : {}),
+        ...(pratyantar ? { pratyantardasha: pratyantar, pratyantar: pratyantar.lord } : {}),
+        ...(sookshma ? { sookshma } : {}),
+        ...(prana ? { prana } : {}),
+      };
+    }
+  }
 
   return {
     ...raw,
     birth_balance: birthBalance,
     maxDepthObserved,
     levelsObserved,
-    mahadashas: tree.nodes,
+    mahadashas: natalMahadashas,
+    ...(pranaWindowPeriods.length > 0 ? { pranaWindowPeriods } : {}),
     natalTimeline: {
       temporalScope: 'natal_invariant',
+      source: natalTimelineSource,
       birth_balance: birthBalance,
       maxDepthObserved,
       levelsObserved,
-      mahadashas: tree.nodes,
+      mahadashas: natalMahadashas,
     },
     referenceDateActive: referenceDateSnapshot,
     referenceDateSnapshot,
@@ -351,6 +475,12 @@ export function normalizeAstroWayShadbalaSubcomponents(
   };
 }
 
+function finiteOrNullStrict(val: unknown): number | null {
+  if (val === null || val === undefined || val === '') return null;
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function normalizeAstroWayIshtaKashta(
   raw: Record<string, unknown> | null,
   planetNormalizer: (raw: unknown) => string = normalizeNameFallback
@@ -362,16 +492,34 @@ export function normalizeAstroWayIshtaKashta(
   const byPlanet: Record<string, Record<string, unknown>> = {};
   const items = rows.map((r) => {
     const planet = planetNormalizer(r.planetName ?? r.planet ?? r.name);
-    const ishtaRaw = Number(r.ishta ?? r.ishtaPhala ?? r.bphsIshta ?? Number.NaN);
-    const kashtaRaw = Number(r.kashta ?? r.kashtaPhala ?? r.bphsKashta ?? Number.NaN);
+    const parashara = asObj(r.parashara);
+    const geometric = asObj(r.geometric);
+    const ishtaVal = finiteOrNullStrict(
+      r.ishta ?? r.ishtaPhala ?? r.bphsIshta ?? parashara?.ishta ?? geometric?.ishta
+    );
+    const kashtaVal = finiteOrNullStrict(
+      r.kashta ?? r.kashtaPhala ?? r.bphsKashta ?? parashara?.kashta ?? geometric?.kashta
+    );
     const entry = {
       ...r,
       planet,
-      ishta: Number.isFinite(ishtaRaw) ? ishtaRaw : null,
-      kashta: Number.isFinite(kashtaRaw) ? kashtaRaw : null,
+      ishta: ishtaVal,
+      kashta: kashtaVal,
+      parasharaIshta: finiteOrNullStrict(parashara?.ishta),
+      parasharaKashta: finiteOrNullStrict(parashara?.kashta),
+      geometricIshta: finiteOrNullStrict(geometric?.ishta),
+      geometricKashta: finiteOrNullStrict(geometric?.kashta),
+      sourceVariant:
+        r.ishta !== undefined || r.ishtaPhala !== undefined
+          ? 'flat'
+          : parashara
+          ? 'parashara'
+          : geometric
+          ? 'geometric'
+          : 'none',
       netIshtaMinusKashta:
-        Number.isFinite(ishtaRaw) && Number.isFinite(kashtaRaw)
-          ? Number((ishtaRaw - kashtaRaw).toFixed(4))
+        ishtaVal !== null && kashtaVal !== null
+          ? Number((ishtaVal - kashtaVal).toFixed(4))
           : null,
     };
     if (planet) byPlanet[planet] = entry;
@@ -393,16 +541,26 @@ export function normalizeAstroWayBhavabala(
   if (rows.length === 0) return null;
 
   const houses = rows.map((h, idx) => {
-    const houseNum = Number(h.house ?? h.houseNumber ?? h.bhava ?? idx + 1);
-    const totalVirupa = Number(h.totalVirupa ?? h.total ?? h.totalBala ?? Number.NaN);
-    const totalRupa = Number(
-      h.totalRupa ?? h.rupa ?? (Number.isFinite(totalVirupa) ? totalVirupa / 60 : Number.NaN)
-    );
+    const houseNum = finiteOrNullStrict(h.house ?? h.houseNumber ?? h.bhava);
+    const totalVirupa = finiteOrNullStrict(h.totalVirupa ?? h.totalVirupas ?? h.total ?? h.totalBala);
+    const totalRupaRaw = finiteOrNullStrict(h.totalRupa ?? h.totalRupas ?? h.rupa);
+    const totalRupa =
+      totalRupaRaw !== null
+        ? totalRupaRaw
+        : totalVirupa !== null
+        ? Number((totalVirupa / 60).toFixed(4))
+        : null;
+    const bhavaDigbala = finiteOrNullStrict(h.bhavaDigbala ?? h.bhavaDigBala ?? h.digBala);
+    const bhavadhipatiBala = finiteOrNullStrict(h.bhavadhipatiBala ?? h.adhipatiBala);
+    const bhavaDrishtiBala = finiteOrNullStrict(h.bhavaDrishtiBala ?? h.drishtiBala);
     return {
       ...h,
-      house: Number.isInteger(houseNum) ? houseNum : idx + 1,
-      totalVirupa: Number.isFinite(totalVirupa) ? totalVirupa : null,
-      totalRupa: Number.isFinite(totalRupa) ? Number(totalRupa.toFixed(4)) : null,
+      house: houseNum !== null && Number.isInteger(houseNum) ? houseNum : idx + 1,
+      totalVirupa,
+      totalRupa: totalRupa !== null ? Number(totalRupa.toFixed(4)) : null,
+      ...(bhavaDigbala !== null ? { bhavaDigbala } : {}),
+      ...(bhavadhipatiBala !== null ? { bhavadhipatiBala } : {}),
+      ...(bhavaDrishtiBala !== null ? { bhavaDrishtiBala } : {}),
     };
   });
 

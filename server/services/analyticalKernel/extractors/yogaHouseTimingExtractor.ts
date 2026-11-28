@@ -51,7 +51,7 @@ function extractPlanetRefs(rawList: unknown): EvidenceEntityRef[] {
     const candidate =
       typeof item === 'string'
         ? item
-        : strOrNull(asObj(item)?.planet ?? asObj(item)?.name ?? asObj(item)?.graha);
+        : strOrNull(asObj(item)?.planet ?? asObj(item)?.planetName ?? asObj(item)?.name ?? asObj(item)?.graha);
     const p = canonicalSubjectPlanet(candidate);
     if (p && !seen.has(p)) {
       seen.add(p);
@@ -446,6 +446,12 @@ export function extractYogaHouseAndTimingEvidence(
       const lot = hellenisticLots[idx];
       const name = strOrNull(lot.name ?? lot.lot);
       if (!name) continue;
+      const lotDegInSign =
+        numOrNull(lot.degreeInSign ?? lot.degree) ??
+        (() => {
+          const absLon = numOrNull(lot.longitude ?? lot.absoluteDegree ?? lot.degree);
+          return absLon !== null ? Number((absLon % 30).toFixed(4)) : null;
+        })();
       drafts.push(
         makeDraft(ctx, {
           frame: 'western_tropical',
@@ -459,7 +465,7 @@ export function extractYogaHouseAndTimingEvidence(
             code: 'HELLENISTIC_ARABIC_LOT',
             label: `Hellenistic ${name}`,
             summary: `${name} at ${strOrNull(lot.sign) ?? '?'} ${
-              numOrNull(lot.degreeInSign ?? lot.degree)?.toFixed(2) ?? '?'
+              lotDegInSign !== null ? lotDegInSign.toFixed(2) : '?'
             }°`,
             classification: 'hellenistic_lot',
           },
@@ -498,9 +504,9 @@ export function extractYogaHouseAndTimingEvidence(
       ? asObjArr(jaimini.charaKarakas)
       : Array.isArray(jaimini.karakas)
       ? asObjArr(jaimini.karakas)
-      : asObjArr(charaObj?.items ?? charaObj?.karakas);
+      : asObjArr(charaObj?.ranking ?? charaObj?.chara ?? charaObj?.items ?? charaObj?.karakas);
     for (const row of charaItems) {
-      const planet = canonicalSubjectPlanet(row.planet ?? row.graha ?? row.name);
+      const planet = canonicalSubjectPlanet(row.planet ?? row.grahaName ?? row.graha ?? row.name);
       const role = strOrNull(row.karaka ?? row.role ?? row.title ?? row.code);
       if (!planet || !role) continue;
       const degId = pos.degreeEvidenceIdByKey.get(`vedic_lahiri:${planet}`);
@@ -522,7 +528,7 @@ export function extractYogaHouseAndTimingEvidence(
           },
           measurements: [
             { metric: 'karaka_role', value: role, unit: null },
-            { metric: 'degree_in_sign', value: numOrNull(row.degree ?? row.degreeInSign), unit: 'degrees' },
+            { metric: 'degree_in_sign', value: numOrNull(row.degree ?? row.degreeInSign ?? row.longitudeInSign), unit: 'degrees' },
           ],
           methodology: jMeth,
           ruleReference: {
@@ -546,10 +552,10 @@ export function extractYogaHouseAndTimingEvidence(
       ? asObjArr(jaimini.padas)
       : Array.isArray(jaimini.arudhaPadas)
       ? asObjArr(jaimini.arudhaPadas)
-      : asObjArr(padasObj?.items ?? padasObj?.padas ?? padasObj?.arudhaPadas);
+      : asObjArr(padasObj?.bhavaArudhas ?? padasObj?.items ?? padasObj?.padas ?? padasObj?.arudhaPadas);
     for (const row of padasItems) {
-      const padaName = strOrNull(row.name ?? row.pada ?? row.code);
-      const sign = strOrNull(row.sign ?? row.padaSign);
+      const padaName = strOrNull(row.name ?? row.pada ?? row.label ?? row.code);
+      const sign = strOrNull(row.signName ?? row.padaSign ?? (typeof row.sign === 'string' ? row.sign : null));
       if (!padaName) continue;
       drafts.push(
         makeDraft(ctx, {
@@ -594,13 +600,22 @@ export function extractYogaHouseAndTimingEvidence(
   if (upagrahas && upaManifest && upaManifest.canonicalStatus !== 'unavailable') {
     const uVer = mapEnvelopeVerification(null, upaManifest);
     const uSource = buildSourceDatasetRef('upagrahas_aprakasha', null, upaManifest);
-    const items = asObjArr(upagrahas.items ?? upagrahas.upagrahas);
+    const directItems = asObjArr(upagrahas.items ?? upagrahas.upagrahas);
+    const mandiObj = asObj(upagrahas.mandi);
+    const items =
+      directItems.length > 0
+        ? directItems
+        : [
+            ...(mandiObj ? [{ ...mandiObj, name: strOrNull(mandiObj.name) ?? 'Mandi' }] : []),
+            ...asObjArr(upagrahas.sunBased),
+            ...asObjArr(upagrahas.timeBased),
+          ];
 
     for (const u of items) {
       const name = strOrNull(u.name ?? u.upagraha);
       if (!name) continue;
-      const sign = strOrNull(u.sign);
-      const deg = numOrNull(u.degree ?? u.longitude ?? u.absoluteDegree);
+      const sign = strOrNull(u.signName ?? (typeof u.sign === 'string' ? u.sign : null));
+      const deg = numOrNull(u.longitude ?? u.degree ?? u.absoluteDegree);
       drafts.push(
         makeDraft(ctx, {
           frame: 'vedic_lahiri',
@@ -828,11 +843,11 @@ export function extractYogaHouseAndTimingEvidence(
           const val = obj.lord ?? obj.planet ?? obj.planetName ?? obj.name;
           return canonicalSubjectPlanet(val) ?? strOrNull(val);
         };
-        const mdLord = extractStackLord(activeVim.mahadasha ?? activeVim.major_dasha ?? activeVim.maha);
-        const adLord = extractStackLord(activeVim.antardasha ?? activeVim.minor_dasha ?? activeVim.antar);
-        const pdLord = extractStackLord(activeVim.pratyantardasha ?? activeVim.sub_minor_dasha ?? activeVim.pratyantar);
-        const sdLord = extractStackLord(activeVim.sookshma ?? activeVim.sookshmadasha);
-        const prLord = extractStackLord(activeVim.prana ?? activeVim.pranadasha);
+        const mdLord = extractStackLord(activeVim.mahadasha ?? activeVim.major_dasha ?? activeVim.maha ?? activeVim.currentMaha);
+        const adLord = extractStackLord(activeVim.antardasha ?? activeVim.minor_dasha ?? activeVim.antar ?? activeVim.currentAntar);
+        const pdLord = extractStackLord(activeVim.pratyantardasha ?? activeVim.sub_minor_dasha ?? activeVim.pratyantar ?? activeVim.currentPratyantar);
+        const sdLord = extractStackLord(activeVim.sookshma ?? activeVim.sookshmadasha ?? activeVim.currentSookshma);
+        const prLord = extractStackLord(activeVim.prana ?? activeVim.pranadasha ?? activeVim.currentPrana);
 
         const activeEntities: EvidenceEntityRef[] = [];
         for (const [role, lord] of [

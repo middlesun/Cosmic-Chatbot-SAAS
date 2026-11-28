@@ -345,8 +345,17 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
             limitations: env?.limitations ?? ['Astronomical telemetry bodies empty or missing.'],
           };
         }
+        const jdMatch = env.data.timestampVerification?.julianDayMatch;
+        const derived = deriveCanonicalDatasetState(env);
+        const status: CanonicalDatasetState =
+          derived === 'provisional' &&
+          env.canonicalStatus === 'available' &&
+          bodiesCount >= 9 &&
+          jdMatch !== false
+            ? 'available'
+            : derived;
         return {
-          status: deriveCanonicalDatasetState(env),
+          status,
           source: env.source,
           acquiredAtUtc: env.acquiredAtUtc ?? null,
           version: env.version,
@@ -576,7 +585,14 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
       blockingForDownstream: [],
       evaluate: (m) => {
         const ik = asObj(m.providerExtendedDatasets?.ishtaKashtaPhala);
-        const items = asObjArr(ik?.items);
+        const items = asObjArr(ik?.items).filter((r) => {
+          const par = asObj(r.parashara);
+          const geo = asObj(r.geometric);
+          return (
+            hasFiniteNum(r.ishta ?? r.ishtaPhala ?? r.bphsIshta ?? par?.ishta ?? geo?.ishta) &&
+            hasFiniteNum(r.kashta ?? r.kashtaPhala ?? r.bphsKashta ?? par?.kashta ?? geo?.kashta)
+          );
+        });
         if (!ik || items.length === 0) {
           return {
             status: 'unavailable',
@@ -584,7 +600,7 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
             acquiredAtUtc: null,
             version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
             referenceDateIso: null,
-            limitations: ['Ishta & Kashta Phala items absent or empty.'],
+            limitations: ['Ishta & Kashta Phala items absent, empty, or missing finite numeric values.'],
           };
         }
         return {
@@ -596,7 +612,7 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
           limitations:
             items.length >= 7
               ? ['AstroWay OpenAPI marks endpoint x-quality=yellow pending independent reconciliation.']
-              : [`Only ${items.length}/7 Ishta/Kashta items returned.`],
+              : [`Only ${items.length}/7 valid Ishta/Kashta items returned.`],
         };
       },
     },
@@ -609,7 +625,9 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
       blockingForDownstream: ['ascendant_lagnesh_health', 'house_intelligence'],
       evaluate: (m) => {
         const bb = asObj(m.providerExtendedDatasets?.bhavabala);
-        const houses = asObjArr(bb?.houses ?? bb?.items);
+        const houses = asObjArr(bb?.houses ?? bb?.items).filter((h) =>
+          hasFiniteNum(h.totalVirupa ?? h.totalVirupas ?? h.totalRupa ?? h.totalRupas ?? h.total ?? h.totalBala)
+        );
         if (!bb || houses.length < 12) {
           return {
             status: 'unavailable',
@@ -617,7 +635,7 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
             acquiredAtUtc: null,
             version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
             referenceDateIso: null,
-            limitations: [`Bhavabala missing or empty (${houses.length}/12 houses).`],
+            limitations: [`Bhavabala missing, empty, or lacking finite values (${houses.length}/12 valid houses).`],
           };
         }
         return {

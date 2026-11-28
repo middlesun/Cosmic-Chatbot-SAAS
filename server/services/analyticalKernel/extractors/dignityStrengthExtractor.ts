@@ -277,10 +277,10 @@ export function extractDignityAndStrengthEvidence(
     for (const h of bhavaHouses) {
       const hNum = numOrNull(h.house);
       if (hNum === null) continue;
-      const totalVirupa = numOrNull(h.totalVirupa);
-      const totalRupa = numOrNull(h.totalRupa);
+      const totalVirupa = numOrNull(h.totalVirupa ?? h.totalVirupas);
+      const totalRupa = numOrNull(h.totalRupa ?? h.totalRupas);
       const adhipati = numOrNull(h.bhavadhipatiBala ?? h.adhipatiBala);
-      const dig = numOrNull(h.bhavaDigbala ?? h.digBala);
+      const dig = numOrNull(h.bhavaDigbala ?? h.bhavaDigBala ?? h.digBala);
       const drishti = numOrNull(h.bhavaDrishtiBala ?? h.drishtiBala);
 
       drafts.push(
@@ -402,11 +402,33 @@ export function extractDignityAndStrengthEvidence(
     const westMeth = buildFrameMethodology(ctx, 'western_tropical');
     const items = asObjArr(westEssDig.items ?? westEssDig.planets ?? westEssDig.dignities);
     for (const row of items) {
-      const rawName = strOrNull(row.planet ?? row.name ?? row.body);
+      const rawName = strOrNull(row.planetName ?? row.planet ?? row.name ?? row.body);
       if (!rawName) continue;
       const subjectId = canonicalSubjectPlanet(rawName) ?? rawName;
-      const score = numOrNull(row.score ?? row.totalScore ?? row.essentialScore);
-      const label = strOrNull(row.dignity ?? row.status ?? row.primaryDignity) ?? 'Observed';
+      const digObj = asObj(row.dignity);
+      const score = numOrNull(digObj?.score ?? row.score ?? row.totalScore ?? row.essentialScore);
+
+      let label: string | null = null;
+      if (digObj) {
+        const matchesSelf = (v: unknown): boolean => {
+          if (v === true) return true;
+          const s = strOrNull(v);
+          if (!s) return false;
+          const c = canonicalSubjectPlanet(s) ?? s;
+          return c.toLowerCase() === subjectId.toLowerCase();
+        };
+        if (matchesSelf(digObj.exaltation)) label = 'Exaltation';
+        else if (matchesSelf(digObj.rulership)) label = 'Domicile';
+        else if (matchesSelf(digObj.fall)) label = 'Fall';
+        else if (matchesSelf(digObj.detriment)) label = 'Detriment';
+        else if (matchesSelf(digObj.triplicity)) label = 'Triplicity';
+        else if (matchesSelf(digObj.term)) label = 'Term';
+        else if (matchesSelf(digObj.decan)) label = 'Face';
+        else if (digObj.peregrine === true) label = 'Peregrine';
+      } else {
+        label = strOrNull(row.dignity ?? row.status ?? row.primaryDignity);
+      }
+      label = label ?? 'Observed';
       const parentDeg = pos.degreeEvidenceIdByKey.get(`western_tropical:${subjectId}`);
 
       drafts.push(

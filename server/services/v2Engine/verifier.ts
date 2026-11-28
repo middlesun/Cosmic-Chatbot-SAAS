@@ -2425,7 +2425,10 @@ export function verifyMasterChartRecord(
   if (bbHouses.length > 0) {
     const bbValid12 =
       bbHouses.length === 12 &&
-      bbHouses.every((h) => Number.isFinite(Number(h.totalVirupa ?? h.totalRupa ?? h.total ?? NaN)));
+      bbHouses.every((h) => {
+        const rawVal = h.totalVirupa ?? h.totalVirupas ?? h.totalRupa ?? h.totalRupas ?? h.total;
+        return rawVal !== null && rawVal !== undefined && rawVal !== '' && Number.isFinite(Number(rawVal));
+      });
     const hasExtBhava = Boolean(
       options?.externalReferenceData?.bhavabalaTotalRupas &&
         Object.keys(options.externalReferenceData.bhavabalaTotalRupas).length >= 12
@@ -2441,7 +2444,7 @@ export function verifyMasterChartRecord(
       verificationBasis: hasExtBhava ? 'external_jhora_pyjhora_swisseph' : 'pending_external_validation',
       verificationTier: 'internal_math_consistency',
       expected: '12 house strengths normalized; OpenAPI x-quality=yellow flagged pending JHora check',
-      observed: `houses=${bbHouses.length}/12, externalRefPresent=${String(hasExtBhava)}`,
+      observed: `houses=${bbHouses.length}/12, valid12=${String(bbValid12)}, externalRefPresent=${String(hasExtBhava)}`,
     });
   }
 
@@ -2451,15 +2454,23 @@ export function verifyMasterChartRecord(
     const karakaRaw =
       (jaiminiExt.charaKarakas as Record<string, unknown> | undefined) ??
       (jaiminiExt.karakas as Record<string, unknown> | undefined);
-    const karakaList = Array.isArray(karakaRaw?.karakas)
+    const karakaList = Array.isArray(karakaRaw?.ranking)
+      ? (karakaRaw!.ranking as Array<Record<string, unknown>>)
+      : Array.isArray(karakaRaw?.chara)
+      ? (karakaRaw!.chara as Array<Record<string, unknown>>)
+      : Array.isArray(karakaRaw?.karakas)
       ? (karakaRaw!.karakas as Array<Record<string, unknown>>)
       : Array.isArray(karakaRaw?.items)
       ? (karakaRaw!.items as Array<Record<string, unknown>>)
       : Array.isArray(karakaRaw)
       ? (karakaRaw as Array<Record<string, unknown>>)
       : [];
-    const arudhaRaw = jaiminiExt.arudhaPadas as Record<string, unknown> | null;
-    const arudhaList = Array.isArray(arudhaRaw?.padas)
+    const arudhaRaw =
+      (jaiminiExt.padas as Record<string, unknown> | null) ??
+      (jaiminiExt.arudhaPadas as Record<string, unknown> | null);
+    const arudhaList = Array.isArray(arudhaRaw?.bhavaArudhas)
+      ? (arudhaRaw!.bhavaArudhas as Array<Record<string, unknown>>)
+      : Array.isArray(arudhaRaw?.padas)
       ? (arudhaRaw!.padas as Array<Record<string, unknown>>)
       : Array.isArray(arudhaRaw?.items)
       ? (arudhaRaw!.items as Array<Record<string, unknown>>)
@@ -2471,7 +2482,10 @@ export function verifyMasterChartRecord(
       const schemeOk = schemeCount === 0 || schemeCount === 7 || schemeCount === 8;
       // If degrees are reported, verify monotonic descending order AK -> DK
       const degList = karakaList
-        .map((k) => Number(k.degreeInSign ?? k.degree ?? NaN))
+        .map((k) => {
+          const rawDeg = k.degreeInSign ?? k.longitudeInSign ?? k.degree;
+          return rawDeg !== null && rawDeg !== undefined && rawDeg !== '' ? Number(rawDeg) : NaN;
+        })
         .filter((n) => Number.isFinite(n));
       let descendingOk = true;
       for (let i = 1; i < degList.length; i++) {
