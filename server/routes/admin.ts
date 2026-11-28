@@ -54,7 +54,10 @@ import {
   type DstFoldDisambiguation,
   type V2DiagnosticProviderId,
 } from '../services/v2Engine';
-import { buildAnalyticalEvidenceRepository } from '../services/analyticalKernel';
+import {
+  buildAnalyticalKernelK02Bundle,
+  exportRuleRegistrySnapshot,
+} from '../services/analyticalKernel';
 import { sendClientInviteEmail, sendSupportReplyEmail } from '../services/email';
 import {
   ALL_DEFAULT_PROMPTS,
@@ -3533,7 +3536,10 @@ function assembleV2DiagnosticBundleResponse(params: {
   const layerBMaster = compiledFoundationalChart.layerBMaster;
   const layerC = compiledFoundationalChart.layerCShell;
   const layerCInputContract = prepareLayerCAnalyticalInput(compiledFoundationalChart);
-  const analyticalEvidenceRepository = buildAnalyticalEvidenceRepository(layerCInputContract);
+  const k02Bundle = buildAnalyticalKernelK02Bundle(layerCInputContract);
+  const analyticalEvidenceRepository = k02Bundle.k01Repository;
+  const k02PlanetaryStateIntelligence = k02Bundle.k02State;
+  const analyticalRuleRegistry = exportRuleRegistrySnapshot();
   const verificationReport = compiledFoundationalChart.verification;
   const legacyVsV2Comparison = buildLegacyVsV2ComparisonReport({
     profileId: String(profile.id),
@@ -3579,6 +3585,8 @@ function assembleV2DiagnosticBundleResponse(params: {
     compiledFoundationalChart,
     layerCInputContract,
     analyticalEvidenceRepository,
+    k02PlanetaryStateIntelligence,
+    analyticalRuleRegistry,
     verificationReport,
     legacyVsV2Comparison,
   });
@@ -3595,6 +3603,12 @@ function assembleV2DiagnosticBundleResponse(params: {
     ).length,
     analyticalEvidenceRepositoryBytes: v2TextEncoder.encode(
       JSON.stringify(sanitizedPayload.analyticalEvidenceRepository)
+    ).length,
+    k02PlanetaryStateIntelligenceBytes: v2TextEncoder.encode(
+      JSON.stringify(sanitizedPayload.k02PlanetaryStateIntelligence)
+    ).length,
+    analyticalRuleRegistryBytes: v2TextEncoder.encode(
+      JSON.stringify(sanitizedPayload.analyticalRuleRegistry)
     ).length,
     verificationReportBytes: v2TextEncoder.encode(
       JSON.stringify(sanitizedPayload.verificationReport)

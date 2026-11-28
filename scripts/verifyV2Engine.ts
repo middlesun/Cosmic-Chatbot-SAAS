@@ -109,12 +109,23 @@ import {
 } from '../server/services/astrologyProviders/freeAstroApiRateLimiter';
 import { getNakshatraAndSubs, getVargaSignIndex, normalizeDeg, SIGNS } from '../server/services/jyotishMath';
 import {
+  assertRegisteredRule,
+  BPHS_SHADBALA_MIN_RUPAS,
   buildAnalyticalEvidenceRepository,
+  buildAnalyticalKernelK02Bundle,
   CANONICAL_EVIDENCE_FRAMES,
   CanonicalEvidenceRegistry,
   CircularLineageError,
+  evaluateK02FromRepository,
   EVIDENCE_FAMILIES,
+  exportRuleRegistrySnapshot,
   formatPlanetEvidenceSummary,
+  formatPlanetK02StateSummary,
+  PHI_READY_PLANETS,
+  PLANETARY_STATE_DIMENSIONS,
+  PLANETARY_STATE_SUBJECTS,
+  UnregisteredRuleError,
+  type AnalyticalKernelK02StateResult,
   type CanonicalEvidenceDraft,
 } from '../server/services/analyticalKernel';
 
@@ -4526,72 +4537,642 @@ async function main() {
 
   console.log('K01 Offline Regression Suite: ALL 8 TESTS PASSED (a through h).');
 
-  // Chris 4 Analytical Evidence Repository Artifact Generation (ZERO live API calls)
-  const chris4ConsolidatedPath = path.join(outDir, 'chris4-consolidated-foundational-chart.json');
+  // Chris 4 Foundational Chart Cache Check (ZERO silent fallback)
+  const fixturesDir = path.resolve(process.cwd(), 'scripts', 'fixtures');
+  const cliArgsMain = process.argv.slice(2);
+  const cliCacheIdx = cliArgsMain.indexOf('--astroway-cache');
+  const cliAstroWayCachePath =
+    cliCacheIdx >= 0 && cliArgsMain[cliCacheIdx + 1]
+      ? path.resolve(process.cwd(), cliArgsMain[cliCacheIdx + 1])
+      : null;
+
+  const chris4CandidatePaths = [
+    ...(cliAstroWayCachePath ? [cliAstroWayCachePath] : []),
+    path.join(fixturesDir, 'chris4-consolidated-foundational-chart.json'),
+    path.join(fixturesDir, 'chris4-astroway-cache.json'),
+    path.join(outDir, 'chris4-consolidated-foundational-chart.json'),
+    path.join(outDir, 'chris4-astroway-cache.json'),
+  ];
   let chris4RepoSource: Parameters<typeof buildAnalyticalEvidenceRepository>[0] = compiledHybrid;
   let chris4SourceOrigin = 'offline_compiled_hybrid_fallback';
+  let chris4AstroWayCacheStatus: 'ASTROWAY_POPULATED' | '[CHRIS4_ASTROWAY_CACHE_UNAVAILABLE]' =
+    '[CHRIS4_ASTROWAY_CACHE_UNAVAILABLE]';
+  let chris4AstroWayCacheNote =
+    '[CHRIS4_ASTROWAY_CACHE_UNAVAILABLE] Neither durable scripts/fixtures/ nor /tmp/v2-engine-verification/ contained a populated AstroWay + vedicLahiri dataset on disk; running K01/K02 on offline compiledHybrid fixture explicitly (NOT pretending it is the 62-endpoint AstroWay dataset).';
 
-  if (fs.existsSync(chris4ConsolidatedPath)) {
-    const cachedChris4 = JSON.parse(fs.readFileSync(chris4ConsolidatedPath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
-    const layerCCandidate = cachedChris4.layerCInputContract as
-      | { natalInvariant?: { frames?: { vedicLahiri?: { data?: unknown } } } }
+  const inspectCachedChris4Candidate = (
+    candidate: Record<string, unknown>,
+    filePath: string
+  ): {
+    validSource: Parameters<typeof buildAnalyticalEvidenceRepository>[0] | null;
+    astroWayPopulated: boolean;
+    endpointCount: number;
+  } => {
+    const layerCCand = candidate.layerCInputContract as
+      | {
+          natalInvariant?: { frames?: { vedicLahiri?: { data?: unknown } } };
+          calculationConventions?: unknown;
+        }
       | undefined;
-    const compiledCandidate = cachedChris4.compiledChart as
-      | { layerBMaster?: { frames?: { vedicLahiri?: { data?: unknown } } } }
+    const compiledCand = (candidate.compiledChart ?? candidate.compiledFoundationalChart) as
+      | {
+          layerBMaster?: { frames?: { vedicLahiri?: { data?: unknown } } };
+          endpointAndCreditSummary?: {
+            astroWay?: { acquired?: boolean; endpointCount?: number; successfulCalls?: number };
+          };
+        }
       | undefined;
-    const directLayerCCandidate = cachedChris4 as {
+    const bundleLayerB = candidate.layerB as
+      | {
+          schemaVersion?: string;
+          providerId?: string;
+          frames?: { vedicLahiri?: { data?: unknown } };
+        }
+      | undefined;
+    const directCand = candidate as {
       contractVersion?: string;
       schemaVersion?: string;
+      providerId?: string;
       natalInvariant?: { frames?: { vedicLahiri?: { data?: unknown } } };
       layerBMaster?: { frames?: { vedicLahiri?: { data?: unknown } } };
       frames?: { vedicLahiri?: { data?: unknown } };
+      acquisitionSources?: {
+        astroWay?: { acquired?: boolean; callsCount?: number; calls?: Record<string, unknown> } | string;
+      };
+      endpointAndCreditSummary?: {
+        astroWay?: { acquired?: boolean; endpointCount?: number; successfulCalls?: number };
+      };
+      calls?: Record<string, unknown>;
+      layerA?: { providerId?: string; calls?: Record<string, unknown> };
     };
 
-    if (layerCCandidate?.natalInvariant?.frames?.vedicLahiri?.data) {
-      chris4RepoSource = layerCCandidate as unknown as Parameters<
-        typeof buildAnalyticalEvidenceRepository
-      >[0];
-      chris4SourceOrigin = chris4ConsolidatedPath;
-    } else if (compiledCandidate?.layerBMaster?.frames?.vedicLahiri?.data) {
-      chris4RepoSource = compiledCandidate as unknown as Parameters<
-        typeof buildAnalyticalEvidenceRepository
-      >[0];
-      chris4SourceOrigin = chris4ConsolidatedPath;
-    } else if (
-      (directLayerCCandidate.contractVersion === 'v2.layer_c_input.1.0' &&
-        directLayerCCandidate.natalInvariant?.frames?.vedicLahiri?.data) ||
-      (directLayerCCandidate.schemaVersion === 'v2.compiled_foundational_chart.1.0' &&
-        directLayerCCandidate.layerBMaster?.frames?.vedicLahiri?.data) ||
-      (directLayerCCandidate.schemaVersion === 'v2.master_chart.1.0' &&
-        directLayerCCandidate.frames?.vedicLahiri?.data)
+    const callsObj =
+      directCand.calls ??
+      directCand.layerA?.calls ??
+      (typeof directCand.acquisitionSources?.astroWay === 'object'
+        ? directCand.acquisitionSources.astroWay?.calls
+        : undefined) ??
+      {};
+    const awCallsCount =
+      Object.keys(callsObj).length ||
+      Number(
+        directCand.endpointAndCreditSummary?.astroWay?.successfulCalls ??
+          directCand.endpointAndCreditSummary?.astroWay?.endpointCount ??
+          compiledCand?.endpointAndCreditSummary?.astroWay?.successfulCalls ??
+          compiledCand?.endpointAndCreditSummary?.astroWay?.endpointCount ??
+          (typeof directCand.acquisitionSources?.astroWay === 'object'
+            ? directCand.acquisitionSources?.astroWay?.callsCount
+            : 0) ??
+          0
+      );
+    const awAcquired =
+      Boolean(
+        typeof directCand.acquisitionSources?.astroWay === 'object'
+          ? directCand.acquisitionSources.astroWay?.acquired
+          : typeof directCand.acquisitionSources?.astroWay === 'string' &&
+              directCand.acquisitionSources.astroWay !== 'unavailable'
+      ) ||
+      Boolean(directCand.endpointAndCreditSummary?.astroWay?.acquired) ||
+      Boolean(compiledCand?.endpointAndCreditSummary?.astroWay?.acquired) ||
+      (directCand.providerId === 'astroway' && awCallsCount >= 10) ||
+      (bundleLayerB?.providerId === 'astroway' && awCallsCount >= 10) ||
+      awCallsCount >= 10;
+
+    if (layerCCand?.natalInvariant?.frames?.vedicLahiri?.data) {
+      return {
+        validSource: layerCCand as unknown as Parameters<typeof buildAnalyticalEvidenceRepository>[0],
+        astroWayPopulated: awAcquired,
+        endpointCount: awCallsCount,
+      };
+    }
+    if (compiledCand?.layerBMaster?.frames?.vedicLahiri?.data) {
+      return {
+        validSource: compiledCand as unknown as Parameters<typeof buildAnalyticalEvidenceRepository>[0],
+        astroWayPopulated: awAcquired,
+        endpointCount: awCallsCount,
+      };
+    }
+    if (bundleLayerB?.frames?.vedicLahiri?.data) {
+      return {
+        validSource: bundleLayerB as unknown as Parameters<typeof buildAnalyticalEvidenceRepository>[0],
+        astroWayPopulated: awAcquired,
+        endpointCount: awCallsCount,
+      };
+    }
+    if (
+      (directCand.contractVersion === 'v2.layer_c_input.1.0' &&
+        directCand.natalInvariant?.frames?.vedicLahiri?.data) ||
+      (directCand.schemaVersion === 'v2.compiled_foundational_chart.1.0' &&
+        directCand.layerBMaster?.frames?.vedicLahiri?.data) ||
+      ((directCand.schemaVersion === 'v2.master.1.0' ||
+        directCand.schemaVersion === 'v2.master_chart.1.0') &&
+        directCand.frames?.vedicLahiri?.data)
     ) {
-      chris4RepoSource = cachedChris4 as unknown as Parameters<
-        typeof buildAnalyticalEvidenceRepository
-      >[0];
-      chris4SourceOrigin = chris4ConsolidatedPath;
+      return {
+        validSource: candidate as unknown as Parameters<typeof buildAnalyticalEvidenceRepository>[0],
+        astroWayPopulated: awAcquired,
+        endpointCount: awCallsCount,
+      };
+    }
+    if (directCand.providerId === 'astroway' && directCand.calls && Object.keys(directCand.calls).length > 0) {
+      const compiledFromRaw = compileV2FoundationalChart({
+        instant: resolveCanonicalBirthInstant({ ...FIXTURES[0].input, name: 'Chris 4' }),
+        astroWayRaw: candidate as unknown as LayerARawProviderRecord,
+        options: { targetDateIso: '2026-11-27', includeLocalModules: true },
+      });
+      if (compiledFromRaw.layerBMaster.frames.vedicLahiri.data) {
+        return {
+          validSource: compiledFromRaw,
+          astroWayPopulated: awAcquired,
+          endpointCount: awCallsCount,
+        };
+      }
+    }
+    void filePath;
+    return { validSource: null, astroWayPopulated: false, endpointCount: 0 };
+  };
+
+  for (const candidatePath of chris4CandidatePaths) {
+    if (!fs.existsSync(candidatePath)) continue;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(candidatePath, 'utf8')) as Record<string, unknown>;
+      const inspected = inspectCachedChris4Candidate(parsed, candidatePath);
+      if (inspected.validSource) {
+        chris4RepoSource = inspected.validSource;
+        chris4SourceOrigin = candidatePath;
+        if (inspected.astroWayPopulated) {
+          chris4AstroWayCacheStatus = 'ASTROWAY_POPULATED';
+          chris4AstroWayCacheNote = `Loaded populated AstroWay-consolidated Chris 4 chart from ${candidatePath} (endpoints=${inspected.endpointCount}).`;
+        } else {
+          chris4AstroWayCacheStatus = '[CHRIS4_ASTROWAY_CACHE_UNAVAILABLE]';
+          chris4AstroWayCacheNote = `[CHRIS4_ASTROWAY_CACHE_UNAVAILABLE] Cached file ${candidatePath} lacked populated AstroWay acquisitionSources/endpoints (count=${inspected.endpointCount}).`;
+        }
+        break;
+      }
+    } catch {
+      // Keep explicit [CHRIS4_ASTROWAY_CACHE_UNAVAILABLE] warning on unreadable cache
     }
   }
 
-  const chris4K01Repo = redactSecretsDeep(buildAnalyticalEvidenceRepository(chris4RepoSource));
-  const chris4K01OutPath = path.join(outDir, 'chris4-analytical-evidence-repository.json');
-  fs.writeFileSync(chris4K01OutPath, JSON.stringify(chris4K01Repo, null, 2), 'utf8');
+  console.log(`\nChris 4 AstroWay Cache Status: ${chris4AstroWayCacheStatus}`);
+  console.log(`  ${chris4AstroWayCacheNote}`);
 
-  console.log(`\nChris 4 K01 Repository Generated (${chris4SourceOrigin}) -> ${chris4K01OutPath}`);
-  console.log('Evidence Inventory by Family (12 families):');
-  for (const fam of EVIDENCE_FAMILIES) {
-    console.log(`  - ${fam.padEnd(22, ' ')}: ${chris4K01Repo.familyInventory[fam]}`);
+  const chris4Bundle = buildAnalyticalKernelK02Bundle(chris4RepoSource);
+  const chris4K01Repo = redactSecretsDeep(chris4Bundle.k01Repository);
+  const chris4K02State = redactSecretsDeep(chris4Bundle.k02State);
+  const chris4K01OutPath = path.join(outDir, 'chris4-analytical-evidence-repository.json');
+  const chris4K01Json = JSON.stringify(chris4K01Repo, null, 2);
+  fs.writeFileSync(chris4K01OutPath, chris4K01Json, 'utf8');
+
+  // K01 Completeness & Overlap Audit
+  const overlapTypeCounts: Record<string, number> = {
+    exact_duplicate: 0,
+    partial_mathematical_overlap: 0,
+    shared_upstream_dependency: 0,
+    distinct_analytical_significance: 0,
+  };
+  for (const rel of chris4K01Repo.lineageGraph.overlapRelations) {
+    overlapTypeCounts[rel.overlapType] = (overlapTypeCounts[rel.overlapType] ?? 0) + 1;
   }
-  console.log('Evidence Inventory by Chart Frame (7 frames):');
+  const chris4RepoBytes = Buffer.byteLength(chris4K01Json, 'utf8');
+  console.log('\n--- K01 Completeness & Overlap Audit ---');
+  console.log(`Chris 4 K01 Repository Generated (${chris4SourceOrigin}) -> ${chris4K01OutPath}`);
+  console.log(`  Chris 4 AstroWay status: ${chris4AstroWayCacheStatus}`);
+  console.log(`  Serialized K01 Repo Size: ${(chris4RepoBytes / (1024 * 1024)).toFixed(2)} MB (${chris4RepoBytes} bytes)`);
+  console.log('  Evidence Inventory by Family (12 families):');
+  for (const fam of EVIDENCE_FAMILIES) {
+    console.log(`    - ${fam.padEnd(22, ' ')}: ${chris4K01Repo.familyInventory[fam]}`);
+  }
+  console.log('  Evidence Inventory by Chart Frame (7 frames):');
   for (const fr of CANONICAL_EVIDENCE_FRAMES) {
-    console.log(`  - ${fr.padEnd(22, ' ')}: ${chris4K01Repo.frameInventory[fr]}`);
+    console.log(`    - ${fr.padEnd(22, ' ')}: ${chris4K01Repo.frameInventory[fr]}`);
   }
   console.log(
-    `Totals: natal=${chris4K01Repo.natalEvidence.length}, temporal=${chris4K01Repo.temporalEvidence.length}, blockedFrames=${chris4K01Repo.rejectedOrBlockedFrames.length}, overlaps=${chris4K01Repo.lineageGraph.overlapRelations.length}`
+    `  Totals: natal=${chris4K01Repo.natalEvidence.length}, temporal=${chris4K01Repo.temporalEvidence.length}, blockedFrames=${chris4K01Repo.rejectedOrBlockedFrames.length}, overlaps=${chris4K01Repo.lineageGraph.overlapRelations.length}`
   );
+  console.log(`  Overlap Breakdown: ${JSON.stringify(overlapTypeCounts)}`);
+  if (chris4K01Repo.rejectedOrBlockedFrames.length > 0) {
+    console.log(
+      `  Dataset Gaps / Blocked Frames (${chris4K01Repo.rejectedOrBlockedFrames.length}): ${chris4K01Repo.rejectedOrBlockedFrames
+        .map((b) => `${b.datasetKey}(${b.canonicalStatus})`)
+        .join(', ')}`
+    );
+  }
   console.log('\n' + formatPlanetEvidenceSummary(chris4K01Repo, 'Jupiter'));
+
+  // 4c. K02 Planetary State Intelligence — Multi-Chart Verification & 16-Test Regression Suite
+  console.log('\n--- K02 Multi-Chart Verification & 16-Test Regression Suite ---');
+  const k02FullBundleA = buildAnalyticalKernelK02Bundle(layerCInputFull);
+  const k02FullBundleB = buildAnalyticalKernelK02Bundle(layerCInputFull);
+  const k02Full = k02FullBundleA.k02State;
+  const k02Hybrid = buildAnalyticalKernelK02Bundle(compiledHybrid).k02State;
+  const k02IncompatChalit = evaluateK02FromRepository(repoIncompatChalit);
+  const k02ProvDefault = evaluateK02FromRepository(repoProvisional);
+  const k02ProvStrict = evaluateK02FromRepository(repoProvisional, { strictNonProvisional: true });
+  const k02Empty = evaluateK02FromRepository(repoEmpty);
+  const k02ZeroProbe = evaluateK02FromRepository(repoZeroProbe);
+
+  const k02TestsPassed: string[] = [];
+
+  // Test 1: Unregistered Rule Block
+  let caughtUnregRule = false;
+  try {
+    assertRegisteredRule('K02_UNREGISTERED_SYNTHETIC_RULE');
+  } catch (err) {
+    if (err instanceof UnregisteredRuleError) {
+      caughtUnregRule = true;
+    } else {
+      throw err;
+    }
+  }
+  assert(caughtUnregRule, 'K02 Test 1 (Unregistered Rule Block) failed: expected UnregisteredRuleError.');
+  k02TestsPassed.push('1_unregistered_rule_block');
+
+  // Test 2: Registry Snapshot Completeness
+  const registrySnapshot = exportRuleRegistrySnapshot();
+  const registeredRuleIds = new Set(registrySnapshot.rules.map((r) => r.ruleId));
+  const allExecRulesKnown = k02Full.ruleExecutionSummary.records.every((r) =>
+    registeredRuleIds.has(r.ruleId)
+  );
+  const allImpactRulesKnown = k02Full.impactContracts.every((imp) => {
+    const ruleCond = imp.applicabilityConditions.find((c) => c.startsWith('rule:'));
+    const ruleId = ruleCond ? ruleCond.slice(5).split('@')[0] : '';
+    const magRefOk =
+      imp.magnitude.kind !== 'justified_rule_value' ||
+      registeredRuleIds.has(imp.magnitude.ruleReference.split('@')[0]);
+    return registeredRuleIds.has(ruleId) && magRefOk;
+  });
+  assert(
+    registrySnapshot.totalRules >= 19 &&
+      k02Full.ruleRegistrySnapshot.totalRules === registrySnapshot.totalRules &&
+      allExecRulesKnown &&
+      allImpactRulesKnown,
+    'K02 Test 2 (Registry Snapshot Completeness) failed.'
+  );
+  k02TestsPassed.push('2_registry_snapshot_completeness');
+
+  // Test 3: Rule Outcome States Coverage (all 6 deterministic statuses)
+  const observedStatuses = new Set([
+    ...k02Full.ruleExecutionSummary.records.map((r) => r.status),
+    ...k02Empty.ruleExecutionSummary.records.map((r) => r.status),
+    ...k02IncompatChalit.ruleExecutionSummary.records.map((r) => r.status),
+    ...k02ProvStrict.ruleExecutionSummary.records.map((r) => r.status),
+  ]);
+  for (const expectedStatus of [
+    'applied',
+    'partially_applied',
+    'not_applicable',
+    'blocked_missing_inputs',
+    'blocked_incompatible_frame',
+    'excluded_by_provisional_gate',
+  ] as const) {
+    assert(
+      observedStatuses.has(expectedStatus),
+      `K02 Test 3 (Rule Outcome States Coverage) failed: missing "${expectedStatus}" across test suite.`
+    );
+  }
+  k02TestsPassed.push('3_rule_outcome_states_coverage');
+
+  // Test 4: Shadbala Minimum Rupa Boundary (7 classical vs Rahu/Ketu/Ascendant)
+  for (const planet of PHI_READY_PLANETS) {
+    const proj = k02Full.phiReadyProjection.classicalPlanets[planet];
+    const sbExec = k02Full.subjectStates[planet].ruleExecutions.find(
+      (r) => r.ruleId === 'K02_CAPACITY_SHADBALA_RUPA_RATIO'
+    );
+    assert(
+      proj.shadbalaRupaRatio.bphsMinRupas === BPHS_SHADBALA_MIN_RUPAS[planet] &&
+        Boolean(sbExec) &&
+        sbExec!.status !== 'not_applicable',
+      `K02 Test 4 failed on classical planet ${planet}.`
+    );
+  }
+  for (const nonClassical of ['Rahu', 'Ketu', 'Ascendant'] as const) {
+    const sbExec = k02Full.subjectStates[nonClassical].ruleExecutions.find(
+      (r) => r.ruleId === 'K02_CAPACITY_SHADBALA_RUPA_RATIO'
+    );
+    assert(
+      sbExec?.status === 'not_applicable' &&
+        k02Full.subjectStates[nonClassical].dimensions.capacity.signals.every(
+          (s) => s.signalKey !== 'shadbala_bphs_rupa_ratio'
+        ),
+      `K02 Test 4 failed: fabricated Shadbala found or not_applicable missing on ${nonClassical}.`
+    );
+  }
+  k02TestsPassed.push('4_shadbala_min_rupa_boundary');
+
+  // Test 5: Combustion (Asta) Applicability Boundary
+  for (const nonCombustible of ['Sun', 'Rahu', 'Ketu', 'Ascendant'] as const) {
+    const astaExec = k02Full.subjectStates[nonCombustible].ruleExecutions.find(
+      (r) => r.ruleId === 'K02_VULNERABILITY_COMBUSTION_ASTA'
+    );
+    assert(
+      astaExec?.status === 'not_applicable',
+      `K02 Test 5 failed: combustion must be not_applicable on ${nonCombustible}.`
+    );
+  }
+  for (const combustible of ['Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'] as const) {
+    const astaExec = k02Full.subjectStates[combustible].ruleExecutions.find(
+      (r) => r.ruleId === 'K02_VULNERABILITY_COMBUSTION_ASTA'
+    );
+    assert(
+      astaExec?.status === 'applied' || astaExec?.status === 'partially_applied',
+      `K02 Test 5 failed: expected combustion evaluation on ${combustible}, got ${astaExec?.status}.`
+    );
+  }
+  k02TestsPassed.push('5_combustion_applicability_boundary');
+
+  // Test 6: Planetary War (Graha Yuddha) Applicability Boundary
+  for (const excluded of ['Sun', 'Moon', 'Rahu', 'Ketu', 'Ascendant'] as const) {
+    const warExec = k02Full.subjectStates[excluded].ruleExecutions.find(
+      (r) => r.ruleId === 'K02_VULNERABILITY_GRAHA_YUDDHA'
+    );
+    assert(
+      warExec?.status === 'not_applicable',
+      `K02 Test 6 failed: Graha Yuddha must be not_applicable on ${excluded}.`
+    );
+  }
+  for (const tara of ['Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'] as const) {
+    const warExec = k02Full.subjectStates[tara].ruleExecutions.find(
+      (r) => r.ruleId === 'K02_VULNERABILITY_GRAHA_YUDDHA'
+    );
+    assert(
+      warExec?.status === 'applied' || warExec?.status === 'partially_applied',
+      `K02 Test 6 failed: expected Graha Yuddha evaluation on ${tara}, got ${warExec?.status}.`
+    );
+  }
+  k02TestsPassed.push('6_graha_yuddha_applicability_boundary');
+
+  // Test 7: Retrogression & Conjunction Non-Universal Scoring
+  for (const subj of PLANETARY_STATE_SUBJECTS) {
+    const stabExec = k02Full.subjectStates[subj].ruleExecutions.find(
+      (r) => r.ruleId === 'K02_STABILITY_MOTION_AND_RETROGRESSION'
+    );
+    const stabSig = k02Full.subjectStates[subj].dimensions.stability.signals.find(
+      (s) => s.signalKey === 'kinematic_motion_state'
+    );
+    if (stabSig) {
+      assert(
+        stabSig.normalizedValue === null && stabExec?.numericalResult === null,
+        `K02 Test 7 failed: scalar bonus/penalty emitted on ${subj} retrogression/motion.`
+      );
+    }
+    for (const imp of k02Full.impactContracts.filter(
+      (i) => i.analyticalTarget.id === subj && i.affectedDimension === 'stability'
+    )) {
+      assert(
+        imp.magnitude.kind === 'unassigned_no_arbitrary_weight',
+        `K02 Test 7 failed: arbitrary numerical weight attached to stability impact on ${subj}.`
+      );
+    }
+  }
+  k02TestsPassed.push('7_retrogression_conjunction_non_universal_scoring');
+
+  // Test 8: D1 vs D9 Contradiction Preservation (No Auto-Cancellation)
+  const d1D9DivergenceInput = JSON.parse(JSON.stringify(layerCInputFull)) as ReturnType<
+    typeof prepareLayerCAnalyticalInput
+  >;
+  const vedicTest8 = d1D9DivergenceInput.natalInvariant.frames.vedicLahiri
+    .data as unknown as Record<string, unknown>;
+  const planetsTest8 = (vedicTest8.planets as Array<Record<string, unknown>>) ?? [];
+  vedicTest8.planets = planetsTest8.map((p) =>
+    String(p.name || p.planet || '').toLowerCase() === 'jupiter'
+      ? { ...p, sign: 'Capricorn', dignity: 'Debilitated', house: 3 }
+      : p
+  );
+  const vargasTest8 = (vedicTest8.vargas as Record<string, unknown>) ?? {};
+  const chartsByDivTest8 = (vargasTest8.chartsByDivision as Record<string, unknown>) ?? {};
+  chartsByDivTest8.D9 = {
+    division: 'D9',
+    ascendantSign: 'Scorpio',
+    planets: [{ name: 'Jupiter', sign: 'Cancer', house: 9, dignity: 'Exalted' }],
+  };
+  vargasTest8.chartsByDivision = chartsByDivTest8;
+  vedicTest8.vargas = vargasTest8;
+  const k02D1D9Divergence = buildAnalyticalKernelK02Bundle(d1D9DivergenceInput).k02State;
+  const jupD1D9Conflict = k02D1D9Divergence.subjectStates.Jupiter.overlays.conflict.conflicts.find(
+    (c) => c.conflictType === 'd1_d9_dignity_divergence'
+  );
+  assert(
+    Boolean(jupD1D9Conflict) &&
+      jupD1D9Conflict!.resolutionStatus === 'unresolved_preserved_for_k05_k07' &&
+      k02D1D9Divergence.subjectStates.Jupiter.dimensions.resilience.status !== 'evaluated',
+    `K02 Test 8 (D1 vs D9 Contradiction Preservation) failed: conflict=${JSON.stringify(jupD1D9Conflict)}`
+  );
+  k02TestsPassed.push('8_d1_d9_contradiction_preservation');
+
+  // Test 9: Bhava Chalit Shift & Sandhi Boundary Detection
+  const chalitSandhiInput = JSON.parse(
+    JSON.stringify(prepareLayerCAnalyticalInput(compiledHybrid))
+  ) as ReturnType<typeof prepareLayerCAnalyticalInput>;
+  const vedicTest9 = chalitSandhiInput.natalInvariant.frames.vedicLahiri
+    .data as unknown as Record<string, unknown>;
+  vedicTest9.planets = ((vedicTest9.planets as Array<Record<string, unknown>>) ?? []).map((p) =>
+    String(p.name || p.planet || '').toLowerCase() === 'mars'
+      ? {
+          ...p,
+          sign: 'Scorpio',
+          house: 1,
+          degree_in_sign: 0.45,
+          longitude: 210.45,
+          absolute_degree: 210.45,
+        }
+      : p
+  );
+  const chalitData9 = (chalitSandhiInput.natalInvariant.frames.bhavaChalit
+    .data ?? {}) as unknown as Record<string, unknown>;
+  if (Array.isArray(chalitData9.planets)) {
+    chalitData9.planets = (chalitData9.planets as Array<Record<string, unknown>>).map((p) =>
+      String(p.name || p.planet || '').toLowerCase() === 'mars'
+        ? { ...p, rashi_house: 1, chalit_house: 12, house: 12, shifted: true }
+        : p
+    );
+  }
+  const k02ChalitSandhi = buildAnalyticalKernelK02Bundle(chalitSandhiInput).k02State;
+  const marsConflicts9 = k02ChalitSandhi.subjectStates.Mars.overlays.conflict.conflicts;
+  const marsModifiers9 = k02ChalitSandhi.subjectStates.Mars.overlays.modification.modifiers;
+  assert(
+    marsConflicts9.some((c) => c.conflictType === 'frame_house_divergence') &&
+      marsModifiers9.some((m) => m.modifierType === 'chalit_shift') &&
+      marsModifiers9.some((m) => m.modifierType === 'sandhi_boundary') &&
+      k02ChalitSandhi.subjectStates.Mars.overlays.reliability.sandhiOrBoundaryRisk === true,
+    `K02 Test 9 (Bhava Chalit Shift & Sandhi) failed: conflicts=${JSON.stringify(
+      marsConflicts9.map((c) => c.conflictType)
+    )}, mods=${JSON.stringify(marsModifiers9.map((m) => m.modifierType))}`
+  );
+  k02TestsPassed.push('9_bhava_chalit_shift_and_sandhi_detection');
+
+  // Test 10: Incompatible Bhava Chalit Rejection
+  const incompatChalitExecs = k02IncompatChalit.ruleExecutionSummary.records.filter(
+    (r) => r.status === 'blocked_incompatible_frame' && r.missingInputs.includes('bhava_chalit')
+  );
+  assert(
+    incompatChalitExecs.length === PLANETARY_STATE_SUBJECTS.length &&
+      PHI_READY_PLANETS.every(
+        (p) =>
+          k02IncompatChalit.phiReadyProjection.classicalPlanets[p].crossFramePresence
+            .bhavaChalitHouse === null &&
+          k02IncompatChalit.phiReadyProjection.classicalPlanets[p].crossFramePresence.kpHouse !==
+            null
+      ),
+    `K02 Test 10 (Incompatible Bhava Chalit Rejection) failed: blockedCount=${incompatChalitExecs.length}`
+  );
+  k02TestsPassed.push('10_incompatible_bhava_chalit_rejection');
+
+  // Test 11: Provisional Non-Promotion & Strict Gate
+  const jupProvDefault = k02ProvDefault.subjectStates.Jupiter;
+  const jupProvStrict = k02ProvStrict.subjectStates.Jupiter;
+  assert(
+    jupProvDefault.overlays.reliability.confidenceCeiling === 'capped_provisional' &&
+      jupProvDefault.overlays.reliability.overallTrust !== 'usable' &&
+      jupProvDefault.ruleExecutions.some((r) => r.status === 'partially_applied') &&
+      k02ProvStrict.ruleExecutionSummary.countsByStatus.excluded_by_provisional_gate > 0 &&
+      jupProvStrict.ruleExecutions.some(
+        (r) =>
+          r.ruleId === 'K02_CAPACITY_SHADBALA_RUPA_RATIO' &&
+          r.status === 'excluded_by_provisional_gate'
+      ),
+    `K02 Test 11 (Provisional Non-Promotion & Strict Gate) failed: ceiling=${jupProvDefault.overlays.reliability.confidenceCeiling}, strictGated=${k02ProvStrict.ruleExecutionSummary.countsByStatus.excluded_by_provisional_gate}`
+  );
+  k02TestsPassed.push('11_provisional_non_promotion_and_strict_gate');
+
+  // Test 12: Zero-Coercion Guard (Missing Bhavabala / Vimshopaka / Shadbala subcomponents)
+  const sunEmptyCapacity = k02Empty.subjectStates.Sun.ruleExecutions.filter(
+    (r) => r.targetDimension === 'capacity' && r.status === 'blocked_missing_inputs'
+  );
+  const sunZeroProbeSb = k02ZeroProbe.subjectStates.Sun.dimensions.capacity.signals.find(
+    (s) => s.signalKey === 'shadbala_bphs_rupa_ratio'
+  );
+  const sunZeroProbeSt = k02ZeroProbe.subjectStates.Sun.dimensions.capacity.directObservations.find(
+    (o) => o.key === 'shadbala_sthana_bala'
+  );
+  assert(
+    sunEmptyCapacity.length === 4 &&
+      sunEmptyCapacity.every((r) => r.missingInputs.length > 0 && r.numericalResult === null) &&
+      Boolean(sunZeroProbeSb) &&
+      sunZeroProbeSt === undefined,
+    `K02 Test 12 (Zero-Coercion Guard) failed: emptyCap=${sunEmptyCapacity.length}, zeroSt=${String(sunZeroProbeSt?.value)}`
+  );
+  k02TestsPassed.push('12_zero_coercion_guard');
+
+  // Test 13: Evidence Impact Anti-Double-Counting
+  const sunPhi = k02Full.phiReadyProjection.classicalPlanets.Sun;
+  const sunImpacts = k02Full.impactContracts.filter((i) => i.analyticalTarget.id === 'Sun');
+  assert(
+    sunPhi.partialOverlapGroups.length >= 1 &&
+      sunPhi.partialOverlapGroups.every(
+        (g) =>
+          Boolean(g.primaryEvidenceId) &&
+          g.secondaryEvidenceIds.length >= 1 &&
+          g.secondaryEvidenceIds.every((sid) => !sunPhi.deduplicatedEvidenceIds.includes(sid))
+      ) &&
+      sunPhi.preservedDistinctLensIds.length > 0 &&
+      sunImpacts.some((i) => i.overlapMetadata.overlapGroupId !== null) &&
+      k02Full.impactContracts.every(
+        (i) => i.residualImpact.status === 'unevaluated_pending_k05_k07'
+      ) &&
+      new Set(k02Full.impactContracts.map((i) => i.impactId)).size ===
+        k02Full.impactContracts.length &&
+      new Set(chris4K02State.impactContracts.map((i) => i.impactId)).size ===
+        chris4K02State.impactContracts.length,
+    `K02 Test 13 (Anti-Double-Counting) failed: partialGroups=${sunPhi.partialOverlapGroups.length}, distinct=${sunPhi.preservedDistinctLensIds.length}`
+  );
+  k02TestsPassed.push('13_evidence_impact_anti_double_counting');
+
+  // Test 14: Downstream Scope Guard (P05 authority, P09 functionalOrientation, P10 deliverability)
+  for (const subj of PLANETARY_STATE_SUBJECTS) {
+    const dims = k02Full.subjectStates[subj].dimensions;
+    assert(
+      dims.authority.status === 'deferred_to_downstream' &&
+        dims.authority.deferredCapability === 'K03' &&
+        dims.authority.signals.length === 0 &&
+        dims.functionalOrientation.status === 'deferred_to_downstream' &&
+        dims.functionalOrientation.deferredCapability === 'K03' &&
+        dims.functionalOrientation.signals.length === 0 &&
+        dims.deliverability.status === 'deferred_to_downstream' &&
+        dims.deliverability.deferredCapability === 'K08' &&
+        dims.deliverability.signals.length === 0,
+      `K02 Test 14 (Downstream Scope Guard) failed on ${subj}.`
+    );
+  }
+  k02TestsPassed.push('14_downstream_scope_guard');
+
+  // Test 15: PHI-Ready Exclusion Boundaries + Separate Nodal/Ascendant Profiles
+  const fullTemporalIds = new Set(k02FullBundleA.k01Repository.temporalEvidence.map((e) => e.evidenceId));
+  const fullNatalById = new Map(
+    k02FullBundleA.k01Repository.natalEvidence.map((e) => [e.evidenceId, e])
+  );
+  assert(
+    k02Full.phiReadyProjections.length === 7 &&
+      k02Full.phiReadyProjection.excludedSubjects.join(',') === 'Rahu,Ketu,Ascendant' &&
+      k02Full.phiReadyProjections.every(
+        (p) =>
+          (PHI_READY_PLANETS as readonly string[]).includes(p.planet) &&
+          p.excludedBoundaries.excludedK03StructuralAuthority === true &&
+          p.excludedBoundaries.excludedDomainImportance === true &&
+          p.excludedBoundaries.excludedTemporalDashaGochar === true &&
+          p.excludedBoundaries.excludedHistoricalOutcomes === true &&
+          p.excludedBoundaries.excludedHouseOwnershipNoise === true &&
+          p.deduplicatedEvidenceIds.every((id) => {
+            if (fullTemporalIds.has(id)) return false;
+            const ev = fullNatalById.get(id);
+            return Boolean(
+              ev &&
+                ev.observation.code !== 'VEDIC_D1_HOUSE_LORD_PLACEMENT' &&
+                ev.observation.code !== 'KP_FOUR_LEVEL_SIGNIFICATORS' &&
+                ev.observation.code !== 'JAIMINI_CHARA_KARAKA'
+            );
+          })
+      ) &&
+      k02Full.nodalConditionProfiles.Rahu.shadbalaStatus === 'not_applicable_lunar_node' &&
+      k02Full.nodalConditionProfiles.Ketu.shadbalaStatus === 'not_applicable_lunar_node' &&
+      k02Full.ascendantConditionProfile.shadbalaStatus === 'not_applicable_ascendant',
+    'K02 Test 15 (PHI Exclusion Boundaries & Nodal/Ascendant Separation) failed.'
+  );
+  k02TestsPassed.push('15_phi_exclusion_and_nodal_ascendant_profiles');
+
+  // Test 16: Deterministic Reproducibility (excluding generatedAtUtc timestamp)
+  const stripTimestamps = (res: AnalyticalKernelK02StateResult) => ({
+    ...res,
+    generatedAtUtc: 'FIXED',
+  });
+  assert(
+    JSON.stringify(stripTimestamps(k02FullBundleA.k02State)) ===
+      JSON.stringify(stripTimestamps(k02FullBundleB.k02State)),
+    'K02 Test 16 (Deterministic Reproducibility) failed: two consecutive K02 evaluations differed.'
+  );
+  k02TestsPassed.push('16_deterministic_reproducibility');
+
+  console.log(`K02 Offline Regression Suite: ALL ${k02TestsPassed.length}/16 TESTS PASSED.`);
+  console.log('Multi-Chart K02 Execution Counts:');
+  console.log(
+    `  - full16VargaMaster: total=${k02Full.ruleExecutionSummary.totalEvaluations}, counts=${JSON.stringify(
+      k02Full.ruleExecutionSummary.countsByStatus
+    )}, impacts=${k02Full.impactContracts.length}`
+  );
+  console.log(
+    `  - compiledHybrid   : total=${k02Hybrid.ruleExecutionSummary.totalEvaluations}, counts=${JSON.stringify(
+      k02Hybrid.ruleExecutionSummary.countsByStatus
+    )}, impacts=${k02Hybrid.impactContracts.length}`
+  );
+  console.log(
+    `  - chris4 (${chris4SourceOrigin}): total=${chris4K02State.ruleExecutionSummary.totalEvaluations}, counts=${JSON.stringify(
+      chris4K02State.ruleExecutionSummary.countsByStatus
+    )}, impacts=${chris4K02State.impactContracts.length}`
+  );
+
+  // Write sanitized K02 & Registry artifacts
+  const k02RegistryOutPath = path.join(outDir, 'chris4-analytical-rule-registry.json');
+  const k02StateOutPath = path.join(outDir, 'chris4-k02-planetary-state-intelligence.json');
+  fs.writeFileSync(
+    k02RegistryOutPath,
+    JSON.stringify(redactSecretsDeep(exportRuleRegistrySnapshot()), null, 2),
+    'utf8'
+  );
+  fs.writeFileSync(k02StateOutPath, JSON.stringify(chris4K02State, null, 2), 'utf8');
+  console.log(`K02 Registry Artifact -> ${k02RegistryOutPath}`);
+  console.log(`K02 State Artifact    -> ${k02StateOutPath}`);
+
+  console.log('\n' + formatPlanetK02StateSummary(chris4K02State, 'Jupiter'));
 
   // 5. Live Authenticated Verification (if FREE_ASTRO_API_KEY is configured)
   const apiKey = getFreeAstroApiKey();
@@ -4607,6 +5188,25 @@ async function main() {
       generatedAtUtc: new Date().toISOString(),
       secretStatus,
       liveStatus: 'BLOCKED_MISSING_FREE_ASTRO_API_KEY',
+      chris4AstroWayCacheStatus,
+      chris4AstroWayCacheNote,
+      chris4SourceOrigin,
+      k01CompletenessAndOverlapAudit: {
+        repoBytes: chris4RepoBytes,
+        natalCount: chris4K01Repo.natalEvidence.length,
+        temporalCount: chris4K01Repo.temporalEvidence.length,
+        blockedFramesCount: chris4K01Repo.rejectedOrBlockedFrames.length,
+        overlapRelationsCount: chris4K01Repo.lineageGraph.overlapRelations.length,
+        overlapTypeCounts,
+        familyInventory: chris4K01Repo.familyInventory,
+        frameInventory: chris4K01Repo.frameInventory,
+      },
+      k02RegressionTestsPassed: k02TestsPassed,
+      k02MultiChartSummaries: {
+        full16VargaMaster: k02Full.ruleExecutionSummary.countsByStatus,
+        compiledHybrid: k02Hybrid.ruleExecutionSummary.countsByStatus,
+        chris4: chris4K02State.ruleExecutionSummary.countsByStatus,
+      },
       regressionResults,
       profileAudits,
       readOnlySupabaseDiagnosticSql: READ_ONLY_SUPABASE_DIAGNOSTIC_SQL,

@@ -170,6 +170,7 @@ export function createEvidenceImpactContract(params: {
   interactionType?: EvidenceImpactInteractionType;
   modifierEvidenceIds?: string[];
   overlapMetadata?: EvidenceImpactOverlapMetadata;
+  impactQualifier?: string;
 }): EvidenceImpactObject {
   const magnitude: EvidenceImpactMagnitude = params.magnitude ?? {
     kind: 'unassigned_no_arbitrary_weight',
@@ -184,14 +185,18 @@ export function createEvidenceImpactContract(params: {
     );
   }
 
-  const impactKey = [
+  const impactKeyParts = [
     params.evidenceId,
     normSeg(params.analyticalTarget.type),
     normSeg(params.analyticalTarget.id),
     normSeg(params.affectedDimension),
     normSeg(params.direction),
     normSeg(params.interactionType ?? 'direct'),
-  ].join('|');
+  ];
+  if (params.impactQualifier && params.impactQualifier.trim()) {
+    impactKeyParts.push(normSeg(params.impactQualifier));
+  }
+  const impactKey = impactKeyParts.join('|');
 
   return {
     schemaVersion: EVIDENCE_IMPACT_SCHEMA_VERSION,
@@ -225,6 +230,40 @@ function stableMeasurementSignature(item: CanonicalEvidenceObject): string {
     }))
     .sort((a, b) => a.metric.localeCompare(b.metric));
   return JSON.stringify(normalized);
+}
+
+function stableRelatedEntitySignature(item: CanonicalEvidenceObject): string {
+  const normalized = [...item.relatedEntities]
+    .map((e) => ({
+      type: e.type,
+      id: e.id,
+      role: e.role ?? null,
+    }))
+    .sort((a, b) =>
+      `${a.type}:${a.id}:${a.role ?? ''}`.localeCompare(`${b.type}:${b.id}:${b.role ?? ''}`)
+    );
+  return JSON.stringify(normalized);
+}
+
+const PRIMARY_ANALYTICAL_LENS_CODES = new Set<string>([
+  'VEDIC_D1_PLANET_LONGITUDE',
+  'VEDIC_D1_SIGN_HOUSE_PLACEMENT',
+  'VEDIC_D1_ASCENDANT_SIGN',
+  'VEDIC_NAKSHATRA_PADA',
+  'BHAVA_CHALIT_HOUSE_PLACEMENT',
+  'KP_PLACIDUS_HOUSE_PLACEMENT',
+  'KP_PLANET_SUB_LORDS',
+  'KP_FOUR_LEVEL_SIGNIFICATORS',
+  'WESTERN_TROPICAL_PLACEMENT',
+  'ASTRONOMICAL_BODY_TELEMETRY',
+]);
+
+function isPrimaryAnalyticalLens(item: CanonicalEvidenceObject): boolean {
+  if (PRIMARY_ANALYTICAL_LENS_CODES.has(item.observation.code)) return true;
+  if (item.observation.code === 'VEDIC_VARGA_PLACEMENT' && getDivisionalTag(item) === 'DIVISION:D9') {
+    return true;
+  }
+  return false;
 }
 
 function getDivisionalTag(item: CanonicalEvidenceObject): string | null {
@@ -324,7 +363,9 @@ export class CanonicalEvidenceRegistry {
       return existing;
     }
 
-    // Detect structurally identical content registered under a distinct qualifier/naturalKey
+    // Detect structurally identical content registered under a distinct qualifier/naturalKey.
+    // Must compare relatedEntities as well so pairwise observations (e.g., Panchadha Maitri
+    // Mercury->Sun vs Mercury->Venus with identical numerical scores) are never misflagged.
     for (const prev of this.items.values()) {
       if (
         prev.frame === materialized.frame &&
@@ -335,7 +376,8 @@ export class CanonicalEvidenceRegistry {
         prev.ruleReference.referenceCode === materialized.ruleReference.referenceCode &&
         prev.temporalScope === materialized.temporalScope &&
         prev.referenceDateIso === materialized.referenceDateIso &&
-        stableMeasurementSignature(prev) === stableMeasurementSignature(materialized)
+        stableMeasurementSignature(prev) === stableMeasurementSignature(materialized) &&
+        stableRelatedEntitySignature(prev) === stableRelatedEntitySignature(materialized)
       ) {
         this.duplicateObservations.push({
           existingId: prev.evidenceId,
@@ -539,6 +581,16 @@ export class CanonicalEvidenceRegistry {
  * Never automatically collapses evidence derived from the same astronomical
  * longitude (e.g., D1 placement vs Nakshatra vs D9 vs KP Cusp vs Bhava Chalit)
  * into redundant duplicates.
+ *
+ * K02 Phase 1 Overlap Audit Notes:
+ *  - Excludes universal `chart_instant` roots from sibling cross-lens comparisons to eliminate
+ *    noisy O(k^2) Cartesian meshes (e.g., D16 vs Panchadha Maitri vs Astronomical Telemetry)
+ *    that bloated repository JSON from ~1 MB to ~4.6 MB.
+ *  - Preserves 100% of `exact_duplicate` (requiring identical `relatedEntities`),
+ *    100% of `partial_mathematical_overlap` (e.g., Shadbala total vs subcomponents, BAV vs SAV/Prastara,
+ *    Shadbala vs Ishta/Kashta, Vimshopaka schemes), and meaningful `distinct_analytical_significance`
+ *    links (direct parent-child derivations and primary-lens comparisons across D1, Nakshatra, D9,
+ *    Chalit, KP, Western Tropical, and Astronomical Telemetry).
  */
 export function analyzeEvidenceOverlaps(
   items: CanonicalEvidenceObject[],
@@ -549,8 +601,20 @@ export function analyzeEvidenceOverlaps(
   const seenPairs = new Set<string>();
 
   const parentMap = new Map<string, string[]>();
+  const chartInstantIds = new Set<string>();
+  const degreeRootIds = new Set<string>();
+
   for (const item of items) {
     parentMap.set(item.evidenceId, [...item.lineage.parentEvidenceIds]);
+    if (
+      item.subject.type === 'chart_instant' ||
+      item.observation.code === 'CANONICAL_BIRTH_INSTANT'
+    ) {
+      chartInstantIds.add(item.evidenceId);
+    }
+    if (item.family === 'degree_level') {
+      degreeRootIds.add(item.evidenceId);
+    }
   }
   for (const e of edges) {
     const list = parentMap.get(e.childEvidenceId) ?? [];
@@ -585,11 +649,11 @@ export function analyzeEvidenceOverlaps(
       sharedMetrics: [],
       collapseRecommended: true,
       rationale:
-        'Identical frame, family, subject, observation code, rule reference, and measurements.',
+        'Identical frame, family, subject, related entities, observation code, rule reference, and measurements.',
     });
   }
 
-  // Group by subject.id to keep pairwise analysis deterministic & bounded O(k^2 per entity)
+  // Group by subject.id to keep pairwise analysis deterministic & bounded per entity
   const bySubject = new Map<string, CanonicalEvidenceObject[]>();
   for (const item of items) {
     const key = `${item.subject.type}:${item.subject.id}`;
@@ -608,9 +672,19 @@ export function analyzeEvidenceOverlaps(
         const ancB = getAncestorSet(b.evidenceId, parentMap, ancestorMemo);
         const aIsParentOfB = ancB.has(a.evidenceId);
         const bIsParentOfA = ancA.has(b.evidenceId);
-        const sharedAncestors: string[] = [];
+        const isDirectParentChild =
+          a.lineage.parentEvidenceIds.includes(b.evidenceId) ||
+          b.lineage.parentEvidenceIds.includes(a.evidenceId);
+
+        const meaningfulSharedAncestors: string[] = [];
+        const nonDegreeSharedAncestors: string[] = [];
         for (const id of ancA) {
-          if (ancB.has(id)) sharedAncestors.push(id);
+          if (ancB.has(id) && !chartInstantIds.has(id)) {
+            meaningfulSharedAncestors.push(id);
+            if (!degreeRootIds.has(id)) {
+              nonDegreeSharedAncestors.push(id);
+            }
+          }
         }
 
         const metricsA = new Set(a.lineage.derivedFromMetrics);
@@ -626,65 +700,40 @@ export function analyzeEvidenceOverlaps(
           a.ruleReference.referenceCode === b.ruleReference.referenceCode &&
           a.temporalScope === b.temporalScope &&
           a.referenceDateIso === b.referenceDateIso &&
-          stableMeasurementSignature(a) === stableMeasurementSignature(b)
+          stableMeasurementSignature(a) === stableMeasurementSignature(b) &&
+          stableRelatedEntitySignature(a) === stableRelatedEntitySignature(b)
         ) {
           addRelation({
             evidenceIdA: a.evidenceId,
             evidenceIdB: b.evidenceId,
             overlapType: 'exact_duplicate',
             secondaryClassifications: [],
-            sharedUpstreamIds: sharedAncestors,
+            sharedUpstreamIds: meaningfulSharedAncestors,
             sharedMetrics,
             collapseRecommended: true,
             rationale:
-              'Exact semantic and numerical duplicate within the same frame, rule, and temporal scope.',
+              'Exact semantic and numerical duplicate within the same frame, rule, related entities, and temporal scope.',
           });
           continue;
         }
 
-        const divA = getDivisionalTag(a);
-        const divB = getDivisionalTag(b);
-        const hasDistinctFrameOrLens =
-          a.frame !== b.frame ||
-          a.family !== b.family ||
-          (divA !== null && divB !== null && divA !== divB);
-
-        // 2. Shared astronomical/upstream root across distinct astrological frames/vargas/families
-        if ((sharedAncestors.length > 0 || aIsParentOfB || bIsParentOfA) && hasDistinctFrameOrLens) {
-          addRelation({
-            evidenceIdA: a.evidenceId,
-            evidenceIdB: b.evidenceId,
-            overlapType: 'distinct_analytical_significance',
-            secondaryClassifications: ['shared_upstream_dependency'],
-            sharedUpstreamIds:
-              sharedAncestors.length > 0
-                ? sharedAncestors
-                : [aIsParentOfB ? a.evidenceId : b.evidenceId],
-            sharedMetrics,
-            collapseRecommended: false,
-            rationale:
-              'Derived from a shared astronomical coordinate or upstream placement, but operates in a distinct chart frame, varga, or astrological lens (must not be collapsed as redundant).',
-          });
-          continue;
-        }
-
-        // 3. Partial mathematical overlap within same frame & same analytical family/construct
+        // 2. Partial mathematical overlap within same frame & same analytical family/quantitative bucket
+        const isQuantitativePair = a.family === 'quantitative' && b.family === 'quantitative';
         if (
           a.frame === b.frame &&
-          (aIsParentOfB ||
-            bIsParentOfA ||
-            (sharedAncestors.length > 0 && a.family === b.family) ||
-            (sharesDataset && sharedMetrics.length > 0 && a.family === b.family))
+          (((aIsParentOfB || bIsParentOfA) && (a.family === b.family || isQuantitativePair)) ||
+            (a.family === b.family && sharesDataset && sharedMetrics.length > 0) ||
+            (a.family === b.family && nonDegreeSharedAncestors.length > 0 && sharedMetrics.length > 0))
         ) {
           addRelation({
             evidenceIdA: a.evidenceId,
             evidenceIdB: b.evidenceId,
             overlapType: 'partial_mathematical_overlap',
             secondaryClassifications:
-              sharedAncestors.length > 0 ? ['shared_upstream_dependency'] : [],
+              meaningfulSharedAncestors.length > 0 ? ['shared_upstream_dependency'] : [],
             sharedUpstreamIds:
-              sharedAncestors.length > 0
-                ? sharedAncestors
+              meaningfulSharedAncestors.length > 0
+                ? meaningfulSharedAncestors
                 : aIsParentOfB
                 ? [a.evidenceId]
                 : bIsParentOfA
@@ -698,21 +747,55 @@ export function analyzeEvidenceOverlaps(
           continue;
         }
 
-        // 4. Shared upstream dependency without identical frame/family overlap
-        if (sharedAncestors.length > 0 || aIsParentOfB || bIsParentOfA) {
+        const divA = getDivisionalTag(a);
+        const divB = getDivisionalTag(b);
+        const hasDistinctFrameOrLens =
+          a.frame !== b.frame ||
+          a.family !== b.family ||
+          (divA !== null && divB !== null && divA !== divB);
+
+        // 3. Meaningful distinct analytical significance:
+        //    - direct derivation from an upstream coordinate/placement across frames/lenses, OR
+        //    - two primary analytical lenses (D1, Nakshatra, D9, Chalit, KP, Western, Telemetry)
+        //      that share a non-chart_instant upstream root or derivation path.
+        const bothPrimaryLenses = isPrimaryAnalyticalLens(a) && isPrimaryAnalyticalLens(b);
+        if (
+          hasDistinctFrameOrLens &&
+          (isDirectParentChild ||
+            (bothPrimaryLenses && (meaningfulSharedAncestors.length > 0 || aIsParentOfB || bIsParentOfA)))
+        ) {
+          addRelation({
+            evidenceIdA: a.evidenceId,
+            evidenceIdB: b.evidenceId,
+            overlapType: 'distinct_analytical_significance',
+            secondaryClassifications: ['shared_upstream_dependency'],
+            sharedUpstreamIds:
+              meaningfulSharedAncestors.length > 0
+                ? meaningfulSharedAncestors
+                : [aIsParentOfB ? a.evidenceId : b.evidenceId],
+            sharedMetrics,
+            collapseRecommended: false,
+            rationale:
+              'Derived from a shared astronomical coordinate or upstream placement, but operates in a distinct chart frame, varga, or primary astrological lens (must not be collapsed as redundant).',
+          });
+          continue;
+        }
+
+        // 4. Shared non-trivial upstream dependency without identical frame/family overlap
+        if (nonDegreeSharedAncestors.length > 0 || isDirectParentChild) {
           addRelation({
             evidenceIdA: a.evidenceId,
             evidenceIdB: b.evidenceId,
             overlapType: 'shared_upstream_dependency',
             secondaryClassifications: [],
             sharedUpstreamIds:
-              sharedAncestors.length > 0
-                ? sharedAncestors
+              nonDegreeSharedAncestors.length > 0
+                ? nonDegreeSharedAncestors
                 : [aIsParentOfB ? a.evidenceId : b.evidenceId],
             sharedMetrics,
             collapseRecommended: false,
             rationale:
-              'Shares an upstream dependency; track dependency edge for downstream independence accounting.',
+              'Shares an intermediate upstream dependency; track dependency edge for downstream independence accounting.',
           });
         }
       }

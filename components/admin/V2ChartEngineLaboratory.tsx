@@ -157,6 +157,8 @@ interface V2DiagnosticRunResult {
       layerCBytes: number;
       compiledFoundationalChartBytes?: number;
       analyticalEvidenceRepositoryBytes?: number;
+      k02PlanetaryStateIntelligenceBytes?: number;
+      analyticalRuleRegistryBytes?: number;
       verificationReportBytes: number;
       legacyVsV2ComparisonBytes: number;
       totalResponseBytes: number;
@@ -345,6 +347,8 @@ interface V2DiagnosticRunResult {
   compiledFoundationalChart?: Record<string, unknown>;
   layerCInputContract?: Record<string, unknown>;
   analyticalEvidenceRepository?: Record<string, unknown> | null;
+  k02PlanetaryStateIntelligence?: Record<string, unknown> | null;
+  analyticalRuleRegistry?: Record<string, unknown> | null;
   verificationReport: {
     profileName: string;
     mode: string;
@@ -1155,6 +1159,8 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
       };
 
     const analyticalEvidenceRepository = result.analyticalEvidenceRepository ?? null;
+    const k02PlanetaryStateIntelligence = result.k02PlanetaryStateIntelligence ?? null;
+    const analyticalRuleRegistry = result.analyticalRuleRegistry ?? null;
 
     const completeDiagnosticBundle = {
       bundleMetadata: result.bundleMetadata,
@@ -1168,6 +1174,8 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
       compiledFoundationalChart: consolidatedFoundationalChart,
       layerCInputContract: result.layerCInputContract ?? null,
       analyticalEvidenceRepository,
+      k02PlanetaryStateIntelligence,
+      analyticalRuleRegistry,
       verificationAndProvenance,
       legacyVsV2Comparison: result.legacyVsV2Comparison,
     };
@@ -1176,6 +1184,8 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
       completeDiagnosticBundle,
       consolidatedFoundationalChart,
       analyticalEvidenceRepository,
+      k02PlanetaryStateIntelligence,
+      analyticalRuleRegistry,
       rawApiResponses,
       layerA: result.layerA,
       layerB: result.layerB,
@@ -1762,6 +1772,48 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
                     Analytical Evidence Repository (K01) JSON
                     {result.runtimeTelemetry.artifactSizesBytes.analyticalEvidenceRepositoryBytes
                       ? ` (${formatKb(result.runtimeTelemetry.artifactSizesBytes.analyticalEvidenceRepositoryBytes)})`
+                      : ''}
+                  </span>
+                </button>
+              )}
+
+              {downloadPayloads.k02PlanetaryStateIntelligence && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    triggerJsonDownload(
+                      `${filePrefix}-k02-planetary-state-intelligence.json`,
+                      downloadPayloads.k02PlanetaryStateIntelligence
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>
+                    K02 Planetary State JSON
+                    {result.runtimeTelemetry.artifactSizesBytes.k02PlanetaryStateIntelligenceBytes
+                      ? ` (${formatKb(result.runtimeTelemetry.artifactSizesBytes.k02PlanetaryStateIntelligenceBytes)})`
+                      : ''}
+                  </span>
+                </button>
+              )}
+
+              {downloadPayloads.analyticalRuleRegistry && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    triggerJsonDownload(
+                      `${filePrefix}-analytical-rule-registry.json`,
+                      downloadPayloads.analyticalRuleRegistry
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>
+                    Analytical Rule Registry JSON
+                    {result.runtimeTelemetry.artifactSizesBytes.analyticalRuleRegistryBytes
+                      ? ` (${formatKb(result.runtimeTelemetry.artifactSizesBytes.analyticalRuleRegistryBytes)})`
                       : ''}
                   </span>
                 </button>

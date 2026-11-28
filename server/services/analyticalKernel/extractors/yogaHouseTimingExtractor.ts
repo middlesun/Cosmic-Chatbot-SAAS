@@ -10,6 +10,14 @@
  *  - Natal Dashas (`temporalScope: 'natal_invariant'`, `referenceDateIso: null`) -> `temporal`
  *  - Reference-Date Timing (`temporalScope: 'reference_date_dependent'`) -> `temporal`
  *  - Birth-time, DST/Timezone, Node convention & Natal Panchang -> `historical_contextual`
+ *
+ * K02 Phase 1 Completeness Audit Notes:
+ *  - When run under `offline_compiled_hybrid_fallback` (when full cached AstroWay JSON is not on disk),
+ *    mocked `prunedAwLayerA` contains only 4 yoga detectors and minimal stub dashas (`configuration=4`, `temporal=4`).
+ *  - Fixed genuine field-mapping gaps: reads `normalizedYogas.summary.evaluatedItems` (preserving inactive/evaluated
+ *    yogas cleanly without duplicate Jaimini/Parashari slug collisions), reads `contributingPlanets`/`planetName`/`graha`
+ *    on Yogas & Doshas, and reads `start_date`/`end_date`/`duration_years` + `natalTimeline.mahadashas`/`dashaPeriods`
+ *    plus `activeVimshottari` planet stack references.
  */
 
 import type { CanonicalEvidenceDraft, EvidenceEntityRef } from '../types';
@@ -76,24 +84,55 @@ export function extractYogaHouseAndTimingEvidence(
   const ydVer = mapEnvelopeVerification(vedicEnv, ydManifest);
   const ydSource = buildSourceDatasetRef('parashari_yogas_doshas', vedicEnv, ydManifest);
 
+  const normalizedYogasObj = asObj(ydExt?.normalizedYogas);
+  const normalizedYogaEvalItems = asObjArr(asObj(normalizedYogasObj?.summary)?.evaluatedItems);
+  const rawYogasParashara = asObj(ydExt?.yogasParashara);
+  const synthesizedParasharaFallback: Array<Record<string, unknown>> = [];
+  if (!normalizedYogasObj && rawYogasParashara) {
+    for (const [k, label] of [
+      ['raja', 'Raja Yoga'],
+      ['dhana', 'Dhana Yoga'],
+      ['dharmaKarmadhipati', 'Dharma-Karmadhipati Yoga'],
+      ['gajakesari', 'Gajakesari Yoga'],
+      ['adhi', 'Adhi Yoga'],
+    ] as const) {
+      const det = asObj(rawYogasParashara[k]);
+      if (det) {
+        synthesizedParasharaFallback.push({ ...det, name: label, category: k, school: 'parashara' });
+      }
+    }
+    const panchaYogas = asObjArr(asObj(rawYogasParashara.panchaMahapurusha)?.yogas);
+    for (const py of panchaYogas) {
+      synthesizedParasharaFallback.push({ ...py, category: 'panchaMahapurusha', school: 'parashara' });
+    }
+  }
+
+  // Prefer active items first, then full evaluatedItems (so absent yoga detectors are also preserved with is_present=false)
   const rawYogaItems = [
     ...asObjArr(vedicEnv?.data?.yogas?.items),
-    ...asObjArr(asObj(ydExt?.normalizedYogas)?.items),
-    ...asObjArr(asObj(ydExt?.yogasParashara)?.items ?? asObj(ydExt?.yogasParashara)?.yogas),
+    ...asObjArr(normalizedYogasObj?.items),
+    ...normalizedYogaEvalItems,
+    ...asObjArr(rawYogasParashara?.items ?? rawYogasParashara?.yogas),
+    ...synthesizedParasharaFallback,
   ];
 
-  const seenYogaIds = new Set<string>();
+  const seenYogaSlugs = new Set<string>();
   for (let i = 0; i < rawYogaItems.length; i++) {
     const y = rawYogaItems[i];
     const yName = strOrNull(y.name ?? y.yoga ?? y.title ?? y.yogaName);
     if (!yName) continue;
-    const yId = `Yoga_${slugToken(yName)}`;
-    if (seenYogaIds.has(yId)) continue;
-    seenYogaIds.add(yId);
+    const nameSlug = slugToken(yName);
+    if (seenYogaSlugs.has(nameSlug)) continue;
+    seenYogaSlugs.add(nameSlug);
 
+    const isJaiminiSchool = strOrNull(y.school)?.toLowerCase() === 'jaimini';
+    const yId = isJaiminiSchool ? `JaiminiYoga_${nameSlug}` : `Yoga_${nameSlug}`;
     const isPresent = typeof y.isPresent === 'boolean' ? y.isPresent : typeof y.present === 'boolean' ? y.present : true;
-    const category = strOrNull(y.category ?? y.type) ?? 'parashari_yoga';
-    const planets = extractPlanetRefs(y.planets ?? y.participatingPlanets ?? y.grahas);
+    const category = strOrNull(y.category ?? y.type) ?? (isJaiminiSchool ? 'jaimini_yoga' : 'parashari_yoga');
+    const singlePlanet = strOrNull(y.planetName ?? y.graha ?? y.planet);
+    const planets = extractPlanetRefs(
+      y.planets ?? y.participatingPlanets ?? y.contributingPlanets ?? y.grahas ?? (singlePlanet ? [singlePlanet] : null)
+    );
     const parentIds = planets
       .map((p) => pos.degreeEvidenceIdByKey.get(`vedic_lahiri:${p.id}`))
       .filter((id): id is string => Boolean(id));
@@ -102,34 +141,43 @@ export function extractYogaHouseAndTimingEvidence(
       makeDraft(ctx, {
         frame: 'vedic_lahiri',
         family: 'configuration',
-        observationCode: 'VEDIC_YOGA_CONFIGURATION',
-        ruleCode: 'PARASHARI_YOGA_EVALUATION',
+        observationCode: isJaiminiSchool ? 'JAIMINI_YOGA_CONFIGURATION' : 'VEDIC_YOGA_CONFIGURATION',
+        ruleCode: isJaiminiSchool ? 'JAIMINI_SUTRA_YOGA' : 'PARASHARI_YOGA_EVALUATION',
         qualifier: yId,
         subject: { type: 'yoga', id: yId, name: yName },
         relatedEntities: planets,
-        secondaryTags: ['yoga', slugToken(category), isPresent ? 'yoga_present' : 'yoga_absent'],
+        secondaryTags: [
+          ...(isJaiminiSchool ? ['jaimini'] : []),
+          'yoga',
+          slugToken(category),
+          isPresent ? 'yoga_present' : 'yoga_absent',
+        ],
         observation: {
-          code: 'VEDIC_YOGA_CONFIGURATION',
-          label: yName,
+          code: isJaiminiSchool ? 'JAIMINI_YOGA_CONFIGURATION' : 'VEDIC_YOGA_CONFIGURATION',
+          label: isJaiminiSchool && !yName.toLowerCase().includes('jaimini') ? `${yName} (Jaimini)` : yName,
           summary: `${yName} (${category})${isPresent ? ' — Detected' : ' — Absent'}${
             planets.length ? ` [${planets.map((p) => p.name).join(', ')}]` : ''
           }`,
-          classification: 'parashari_yoga',
+          classification: isJaiminiSchool ? 'jaimini_yoga' : 'parashari_yoga',
         },
         measurements: [
           { metric: 'is_present', value: isPresent, unit: null },
           { metric: 'category', value: category, unit: null },
           { metric: 'strength_or_grade', value: strOrNull(y.strength ?? y.grade) ?? numOrNull(y.strengthScore), unit: null },
         ],
-        methodology: vedicMeth,
+        methodology: isJaiminiSchool
+          ? buildFrameMethodology(ctx, 'vedic_lahiri', { tradition: 'jaimini' })
+          : vedicMeth,
         ruleReference: {
           sourceType: 'classical',
-          referenceCode: 'PARASHARI_YOGA_EVALUATION',
-          citation: strOrNull(y.rule ?? y.description) ?? 'Classical Parashari Yoga Formation',
+          referenceCode: isJaiminiSchool ? 'JAIMINI_SUTRA_YOGA' : 'PARASHARI_YOGA_EVALUATION',
+          citation:
+            strOrNull(y.rule ?? y.description ?? y.reason) ??
+            (isJaiminiSchool ? 'Jaimini Sutras Special Yoga Combinations' : 'Classical Parashari Yoga Formation'),
         },
         sourceDatasets: [ydSource],
         parentEvidenceIds: parentIds,
-        derivedFromMetrics: ['sign', 'house'],
+        derivedFromMetrics: isJaiminiSchool ? ['sign', 'chara_karaka'] : ['sign', 'house'],
         temporalScope: 'natal_invariant',
         referenceDateIso: null,
         verification: ydVer,
@@ -138,18 +186,35 @@ export function extractYogaHouseAndTimingEvidence(
     );
   }
 
-  // Jaimini Yogas
+  // Jaimini Yogas fallback (when not already included in normalizedYogas)
   const jaiminiYogasObj = asObj(ydExt?.yogasJaimini) ?? asObj(asObj(ext?.jaimini)?.yogas);
-  const jaiminiYogaList = asObjArr(jaiminiYogasObj?.items ?? jaiminiYogasObj?.yogas);
+  const jaiminiNamedFallback: Array<Record<string, unknown>> = [];
+  if (jaiminiYogasObj && !Array.isArray(jaiminiYogasObj.items) && !Array.isArray(jaiminiYogasObj.yogas)) {
+    for (const [k, label] of [
+      ['raja', 'Jaimini Raja Yoga'],
+      ['dhana', 'Jaimini Dhana Yoga'],
+      ['daridra', 'Jaimini Daridra Yoga'],
+      ['viparita', 'Jaimini Viparita Raja Yoga'],
+    ] as const) {
+      const det = asObj(jaiminiYogasObj[k]);
+      if (det) jaiminiNamedFallback.push({ ...det, name: label, category: k });
+    }
+  }
+  const jaiminiYogaList = [
+    ...asObjArr(jaiminiYogasObj?.items ?? jaiminiYogasObj?.yogas),
+    ...jaiminiNamedFallback,
+  ];
   for (let i = 0; i < jaiminiYogaList.length; i++) {
     const y = jaiminiYogaList[i];
     const yName = strOrNull(y.name ?? y.yoga ?? y.title);
     if (!yName) continue;
-    const yId = `JaiminiYoga_${slugToken(yName)}`;
-    if (seenYogaIds.has(yId)) continue;
-    seenYogaIds.add(yId);
+    const nameSlug = slugToken(yName);
+    if (seenYogaSlugs.has(nameSlug)) continue;
+    seenYogaSlugs.add(nameSlug);
+    const yId = `JaiminiYoga_${nameSlug}`;
 
-    const planets = extractPlanetRefs(y.planets ?? y.grahas);
+    const isPresent = typeof y.isPresent === 'boolean' ? y.isPresent : typeof y.present === 'boolean' ? y.present : true;
+    const planets = extractPlanetRefs(y.planets ?? y.contributingPlanets ?? y.grahas);
     const parentIds = planets
       .map((p) => pos.degreeEvidenceIdByKey.get(`vedic_lahiri:${p.id}`))
       .filter((id): id is string => Boolean(id));
@@ -163,21 +228,21 @@ export function extractYogaHouseAndTimingEvidence(
         qualifier: yId,
         subject: { type: 'yoga', id: yId, name: yName },
         relatedEntities: planets,
-        secondaryTags: ['jaimini', 'yoga'],
+        secondaryTags: ['jaimini', 'yoga', isPresent ? 'yoga_present' : 'yoga_absent'],
         observation: {
           code: 'JAIMINI_YOGA_CONFIGURATION',
           label: `${yName} (Jaimini)`,
-          summary: `Jaimini Yoga: ${yName}`,
+          summary: `Jaimini Yoga: ${yName}${isPresent ? ' — Detected' : ' — Absent'}`,
           classification: 'jaimini_yoga',
         },
         measurements: [
-          { metric: 'is_present', value: typeof y.isPresent === 'boolean' ? y.isPresent : true, unit: null },
+          { metric: 'is_present', value: isPresent, unit: null },
         ],
         methodology: buildFrameMethodology(ctx, 'vedic_lahiri', { tradition: 'jaimini' }),
         ruleReference: {
           sourceType: 'classical',
           referenceCode: 'JAIMINI_SUTRA_YOGA',
-          citation: 'Jaimini Sutras Special Yoga Combinations',
+          citation: strOrNull(y.description) ?? 'Jaimini Sutras Special Yoga Combinations',
         },
         sourceDatasets: [ydSource],
         parentEvidenceIds: parentIds,
@@ -233,7 +298,10 @@ export function extractYogaHouseAndTimingEvidence(
           : typeof entry.raw.isCancelled === 'boolean'
           ? entry.raw.isCancelled
           : null;
-      const planets = extractPlanetRefs(entry.raw.planets ?? entry.raw.factors);
+      const singleDoshaPlanet = strOrNull(entry.raw.planet ?? entry.raw.planetName);
+      const planets = extractPlanetRefs(
+        entry.raw.planets ?? entry.raw.factors ?? entry.raw.contributingPlanets ?? (singleDoshaPlanet ? [singleDoshaPlanet] : null)
+      );
 
       drafts.push(
         makeDraft(ctx, {
@@ -572,9 +640,9 @@ export function extractYogaHouseAndTimingEvidence(
   const moonDegId = pos.degreeEvidenceIdByKey.get('vedic_lahiri:Moon');
 
   if (vimObj) {
-    const bb = asObj(vimObj.birth_balance ?? asObj(vimObj.natalTimeline)?.birth_balance);
-    const bbLord = canonicalSubjectPlanet(bb?.lord) ?? strOrNull(bb?.lord);
-    const remYears = numOrNull(bb?.remaining_years);
+    const bb = asObj(vimObj.birth_balance ?? asObj(vimObj.natalTimeline)?.birth_balance ?? vimObj.initial);
+    const bbLord = canonicalSubjectPlanet(bb?.lord ?? bb?.initialPlanetName ?? bb?.initialPlanet) ?? strOrNull(bb?.lord ?? bb?.initialPlanetName);
+    const remYears = numOrNull(bb?.remaining_years ?? bb?.balanceYears ?? bb?.remainingYears);
 
     if (bbLord && remYears !== null) {
       drafts.push(
@@ -595,7 +663,7 @@ export function extractYogaHouseAndTimingEvidence(
           measurements: [
             { metric: 'birth_lord', value: bbLord, unit: null },
             { metric: 'remaining_years', value: remYears, unit: 'years' },
-            { metric: 'elapsed_years', value: numOrNull(bb?.elapsed_years), unit: 'years' },
+            { metric: 'elapsed_years', value: numOrNull(bb?.elapsed_years ?? bb?.elapsedYears), unit: 'years' },
             { metric: 'full_duration_years', value: numOrNull(bb?.full_duration_years), unit: 'years' },
           ],
           methodology: vedicMeth,
@@ -616,14 +684,20 @@ export function extractYogaHouseAndTimingEvidence(
     }
 
     const mahadashas = asObjArr(
-      asObj(vimObj.natalTimeline)?.mahadashas ?? vimObj.mahadashas
+      asObj(vimObj.natalTimeline)?.mahadashas ??
+        vimObj.mahadashas ??
+        vimObj.dashaPeriods ??
+        vimObj.periods
     );
     for (let idx = 0; idx < mahadashas.length; idx++) {
       const md = mahadashas[idx];
-      const lord = canonicalSubjectPlanet(md.lord ?? md.planet) ?? strOrNull(md.lord ?? md.planet);
+      const lord =
+        canonicalSubjectPlanet(md.lord ?? md.planet ?? md.planetName) ??
+        strOrNull(md.lord ?? md.planet ?? md.planetName);
       if (!lord) continue;
-      const start = strOrNull(md.start ?? md.startDate);
-      const end = strOrNull(md.end ?? md.endDate);
+      const start = strOrNull(md.start ?? md.startDate ?? md.start_date);
+      const end = strOrNull(md.end ?? md.endDate ?? md.end_date);
+      const durYears = numOrNull(md.duration_years ?? md.durationYears);
 
       drafts.push(
         makeDraft(ctx, {
@@ -646,6 +720,7 @@ export function extractYogaHouseAndTimingEvidence(
             { metric: 'lord', value: lord, unit: null },
             { metric: 'start_date', value: start, unit: 'date' },
             { metric: 'end_date', value: end, unit: 'date' },
+            ...(durYears !== null ? [{ metric: 'duration_years', value: durYears, unit: 'years' }] : []),
           ],
           methodology: vedicMeth,
           ruleReference: {
@@ -736,6 +811,32 @@ export function extractYogaHouseAndTimingEvidence(
     } else {
       if (refTiming.activeVimshottari && Object.keys(refTiming.activeVimshottari).length > 0) {
         const refDashManifest = ctx.manifestByKey.get('reference_date_dasha_snapshot');
+        const activeVim = asObj(refTiming.activeVimshottari) ?? {};
+        const extractStackLord = (raw: unknown): string | null => {
+          if (typeof raw === 'string') return canonicalSubjectPlanet(raw) ?? strOrNull(raw);
+          const obj = asObj(raw);
+          if (!obj) return null;
+          const val = obj.lord ?? obj.planet ?? obj.planetName ?? obj.name;
+          return canonicalSubjectPlanet(val) ?? strOrNull(val);
+        };
+        const mdLord = extractStackLord(activeVim.mahadasha ?? activeVim.major_dasha ?? activeVim.maha);
+        const adLord = extractStackLord(activeVim.antardasha ?? activeVim.minor_dasha ?? activeVim.antar);
+        const pdLord = extractStackLord(activeVim.pratyantardasha ?? activeVim.sub_minor_dasha ?? activeVim.pratyantar);
+        const sdLord = extractStackLord(activeVim.sookshma ?? activeVim.sookshmadasha);
+        const prLord = extractStackLord(activeVim.prana ?? activeVim.pranadasha);
+
+        const activeEntities: EvidenceEntityRef[] = [];
+        for (const [role, lord] of [
+          ['active_mahadasha_lord', mdLord],
+          ['active_antardasha_lord', adLord],
+          ['active_pratyantardasha_lord', pdLord],
+          ['active_sookshma_lord', sdLord],
+          ['active_prana_lord', prLord],
+        ] as const) {
+          if (lord && canonicalSubjectPlanet(lord)) {
+            activeEntities.push({ type: 'planet', id: lord, name: lord, role });
+          }
+        }
         const activeStr = JSON.stringify(refTiming.activeVimshottari).slice(0, 180);
         drafts.push(
           makeDraft(ctx, {
@@ -748,16 +849,22 @@ export function extractYogaHouseAndTimingEvidence(
               id: 'ActiveVimshottari',
               name: `Active Vimshottari (${refIso})`,
             },
+            relatedEntities: activeEntities,
             secondaryTags: ['vimshottari', 'reference_date_active'],
             observation: {
               code: 'REFERENCE_DATE_VIMSHOTTARI_ACTIVE',
               label: `Active Vimshottari Stack @ ${refIso}`,
-              summary: activeStr,
+              summary: [mdLord, adLord, pdLord, sdLord, prLord].filter(Boolean).join(' / ') || activeStr,
               classification: 'reference_date_active_dasha',
             },
             measurements: [
               { metric: 'reference_date_iso', value: refIso, unit: 'iso_date' },
               { metric: 'target_age_years', value: refTiming.targetAgeYears ?? null, unit: 'years' },
+              ...(mdLord ? [{ metric: 'mahadasha_lord', value: mdLord, unit: null }] : []),
+              ...(adLord ? [{ metric: 'antardasha_lord', value: adLord, unit: null }] : []),
+              ...(pdLord ? [{ metric: 'pratyantardasha_lord', value: pdLord, unit: null }] : []),
+              ...(sdLord ? [{ metric: 'sookshma_lord', value: sdLord, unit: null }] : []),
+              ...(prLord ? [{ metric: 'prana_lord', value: prLord, unit: null }] : []),
             ],
             methodology: vedicMeth,
             ruleReference: {
