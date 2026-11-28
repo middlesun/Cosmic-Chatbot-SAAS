@@ -363,6 +363,12 @@ export interface DatasetEnvelope<T> {
 
 export interface VedicLahiriFrame {
   ayanamshaLabel: string;
+  ayanamshaValueDegrees?: number | null;
+  ayanamsha?: {
+    id: string;
+    name: string;
+    valueDegrees: number | null;
+  };
   houseSystem: string;
   nodeType: string;
   timezoneUsed: string;
@@ -633,6 +639,7 @@ export interface RemainingClassicalGapItem {
 export interface CalculationConventionsRecord {
   ayanamsa: {
     vedic: string;
+    vedicValueDegrees?: number | null;
     kp: string;
     kpValueDegrees?: number | null;
   };
@@ -802,6 +809,20 @@ export interface BhavaChalitCompatibilityAudit {
   h10MidpointVsRefMcDeltaDeg: number | null;
   sripatiConventionCompatible: boolean;
   kpPlacidusConfusionDetected: boolean;
+  nodeDependentPlacementsAudit?: {
+    nodeConventionNote: string;
+    deltaDeg: {
+      rahu: number | null;
+      ketu: number | null;
+    };
+    placements: Array<{
+      body: 'Rahu' | 'Ketu';
+      rashiHouse: number | null;
+      chalitHouse: number | null;
+      primaryDegree: number | null;
+      supplementaryDegree: number | null;
+    }>;
+  };
   methodologyAudit: BhavaChalitMethodologyAudit | null;
   reasons: string[];
 }

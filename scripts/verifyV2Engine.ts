@@ -19,6 +19,7 @@ import {
   acquireV2NatalBundle,
   adoptPreferredLocalAshtakavarga,
   assessChartJsonDefects,
+  assertLayerCPrerequisites,
   ASTROWAY_PRUNED_REDUNDANT_ENDPOINTS,
   auditLegacyJyotishMathAshtakavarga,
   auditVargasMethodology,
@@ -62,6 +63,8 @@ import {
   getFreeAstroApiKey,
   getFreeAstroApiSecretStatus,
   integrateFreeAstroApiSupplementaryIntoMaster,
+  isBlockedForLayerC,
+  isUsableForLayerC,
   listResumableAstroWaySessions,
   loadAstroWayBatchSession,
   normalizeAstroWayAlternativeDasha,
@@ -71,6 +74,7 @@ import {
   normalizePositiveHeapBytes,
   orderAstroWaySpecsForPriorityVerification,
   parseAstroWayRateLimitHeaders,
+  prepareLayerCAnalyticalInput,
   READ_ONLY_SUPABASE_DIAGNOSTIC_SQL,
   reconstructAstroWayLayerAFromSession,
   redactSecretsDeep,
@@ -104,6 +108,15 @@ import {
   setV2DiagnosticLockClockOffsetForTests,
 } from '../server/services/astrologyProviders/freeAstroApiRateLimiter';
 import { getNakshatraAndSubs, getVargaSignIndex, normalizeDeg, SIGNS } from '../server/services/jyotishMath';
+import {
+  buildAnalyticalEvidenceRepository,
+  CANONICAL_EVIDENCE_FRAMES,
+  CanonicalEvidenceRegistry,
+  CircularLineageError,
+  EVIDENCE_FAMILIES,
+  formatPlanetEvidenceSummary,
+  type CanonicalEvidenceDraft,
+} from '../server/services/analyticalKernel';
 
 function loadLocalEnvFilesForCli(): { loadedFiles: string[] } {
   const cwd = process.cwd();
@@ -560,6 +573,7 @@ async function runCompileChris4Cli(): Promise<void> {
     },
     blockers: allBlockers,
     compiledChart: compiled,
+    layerCInputContract: prepareLayerCAnalyticalInput(compiled),
     legacyComparison,
   });
 
@@ -3457,15 +3471,15 @@ async function main() {
       preferredOnMissingAv.providerExtendedDatasets?.localAshtakavargaPreferred === true &&
       preferredOnMissingAv.datasetManifest?.entries.find(
         (e) => e.key === 'ashtakavarga_bav_sav_prastara'
-      )?.canonicalStatus === 'independently_validated' &&
+      )?.canonicalStatus === 'internally_verified' &&
       Boolean(preferredOnHybrid.providerExtendedDatasets?.providerOriginalAshtakavargaBackup) &&
       preferredOnHybrid.datasetManifest?.entries.find(
         (e) => e.key === 'ashtakavarga_bav_sav_prastara'
-      )?.canonicalStatus === 'independently_validated' &&
+      )?.canonicalStatus === 'internally_verified' &&
       directPreferredMaster.providerExtendedDatasets?.localAshtakavargaPreferred === true &&
       directPreferredMaster.datasetManifest?.entries.find(
         (e) => e.key === 'ashtakavarga_bav_sav_prastara'
-      )?.canonicalStatus === 'independently_validated',
+      )?.canonicalStatus === 'internally_verified',
     'Local Ashtakavarga preferred adoption / backup preservation failed.'
   );
 
@@ -3999,6 +4013,217 @@ async function main() {
     partialShadbalaSthanaPreservedNull: sbSunProbe?.provider?.sthanaBala === null,
   });
 
+  // 3af. Stage 2 Targeted Corrections:
+  //  (a) Numeric Lahiri ayanamsha ("23.66126484739226") vs canonical identifier + divergent numeric rejection
+  //  (b) Supplementary Ashtakavarga & Bhava Chalit passing with primary numeric Lahiri + Mean-vs-True Node separation
+  //  (c) Vimshottari fractional birth balance (Y+M+D) & 5-level hierarchy (prana) + natal vs reference-date separation
+  //  (d) Chris 4 coordinate consistency against stored profile asset (23.25572, 87.85691)
+  //  (e) Layer C Input Contract readiness & epistemic trust boundary
+  const numericLahiriDeg = Number(sampleInstant.astronomy.lahiriAyanamsaApproxDeg.toFixed(12));
+  const awNumericAyKundli = {
+    ...(((awWithoutAvOrBcCalls.vedic_kundli?.rawResponse as Record<string, unknown>)?.data ??
+      {}) as Record<string, unknown>),
+    ayanamsa: 23.66126484739226,
+  };
+  const awNumericAyLayerA = {
+    ...prunedAwLayerA,
+    calls: {
+      ...awWithoutAvOrBcCalls,
+      vedic_kundli: makeAwCall('vedic_kundli', '/vedic/kundli', 'vedic', awNumericAyKundli),
+    },
+  };
+  const numericLahiriSuppCompiled = compileV2FoundationalChart({
+    instant: sampleInstant,
+    astroWayRaw: awNumericAyLayerA,
+    freeAstroApiSupplementary: singleCallRes.call,
+    options: { targetDateIso: '2026-11-27' },
+  });
+  const numericVedicFrame = numericLahiriSuppCompiled.layerBMaster.frames.vedicLahiri.data;
+  const numericSuppGate = numericLahiriSuppCompiled.compatibilityGates;
+
+  // Divergent numeric ayanamsha (e.g. Raman ~22.2°) MUST be rejected even if requested 'lahiri'
+  const awDivergentAyLayerA = {
+    ...prunedAwLayerA,
+    calls: {
+      ...awWithoutAvOrBcCalls,
+      vedic_kundli: makeAwCall('vedic_kundli', '/vedic/kundli', 'vedic', {
+        ...awNumericAyKundli,
+        ayanamsa: 22.2,
+      }),
+    },
+  };
+  const divergentAyCompiled = compileV2FoundationalChart({
+    instant: sampleInstant,
+    astroWayRaw: awDivergentAyLayerA,
+    freeAstroApiSupplementary: singleCallRes.call,
+    options: { targetDateIso: '2026-11-27' },
+  });
+
+  assert(
+    numericVedicFrame?.ayanamshaLabel === 'lahiri' &&
+      numericVedicFrame?.ayanamshaValueDegrees === 23.66126484739226 &&
+      numericLahiriSuppCompiled.layerBMaster.calculationConventions?.ayanamsa.vedic === 'lahiri' &&
+      numericLahiriSuppCompiled.layerBMaster.calculationConventions?.ayanamsa.vedicValueDegrees ===
+        23.66126484739226 &&
+      numericSuppGate?.ashtakavarga.outcome === 'accepted' &&
+      numericSuppGate?.ashtakavarga.recommendedState === 'internally_verified' &&
+      numericSuppGate?.bhavaChalit.outcome === 'accepted' &&
+      numericSuppGate?.bhavaChalit.recommendedState === 'internally_verified' &&
+      Boolean(numericSuppGate?.bhavaChalit.nodeDependentPlacementsAudit) &&
+      numericSuppGate?.bhavaChalit.nodeDependentPlacementsAudit?.placements.length === 2 &&
+      numericLahiriSuppCompiled.manifest.entries.find((e) => e.key === 'ashtakavarga_bav_sav_prastara')
+        ?.canonicalStatus === 'internally_verified' &&
+      numericLahiriSuppCompiled.manifest.entries.find((e) => e.key === 'bhava_chalit')
+        ?.canonicalStatus === 'internally_verified' &&
+      numericLahiriSuppCompiled.manifest.countsByStatus.independently_validated === 0 &&
+      divergentAyCompiled.layerBMaster.frames.vedicLahiri.data?.ayanamshaLabel !== 'lahiri' &&
+      divergentAyCompiled.compatibilityGates?.ashtakavarga.outcome === 'rejected_incompatible' &&
+      divergentAyCompiled.compatibilityGates?.bhavaChalit.outcome === 'rejected_incompatible' &&
+      Number.isFinite(numericLahiriDeg),
+    `Numeric Lahiri / Supplementary re-verification failed: label=${numericVedicFrame?.ayanamshaLabel}, avGate=${numericSuppGate?.ashtakavarga.outcome}, bcGate=${numericSuppGate?.bhavaChalit.outcome}, divAv=${divergentAyCompiled.compatibilityGates?.ashtakavarga.outcome}`
+  );
+
+  // Vimshottari fractional balance (7y 5m 7d -> ~7.4358y) & 5-level prana hierarchy
+  const vim5LevelRaw = {
+    initial: {
+      initialPlanetName: 'Moon',
+      balanceYears: 7,
+      balanceMonths: 5,
+      balanceDays: 7,
+    },
+    periods: [
+      {
+        planetName: 'Moon',
+        startDate: '1985-12-25',
+        endDate: '1993-06-01',
+        durationYears: 7.4358,
+        subDashas: [
+          {
+            planetName: 'Mars',
+            startDate: '1985-12-25',
+            endDate: '1986-07-25',
+            durationYears: 0.5833,
+            pratyantardashas: [
+              {
+                planetName: 'Rahu',
+                startDate: '1985-12-25',
+                endDate: '1986-01-25',
+                durationYears: 0.0875,
+                sookshmas: [
+                  {
+                    planetName: 'Jupiter',
+                    startDate: '1985-12-25',
+                    endDate: '1985-12-30',
+                    durationYears: 0.0117,
+                    pranas: [
+                      {
+                        planetName: 'Saturn',
+                        startDate: '1985-12-25',
+                        endDate: '1985-12-26',
+                        durationYears: 0.0019,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    current: {
+      mahadasha: 'Mercury',
+      antardasha: 'Saturn',
+    },
+  };
+  const normVim5 = normalizeAstroWayVimshottari5Level(vim5LevelRaw);
+  const bbNorm5 = normVim5?.birth_balance as Record<string, unknown> | undefined;
+  const vim5Master = compileV2FoundationalChart({
+    instant: sampleInstant,
+    astroWayRaw: {
+      ...prunedAwLayerA,
+      calls: {
+        ...awWithoutAvOrBcCalls,
+        dashas_vimshottari_prana: makeAwCall(
+          'dashas_vimshottari_prana',
+          '/vedic/dashas/vimshottari/prana',
+          'dasha',
+          vim5LevelRaw
+        ),
+      },
+    },
+    freeAstroApiSupplementary: singleCallRes.call,
+    options: { targetDateIso: '2026-11-27' },
+  });
+  const vimCheck5 = vim5Master.verification.checks.find(
+    (c) => c.id === 'vimshottari_nakshatra_arc_and_5level_sums'
+  );
+  assert(
+    normVim5 !== null &&
+      typeof bbNorm5?.remaining_years === 'number' &&
+      Math.abs(bbNorm5.remaining_years - 7.4358) < 0.005 &&
+      typeof bbNorm5?.elapsed_years === 'number' &&
+      Math.abs(bbNorm5.elapsed_years - 2.5642) < 0.005 &&
+      normVim5.maxDepthObserved === 5 &&
+      Array.isArray(normVim5.levelsObserved) &&
+      (normVim5.levelsObserved as string[]).join(',') ===
+        'mahadasha,antardasha,pratyantardasha,sookshma,prana' &&
+      Boolean((normVim5.natalTimeline as Record<string, unknown>)?.mahadashas) &&
+      Boolean((normVim5.referenceDateSnapshot as Record<string, unknown>)?.mahadasha === 'Mercury') &&
+      vimCheck5?.passed === true &&
+      vimCheck5.observed.includes('maxDepth=5'),
+    `Vimshottari 5-level / fractional balance verification failed: norm=${JSON.stringify(bbNorm5)}, check=${JSON.stringify(vimCheck5)}`
+  );
+
+  // Chris 4 stored profile coordinates consistency check (23.25572, 87.85691 vs Bardhaman centroid drift)
+  const chris4JsonPath = path.resolve(
+    process.cwd(),
+    'public/assets/aistudio/chris-4-birth-chart_8e64429a.json'
+  );
+  if (fs.existsSync(chris4JsonPath)) {
+    const chris4Json = JSON.parse(fs.readFileSync(chris4JsonPath, 'utf8'));
+    assert(
+      FIXTURES[0].input.latitude === Number(chris4Json?.meta?.location?.latitude) &&
+        FIXTURES[0].input.longitude === Number(chris4Json?.meta?.location?.longitude) &&
+        FIXTURES[0].input.latitude === 23.25572 &&
+        FIXTURES[0].input.longitude === 87.85691,
+      `Chris 4 fixture coords (${FIXTURES[0].input.latitude}, ${FIXTURES[0].input.longitude}) diverge from stored profile (${chris4Json?.meta?.location?.latitude}, ${chris4Json?.meta?.location?.longitude}).`
+    );
+  }
+
+  // Layer C Read-Only Input Contract check
+  const layerCInputFull = prepareLayerCAnalyticalInput(full16VargaMaster);
+  const layerCInputPartial = prepareLayerCAnalyticalInput(compiledNoLocal);
+  const phiReadyFull = assertLayerCPrerequisites(layerCInputFull, 'phi_planetary_health');
+  const phiReadyPartial = assertLayerCPrerequisites(layerCInputPartial, 'phi_planetary_health');
+  assert(
+    layerCInputFull.layerCShell.status === 'deferred_by_scope' &&
+      layerCInputFull.natalInvariant.temporalScope === 'natal_invariant' &&
+      layerCInputFull.referenceDateTiming?.temporalScope === 'reference_date_dependent' &&
+      layerCInputFull.calculationConventions?.ayanamsa.vedic === 'lahiri' &&
+      isUsableForLayerC('internally_verified') === true &&
+      isBlockedForLayerC('incompatible') === true &&
+      isBlockedForLayerC('unavailable') === true &&
+      phiReadyFull.ok === true &&
+      phiReadyPartial.ok === false &&
+      phiReadyPartial.reasons.length > 0,
+    `Layer C contract verification failed: phiFull=${JSON.stringify(phiReadyFull)}, phiPartial=${JSON.stringify(phiReadyPartial)}`
+  );
+
+  regressionResults.push({
+    id: 'stage2_targeted_corrections_and_layer_c_contract',
+    status: 'PASSED',
+    numericLahiriNormalizedLabel: numericVedicFrame?.ayanamshaLabel,
+    numericLahiriPreservedDeg: numericVedicFrame?.ayanamshaValueDegrees,
+    supplementaryAshtakavargaOutcome: numericSuppGate?.ashtakavarga.outcome,
+    supplementaryBhavaChalitOutcome: numericSuppGate?.bhavaChalit.outcome,
+    vimshottariFractionalRemainingYears: bbNorm5?.remaining_years,
+    vimshottariMaxDepth: normVim5.maxDepthObserved,
+    chris4StoredCoordsVerified: '23.25572, 87.85691',
+    layerCPhiReadyOnFullChart: phiReadyFull.ok,
+    layerCPhiBlockedOnPartialChart: !phiReadyPartial.ok,
+  });
+
   // 4. Read-Only Existing Profile Defect Audit + Legacy vs V2 Comparison on Local Fixtures
   const profileAudits: unknown[] = [];
   for (const [id, filePath] of [
@@ -4037,6 +4262,336 @@ async function main() {
 
   console.log('\n--- Offline Regression & Read-Only Profile Audits ---');
   console.log(JSON.stringify({ regressionResults, profileAudits }, null, 2));
+
+  // 4b. K01 Analytical Intelligence Kernel — Offline Regression Suite & Chris 4 Repository Generation
+  console.log('\n--- K01 Analytical Intelligence Kernel Verification Suite ---');
+  const repoFullA = buildAnalyticalEvidenceRepository(layerCInputFull);
+  const repoFullB = buildAnalyticalEvidenceRepository(layerCInputFull);
+  const allFullA = [...repoFullA.natalEvidence, ...repoFullA.temporalEvidence];
+  const allFullB = [...repoFullB.natalEvidence, ...repoFullB.temporalEvidence];
+
+  // (a) Reproducible Identity
+  assert(
+    allFullA.length > 0 &&
+      allFullA.length === allFullB.length &&
+      repoFullA.natalEvidence.every(
+        (ev, idx) =>
+          ev.evidenceId === repoFullB.natalEvidence[idx]?.evidenceId &&
+          ev.naturalKey === repoFullB.natalEvidence[idx]?.naturalKey
+      ) &&
+      repoFullA.temporalEvidence.every(
+        (ev, idx) =>
+          ev.evidenceId === repoFullB.temporalEvidence[idx]?.evidenceId &&
+          ev.naturalKey === repoFullB.temporalEvidence[idx]?.naturalKey
+      ),
+    'K01 (a) Reproducible Identity failed: evidenceId or naturalKey differed across two deterministic builds.'
+  );
+
+  // (b) Exact Duplication & Overlap
+  const dupRegistry = new CanonicalEvidenceRegistry();
+  const baseDupDraft: CanonicalEvidenceDraft = {
+    naturalKeyParts: {
+      chartFingerprint: layerCInputFull.inputFingerprint,
+      frame: 'vedic_lahiri',
+      family: 'positional',
+      observationCode: 'TEST_DUP_CHECK',
+      subjectType: 'planet',
+      subjectId: 'Jupiter',
+      ruleCode: 'BPHS_RASHI_PLACEMENT',
+      temporalScope: 'natal_invariant',
+      referenceDateIso: null,
+      qualifier: 'copy_1',
+    },
+    subject: { type: 'planet', id: 'Jupiter', name: 'Jupiter' },
+    family: 'positional',
+    observation: {
+      code: 'TEST_DUP_CHECK',
+      label: 'Jupiter Test Duplicate',
+      summary: 'Duplicate observation test',
+      classification: 'test_duplicate',
+    },
+    measurements: [{ metric: 'sign', value: 'Capricorn', unit: null }],
+    frame: 'vedic_lahiri',
+    methodology: allFullA[0].methodology,
+    ruleReference: {
+      sourceType: 'classical',
+      referenceCode: 'BPHS_RASHI_PLACEMENT',
+      citation: 'BPHS Rashi Placement',
+    },
+    sourceDatasets: [],
+    temporalScope: 'natal_invariant',
+    referenceDateIso: null,
+    verification: allFullA[0].verification,
+    sensitivity: allFullA[0].sensitivity,
+    versions: allFullA[0].versions,
+  };
+  const dupItem1 = dupRegistry.register(baseDupDraft);
+  const dupItem2 = dupRegistry.register({
+    ...baseDupDraft,
+    naturalKeyParts: { ...baseDupDraft.naturalKeyParts, qualifier: 'copy_2' },
+  });
+  const dupGraph = dupRegistry.validateAndBuildLineageGraph();
+  const exactDupRel = dupGraph.overlapRelations.find(
+    (r) =>
+      r.overlapType === 'exact_duplicate' &&
+      ((r.evidenceIdA === dupItem1.evidenceId && r.evidenceIdB === dupItem2.evidenceId) ||
+        (r.evidenceIdA === dupItem2.evidenceId && r.evidenceIdB === dupItem1.evidenceId))
+  );
+  const hasPartialOverlap = repoFullA.lineageGraph.overlapRelations.some(
+    (r) => r.overlapType === 'partial_mathematical_overlap' && r.collapseRecommended === false
+  );
+  const hasDistinctSignificance = repoFullA.lineageGraph.overlapRelations.some(
+    (r) => r.overlapType === 'distinct_analytical_significance' && r.collapseRecommended === false
+  );
+  assert(
+    Boolean(exactDupRel) &&
+      exactDupRel!.collapseRecommended === true &&
+      hasPartialOverlap &&
+      hasDistinctSignificance,
+    `K01 (b) Overlap classification failed: exactDup=${Boolean(exactDupRel)}, partial=${hasPartialOverlap}, distinct=${hasDistinctSignificance}`
+  );
+
+  // (c) Circular Lineage Prevention (A -> B -> A must throw CircularLineageError)
+  const cycleRegistry = new CanonicalEvidenceRegistry();
+  const cycNodeA = cycleRegistry.register({
+    ...baseDupDraft,
+    naturalKeyParts: { ...baseDupDraft.naturalKeyParts, observationCode: 'CYCLE_NODE_A', qualifier: null },
+    observation: { ...baseDupDraft.observation, code: 'CYCLE_NODE_A', label: 'Cycle A' },
+  });
+  const cycNodeB = cycleRegistry.register({
+    ...baseDupDraft,
+    naturalKeyParts: { ...baseDupDraft.naturalKeyParts, observationCode: 'CYCLE_NODE_B', qualifier: null },
+    observation: { ...baseDupDraft.observation, code: 'CYCLE_NODE_B', label: 'Cycle B' },
+    parentEvidenceIds: [cycNodeA.evidenceId],
+  });
+  let caughtCycleError = false;
+  try {
+    cycleRegistry.linkParent(cycNodeA.evidenceId, cycNodeB.evidenceId);
+  } catch (err) {
+    if (err instanceof CircularLineageError) {
+      caughtCycleError = true;
+    } else {
+      throw err;
+    }
+  }
+  assert(caughtCycleError, 'K01 (c) Circular Lineage Prevention failed: CircularLineageError was not thrown on A -> B -> A.');
+
+  // (d) Missing Value / Zero-Coercion Guard
+  const repoNoLocal = buildAnalyticalEvidenceRepository(compiledNoLocal);
+  const noLocalAll = [...repoNoLocal.natalEvidence, ...repoNoLocal.temporalEvidence];
+  const hasUnavailableVimshopaka = noLocalAll.some((e) => e.observation.code === 'VIMSHOPAKA_BALA_SCHEME');
+  const blockedVimshopaka = repoNoLocal.rejectedOrBlockedFrames.some(
+    (b) => b.datasetKey === 'vimshopaka_bala'
+  );
+  const repoEmpty = buildAnalyticalEvidenceRepository(offlineEmptyMaster);
+  const emptyAll = [...repoEmpty.natalEvidence, ...repoEmpty.temporalEvidence];
+  const repoZeroProbe = buildAnalyticalEvidenceRepository(prepareLayerCAnalyticalInput(zeroCoercionProbeMaster));
+  const sunShadbalaProbe = repoZeroProbe.natalEvidence.find(
+    (e) => e.observation.code === 'SHADBALA_MAJOR_SIX_BALA' && e.subject.id === 'Sun'
+  );
+  const sunSthanaMetric = sunShadbalaProbe?.measurements.find((m) => m.metric === 'sthana_bala');
+  const sunDigMetric = sunShadbalaProbe?.measurements.find((m) => m.metric === 'dig_bala');
+  assert(
+    !hasUnavailableVimshopaka &&
+      blockedVimshopaka &&
+      !emptyAll.some(
+        (e) =>
+          e.observation.code === 'BHAVABALA_HOUSE_STRENGTH' ||
+          e.observation.code === 'VIMSHOPAKA_BALA_SCHEME' ||
+          e.observation.code === 'SHADBALA_SUBCOMPONENT_BUCKET'
+      ) &&
+      repoEmpty.rejectedOrBlockedFrames.some((b) => b.datasetKey === 'bhavabala') &&
+      repoEmpty.rejectedOrBlockedFrames.some((b) => b.datasetKey === 'shadbala_major_6') &&
+      repoEmpty.rejectedOrBlockedFrames.some((b) => b.datasetKey === 'shadbala_subcomponents') &&
+      Boolean(sunShadbalaProbe) &&
+      sunSthanaMetric?.value === null &&
+      sunDigMetric?.value === null,
+    `K01 (d) Missing Value / Zero-Coercion Guard failed: hasUnavailableVim=${hasUnavailableVimshopaka}, blockedVim=${blockedVimshopaka}, emptyBlocked=${JSON.stringify(
+      repoEmpty.rejectedOrBlockedFrames.map((b) => b.datasetKey)
+    )}, sunSb=${Boolean(sunShadbalaProbe)}, sunSthana=${String(sunSthanaMetric?.value)}, sunDig=${String(sunDigMetric?.value)}`
+  );
+
+  // (e) Incompatible Frame Rejection (bhavaChalit canonicalStatus = 'incompatible')
+  const layerCIncompatChalit = prepareLayerCAnalyticalInput(full16VargaMaster);
+  layerCIncompatChalit.natalInvariant.frames.bhavaChalit = {
+    ...layerCIncompatChalit.natalInvariant.frames.bhavaChalit,
+    canonicalStatus: 'incompatible',
+    verificationStatus: 'incompatible',
+    limitations: ['Simulated incompatible Chalit ayanamsha mismatch for K01 regression test.'],
+  };
+  layerCIncompatChalit.datasetManifest = {
+    ...layerCIncompatChalit.datasetManifest,
+    entries: layerCIncompatChalit.datasetManifest.entries.map((entry) =>
+      entry.key === 'bhava_chalit' ? { ...entry, canonicalStatus: 'incompatible' } : entry
+    ),
+  };
+  const repoIncompatChalit = buildAnalyticalEvidenceRepository(layerCIncompatChalit);
+  const hasChalitEvidence = repoIncompatChalit.natalEvidence.some(
+    (e) => e.frame === 'bhava_chalit'
+  );
+  const hasBlockedChalitNotice = repoIncompatChalit.rejectedOrBlockedFrames.some(
+    (b) => b.frame === 'bhava_chalit' && b.canonicalStatus === 'incompatible'
+  );
+  const hasKpPlacidusEvidence = repoIncompatChalit.natalEvidence.some(
+    (e) => e.frame === 'kp_placidus'
+  );
+  assert(
+    !hasChalitEvidence && hasBlockedChalitNotice && hasKpPlacidusEvidence,
+    `K01 (e) Incompatible Frame Rejection failed: hasChalitEvidence=${hasChalitEvidence}, blockedChalit=${hasBlockedChalitNotice}, hasKp=${hasKpPlacidusEvidence}`
+  );
+
+  // (f) Provisional Non-Promotion Propagation (D5 calibrated:false, advancedAvasthas, unassigned Shadbala)
+  const layerCProvisionalInput = prepareLayerCAnalyticalInput(compiledHybrid);
+  if (layerCProvisionalInput.natalInvariant.shadbalaReconciliation?.data) {
+    layerCProvisionalInput.natalInvariant.shadbalaReconciliation = {
+      ...layerCProvisionalInput.natalInvariant.shadbalaReconciliation,
+      canonicalStatus: 'provisional',
+      data: {
+        ...layerCProvisionalInput.natalInvariant.shadbalaReconciliation.data,
+        authoritativeDesignation: 'unassigned_pending_reconciliation',
+      },
+    };
+  }
+  const provExt = (layerCProvisionalInput.natalInvariant.providerExtendedDatasets ?? {}) as Record<
+    string,
+    unknown
+  >;
+  layerCProvisionalInput.natalInvariant.providerExtendedDatasets = {
+    ...provExt,
+    supplementaryIntegration: {
+      ...((provExt.supplementaryIntegration as Record<string, unknown>) ?? {}),
+      provisionalCandidates: {
+        ...(((provExt.supplementaryIntegration as Record<string, unknown>)
+          ?.provisionalCandidates as Record<string, unknown>) ?? {}),
+        d5: {
+          calibrated: false,
+          placements: [{ name: 'Jupiter', sign: 'Capricorn' }],
+        },
+      },
+    },
+  };
+  const repoProvisional = buildAnalyticalEvidenceRepository(layerCProvisionalInput);
+  const d5ProvItems = repoProvisional.natalEvidence.filter(
+    (e) => e.observation.code === 'VEDIC_VARGA_D5_PROVISIONAL'
+  );
+  const avasthaProvItems = repoProvisional.natalEvidence.filter(
+    (e) => e.observation.code === 'VEDIC_ADVANCED_AVASTHAS'
+  );
+  const shadbalaProvItems = repoProvisional.natalEvidence.filter(
+    (e) => e.observation.code === 'SHADBALA_MAJOR_SIX_BALA'
+  );
+  const allProvItems = [...d5ProvItems, ...avasthaProvItems, ...shadbalaProvItems];
+  assert(
+    d5ProvItems.length > 0 &&
+      avasthaProvItems.length > 0 &&
+      shadbalaProvItems.length > 0 &&
+      allProvItems.every(
+        (e) =>
+          e.verification.propagatedTrust === 'provisional' &&
+          e.verification.computational === 'provisional' &&
+          e.verification.empirical === 'not_validated'
+      ),
+    `K01 (f) Provisional Non-Promotion failed: d5=${d5ProvItems.length}, avastha=${avasthaProvItems.length}, shadbala=${shadbalaProvItems.length}`
+  );
+
+  // (g) Natal vs Reference-Date Separation
+  assert(
+    repoFullA.natalEvidence.every(
+      (e) => e.temporalScope === 'natal_invariant' && e.referenceDateIso === null
+    ) &&
+      repoFullA.temporalEvidence.every(
+        (e) => e.temporalScope === 'reference_date_dependent' && Boolean(e.referenceDateIso)
+      ),
+    'K01 (g) Natal vs Reference-Date Separation failed.'
+  );
+
+  // (h) Planetary State Unevaluated Guard
+  const stateValues = Object.values(repoFullA.planetaryStates);
+  assert(
+    stateValues.length === 10 &&
+      stateValues.every(
+        (st) =>
+          st.dimensions.resilience.status === 'unevaluated' &&
+          Boolean(st.dimensions.resilience.unevaluatedReason) &&
+          st.dimensions.deliverability.status === 'unevaluated' &&
+          Boolean(st.dimensions.deliverability.unevaluatedReason) &&
+          st.dimensions.authority.status === 'unevaluated' &&
+          Boolean(st.dimensions.authority.unevaluatedReason) &&
+          st.dimensions.functionalOrientation.status === 'unevaluated' &&
+          Boolean(st.dimensions.functionalOrientation.unevaluatedReason)
+      ) &&
+      repoFullA.impactContracts.length === 0,
+    'K01 (h) Planetary State Unevaluated Guard failed: un-ruled dimensions or impactContracts violated.'
+  );
+
+  console.log('K01 Offline Regression Suite: ALL 8 TESTS PASSED (a through h).');
+
+  // Chris 4 Analytical Evidence Repository Artifact Generation (ZERO live API calls)
+  const chris4ConsolidatedPath = path.join(outDir, 'chris4-consolidated-foundational-chart.json');
+  let chris4RepoSource: Parameters<typeof buildAnalyticalEvidenceRepository>[0] = compiledHybrid;
+  let chris4SourceOrigin = 'offline_compiled_hybrid_fallback';
+
+  if (fs.existsSync(chris4ConsolidatedPath)) {
+    const cachedChris4 = JSON.parse(fs.readFileSync(chris4ConsolidatedPath, 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    const layerCCandidate = cachedChris4.layerCInputContract as
+      | { natalInvariant?: { frames?: { vedicLahiri?: { data?: unknown } } } }
+      | undefined;
+    const compiledCandidate = cachedChris4.compiledChart as
+      | { layerBMaster?: { frames?: { vedicLahiri?: { data?: unknown } } } }
+      | undefined;
+    const directLayerCCandidate = cachedChris4 as {
+      contractVersion?: string;
+      schemaVersion?: string;
+      natalInvariant?: { frames?: { vedicLahiri?: { data?: unknown } } };
+      layerBMaster?: { frames?: { vedicLahiri?: { data?: unknown } } };
+      frames?: { vedicLahiri?: { data?: unknown } };
+    };
+
+    if (layerCCandidate?.natalInvariant?.frames?.vedicLahiri?.data) {
+      chris4RepoSource = layerCCandidate as unknown as Parameters<
+        typeof buildAnalyticalEvidenceRepository
+      >[0];
+      chris4SourceOrigin = chris4ConsolidatedPath;
+    } else if (compiledCandidate?.layerBMaster?.frames?.vedicLahiri?.data) {
+      chris4RepoSource = compiledCandidate as unknown as Parameters<
+        typeof buildAnalyticalEvidenceRepository
+      >[0];
+      chris4SourceOrigin = chris4ConsolidatedPath;
+    } else if (
+      (directLayerCCandidate.contractVersion === 'v2.layer_c_input.1.0' &&
+        directLayerCCandidate.natalInvariant?.frames?.vedicLahiri?.data) ||
+      (directLayerCCandidate.schemaVersion === 'v2.compiled_foundational_chart.1.0' &&
+        directLayerCCandidate.layerBMaster?.frames?.vedicLahiri?.data) ||
+      (directLayerCCandidate.schemaVersion === 'v2.master_chart.1.0' &&
+        directLayerCCandidate.frames?.vedicLahiri?.data)
+    ) {
+      chris4RepoSource = cachedChris4 as unknown as Parameters<
+        typeof buildAnalyticalEvidenceRepository
+      >[0];
+      chris4SourceOrigin = chris4ConsolidatedPath;
+    }
+  }
+
+  const chris4K01Repo = redactSecretsDeep(buildAnalyticalEvidenceRepository(chris4RepoSource));
+  const chris4K01OutPath = path.join(outDir, 'chris4-analytical-evidence-repository.json');
+  fs.writeFileSync(chris4K01OutPath, JSON.stringify(chris4K01Repo, null, 2), 'utf8');
+
+  console.log(`\nChris 4 K01 Repository Generated (${chris4SourceOrigin}) -> ${chris4K01OutPath}`);
+  console.log('Evidence Inventory by Family (12 families):');
+  for (const fam of EVIDENCE_FAMILIES) {
+    console.log(`  - ${fam.padEnd(22, ' ')}: ${chris4K01Repo.familyInventory[fam]}`);
+  }
+  console.log('Evidence Inventory by Chart Frame (7 frames):');
+  for (const fr of CANONICAL_EVIDENCE_FRAMES) {
+    console.log(`  - ${fr.padEnd(22, ' ')}: ${chris4K01Repo.frameInventory[fr]}`);
+  }
+  console.log(
+    `Totals: natal=${chris4K01Repo.natalEvidence.length}, temporal=${chris4K01Repo.temporalEvidence.length}, blockedFrames=${chris4K01Repo.rejectedOrBlockedFrames.length}, overlaps=${chris4K01Repo.lineageGraph.overlapRelations.length}`
+  );
+  console.log('\n' + formatPlanetEvidenceSummary(chris4K01Repo, 'Jupiter'));
 
   // 5. Live Authenticated Verification (if FREE_ASTRO_API_KEY is configured)
   const apiKey = getFreeAstroApiKey();

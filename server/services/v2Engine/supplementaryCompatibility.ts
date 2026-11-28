@@ -251,22 +251,121 @@ function verifyInstantCoordsAndAyanamsa(
     }
   }
 
-  // 3. Ayanamsa check
-  const primaryAy = String(
-    master.frames.vedicLahiri.data?.ayanamshaLabel ||
-      master.calculationConventions?.ayanamsa?.vedic ||
-      'lahiri'
-  )
-    .trim()
-    .toLowerCase();
-  const suppAy = String(suppRaw.ayanamsha ?? req.ayanamsha ?? 'lahiri')
-    .trim()
-    .toLowerCase();
+  // 3. Ayanamsa check (verify BOTH identifier and numerical degrees against canonical Lahiri)
+  const expectedLahiriDeg = instant.astronomy.lahiriAyanamsaApproxDeg;
+  const AYANAMSA_DEG_TOLERANCE = 0.04;
+
+  const parseAyCandidate = (
+    rawVal: unknown,
+    explicitDeg: unknown
+  ): { label: string; numericDeg: number | null; isLahiriVerified: boolean; reason: string } => {
+    let label = '';
+    let numericDeg: number | null = null;
+
+    const inspect = (v: unknown) => {
+      if (v === null || v === undefined) return;
+      if (typeof v === 'number') {
+        if (Number.isFinite(v)) numericDeg = v;
+        return;
+      }
+      if (typeof v === 'string') {
+        const s = v.trim();
+        if (!s) return;
+        const n = Number(s);
+        if (Number.isFinite(n)) {
+          if (numericDeg === null) numericDeg = n;
+        } else if (!label) {
+          label = s;
+        }
+        return;
+      }
+      if (typeof v === 'object' && !Array.isArray(v)) {
+        const o = v as Record<string, unknown>;
+        if (o.valueDegrees !== undefined) inspect(o.valueDegrees);
+        if (o.value_degrees !== undefined) inspect(o.value_degrees);
+        if (o.degrees !== undefined) inspect(o.degrees);
+        if (o.value !== undefined) inspect(o.value);
+        if (o.id !== undefined) inspect(o.id);
+        else if (o.name !== undefined) inspect(o.name);
+      }
+    };
+
+    inspect(rawVal);
+    if (explicitDeg !== undefined && explicitDeg !== null && explicitDeg !== '') {
+      const n = Number(explicitDeg);
+      if (Number.isFinite(n)) numericDeg = n;
+    }
+
+    const low = label.toLowerCase();
+    const labelLooksLahiri = low.includes('lahiri') || low.includes('chitrapaksha');
+    const labelExplicitNonLahiri = Boolean(low) && !labelLooksLahiri;
+
+    if (numericDeg !== null) {
+      const delta = Math.abs(numericDeg - expectedLahiriDeg);
+      const numOk = delta <= AYANAMSA_DEG_TOLERANCE;
+      if (numOk && !labelExplicitNonLahiri) {
+        return {
+          label: label || 'lahiri',
+          numericDeg,
+          isLahiriVerified: true,
+          reason: `${numericDeg.toFixed(6)}° matches canonical Lahiri ${expectedLahiriDeg.toFixed(4)}° (Δ=${delta.toFixed(5)}°)`,
+        };
+      }
+      return {
+        label: label || `numeric(${numericDeg})`,
+        numericDeg,
+        isLahiriVerified: false,
+        reason: `numeric ${numericDeg.toFixed(6)}° vs canonical Lahiri ${expectedLahiriDeg.toFixed(4)}° (Δ=${delta.toFixed(5)}°) / label="${label}"`,
+      };
+    }
+
+    if (labelLooksLahiri) {
+      return {
+        label,
+        numericDeg: null,
+        isLahiriVerified: true,
+        reason: `label="${label}"`,
+      };
+    }
+
+    return {
+      label: label || 'unspecified',
+      numericDeg: null,
+      isLahiriVerified: false,
+      reason: `non-Lahiri label="${label || 'unspecified'}"`,
+    };
+  };
+
+  const vedicFrame = master.frames.vedicLahiri.data;
+  const primaryAy = parseAyCandidate(
+    vedicFrame?.ayanamsha ??
+      vedicFrame?.ayanamshaLabel ??
+      master.calculationConventions?.ayanamsa?.vedic ??
+      'lahiri',
+    vedicFrame?.ayanamshaValueDegrees ??
+      vedicFrame?.ayanamsha?.valueDegrees ??
+      master.calculationConventions?.ayanamsa?.vedicValueDegrees
+  );
+  const suppChartMeta = asObj(asObj(suppRaw.chart)?.metadata);
+  const suppAy = parseAyCandidate(
+    suppRaw.ayanamsha ?? req.ayanamsha ?? 'lahiri',
+    suppRaw.ayanamsha_value ??
+      suppRaw.ayanamsha_degrees ??
+      suppChartMeta?.ayanamsha_value ??
+      suppChartMeta?.ayanamsha_degrees
+  );
+
+  const bothHaveNumeric = primaryAy.numericDeg !== null && suppAy.numericDeg !== null;
+  const crossNumericDelta = bothHaveNumeric
+    ? Math.abs(primaryAy.numericDeg! - suppAy.numericDeg!)
+    : null;
+  const crossNumericOk = crossNumericDelta === null || crossNumericDelta <= AYANAMSA_DEG_TOLERANCE;
+
   const ayanamsaCompatible =
-    suppAy.includes('lahiri') && (primaryAy.includes('lahiri') || primaryAy === '1');
+    primaryAy.isLahiriVerified && suppAy.isLahiriVerified && crossNumericOk;
   if (!ayanamsaCompatible) {
     notes.push(
-      `Supplementary ayanamsha ("${suppAy || 'unspecified'}") is incompatible with primary "${primaryAy}".`
+      `Supplementary ayanamsha incompatible: primary=[${primaryAy.reason}], supplementary=[${suppAy.reason}]${crossNumericDelta !== null ? `, crossΔ=${crossNumericDelta.toFixed(5)}°` : ''}.`
     );
   }
 
@@ -713,6 +812,12 @@ export function evaluateBhavaChalitCompatibility(
         h10MidpointVsRefMcDeltaDeg: null,
         sripatiConventionCompatible: false,
         kpPlacidusConfusionDetected: false,
+        nodeDependentPlacementsAudit: {
+          nodeConventionNote:
+            'Mean vs True Node differences are separated from 7-classical-planet and Ascendant compatibility checks.',
+          deltaDeg: { rahu: null, ketu: null },
+          placements: [],
+        },
         methodologyAudit: null,
         reasons: ['FreeAstroAPI supplementary response has no Bhava Chalit dataset.'],
       },
@@ -886,6 +991,30 @@ export function evaluateBhavaChalitCompatibility(
     },
   };
 
+  const nodeDependentPlacementsAudit: NonNullable<
+    BhavaChalitCompatibilityAudit['nodeDependentPlacementsAudit']
+  > = {
+    nodeConventionNote:
+      nodeLongitudesDeltaDeg.rahu !== null && nodeLongitudesDeltaDeg.rahu > 0.2
+        ? `Rahu/Ketu longitude delta (Rahu Δ=${nodeLongitudesDeltaDeg.rahu}°, Ketu Δ=${nodeLongitudesDeltaDeg.ketu ?? 'N/A'}°) reflects Mean vs True Node convention and is isolated from 7-classical-planet & Sripati cusp verification.`
+        : 'Rahu/Ketu node placements align within tolerance and are audited separately from 7 classical planets.',
+    deltaDeg: nodeLongitudesDeltaDeg,
+    placements: (['Rahu', 'Ketu'] as const).map((nodeName) => {
+      const pNode = primaryBodyMap.get(nodeName);
+      const sD1Node = suppD1BodyMap.get(nodeName);
+      const bcNode = bcBodyMap.get(nodeName);
+      const rashiRaw = Number(pNode?.raw.house ?? sD1Node?.raw.house ?? bcNode?.raw.rashi_house ?? NaN);
+      const chalitRaw = Number(bcNode?.raw.chalit_house ?? bcNode?.raw.house ?? NaN);
+      return {
+        body: nodeName,
+        rashiHouse: Number.isInteger(rashiRaw) ? rashiRaw : null,
+        chalitHouse: Number.isInteger(chalitRaw) ? chalitRaw : null,
+        primaryDegree: pNode?.lon ?? null,
+        supplementaryDegree: bcNode?.lon ?? sD1Node?.lon ?? null,
+      };
+    }),
+  };
+
   return {
     audit: {
       outcome: compatible ? 'accepted' : 'rejected_incompatible',
@@ -902,6 +1031,7 @@ export function evaluateBhavaChalitCompatibility(
       h10MidpointVsRefMcDeltaDeg,
       sripatiConventionCompatible,
       kpPlacidusConfusionDetected,
+      nodeDependentPlacementsAudit,
       methodologyAudit: frameData.methodologyAudit,
       reasons: compatible
         ? ['Supplementary FreeAstroAPI Bhava Chalit passed all instant, coordinate, longitude, MC/Asc, and Sripati midpoint checks.']

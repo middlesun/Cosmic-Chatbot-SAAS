@@ -34,15 +34,48 @@ const LEVEL_NAMES = [
 
 const SUB_PERIOD_KEYS = [
   'subPeriods',
+  'subDashas',
+  'subdashas',
+  'sub_dashas',
+  'sub_periods',
   'antardashas',
+  'antardasha',
   'bhuktis',
+  'bhukti',
   'pratyantardashas',
+  'pratyantardasha',
+  'pratyantars',
+  'pratyantar',
   'sookshmadashas',
   'sookshmas',
+  'sookshma',
+  'sukshmadashas',
+  'sukshmas',
+  'sukshma',
   'pranadashas',
   'pranas',
+  'prana',
+  'paryantardashas',
+  'paryantardasha',
+  'antaras',
+  'antara',
+  'nested',
   'children',
   'periods',
+  'items',
+  'levels',
+] as const;
+
+const SINGLE_CHILD_OBJECT_KEYS = [
+  'antardasha',
+  'bhukti',
+  'pratyantardasha',
+  'pratyantar',
+  'sookshma',
+  'sukshma',
+  'prana',
+  'subPeriod',
+  'subDasha',
 ] as const;
 
 function asObj(val: unknown): Record<string, unknown> | null {
@@ -86,6 +119,39 @@ export interface NormalizedDashaPeriodNode {
   [extraKey: string]: unknown;
 }
 
+function computeFractionalYearsFromYmd(params: {
+  years: unknown;
+  months?: unknown;
+  days?: unknown;
+}): number | null {
+  const yRaw = params.years !== undefined && params.years !== null && params.years !== '' ? Number(params.years) : Number.NaN;
+  const mRaw = params.months !== undefined && params.months !== null && params.months !== '' ? Number(params.months) : Number.NaN;
+  const dRaw = params.days !== undefined && params.days !== null && params.days !== '' ? Number(params.days) : Number.NaN;
+
+  const hasY = Number.isFinite(yRaw);
+  const hasM = Number.isFinite(mRaw);
+  const hasD = Number.isFinite(dRaw);
+
+  if (hasY) {
+    const isAlreadyFractional = Math.abs(yRaw - Math.trunc(yRaw)) >= 1e-4;
+    const hasMonthsOrDays = (hasM && mRaw !== 0) || (hasD && dRaw !== 0);
+    if (!isAlreadyFractional && hasMonthsOrDays) {
+      const mFrac = hasM ? mRaw / 12 : 0;
+      const dFrac = hasD ? dRaw / 365.2425 : 0;
+      return Number((yRaw + mFrac + dFrac).toFixed(4));
+    }
+    return Number(yRaw.toFixed(4));
+  }
+
+  if (hasM || hasD) {
+    const mFrac = hasM ? mRaw / 12 : 0;
+    const dFrac = hasD ? dRaw / 365.2425 : 0;
+    return Number((mFrac + dFrac).toFixed(4));
+  }
+
+  return null;
+}
+
 function normalizeDashaTree(
   rawPeriods: Array<Record<string, unknown>>,
   depth: number,
@@ -101,7 +167,16 @@ function normalizeDashaTree(
     for (const k of SUB_PERIOD_KEYS) {
       if (Array.isArray(raw[k]) && (raw[k] as unknown[]).length > 0) {
         rawSubs = asObjArr(raw[k]);
-        break;
+        if (rawSubs.length > 0) break;
+      }
+    }
+    if (rawSubs.length === 0) {
+      for (const k of SINGLE_CHILD_OBJECT_KEYS) {
+        const single = asObj(raw[k]);
+        if (single) {
+          rawSubs = [single];
+          break;
+        }
       }
     }
 
@@ -110,17 +185,27 @@ function normalizeDashaTree(
       deepest = childRes.maxDepth;
     }
 
-    const durRaw = Number(raw.durationYears ?? raw.duration_years ?? Number.NaN);
     const startRaw = raw.startDate ?? raw.start_date;
     const endRaw = raw.endDate ?? raw.end_date;
+    const startStr = typeof startRaw === 'string' && startRaw.trim() ? startRaw : null;
+    const endStr = typeof endRaw === 'string' && endRaw.trim() ? endRaw : null;
+
+    let durRaw = Number(raw.durationYears ?? raw.duration_years ?? Number.NaN);
+    if (!Number.isFinite(durRaw) && startStr && endStr) {
+      const sMs = Date.parse(startStr);
+      const eMs = Date.parse(endStr);
+      if (Number.isFinite(sMs) && Number.isFinite(eMs) && eMs >= sMs) {
+        durRaw = Number(((eMs - sMs) / (365.2425 * 86400 * 1000)).toFixed(6));
+      }
+    }
 
     return {
       ...raw,
       level: depth,
       levelName: LEVEL_NAMES[depth - 1] ?? `level_${depth}`,
       lord: planetNormalizer(raw.planetName ?? raw.planet ?? raw.lord ?? raw.signName ?? raw.sign),
-      start_date: typeof startRaw === 'string' && startRaw.trim() ? startRaw : null,
-      end_date: typeof endRaw === 'string' && endRaw.trim() ? endRaw : null,
+      start_date: startStr,
+      end_date: endStr,
       duration_years: Number.isFinite(durRaw) ? durRaw : null,
       subPeriods: childRes ? childRes.nodes : [],
     };
@@ -136,28 +221,70 @@ export function normalizeAstroWayVimshottari5Level(
   if (!raw) return null;
   const init = asObj(raw.initial) || {};
   const lord = planetNormalizer(init.initialPlanetName ?? init.initialPlanet ?? init.lord);
-  const remY = Number(init.balanceYears ?? Number.NaN);
-  const elY = Number(init.elapsedYears ?? Number.NaN);
   const canonicalFullY = VIMSHOTTARI_FULL_YEARS[lord];
+
+  const remYFractional = computeFractionalYearsFromYmd({
+    years: init.balanceYears ?? init.remainingYears ?? init.remaining_years,
+    months: init.balanceMonths ?? init.remainingMonths,
+    days: init.balanceDays ?? init.remainingDays,
+  });
+  let elYFractional = computeFractionalYearsFromYmd({
+    years: init.elapsedYears ?? init.elapsed_years,
+    months: init.elapsedMonths,
+    days: init.elapsedDays,
+  });
+
+  const fullDurationYears =
+    canonicalFullY ??
+    (remYFractional !== null && elYFractional !== null
+      ? Number((remYFractional + elYFractional).toFixed(4))
+      : null);
+
+  if (elYFractional === null && fullDurationYears !== null && remYFractional !== null) {
+    elYFractional = Number(Math.max(0, fullDurationYears - remYFractional).toFixed(4));
+  }
 
   const rawPeriods = asObjArr(raw.periods ?? raw.mahadashas);
   const tree = normalizeDashaTree(rawPeriods, 1, planetNormalizer);
+  const maxDepthObserved = rawPeriods.length > 0 ? tree.maxDepth : 0;
+  const levelsObserved = LEVEL_NAMES.slice(0, Math.min(5, maxDepthObserved));
+
+  const birthBalance = {
+    lord,
+    remaining_years: remYFractional,
+    elapsed_years: elYFractional,
+    full_duration_years: fullDurationYears,
+    balanceYearsRaw:
+      init.balanceYears !== undefined && init.balanceYears !== null && Number.isFinite(Number(init.balanceYears))
+        ? Number(init.balanceYears)
+        : null,
+    balanceMonths:
+      init.balanceMonths !== undefined && init.balanceMonths !== null && Number.isFinite(Number(init.balanceMonths))
+        ? Number(init.balanceMonths)
+        : init.balanceMonths ?? null,
+    balanceDays:
+      init.balanceDays !== undefined && init.balanceDays !== null && Number.isFinite(Number(init.balanceDays))
+        ? Number(init.balanceDays)
+        : init.balanceDays ?? null,
+  };
+
+  const referenceDateSnapshot = asObj(raw.current) ?? asObj(raw.active) ?? null;
 
   return {
     ...raw,
-    birth_balance: {
-      lord,
-      remaining_years: Number.isFinite(remY) ? remY : null,
-      elapsed_years: Number.isFinite(elY) ? elY : null,
-      full_duration_years:
-        canonicalFullY ??
-        (Number.isFinite(remY) && Number.isFinite(elY) ? Number((remY + elY).toFixed(4)) : null),
-      balanceMonths: init.balanceMonths ?? null,
-      balanceDays: init.balanceDays ?? null,
-    },
-    maxDepthObserved: rawPeriods.length > 0 ? tree.maxDepth : 0,
+    birth_balance: birthBalance,
+    maxDepthObserved,
+    levelsObserved,
     mahadashas: tree.nodes,
-    referenceDateActive: asObj(raw.current) ?? null,
+    natalTimeline: {
+      temporalScope: 'natal_invariant',
+      birth_balance: birthBalance,
+      maxDepthObserved,
+      levelsObserved,
+      mahadashas: tree.nodes,
+    },
+    referenceDateActive: referenceDateSnapshot,
+    referenceDateSnapshot,
   };
 }
 

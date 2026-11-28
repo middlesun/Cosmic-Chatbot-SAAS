@@ -20,6 +20,7 @@ export * from './supplementaryCompatibility';
 export * from './localAshtakavarga';
 export * from './localVedicMath';
 export * from './compiler';
+export * from './layerCContract';
 export {
   evaluateAshtakavargaCompatibility as validateSupplementaryAshtakavarga,
   evaluateBhavaChalitCompatibility as validateSupplementaryBhavaChalit,

@@ -760,7 +760,7 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
         const localPreferred = m.providerExtendedDatasets?.localAshtakavargaPreferred === true;
         if (localPreferred && prastaraKeys.length >= 7) {
           return {
-            status: 'independently_validated',
+            status: 'internally_verified',
             source: 'local:localAshtakavarga (preferred_canonical)',
             acquiredAtUtc: m.generatedAtUtc ?? null,
             version: m.recalculationVersion ?? V2_RECALCULATION_VERSION,
@@ -790,7 +790,7 @@ function buildManifestDescriptors(): ManifestDescriptor[] {
           prastaraKeys.length >= 7;
         return {
           status: crossValidated
-            ? 'independently_validated'
+            ? 'internally_verified'
             : prastaraKeys.length >= 7
             ? 'available'
             : 'provisional',

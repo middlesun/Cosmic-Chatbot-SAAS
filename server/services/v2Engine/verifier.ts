@@ -2537,8 +2537,29 @@ export function verifyMasterChartRecord(
       let sumViolations = 0;
       let maxDepthSeen = 0;
 
+      const CHILD_PERIOD_KEYS = [
+        'subPeriods',
+        'subDashas',
+        'subdashas',
+        'antardashas',
+        'antardasha',
+        'bhuktis',
+        'bhukti',
+        'pratyantardashas',
+        'pratyantardasha',
+        'pratyantars',
+        'pratyantar',
+        'sookshmadashas',
+        'sookshmas',
+        'sookshma',
+        'pranadashas',
+        'pranas',
+        'prana',
+        'children',
+      ] as const;
+
       const auditSubLevel = (parentDur: number | null, children: Array<Record<string, unknown>>, depth: number) => {
-        if (children.length === 0) return;
+        if (children.length === 0 || depth > 5) return;
         if (depth > maxDepthSeen) maxDepthSeen = depth;
         const durs = children
           .map((c) => Number(c.durationYears ?? c.duration_years ?? NaN))
@@ -2551,11 +2572,15 @@ export function verifyMasterChartRecord(
           }
         }
         for (const c of children) {
-          const nested = Array.isArray(c.subPeriods)
-            ? (c.subPeriods as Array<Record<string, unknown>>)
-            : Array.isArray(c.antardashas)
-            ? (c.antardashas as Array<Record<string, unknown>>)
-            : [];
+          let nested: Array<Record<string, unknown>> = [];
+          for (const k of CHILD_PERIOD_KEYS) {
+            if (Array.isArray(c[k]) && (c[k] as unknown[]).length > 0) {
+              nested = (c[k] as unknown[]).filter(
+                (x): x is Record<string, unknown> => Boolean(x && typeof x === 'object' && !Array.isArray(x))
+              );
+              if (nested.length > 0) break;
+            }
+          }
           const cDur = Number(c.durationYears ?? c.duration_years ?? NaN);
           if (nested.length > 0) {
             auditSubLevel(Number.isFinite(cDur) ? cDur : null, nested, depth + 1);

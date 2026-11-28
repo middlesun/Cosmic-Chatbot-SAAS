@@ -32,8 +32,8 @@ import {
   BirthInstantTimezoneError,
   BirthInstantValidationError,
   buildLayerBMasterChartRecord,
-  buildLayerCAnalyticalShell,
   buildLegacyVsV2ComparisonReport,
+  compileV2FoundationalChart,
   deleteAstroWayBatchSession,
   executeAstroWayBatchedBundle,
   generateSessionId,
@@ -43,17 +43,18 @@ import {
   getFreeAstroApiSecretStatus,
   listResumableAstroWaySessions,
   loadAstroWayBatchSession,
+  prepareLayerCAnalyticalInput,
   readRuntimeHeapBytes,
   reconstructAstroWayLayerAFromSession,
   redactSecretsDeep,
   resolveCanonicalBirthInstant,
   saveAstroWayBatchSession,
   summarizeRuntimeHeapTelemetry,
-  verifyMasterChartRecord,
   type BirthTimePrecision,
   type DstFoldDisambiguation,
   type V2DiagnosticProviderId,
 } from '../services/v2Engine';
+import { buildAnalyticalEvidenceRepository } from '../services/analyticalKernel';
 import { sendClientInviteEmail, sendSupportReplyEmail } from '../services/email';
 import {
   ALL_DEFAULT_PROMPTS,
@@ -3524,15 +3525,22 @@ function assembleV2DiagnosticBundleResponse(params: {
   heapBeforeBytes: number | null;
 }) {
   const { provider, profile, lat, lng, instant, layerA, ianaInferenceNote, startedAtMs, heapBeforeBytes } = params;
-  const layerB = buildLayerBMasterChartRecord({ instant, rawLayerA: layerA });
-  const layerC = buildLayerCAnalyticalShell(layerB);
-  const verificationReport = verifyMasterChartRecord(layerB, layerA);
+  const compiledFoundationalChart = compileV2FoundationalChart({
+    instant,
+    astroWayRaw: provider === 'astroway' ? layerA : null,
+    primaryLayerA: layerA,
+  });
+  const layerBMaster = compiledFoundationalChart.layerBMaster;
+  const layerC = compiledFoundationalChart.layerCShell;
+  const layerCInputContract = prepareLayerCAnalyticalInput(compiledFoundationalChart);
+  const analyticalEvidenceRepository = buildAnalyticalEvidenceRepository(layerCInputContract);
+  const verificationReport = compiledFoundationalChart.verification;
   const legacyVsV2Comparison = buildLegacyVsV2ComparisonReport({
     profileId: String(profile.id),
     profileName: String(profile.name || 'Unnamed Profile'),
     legacyChartJson: profile.chart_json ?? null,
     instant,
-    layerB,
+    layerB: layerBMaster,
   });
 
   const sanitizedPayload = redactSecretsDeep({
@@ -3565,8 +3573,12 @@ function assembleV2DiagnosticBundleResponse(params: {
       hasLegacyChart: Boolean(profile.chart_json),
     },
     layerA,
-    layerB,
+    layerB: layerBMaster,
     layerC,
+    datasetManifest: compiledFoundationalChart.manifest,
+    compiledFoundationalChart,
+    layerCInputContract,
+    analyticalEvidenceRepository,
     verificationReport,
     legacyVsV2Comparison,
   });
@@ -3578,6 +3590,12 @@ function assembleV2DiagnosticBundleResponse(params: {
     layerABytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerA)).length,
     layerBBytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerB)).length,
     layerCBytes: v2TextEncoder.encode(JSON.stringify(sanitizedPayload.layerC)).length,
+    compiledFoundationalChartBytes: v2TextEncoder.encode(
+      JSON.stringify(sanitizedPayload.compiledFoundationalChart)
+    ).length,
+    analyticalEvidenceRepositoryBytes: v2TextEncoder.encode(
+      JSON.stringify(sanitizedPayload.analyticalEvidenceRepository)
+    ).length,
     verificationReportBytes: v2TextEncoder.encode(
       JSON.stringify(sanitizedPayload.verificationReport)
     ).length,

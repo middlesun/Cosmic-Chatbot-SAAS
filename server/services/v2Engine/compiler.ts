@@ -47,6 +47,7 @@ import {
 export interface CompileV2FoundationalChartParams {
   instant: CanonicalBirthInstant;
   astroWayRaw?: LayerARawProviderRecord | null;
+  primaryLayerA?: LayerARawProviderRecord | null;
   freeAstroApiSupplementary?: SanitizedProviderCallRecord | null;
   externalReferenceData?: ExternalReferenceInput | null;
   options?: {
@@ -203,10 +204,15 @@ export function compileV2FoundationalChart(
   const {
     instant,
     astroWayRaw = null,
+    primaryLayerA = null,
     freeAstroApiSupplementary = null,
     externalReferenceData = null,
     options = {},
   } = params;
+
+  const effectivePrimaryLayerA = astroWayRaw ?? primaryLayerA;
+  const effectiveAstroWayRaw =
+    astroWayRaw ?? (primaryLayerA?.providerId === 'astroway' ? primaryLayerA : null);
 
   const includeLocalModules = options.includeLocalModules !== false;
   const fallbackToLocalSripatiBhavaChalit = options.fallbackToLocalSripatiBhavaChalit !== false;
@@ -214,7 +220,7 @@ export function compileV2FoundationalChart(
   // Step 1 + 2: Normalize primary AstroWay foundation & run Phase 3 compatibility gates (no primary overwrite)
   let layerBMaster = buildLayerBMasterChartRecord({
     instant,
-    rawLayerA: astroWayRaw,
+    rawLayerA: effectivePrimaryLayerA,
     supplementaryFreeAstroApiVedicCall: freeAstroApiSupplementary,
     referenceDateIso: options.targetDateIso ?? null,
     preferLocalAshtakavarga: options.preferLocalAshtakavarga ?? false,
@@ -274,13 +280,13 @@ export function compileV2FoundationalChart(
   const manifest = layerBMaster.datasetManifest ?? evaluateDatasetCompleteness(layerBMaster);
   layerBMaster.datasetManifest = manifest;
 
-  const verification = verifyMasterChartRecord(layerBMaster, astroWayRaw, {
+  const verification = verifyMasterChartRecord(layerBMaster, effectivePrimaryLayerA, {
     externalReferenceData,
   });
   const completenessTable = buildCompletenessStateTable(layerBMaster);
   const datasetInventory = buildDatasetInventory(layerBMaster, localModules);
   const endpointAndCreditSummary = buildEndpointAndCreditSummary(
-    astroWayRaw,
+    effectiveAstroWayRaw,
     freeAstroApiSupplementary,
     localModules
   );

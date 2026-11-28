@@ -155,6 +155,8 @@ interface V2DiagnosticRunResult {
       layerABytes: number;
       layerBBytes: number;
       layerCBytes: number;
+      compiledFoundationalChartBytes?: number;
+      analyticalEvidenceRepositoryBytes?: number;
       verificationReportBytes: number;
       legacyVsV2ComparisonBytes: number;
       totalResponseBytes: number;
@@ -330,6 +332,7 @@ interface V2DiagnosticRunResult {
       } | null;
     };
     providerExtendedDatasets?: Record<string, unknown> | null;
+    datasetManifest?: Record<string, unknown>;
     remainingClassicalGaps: Array<{
       capability: string;
       freeAstroApiStatus: string;
@@ -338,6 +341,10 @@ interface V2DiagnosticRunResult {
     }>;
   };
   layerC: Record<string, unknown>;
+  datasetManifest?: Record<string, unknown>;
+  compiledFoundationalChart?: Record<string, unknown>;
+  layerCInputContract?: Record<string, unknown>;
+  analyticalEvidenceRepository?: Record<string, unknown> | null;
   verificationReport: {
     profileName: string;
     mode: string;
@@ -1132,6 +1139,23 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
       legacyDefectAudit: result.legacyVsV2Comparison.legacyDefectAudit,
     };
 
+    const datasetManifest =
+      result.datasetManifest ?? result.layerB.datasetManifest ?? null;
+
+    const consolidatedFoundationalChart =
+      result.compiledFoundationalChart ?? {
+        schemaVersion: 'v2.compiled_foundational_chart.1.0',
+        compiledAtUtc: result.bundleMetadata.generatedAtUtc,
+        canonicalBirthInstant: result.layerB.canonicalBirthInstant,
+        layerBMaster: result.layerB,
+        layerCShell: result.layerC,
+        manifest: datasetManifest,
+        verification: result.verificationReport,
+        layerCInputContract: result.layerCInputContract ?? null,
+      };
+
+    const analyticalEvidenceRepository = result.analyticalEvidenceRepository ?? null;
+
     const completeDiagnosticBundle = {
       bundleMetadata: result.bundleMetadata,
       runtimeTelemetry: result.runtimeTelemetry,
@@ -1140,12 +1164,18 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
       layerA: result.layerA,
       layerB: result.layerB,
       layerC: result.layerC,
+      datasetManifest,
+      compiledFoundationalChart: consolidatedFoundationalChart,
+      layerCInputContract: result.layerCInputContract ?? null,
+      analyticalEvidenceRepository,
       verificationAndProvenance,
       legacyVsV2Comparison: result.legacyVsV2Comparison,
     };
 
     return {
       completeDiagnosticBundle,
+      consolidatedFoundationalChart,
+      analyticalEvidenceRepository,
       rawApiResponses,
       layerA: result.layerA,
       layerB: result.layerB,
@@ -1696,6 +1726,46 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
                   {formatKb(result.runtimeTelemetry.artifactSizesBytes.verificationReportBytes)})
                 </span>
               </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  triggerJsonDownload(
+                    `${filePrefix}-consolidated-foundational-chart.json`,
+                    downloadPayloads.consolidatedFoundationalChart
+                  )
+                }
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
+              >
+                <Download className="h-3 w-3" />
+                <span>
+                  Consolidated Foundational Chart + Manifest JSON
+                  {result.runtimeTelemetry.artifactSizesBytes.compiledFoundationalChartBytes
+                    ? ` (${formatKb(result.runtimeTelemetry.artifactSizesBytes.compiledFoundationalChartBytes)})`
+                    : ''}
+                </span>
+              </button>
+
+              {downloadPayloads.analyticalEvidenceRepository && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    triggerJsonDownload(
+                      `${filePrefix}-analytical-evidence-repository-k01.json`,
+                      downloadPayloads.analyticalEvidenceRepository
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>
+                    Analytical Evidence Repository (K01) JSON
+                    {result.runtimeTelemetry.artifactSizesBytes.analyticalEvidenceRepositoryBytes
+                      ? ` (${formatKb(result.runtimeTelemetry.artifactSizesBytes.analyticalEvidenceRepositoryBytes)})`
+                      : ''}
+                  </span>
+                </button>
+              )}
 
               <button
                 type="button"

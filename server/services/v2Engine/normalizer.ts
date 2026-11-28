@@ -252,6 +252,137 @@ const VIMSHOTTARI_FULL_YEARS: Record<string, number> = {
   Mercury: 17,
 };
 
+export const LAHIRI_AYANAMSA_DEG_TOLERANCE = 0.04;
+
+export interface ResolvedAyanamshaDescriptor {
+  id: string;
+  name: string;
+  valueDegrees: number | null;
+  matchesCanonicalLahiri: boolean;
+  reason: string;
+}
+
+export function resolveAyanamshaDescriptor(params: {
+  rawValue?: unknown;
+  rawValueDegrees?: unknown;
+  requestedAyanamsa?: unknown;
+  expectedLahiriDeg: number;
+}): ResolvedAyanamshaDescriptor {
+  const { rawValue, rawValueDegrees, requestedAyanamsa, expectedLahiriDeg } = params;
+
+  let labelCandidate = '';
+  let numericCandidate: number | null = null;
+
+  const inspectValue = (val: unknown) => {
+    if (val === null || val === undefined) return;
+    if (typeof val === 'number') {
+      if (Number.isFinite(val)) numericCandidate = val;
+      return;
+    }
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (!trimmed) return;
+      const asNum = Number(trimmed);
+      if (Number.isFinite(asNum)) {
+        if (numericCandidate === null) numericCandidate = asNum;
+      } else if (!labelCandidate) {
+        labelCandidate = trimmed;
+      }
+      return;
+    }
+    if (typeof val === 'object' && !Array.isArray(val)) {
+      const obj = val as Record<string, unknown>;
+      const nestedDeg = obj.valueDegrees ?? obj.value_degrees ?? obj.degrees ?? obj.degree ?? obj.value;
+      if (nestedDeg !== undefined) inspectValue(nestedDeg);
+      const nestedId = obj.id ?? obj.name ?? obj.label ?? obj.type;
+      if (nestedId !== undefined) inspectValue(nestedId);
+    }
+  };
+
+  inspectValue(rawValue);
+  if (rawValueDegrees !== undefined && rawValueDegrees !== null && rawValueDegrees !== '') {
+    const parsed = Number(rawValueDegrees);
+    if (Number.isFinite(parsed)) {
+      numericCandidate = parsed;
+    }
+  }
+
+  const reqStr =
+    typeof requestedAyanamsa === 'string' && requestedAyanamsa.trim()
+      ? requestedAyanamsa.trim().toLowerCase()
+      : '';
+  const lowLabel = labelCandidate.toLowerCase();
+
+  const labelLooksLahiri =
+    lowLabel.includes('lahiri') || lowLabel.includes('chitrapaksha');
+  const labelExplicitNonLahiri =
+    Boolean(lowLabel) && !labelLooksLahiri;
+  const requestedExplicitNonLahiri =
+    Boolean(reqStr) && !reqStr.includes('lahiri') && !reqStr.includes('chitrapaksha');
+
+  if (numericCandidate !== null) {
+    const delta = Math.abs(numericCandidate - expectedLahiriDeg);
+    const numericMatchesLahiri = delta <= LAHIRI_AYANAMSA_DEG_TOLERANCE;
+    if (numericMatchesLahiri && !labelExplicitNonLahiri && !requestedExplicitNonLahiri) {
+      return {
+        id: 'lahiri',
+        name: 'Lahiri (Chitrapaksha)',
+        valueDegrees: numericCandidate,
+        matchesCanonicalLahiri: true,
+        reason: `Numeric ayanamsha ${numericCandidate.toFixed(6)}° matches canonical Lahiri (${expectedLahiriDeg.toFixed(4)}°, Δ=${delta.toFixed(5)}°).`,
+      };
+    }
+    const nonLahiriId = labelCandidate
+      ? labelCandidate.toLowerCase().replace(/\s+/g, '_')
+      : 'non_lahiri_numeric';
+    return {
+      id: nonLahiriId,
+      name: labelCandidate || `Non-Lahiri (${numericCandidate.toFixed(6)}°)`,
+      valueDegrees: numericCandidate,
+      matchesCanonicalLahiri: false,
+      reason: `Numeric ayanamsha ${numericCandidate.toFixed(6)}° diverges from canonical Lahiri (${expectedLahiriDeg.toFixed(4)}°, Δ=${delta.toFixed(5)}°) or explicit non-Lahiri label (${labelCandidate || reqStr}).`,
+    };
+  }
+
+  if (labelLooksLahiri && !requestedExplicitNonLahiri) {
+    return {
+      id: 'lahiri',
+      name: labelCandidate || 'Lahiri (Chitrapaksha)',
+      valueDegrees: null,
+      matchesCanonicalLahiri: true,
+      reason: `Explicit Lahiri label "${labelCandidate}" without conflicting numeric degrees.`,
+    };
+  }
+
+  if (labelCandidate) {
+    return {
+      id: labelCandidate.toLowerCase().replace(/\s+/g, '_'),
+      name: labelCandidate,
+      valueDegrees: null,
+      matchesCanonicalLahiri: false,
+      reason: `Non-Lahiri ayanamsha label "${labelCandidate}".`,
+    };
+  }
+
+  if (reqStr.includes('lahiri') || reqStr.includes('chitrapaksha')) {
+    return {
+      id: 'lahiri',
+      name: 'Lahiri (Chitrapaksha)',
+      valueDegrees: null,
+      matchesCanonicalLahiri: true,
+      reason: 'Resolved from explicit Lahiri request parameter (provider omitted ayanamsha field).',
+    };
+  }
+
+  return {
+    id: 'unspecified',
+    name: 'Unspecified',
+    valueDegrees: null,
+    matchesCanonicalLahiri: false,
+    reason: 'No ayanamsha identifier or numerical value supplied.',
+  };
+}
+
 export function normalizeAstroWayPlanetName(rawName: unknown): string {
   const raw = String(rawName ?? '').trim();
   if (!raw) return '';
@@ -658,6 +789,21 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     });
   }
 
+  const vedicRequestedAy =
+    calls.vedic_kundli?.sanitizedRequest?.ayanamsa ??
+    calls.chart_sidereal?.sanitizedRequest?.ayanamsa ??
+    'lahiri';
+  const vedicAyDescriptor = resolveAyanamshaDescriptor({
+    rawValue: kundli?.ayanamsa ?? chartSidereal?.ayanamsa ?? vedicRequestedAy,
+    rawValueDegrees:
+      kundli?.ayanamsaDegrees ??
+      kundli?.ayanamsaValue ??
+      chartSidereal?.ayanamsaDegrees ??
+      chartSidereal?.ayanamsaValue,
+    requestedAyanamsa: vedicRequestedAy,
+    expectedLahiriDeg: instant.astronomy.lahiriAyanamsaApproxDeg,
+  });
+
   // Build Shodashavarga charts from /vedic/varga/D* (and mirror canonical D1 if varga_D1 call was pruned)
   const vargaChartsByDivision: Record<string, Record<string, unknown>> = {};
   for (const [callId, callRec] of Object.entries(calls)) {
@@ -667,6 +813,12 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     if (!vData) continue;
     const vLagna = asObj(vData.lagna);
     const vLagnaSign = resolveSignNameFromAstroWayEntry(vLagna);
+    const vAyDesc = resolveAyanamshaDescriptor({
+      rawValue: vData.ayanamsa ?? callRec?.sanitizedRequest?.ayanamsa,
+      rawValueDegrees: vData.ayanamsaDegrees ?? vData.ayanamsaValue,
+      requestedAyanamsa: callRec?.sanitizedRequest?.ayanamsa ?? 'lahiri',
+      expectedLahiriDeg: instant.astronomy.lahiriAyanamsaApproxDeg,
+    });
     const vPlanets = asObjArr(vData.planets).map((vp) => ({
       name: normalizeAstroWayPlanetName(vp.name || vp.id),
       raw_name: vp.name ?? vp.id,
@@ -677,7 +829,8 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     }));
     vargaChartsByDivision[divKey] = {
       varga: vData.varga ?? divKey,
-      ayanamsa: vData.ayanamsa ?? null,
+      ayanamsa: vAyDesc.id !== 'unspecified' ? vAyDesc.id : null,
+      ayanamsaValueDegrees: vAyDesc.valueDegrees,
       calibrated: true,
       ascendant: vLagna
         ? {
@@ -692,7 +845,8 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
     vargaChartsByDivision.D1 = {
       varga: 'D1',
       source: 'canonical_d1_mirror',
-      ayanamsa: kundli?.ayanamsa ?? 'lahiri',
+      ayanamsa: vedicAyDescriptor.id,
+      ayanamsaValueDegrees: vedicAyDescriptor.valueDegrees,
       calibrated: true,
       ascendant: {
         ...(kundliLagna || {}),
@@ -788,7 +942,13 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
   let vedicLahiri: DatasetEnvelope<VedicLahiriFrame>;
   if (chartSidereal || kundli) {
     const vedicFrameData: VedicLahiriFrame = {
-      ayanamshaLabel: String(kundli?.ayanamsa ?? 'lahiri'),
+      ayanamshaLabel: vedicAyDescriptor.id,
+      ayanamshaValueDegrees: vedicAyDescriptor.valueDegrees,
+      ayanamsha: {
+        id: vedicAyDescriptor.id,
+        name: vedicAyDescriptor.name,
+        valueDegrees: vedicAyDescriptor.valueDegrees,
+      },
       houseSystem: String(sidHousesObj?.system ?? 'W'),
       nodeType: chartSiderealNodeLabels.length
         ? `provider_default (${chartSiderealNodeLabels.join(', ')}; ChartInput omits nodeType)`
@@ -1719,7 +1879,8 @@ function normalizeAstroWayLayerBMasterChartRecord(params: {
 
   const calculationConventions: CalculationConventionsRecord = {
     ayanamsa: {
-      vedic: String(kundli?.ayanamsa ?? 'lahiri'),
+      vedic: vedicLahiri.data?.ayanamshaLabel || 'lahiri',
+      vedicValueDegrees: vedicLahiri.data?.ayanamshaValueDegrees ?? null,
       kp: kpPlacidus.data?.ayanamsha?.name ?? 'Krishnamurti (KP)',
       kpValueDegrees: kpPlacidus.data?.ayanamsha?.valueDegrees ?? null,
     },
@@ -1918,8 +2079,25 @@ export function buildLayerBMasterChartRecord(params: {
     const dashaRaw = asObj(raw.vimshottari_dasha);
     const panchangRaw = asObj(raw.panchang);
 
+    const faAyDescriptor = resolveAyanamshaDescriptor({
+      rawValue: raw.ayanamsha ?? calcCall.sanitizedRequest?.ayanamsa,
+      rawValueDegrees:
+        raw.ayanamsha_value ??
+        raw.ayanamsa_degrees ??
+        asObj(chart.metadata)?.ayanamsha_value ??
+        asObj(chart.metadata)?.ayanamsha_degrees,
+      requestedAyanamsa: calcCall.sanitizedRequest?.ayanamsa ?? 'lahiri',
+      expectedLahiriDeg: instant.astronomy.lahiriAyanamsaApproxDeg,
+    });
+
     const frameData: VedicLahiriFrame = {
-      ayanamshaLabel: String(raw.ayanamsha || 'lahiri'),
+      ayanamshaLabel: faAyDescriptor.id,
+      ayanamshaValueDegrees: faAyDescriptor.valueDegrees,
+      ayanamsha: {
+        id: faAyDescriptor.id,
+        name: faAyDescriptor.name,
+        valueDegrees: faAyDescriptor.valueDegrees,
+      },
       houseSystem: String(
         asObj(chart.metadata)?.house_system || 'whole_sign'
       ),
@@ -2365,6 +2543,7 @@ export function buildLayerBMasterChartRecord(params: {
   const calculationConventions: CalculationConventionsRecord = {
     ayanamsa: {
       vedic: vedicLahiri.data?.ayanamshaLabel || 'lahiri',
+      vedicValueDegrees: vedicLahiri.data?.ayanamshaValueDegrees ?? null,
       kp: kpPlacidus.data?.ayanamsha?.name || 'Krishnamurti (KP)',
       kpValueDegrees: kpPlacidus.data?.ayanamsha?.valueDegrees ?? null,
     },
