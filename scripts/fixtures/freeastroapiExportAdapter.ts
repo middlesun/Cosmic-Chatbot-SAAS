@@ -38,7 +38,7 @@ import type {
   WesternTropicalFrame,
 } from '../../server/services/v2Engine/types';
 import type { LayerCAnalyticalInput } from '../../server/services/v2Engine/layerCContract';
-import { normalizeDeg, SIGNS } from '../../server/services/jyotishMath';
+import { formatDMS, getDignity, getNakshatraAndSubs, normalizeDeg, SIGNS } from '../../server/services/jyotishMath';
 
 export type RealExportAdaptedChart = {
   fixtureId: string;
@@ -282,7 +282,17 @@ export function adaptRealFreeAstroApiExport(params: {
           prastharashtakavarga: {},
         }
       : null,
-    yogas: asObj(d.yogas),
+    yogas: (() => {
+      const rawYogas = asObj(d.yogas);
+      if (!rawYogas) return null;
+      return {
+        summary: asObj(rawYogas.summary),
+        items: Array.isArray(rawYogas.items)
+          ? (rawYogas.items.filter((x) => x && typeof x === 'object') as Array<Record<string, unknown>>)
+          : [],
+        metadata: asObj(rawYogas.metadata),
+      };
+    })(),
     panchang: asObj(d.panchang),
     vimshottariDasha: rawVim
       ? {
@@ -529,18 +539,30 @@ export function adaptRealFreeAstroApiExport(params: {
     string,
     Record<string, unknown>
   > | null;
-  const canonicalPlanets = vedicPlanets.map((vp) => ({
-    name: String(vp.name),
-    sign: String(vp.sign),
-    signIndex: Number(vp.signIndex),
-    degreeInSign: Number(vp.degree_in_sign),
-    longitude: Number(vp.absolute_degree),
-    house: Number(vp.house),
-    nakshatra: String(vp.nakshatra || ''),
-    nakshatraLord: String(vp.nakshatra_lord || ''),
-    pada: Number(vp.pada || 1),
-    isRetrograde: Boolean(vp.is_retrograde),
-  }));
+  const canonicalPlanets = vedicPlanets.map((vp) => {
+    const lon = Number(vp.absolute_degree);
+    const signIndex = Number(vp.signIndex);
+    const degreeInSign = Number(vp.degree_in_sign);
+    const name = String(vp.name);
+    const nak = getNakshatraAndSubs(lon);
+    return {
+      name,
+      sign: String(vp.sign),
+      signIndex,
+      degreeInSign,
+      dms: formatDMS(degreeInSign),
+      longitude: lon,
+      house: Number(vp.house),
+      nakshatra: String(vp.nakshatra || nak.nakshatra),
+      nakshatraIndex: nak.nakshatraIndex,
+      nakshatraLord: String(vp.nakshatra_lord || nak.nakshatraLord),
+      pada: Number(vp.pada || nak.pada),
+      subLord: nak.subLord,
+      subSubLord: nak.subSubLord,
+      isRetrograde: Boolean(vp.is_retrograde),
+      dignity: getDignity(name, signIndex),
+    };
+  });
 
   const reconciliationData = buildShadbalaReconciliationReport({
     instant,
@@ -647,7 +669,32 @@ export function adaptRealFreeAstroApiExport(params: {
       : null,
     remainingClassicalGaps,
     providerExtendedDatasets: {
-      jaimini: asObj(d.jaimini),
+      jaimini: (() => {
+        const rawJ = asObj(d.jaimini);
+        if (!rawJ) return null;
+        const karakasArr = asArr(rawJ.karakas);
+        const padasArr = asArr(rawJ.arudhaPadas).map((p) => ({
+          ...p,
+          name: p.code ?? p.name ?? p.pada,
+          sign: p.padaSign ?? p.sign,
+          house: p.padaHouseFromLagna ?? p.house,
+        }));
+        const argalaArr = asArr(rawJ.argala);
+        return {
+          ...rawJ,
+          ...(karakasArr.length > 0
+            ? {
+                karakas: { items: karakasArr },
+                charaKarakas: { items: karakasArr },
+              }
+            : {}),
+          ...(padasArr.length > 0 ? { padas: { items: padasArr } } : {}),
+          ...(argalaArr.length > 0 ? { argalaAnalysis: { items: argalaArr } } : {}),
+          ...(typeof rawJ.karakamshaSign === 'string' && rawJ.karakamshaSign.trim()
+            ? { atmakarakaNavamsa: { karakamshaSign: rawJ.karakamshaSign.trim() } }
+            : {}),
+        };
+      })(),
       legacyShadbalaExported: asObj(d.shadbala),
       legacyBhavaChalitShifts,
     },

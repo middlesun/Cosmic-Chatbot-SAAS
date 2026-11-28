@@ -494,10 +494,14 @@ export function extractYogaHouseAndTimingEvidence(
     const jMeth = buildFrameMethodology(ctx, 'vedic_lahiri', { tradition: 'jaimini' });
 
     const charaObj = asObj(jaimini.charaKarakas) ?? asObj(jaimini.karakas);
-    const charaItems = asObjArr(charaObj?.items ?? charaObj?.karakas);
+    const charaItems = Array.isArray(jaimini.charaKarakas)
+      ? asObjArr(jaimini.charaKarakas)
+      : Array.isArray(jaimini.karakas)
+      ? asObjArr(jaimini.karakas)
+      : asObjArr(charaObj?.items ?? charaObj?.karakas);
     for (const row of charaItems) {
       const planet = canonicalSubjectPlanet(row.planet ?? row.graha ?? row.name);
-      const role = strOrNull(row.karaka ?? row.role ?? row.title);
+      const role = strOrNull(row.karaka ?? row.role ?? row.title ?? row.code);
       if (!planet || !role) continue;
       const degId = pos.degreeEvidenceIdByKey.get(`vedic_lahiri:${planet}`);
 
@@ -537,10 +541,15 @@ export function extractYogaHouseAndTimingEvidence(
       );
     }
 
-    const padasObj = asObj(jaimini.padas);
-    for (const row of asObjArr(padasObj?.items ?? padasObj?.padas)) {
-      const padaName = strOrNull(row.name ?? row.pada);
-      const sign = strOrNull(row.sign);
+    const padasObj = asObj(jaimini.padas) ?? asObj(jaimini.arudhaPadas);
+    const padasItems = Array.isArray(jaimini.padas)
+      ? asObjArr(jaimini.padas)
+      : Array.isArray(jaimini.arudhaPadas)
+      ? asObjArr(jaimini.arudhaPadas)
+      : asObjArr(padasObj?.items ?? padasObj?.padas ?? padasObj?.arudhaPadas);
+    for (const row of padasItems) {
+      const padaName = strOrNull(row.name ?? row.pada ?? row.code);
+      const sign = strOrNull(row.sign ?? row.padaSign);
       if (!padaName) continue;
       drafts.push(
         makeDraft(ctx, {
@@ -560,7 +569,7 @@ export function extractYogaHouseAndTimingEvidence(
           },
           measurements: [
             { metric: 'sign', value: sign, unit: null },
-            { metric: 'house', value: numOrNull(row.house), unit: 'house_number' },
+            { metric: 'house', value: numOrNull(row.house ?? row.padaHouseFromLagna), unit: 'house_number' },
           ],
           methodology: jMeth,
           ruleReference: {

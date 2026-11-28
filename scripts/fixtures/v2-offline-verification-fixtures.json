@@ -1,6 +1,6 @@
 {
   "schemaVersion": "v2.offline_verification_fixtures.1.0",
-  "generatedAtUtc": "2026-11-28T09:20:21.183Z",
+  "generatedAtUtc": "2026-11-28T09:54:37.563Z",
   "realAstroWayCapturePresentOnDisk": false,
   "astroWayCacheBlockerNote": "Complete 62/64-endpoint AstroWay capture was not present in repo or /tmp, and SUPABASE_URL / ASTROWAY_API_KEY / FREE_ASTRO_API_KEY are unset. Export a real chris4-consolidated-foundational-chart.json or chris4-astroway-cache.json from Admin V2 Laboratory into scripts/fixtures/ to verify the full live AstroWay capture offline.",
   "fixtures": [
@@ -11,7 +11,7 @@
       "astroWayPopulated": false,
       "layerCInput": {
         "contractVersion": "v2.layer_c_input.1.0",
-        "preparedAtUtc": "2026-11-28T09:20:21.143Z",
+        "preparedAtUtc": "2026-11-28T09:54:37.520Z",
         "sourceSchemaVersion": "v2.compiled_foundational_chart.1.0",
         "recalculationVersion": "v2.recalc.1.0",
         "inputFingerprint": "a8ffce3552a2724c30afad66",
@@ -14916,64 +14916,66 @@
                   ]
                 }
               ],
-              "karakas": [
-                {
-                  "dms": "23°07'55\"",
-                  "code": "AK",
-                  "sign": "Capricorn",
-                  "title": "Atmakaraka (Soul)",
-                  "planet": "Jupiter",
-                  "degreeInSign": 23.132
-                },
-                {
-                  "dms": "19°27'28\"",
-                  "code": "AmK",
-                  "sign": "Scorpio",
-                  "title": "Amatyakaraka (Career)",
-                  "planet": "Mercury",
-                  "degreeInSign": 19.4577
-                },
-                {
-                  "dms": "13°25'03\"",
-                  "code": "BK",
-                  "sign": "Taurus",
-                  "title": "Bhratrukaraka (Siblings/Mentor)",
-                  "planet": "Moon",
-                  "degreeInSign": 13.4175
-                },
-                {
-                  "dms": "12°36'29\"",
-                  "code": "MK",
-                  "sign": "Libra",
-                  "title": "Matrukaraka (Mother/Home)",
-                  "planet": "Mars",
-                  "degreeInSign": 12.608
-                },
-                {
-                  "dms": "10°45'17\"",
-                  "code": "PK",
-                  "sign": "Scorpio",
-                  "title": "Putrakaraka (Children/Intellect)",
-                  "planet": "Saturn",
-                  "degreeInSign": 10.7548
-                },
-                {
-                  "dms": "09°26'30\"",
-                  "code": "GK",
-                  "sign": "Sagittarius",
-                  "title": "Gnatikaraka (Obstacles/Strife)",
-                  "planet": "Sun",
-                  "degreeInSign": 9.4416
-                },
-                {
-                  "dms": "03°18'01\"",
-                  "code": "DK",
-                  "sign": "Sagittarius",
-                  "title": "Darakaraka (Spouse/Partnership)",
-                  "planet": "Venus",
-                  "degreeInSign": 3.3004
-                }
-              ],
+              "karakas": {
+                "items": [
+                  {
+                    "dms": "23°07'55\"",
+                    "code": "AK",
+                    "sign": "Capricorn",
+                    "title": "Atmakaraka (Soul)",
+                    "planet": "Jupiter",
+                    "degreeInSign": 23.132
+                  },
+                  {
+                    "dms": "19°27'28\"",
+                    "code": "AmK",
+                    "sign": "Scorpio",
+                    "title": "Amatyakaraka (Career)",
+                    "planet": "Mercury",
+                    "degreeInSign": 19.4577
+                  },
+                  {
+                    "dms": "13°25'03\"",
+                    "code": "BK",
+                    "sign": "Taurus",
+                    "title": "Bhratrukaraka (Siblings/Mentor)",
+                    "planet": "Moon",
+                    "degreeInSign": 13.4175
+                  },
+                  {
+                    "dms": "12°36'29\"",
+                    "code": "MK",
+                    "sign": "Libra",
+                    "title": "Matrukaraka (Mother/Home)",
+                    "planet": "Mars",
+                    "degreeInSign": 12.608
+                  },
+                  {
+                    "dms": "10°45'17\"",
+                    "code": "PK",
+                    "sign": "Scorpio",
+                    "title": "Putrakaraka (Children/Intellect)",
+                    "planet": "Saturn",
+                    "degreeInSign": 10.7548
+                  },
+                  {
+                    "dms": "09°26'30\"",
+                    "code": "GK",
+                    "sign": "Sagittarius",
+                    "title": "Gnatikaraka (Obstacles/Strife)",
+                    "planet": "Sun",
+                    "degreeInSign": 9.4416
+                  },
+                  {
+                    "dms": "03°18'01\"",
+                    "code": "DK",
+                    "sign": "Sagittarius",
+                    "title": "Darakaraka (Spouse/Partnership)",
+                    "planet": "Venus",
+                    "degreeInSign": 3.3004
+                  }
+                ]
+              },
               "charaDasha": {
                 "periods": [
                   {
@@ -15179,7 +15181,382 @@
                   "padaHouseFromLagna": 4
                 }
               ],
-              "karakamshaSign": "Cancer"
+              "karakamshaSign": "Cancer",
+              "charaKarakas": {
+                "items": [
+                  {
+                    "dms": "23°07'55\"",
+                    "code": "AK",
+                    "sign": "Capricorn",
+                    "title": "Atmakaraka (Soul)",
+                    "planet": "Jupiter",
+                    "degreeInSign": 23.132
+                  },
+                  {
+                    "dms": "19°27'28\"",
+                    "code": "AmK",
+                    "sign": "Scorpio",
+                    "title": "Amatyakaraka (Career)",
+                    "planet": "Mercury",
+                    "degreeInSign": 19.4577
+                  },
+                  {
+                    "dms": "13°25'03\"",
+                    "code": "BK",
+                    "sign": "Taurus",
+                    "title": "Bhratrukaraka (Siblings/Mentor)",
+                    "planet": "Moon",
+                    "degreeInSign": 13.4175
+                  },
+                  {
+                    "dms": "12°36'29\"",
+                    "code": "MK",
+                    "sign": "Libra",
+                    "title": "Matrukaraka (Mother/Home)",
+                    "planet": "Mars",
+                    "degreeInSign": 12.608
+                  },
+                  {
+                    "dms": "10°45'17\"",
+                    "code": "PK",
+                    "sign": "Scorpio",
+                    "title": "Putrakaraka (Children/Intellect)",
+                    "planet": "Saturn",
+                    "degreeInSign": 10.7548
+                  },
+                  {
+                    "dms": "09°26'30\"",
+                    "code": "GK",
+                    "sign": "Sagittarius",
+                    "title": "Gnatikaraka (Obstacles/Strife)",
+                    "planet": "Sun",
+                    "degreeInSign": 9.4416
+                  },
+                  {
+                    "dms": "03°18'01\"",
+                    "code": "DK",
+                    "sign": "Sagittarius",
+                    "title": "Darakaraka (Spouse/Partnership)",
+                    "planet": "Venus",
+                    "degreeInSign": 3.3004
+                  }
+                ]
+              },
+              "padas": {
+                "items": [
+                  {
+                    "code": "AL",
+                    "house": 11,
+                    "lordSign": "Libra",
+                    "padaSign": "Virgo",
+                    "houseLord": "Mars",
+                    "padaSignIndex": 5,
+                    "padaHouseFromLagna": 11,
+                    "name": "AL",
+                    "sign": "Virgo"
+                  },
+                  {
+                    "code": "A2",
+                    "house": 4,
+                    "lordSign": "Capricorn",
+                    "padaSign": "Aquarius",
+                    "houseLord": "Jupiter",
+                    "padaSignIndex": 10,
+                    "padaHouseFromLagna": 4,
+                    "name": "A2",
+                    "sign": "Aquarius"
+                  },
+                  {
+                    "code": "A3",
+                    "house": 11,
+                    "lordSign": "Scorpio",
+                    "padaSign": "Virgo",
+                    "houseLord": "Saturn",
+                    "padaSignIndex": 5,
+                    "padaHouseFromLagna": 11,
+                    "name": "A3",
+                    "sign": "Virgo"
+                  },
+                  {
+                    "code": "A4",
+                    "house": 8,
+                    "lordSign": "Aries",
+                    "padaSign": "Gemini",
+                    "houseLord": "Rahu",
+                    "padaSignIndex": 2,
+                    "padaHouseFromLagna": 8,
+                    "name": "A4",
+                    "sign": "Gemini"
+                  },
+                  {
+                    "code": "A5",
+                    "house": 1,
+                    "lordSign": "Capricorn",
+                    "padaSign": "Scorpio",
+                    "houseLord": "Jupiter",
+                    "padaSignIndex": 7,
+                    "padaHouseFromLagna": 1,
+                    "name": "A5",
+                    "sign": "Scorpio"
+                  },
+                  {
+                    "code": "A6",
+                    "house": 3,
+                    "lordSign": "Libra",
+                    "padaSign": "Capricorn",
+                    "houseLord": "Mars",
+                    "padaSignIndex": 9,
+                    "padaHouseFromLagna": 3,
+                    "name": "A6",
+                    "sign": "Capricorn"
+                  },
+                  {
+                    "code": "A7",
+                    "house": 9,
+                    "lordSign": "Sagittarius",
+                    "padaSign": "Cancer",
+                    "houseLord": "Venus",
+                    "padaSignIndex": 3,
+                    "padaHouseFromLagna": 9,
+                    "name": "A7",
+                    "sign": "Cancer"
+                  },
+                  {
+                    "code": "A8",
+                    "house": 6,
+                    "lordSign": "Scorpio",
+                    "padaSign": "Aries",
+                    "houseLord": "Mercury",
+                    "padaSignIndex": 0,
+                    "padaHouseFromLagna": 6,
+                    "name": "A8",
+                    "sign": "Aries"
+                  },
+                  {
+                    "code": "A9",
+                    "house": 5,
+                    "lordSign": "Taurus",
+                    "padaSign": "Pisces",
+                    "houseLord": "Moon",
+                    "padaSignIndex": 11,
+                    "padaHouseFromLagna": 5,
+                    "name": "A9",
+                    "sign": "Pisces"
+                  },
+                  {
+                    "code": "A10",
+                    "house": 6,
+                    "lordSign": "Sagittarius",
+                    "padaSign": "Aries",
+                    "houseLord": "Sun",
+                    "padaSignIndex": 0,
+                    "padaHouseFromLagna": 6,
+                    "name": "A10",
+                    "sign": "Aries"
+                  },
+                  {
+                    "code": "A11",
+                    "house": 3,
+                    "lordSign": "Scorpio",
+                    "padaSign": "Capricorn",
+                    "houseLord": "Mercury",
+                    "padaSignIndex": 9,
+                    "padaHouseFromLagna": 3,
+                    "name": "A11",
+                    "sign": "Capricorn"
+                  },
+                  {
+                    "code": "UL",
+                    "house": 4,
+                    "lordSign": "Sagittarius",
+                    "padaSign": "Aquarius",
+                    "houseLord": "Venus",
+                    "padaSignIndex": 10,
+                    "padaHouseFromLagna": 4,
+                    "name": "UL",
+                    "sign": "Aquarius"
+                  }
+                ]
+              },
+              "argalaAnalysis": {
+                "items": [
+                  {
+                    "netSupport": "Obstructed",
+                    "targetSign": "Scorpio",
+                    "targetHouse": 1,
+                    "supportingHouses": [
+                      {
+                        "house": 2,
+                        "label": "2nd (Sustenance)",
+                        "planets": [
+                          "Sun",
+                          "Venus"
+                        ]
+                      },
+                      {
+                        "house": 4,
+                        "label": "4th (Home/Base)",
+                        "planets": []
+                      },
+                      {
+                        "house": 11,
+                        "label": "11th (Gains)",
+                        "planets": []
+                      },
+                      {
+                        "house": 5,
+                        "label": "5th (Creative/Followers)",
+                        "planets": []
+                      }
+                    ],
+                    "obstructingHouses": [
+                      {
+                        "house": 12,
+                        "label": "12th",
+                        "planets": [
+                          "Mars",
+                          "Ketu"
+                        ]
+                      },
+                      {
+                        "house": 10,
+                        "label": "10th",
+                        "planets": []
+                      },
+                      {
+                        "house": 3,
+                        "label": "3rd",
+                        "planets": [
+                          "Jupiter"
+                        ]
+                      },
+                      {
+                        "house": 9,
+                        "label": "9th",
+                        "planets": []
+                      }
+                    ]
+                  },
+                  {
+                    "netSupport": "Obstructed",
+                    "targetSign": "Taurus",
+                    "targetHouse": 7,
+                    "supportingHouses": [
+                      {
+                        "house": 8,
+                        "label": "2nd (Sustenance)",
+                        "planets": []
+                      },
+                      {
+                        "house": 10,
+                        "label": "4th (Home/Base)",
+                        "planets": []
+                      },
+                      {
+                        "house": 5,
+                        "label": "11th (Gains)",
+                        "planets": []
+                      },
+                      {
+                        "house": 11,
+                        "label": "5th (Creative/Followers)",
+                        "planets": []
+                      }
+                    ],
+                    "obstructingHouses": [
+                      {
+                        "house": 6,
+                        "label": "12th",
+                        "planets": [
+                          "Rahu"
+                        ]
+                      },
+                      {
+                        "house": 4,
+                        "label": "10th",
+                        "planets": []
+                      },
+                      {
+                        "house": 9,
+                        "label": "3rd",
+                        "planets": []
+                      },
+                      {
+                        "house": 3,
+                        "label": "9th",
+                        "planets": [
+                          "Jupiter"
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "netSupport": "Balanced",
+                    "targetSign": "Leo",
+                    "targetHouse": 10,
+                    "supportingHouses": [
+                      {
+                        "house": 11,
+                        "label": "2nd (Sustenance)",
+                        "planets": []
+                      },
+                      {
+                        "house": 1,
+                        "label": "4th (Home/Base)",
+                        "planets": [
+                          "Mercury",
+                          "Saturn"
+                        ]
+                      },
+                      {
+                        "house": 8,
+                        "label": "11th (Gains)",
+                        "planets": []
+                      },
+                      {
+                        "house": 2,
+                        "label": "5th (Creative/Followers)",
+                        "planets": [
+                          "Sun",
+                          "Venus"
+                        ]
+                      }
+                    ],
+                    "obstructingHouses": [
+                      {
+                        "house": 9,
+                        "label": "12th",
+                        "planets": []
+                      },
+                      {
+                        "house": 7,
+                        "label": "10th",
+                        "planets": [
+                          "Moon"
+                        ]
+                      },
+                      {
+                        "house": 12,
+                        "label": "3rd",
+                        "planets": [
+                          "Mars",
+                          "Ketu"
+                        ]
+                      },
+                      {
+                        "house": 6,
+                        "label": "9th",
+                        "planets": [
+                          "Rahu"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "atmakarakaNavamsa": {
+                "karakamshaSign": "Cancer"
+              }
             },
             "legacyShadbalaExported": {
               "planets": [
@@ -21200,7 +21577,7 @@
         },
         "datasetManifest": {
           "schemaVersion": "v2.manifest.1.0",
-          "evaluatedAtUtc": "2026-11-28T09:20:21.132Z",
+          "evaluatedAtUtc": "2026-11-28T09:54:37.509Z",
           "inputFingerprint": "a8ffce3552a2724c30afad66",
           "minimumChartReadiness": {
             "ready": false,
@@ -21239,9 +21616,9 @@
             "available": 11,
             "internally_verified": 6,
             "independently_validated": 0,
-            "provisional": 4,
+            "provisional": 5,
             "incompatible": 0,
-            "unavailable": 10
+            "unavailable": 9
           },
           "entries": [
             {
@@ -21252,7 +21629,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:birthInstant.resolveCanonicalBirthInstant",
-              "acquiredAtUtc": "2026-11-28T09:20:21.128Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.506Z",
               "version": "v2.recalc.1.0",
               "dependencies": [],
               "missingDependencies": [],
@@ -21543,7 +21920,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:ashtakavargaReductions",
-              "acquiredAtUtc": "2026-11-28T09:20:21.128Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.506Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "ashtakavarga_bav_sav_prastara"
@@ -21605,9 +21982,9 @@
               "tier": "comprehensive_foundational_completeness",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
-              "canonicalStatus": "unavailable",
+              "canonicalStatus": "provisional",
               "source": "astroway:/vedic/jaimini/*",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-27T07:42:40.005Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions",
@@ -21616,7 +21993,7 @@
               "missingDependencies": [],
               "blockingForDownstream": [],
               "limitations": [
-                "All Jaimini endpoint buckets returned null/empty."
+                "Only 5/10 Jaimini dataset buckets populated."
               ]
             },
             {
@@ -21728,7 +22105,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:panchadhaMaitri",
-              "acquiredAtUtc": "2026-11-28T09:20:21.128Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.506Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -21747,7 +22124,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:vimshopakaBala",
-              "acquiredAtUtc": "2026-11-28T09:20:21.128Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.506Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_shodashavarga_16"
@@ -21766,7 +22143,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:dispositorGraph",
-              "acquiredAtUtc": "2026-11-28T09:20:21.128Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.506Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -21783,7 +22160,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "local:advancedAvasthas",
-              "acquiredAtUtc": "2026-11-28T09:20:21.128Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.506Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions",
@@ -21821,7 +22198,7 @@
               "referenceDateIso": "2026-11-27",
               "canonicalStatus": "available",
               "source": "freeastroapi:reference_date_dasha",
-              "acquiredAtUtc": "2026-11-28T09:20:21.128Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.506Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "canonical_birth_instant",
@@ -22008,7 +22385,7 @@
       "astroWayPopulated": false,
       "layerCInput": {
         "contractVersion": "v2.layer_c_input.1.0",
-        "preparedAtUtc": "2026-11-28T09:20:21.154Z",
+        "preparedAtUtc": "2026-11-28T09:54:37.532Z",
         "sourceSchemaVersion": "v2.compiled_foundational_chart.1.0",
         "recalculationVersion": "v2.recalc.1.0",
         "inputFingerprint": "99a9185ce2cc7bb11257b9dc",
@@ -36783,64 +37160,66 @@
                   ]
                 }
               ],
-              "karakas": [
-                {
-                  "dms": "23°07'42\"",
-                  "code": "AK",
-                  "sign": "Capricorn",
-                  "title": "Atmakaraka (Soul)",
-                  "planet": "Jupiter",
-                  "degreeInSign": 23.1282
-                },
-                {
-                  "dms": "19°27'32\"",
-                  "code": "AmK",
-                  "sign": "Scorpio",
-                  "title": "Amatyakaraka (Career)",
-                  "planet": "Mercury",
-                  "degreeInSign": 19.4588
-                },
-                {
-                  "dms": "13°24'39\"",
-                  "code": "BK",
-                  "sign": "Taurus",
-                  "title": "Bhratrukaraka (Siblings/Mentor)",
-                  "planet": "Moon",
-                  "degreeInSign": 13.4109
-                },
-                {
-                  "dms": "12°36'31\"",
-                  "code": "MK",
-                  "sign": "Libra",
-                  "title": "Matrukaraka (Mother/Home)",
-                  "planet": "Mars",
-                  "degreeInSign": 12.6087
-                },
-                {
-                  "dms": "10°43'44\"",
-                  "code": "PK",
-                  "sign": "Scorpio",
-                  "title": "Putrakaraka (Children/Intellect)",
-                  "planet": "Saturn",
-                  "degreeInSign": 10.7288
-                },
-                {
-                  "dms": "09°26'32\"",
-                  "code": "GK",
-                  "sign": "Sagittarius",
-                  "title": "Gnatikaraka (Obstacles/Strife)",
-                  "planet": "Sun",
-                  "degreeInSign": 9.4422
-                },
-                {
-                  "dms": "03°18'02\"",
-                  "code": "DK",
-                  "sign": "Sagittarius",
-                  "title": "Darakaraka (Spouse/Partnership)",
-                  "planet": "Venus",
-                  "degreeInSign": 3.3007
-                }
-              ],
+              "karakas": {
+                "items": [
+                  {
+                    "dms": "23°07'42\"",
+                    "code": "AK",
+                    "sign": "Capricorn",
+                    "title": "Atmakaraka (Soul)",
+                    "planet": "Jupiter",
+                    "degreeInSign": 23.1282
+                  },
+                  {
+                    "dms": "19°27'32\"",
+                    "code": "AmK",
+                    "sign": "Scorpio",
+                    "title": "Amatyakaraka (Career)",
+                    "planet": "Mercury",
+                    "degreeInSign": 19.4588
+                  },
+                  {
+                    "dms": "13°24'39\"",
+                    "code": "BK",
+                    "sign": "Taurus",
+                    "title": "Bhratrukaraka (Siblings/Mentor)",
+                    "planet": "Moon",
+                    "degreeInSign": 13.4109
+                  },
+                  {
+                    "dms": "12°36'31\"",
+                    "code": "MK",
+                    "sign": "Libra",
+                    "title": "Matrukaraka (Mother/Home)",
+                    "planet": "Mars",
+                    "degreeInSign": 12.6087
+                  },
+                  {
+                    "dms": "10°43'44\"",
+                    "code": "PK",
+                    "sign": "Scorpio",
+                    "title": "Putrakaraka (Children/Intellect)",
+                    "planet": "Saturn",
+                    "degreeInSign": 10.7288
+                  },
+                  {
+                    "dms": "09°26'32\"",
+                    "code": "GK",
+                    "sign": "Sagittarius",
+                    "title": "Gnatikaraka (Obstacles/Strife)",
+                    "planet": "Sun",
+                    "degreeInSign": 9.4422
+                  },
+                  {
+                    "dms": "03°18'02\"",
+                    "code": "DK",
+                    "sign": "Sagittarius",
+                    "title": "Darakaraka (Spouse/Partnership)",
+                    "planet": "Venus",
+                    "degreeInSign": 3.3007
+                  }
+                ]
+              },
               "charaDasha": {
                 "periods": [
                   {
@@ -37046,7 +37425,382 @@
                   "padaHouseFromLagna": 4
                 }
               ],
-              "karakamshaSign": "Cancer"
+              "karakamshaSign": "Cancer",
+              "charaKarakas": {
+                "items": [
+                  {
+                    "dms": "23°07'42\"",
+                    "code": "AK",
+                    "sign": "Capricorn",
+                    "title": "Atmakaraka (Soul)",
+                    "planet": "Jupiter",
+                    "degreeInSign": 23.1282
+                  },
+                  {
+                    "dms": "19°27'32\"",
+                    "code": "AmK",
+                    "sign": "Scorpio",
+                    "title": "Amatyakaraka (Career)",
+                    "planet": "Mercury",
+                    "degreeInSign": 19.4588
+                  },
+                  {
+                    "dms": "13°24'39\"",
+                    "code": "BK",
+                    "sign": "Taurus",
+                    "title": "Bhratrukaraka (Siblings/Mentor)",
+                    "planet": "Moon",
+                    "degreeInSign": 13.4109
+                  },
+                  {
+                    "dms": "12°36'31\"",
+                    "code": "MK",
+                    "sign": "Libra",
+                    "title": "Matrukaraka (Mother/Home)",
+                    "planet": "Mars",
+                    "degreeInSign": 12.6087
+                  },
+                  {
+                    "dms": "10°43'44\"",
+                    "code": "PK",
+                    "sign": "Scorpio",
+                    "title": "Putrakaraka (Children/Intellect)",
+                    "planet": "Saturn",
+                    "degreeInSign": 10.7288
+                  },
+                  {
+                    "dms": "09°26'32\"",
+                    "code": "GK",
+                    "sign": "Sagittarius",
+                    "title": "Gnatikaraka (Obstacles/Strife)",
+                    "planet": "Sun",
+                    "degreeInSign": 9.4422
+                  },
+                  {
+                    "dms": "03°18'02\"",
+                    "code": "DK",
+                    "sign": "Sagittarius",
+                    "title": "Darakaraka (Spouse/Partnership)",
+                    "planet": "Venus",
+                    "degreeInSign": 3.3007
+                  }
+                ]
+              },
+              "padas": {
+                "items": [
+                  {
+                    "code": "AL",
+                    "house": 11,
+                    "lordSign": "Libra",
+                    "padaSign": "Virgo",
+                    "houseLord": "Mars",
+                    "padaSignIndex": 5,
+                    "padaHouseFromLagna": 11,
+                    "name": "AL",
+                    "sign": "Virgo"
+                  },
+                  {
+                    "code": "A2",
+                    "house": 4,
+                    "lordSign": "Capricorn",
+                    "padaSign": "Aquarius",
+                    "houseLord": "Jupiter",
+                    "padaSignIndex": 10,
+                    "padaHouseFromLagna": 4,
+                    "name": "A2",
+                    "sign": "Aquarius"
+                  },
+                  {
+                    "code": "A3",
+                    "house": 11,
+                    "lordSign": "Scorpio",
+                    "padaSign": "Virgo",
+                    "houseLord": "Saturn",
+                    "padaSignIndex": 5,
+                    "padaHouseFromLagna": 11,
+                    "name": "A3",
+                    "sign": "Virgo"
+                  },
+                  {
+                    "code": "A4",
+                    "house": 8,
+                    "lordSign": "Aries",
+                    "padaSign": "Gemini",
+                    "houseLord": "Rahu",
+                    "padaSignIndex": 2,
+                    "padaHouseFromLagna": 8,
+                    "name": "A4",
+                    "sign": "Gemini"
+                  },
+                  {
+                    "code": "A5",
+                    "house": 1,
+                    "lordSign": "Capricorn",
+                    "padaSign": "Scorpio",
+                    "houseLord": "Jupiter",
+                    "padaSignIndex": 7,
+                    "padaHouseFromLagna": 1,
+                    "name": "A5",
+                    "sign": "Scorpio"
+                  },
+                  {
+                    "code": "A6",
+                    "house": 3,
+                    "lordSign": "Libra",
+                    "padaSign": "Capricorn",
+                    "houseLord": "Mars",
+                    "padaSignIndex": 9,
+                    "padaHouseFromLagna": 3,
+                    "name": "A6",
+                    "sign": "Capricorn"
+                  },
+                  {
+                    "code": "A7",
+                    "house": 9,
+                    "lordSign": "Sagittarius",
+                    "padaSign": "Cancer",
+                    "houseLord": "Venus",
+                    "padaSignIndex": 3,
+                    "padaHouseFromLagna": 9,
+                    "name": "A7",
+                    "sign": "Cancer"
+                  },
+                  {
+                    "code": "A8",
+                    "house": 6,
+                    "lordSign": "Scorpio",
+                    "padaSign": "Aries",
+                    "houseLord": "Mercury",
+                    "padaSignIndex": 0,
+                    "padaHouseFromLagna": 6,
+                    "name": "A8",
+                    "sign": "Aries"
+                  },
+                  {
+                    "code": "A9",
+                    "house": 5,
+                    "lordSign": "Taurus",
+                    "padaSign": "Pisces",
+                    "houseLord": "Moon",
+                    "padaSignIndex": 11,
+                    "padaHouseFromLagna": 5,
+                    "name": "A9",
+                    "sign": "Pisces"
+                  },
+                  {
+                    "code": "A10",
+                    "house": 6,
+                    "lordSign": "Sagittarius",
+                    "padaSign": "Aries",
+                    "houseLord": "Sun",
+                    "padaSignIndex": 0,
+                    "padaHouseFromLagna": 6,
+                    "name": "A10",
+                    "sign": "Aries"
+                  },
+                  {
+                    "code": "A11",
+                    "house": 3,
+                    "lordSign": "Scorpio",
+                    "padaSign": "Capricorn",
+                    "houseLord": "Mercury",
+                    "padaSignIndex": 9,
+                    "padaHouseFromLagna": 3,
+                    "name": "A11",
+                    "sign": "Capricorn"
+                  },
+                  {
+                    "code": "UL",
+                    "house": 4,
+                    "lordSign": "Sagittarius",
+                    "padaSign": "Aquarius",
+                    "houseLord": "Venus",
+                    "padaSignIndex": 10,
+                    "padaHouseFromLagna": 4,
+                    "name": "UL",
+                    "sign": "Aquarius"
+                  }
+                ]
+              },
+              "argalaAnalysis": {
+                "items": [
+                  {
+                    "netSupport": "Obstructed",
+                    "targetSign": "Scorpio",
+                    "targetHouse": 1,
+                    "supportingHouses": [
+                      {
+                        "house": 2,
+                        "label": "2nd (Sustenance)",
+                        "planets": [
+                          "Sun",
+                          "Venus"
+                        ]
+                      },
+                      {
+                        "house": 4,
+                        "label": "4th (Home/Base)",
+                        "planets": []
+                      },
+                      {
+                        "house": 11,
+                        "label": "11th (Gains)",
+                        "planets": []
+                      },
+                      {
+                        "house": 5,
+                        "label": "5th (Creative/Followers)",
+                        "planets": []
+                      }
+                    ],
+                    "obstructingHouses": [
+                      {
+                        "house": 12,
+                        "label": "12th",
+                        "planets": [
+                          "Mars",
+                          "Ketu"
+                        ]
+                      },
+                      {
+                        "house": 10,
+                        "label": "10th",
+                        "planets": []
+                      },
+                      {
+                        "house": 3,
+                        "label": "3rd",
+                        "planets": [
+                          "Jupiter"
+                        ]
+                      },
+                      {
+                        "house": 9,
+                        "label": "9th",
+                        "planets": []
+                      }
+                    ]
+                  },
+                  {
+                    "netSupport": "Obstructed",
+                    "targetSign": "Taurus",
+                    "targetHouse": 7,
+                    "supportingHouses": [
+                      {
+                        "house": 8,
+                        "label": "2nd (Sustenance)",
+                        "planets": []
+                      },
+                      {
+                        "house": 10,
+                        "label": "4th (Home/Base)",
+                        "planets": []
+                      },
+                      {
+                        "house": 5,
+                        "label": "11th (Gains)",
+                        "planets": []
+                      },
+                      {
+                        "house": 11,
+                        "label": "5th (Creative/Followers)",
+                        "planets": []
+                      }
+                    ],
+                    "obstructingHouses": [
+                      {
+                        "house": 6,
+                        "label": "12th",
+                        "planets": [
+                          "Rahu"
+                        ]
+                      },
+                      {
+                        "house": 4,
+                        "label": "10th",
+                        "planets": []
+                      },
+                      {
+                        "house": 9,
+                        "label": "3rd",
+                        "planets": []
+                      },
+                      {
+                        "house": 3,
+                        "label": "9th",
+                        "planets": [
+                          "Jupiter"
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "netSupport": "Balanced",
+                    "targetSign": "Leo",
+                    "targetHouse": 10,
+                    "supportingHouses": [
+                      {
+                        "house": 11,
+                        "label": "2nd (Sustenance)",
+                        "planets": []
+                      },
+                      {
+                        "house": 1,
+                        "label": "4th (Home/Base)",
+                        "planets": [
+                          "Mercury",
+                          "Saturn"
+                        ]
+                      },
+                      {
+                        "house": 8,
+                        "label": "11th (Gains)",
+                        "planets": []
+                      },
+                      {
+                        "house": 2,
+                        "label": "5th (Creative/Followers)",
+                        "planets": [
+                          "Sun",
+                          "Venus"
+                        ]
+                      }
+                    ],
+                    "obstructingHouses": [
+                      {
+                        "house": 9,
+                        "label": "12th",
+                        "planets": []
+                      },
+                      {
+                        "house": 7,
+                        "label": "10th",
+                        "planets": [
+                          "Moon"
+                        ]
+                      },
+                      {
+                        "house": 12,
+                        "label": "3rd",
+                        "planets": [
+                          "Mars",
+                          "Ketu"
+                        ]
+                      },
+                      {
+                        "house": 6,
+                        "label": "9th",
+                        "planets": [
+                          "Rahu"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "atmakarakaNavamsa": {
+                "karakamshaSign": "Cancer"
+              }
             },
             "legacyShadbalaExported": {
               "planets": [
@@ -43067,7 +43821,7 @@
         },
         "datasetManifest": {
           "schemaVersion": "v2.manifest.1.0",
-          "evaluatedAtUtc": "2026-11-28T09:20:21.149Z",
+          "evaluatedAtUtc": "2026-11-28T09:54:37.526Z",
           "inputFingerprint": "99a9185ce2cc7bb11257b9dc",
           "minimumChartReadiness": {
             "ready": false,
@@ -43106,9 +43860,9 @@
             "available": 11,
             "internally_verified": 6,
             "independently_validated": 0,
-            "provisional": 3,
+            "provisional": 4,
             "incompatible": 0,
-            "unavailable": 11
+            "unavailable": 10
           },
           "entries": [
             {
@@ -43119,7 +43873,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:birthInstant.resolveCanonicalBirthInstant",
-              "acquiredAtUtc": "2026-11-28T09:20:21.149Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.526Z",
               "version": "v2.recalc.1.0",
               "dependencies": [],
               "missingDependencies": [],
@@ -43410,7 +44164,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:ashtakavargaReductions",
-              "acquiredAtUtc": "2026-11-28T09:20:21.149Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.526Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "ashtakavarga_bav_sav_prastara"
@@ -43472,9 +44226,9 @@
               "tier": "comprehensive_foundational_completeness",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
-              "canonicalStatus": "unavailable",
+              "canonicalStatus": "provisional",
               "source": "astroway:/vedic/jaimini/*",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-27T06:12:10.784Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions",
@@ -43483,7 +44237,7 @@
               "missingDependencies": [],
               "blockingForDownstream": [],
               "limitations": [
-                "All Jaimini endpoint buckets returned null/empty."
+                "Only 5/10 Jaimini dataset buckets populated."
               ]
             },
             {
@@ -43595,7 +44349,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:panchadhaMaitri",
-              "acquiredAtUtc": "2026-11-28T09:20:21.149Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.526Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -43614,7 +44368,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:vimshopakaBala",
-              "acquiredAtUtc": "2026-11-28T09:20:21.149Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.526Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_shodashavarga_16"
@@ -43633,7 +44387,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:dispositorGraph",
-              "acquiredAtUtc": "2026-11-28T09:20:21.149Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.526Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -43650,7 +44404,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "local:advancedAvasthas",
-              "acquiredAtUtc": "2026-11-28T09:20:21.149Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.526Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions",
@@ -43688,7 +44442,7 @@
               "referenceDateIso": "2026-11-27",
               "canonicalStatus": "available",
               "source": "freeastroapi:reference_date_dasha",
-              "acquiredAtUtc": "2026-11-28T09:20:21.149Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.526Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "canonical_birth_instant",
@@ -43871,7 +44625,7 @@
       "astroWayPopulated": false,
       "layerCInput": {
         "contractVersion": "v2.layer_c_input.1.0",
-        "preparedAtUtc": "2026-11-28T09:20:21.166Z",
+        "preparedAtUtc": "2026-11-28T09:54:37.543Z",
         "sourceSchemaVersion": "v2.compiled_foundational_chart.1.0",
         "recalculationVersion": "v2.recalc.1.0",
         "inputFingerprint": "a8ffce3552a2724c30afad66",
@@ -58674,64 +59428,66 @@
                   ]
                 }
               ],
-              "karakas": [
-                {
-                  "dms": "23°10'44\"",
-                  "code": "AK",
-                  "sign": "Capricorn",
-                  "title": "Atmakaraka (Soul)",
-                  "planet": "Jupiter",
-                  "degreeInSign": 23.1789
-                },
-                {
-                  "dms": "19°45'42\"",
-                  "code": "AmK",
-                  "sign": "Scorpio",
-                  "title": "Amatyakaraka (Career)",
-                  "planet": "Mercury",
-                  "degreeInSign": 19.7616
-                },
-                {
-                  "dms": "16°08'59\"",
-                  "code": "BK",
-                  "sign": "Taurus",
-                  "title": "Bhratrukaraka (Siblings/Mentor)",
-                  "planet": "Moon",
-                  "degreeInSign": 16.1498
-                },
-                {
-                  "dms": "12°44'55\"",
-                  "code": "MK",
-                  "sign": "Libra",
-                  "title": "Matrukaraka (Mother/Home)",
-                  "planet": "Mars",
-                  "degreeInSign": 12.7486
-                },
-                {
-                  "dms": "10°46'47\"",
-                  "code": "PK",
-                  "sign": "Scorpio",
-                  "title": "Putrakaraka (Children/Intellect)",
-                  "planet": "Saturn",
-                  "degreeInSign": 10.7798
-                },
-                {
-                  "dms": "09°40'30\"",
-                  "code": "GK",
-                  "sign": "Sagittarius",
-                  "title": "Gnatikaraka (Obstacles/Strife)",
-                  "planet": "Sun",
-                  "degreeInSign": 9.675
-                },
-                {
-                  "dms": "03°35'20\"",
-                  "code": "DK",
-                  "sign": "Sagittarius",
-                  "title": "Darakaraka (Spouse/Partnership)",
-                  "planet": "Venus",
-                  "degreeInSign": 3.5888
-                }
-              ],
+              "karakas": {
+                "items": [
+                  {
+                    "dms": "23°10'44\"",
+                    "code": "AK",
+                    "sign": "Capricorn",
+                    "title": "Atmakaraka (Soul)",
+                    "planet": "Jupiter",
+                    "degreeInSign": 23.1789
+                  },
+                  {
+                    "dms": "19°45'42\"",
+                    "code": "AmK",
+                    "sign": "Scorpio",
+                    "title": "Amatyakaraka (Career)",
+                    "planet": "Mercury",
+                    "degreeInSign": 19.7616
+                  },
+                  {
+                    "dms": "16°08'59\"",
+                    "code": "BK",
+                    "sign": "Taurus",
+                    "title": "Bhratrukaraka (Siblings/Mentor)",
+                    "planet": "Moon",
+                    "degreeInSign": 16.1498
+                  },
+                  {
+                    "dms": "12°44'55\"",
+                    "code": "MK",
+                    "sign": "Libra",
+                    "title": "Matrukaraka (Mother/Home)",
+                    "planet": "Mars",
+                    "degreeInSign": 12.7486
+                  },
+                  {
+                    "dms": "10°46'47\"",
+                    "code": "PK",
+                    "sign": "Scorpio",
+                    "title": "Putrakaraka (Children/Intellect)",
+                    "planet": "Saturn",
+                    "degreeInSign": 10.7798
+                  },
+                  {
+                    "dms": "09°40'30\"",
+                    "code": "GK",
+                    "sign": "Sagittarius",
+                    "title": "Gnatikaraka (Obstacles/Strife)",
+                    "planet": "Sun",
+                    "degreeInSign": 9.675
+                  },
+                  {
+                    "dms": "03°35'20\"",
+                    "code": "DK",
+                    "sign": "Sagittarius",
+                    "title": "Darakaraka (Spouse/Partnership)",
+                    "planet": "Venus",
+                    "degreeInSign": 3.5888
+                  }
+                ]
+              },
               "charaDasha": {
                 "periods": [
                   {
@@ -58937,7 +59693,393 @@
                   "padaHouseFromLagna": 8
                 }
               ],
-              "karakamshaSign": "Cancer"
+              "karakamshaSign": "Cancer",
+              "charaKarakas": {
+                "items": [
+                  {
+                    "dms": "23°10'44\"",
+                    "code": "AK",
+                    "sign": "Capricorn",
+                    "title": "Atmakaraka (Soul)",
+                    "planet": "Jupiter",
+                    "degreeInSign": 23.1789
+                  },
+                  {
+                    "dms": "19°45'42\"",
+                    "code": "AmK",
+                    "sign": "Scorpio",
+                    "title": "Amatyakaraka (Career)",
+                    "planet": "Mercury",
+                    "degreeInSign": 19.7616
+                  },
+                  {
+                    "dms": "16°08'59\"",
+                    "code": "BK",
+                    "sign": "Taurus",
+                    "title": "Bhratrukaraka (Siblings/Mentor)",
+                    "planet": "Moon",
+                    "degreeInSign": 16.1498
+                  },
+                  {
+                    "dms": "12°44'55\"",
+                    "code": "MK",
+                    "sign": "Libra",
+                    "title": "Matrukaraka (Mother/Home)",
+                    "planet": "Mars",
+                    "degreeInSign": 12.7486
+                  },
+                  {
+                    "dms": "10°46'47\"",
+                    "code": "PK",
+                    "sign": "Scorpio",
+                    "title": "Putrakaraka (Children/Intellect)",
+                    "planet": "Saturn",
+                    "degreeInSign": 10.7798
+                  },
+                  {
+                    "dms": "09°40'30\"",
+                    "code": "GK",
+                    "sign": "Sagittarius",
+                    "title": "Gnatikaraka (Obstacles/Strife)",
+                    "planet": "Sun",
+                    "degreeInSign": 9.675
+                  },
+                  {
+                    "dms": "03°35'20\"",
+                    "code": "DK",
+                    "sign": "Sagittarius",
+                    "title": "Darakaraka (Spouse/Partnership)",
+                    "planet": "Venus",
+                    "degreeInSign": 3.5888
+                  }
+                ]
+              },
+              "padas": {
+                "items": [
+                  {
+                    "code": "AL",
+                    "house": 5,
+                    "lordSign": "Aries",
+                    "padaSign": "Gemini",
+                    "houseLord": "Rahu",
+                    "padaSignIndex": 2,
+                    "padaHouseFromLagna": 5,
+                    "name": "AL",
+                    "sign": "Gemini"
+                  },
+                  {
+                    "code": "A2",
+                    "house": 10,
+                    "lordSign": "Capricorn",
+                    "padaSign": "Scorpio",
+                    "houseLord": "Jupiter",
+                    "padaSignIndex": 7,
+                    "padaHouseFromLagna": 10,
+                    "name": "A2",
+                    "sign": "Scorpio"
+                  },
+                  {
+                    "code": "A3",
+                    "house": 12,
+                    "lordSign": "Libra",
+                    "padaSign": "Capricorn",
+                    "houseLord": "Mars",
+                    "padaSignIndex": 9,
+                    "padaHouseFromLagna": 12,
+                    "name": "A3",
+                    "sign": "Capricorn"
+                  },
+                  {
+                    "code": "A4",
+                    "house": 6,
+                    "lordSign": "Sagittarius",
+                    "padaSign": "Cancer",
+                    "houseLord": "Venus",
+                    "padaSignIndex": 3,
+                    "padaHouseFromLagna": 6,
+                    "name": "A4",
+                    "sign": "Cancer"
+                  },
+                  {
+                    "code": "A5",
+                    "house": 3,
+                    "lordSign": "Scorpio",
+                    "padaSign": "Aries",
+                    "houseLord": "Mercury",
+                    "padaSignIndex": 0,
+                    "padaHouseFromLagna": 3,
+                    "name": "A5",
+                    "sign": "Aries"
+                  },
+                  {
+                    "code": "A6",
+                    "house": 2,
+                    "lordSign": "Taurus",
+                    "padaSign": "Pisces",
+                    "houseLord": "Moon",
+                    "padaSignIndex": 11,
+                    "padaHouseFromLagna": 2,
+                    "name": "A6",
+                    "sign": "Pisces"
+                  },
+                  {
+                    "code": "A7",
+                    "house": 3,
+                    "lordSign": "Sagittarius",
+                    "padaSign": "Aries",
+                    "houseLord": "Sun",
+                    "padaSignIndex": 0,
+                    "padaHouseFromLagna": 3,
+                    "name": "A7",
+                    "sign": "Aries"
+                  },
+                  {
+                    "code": "A8",
+                    "house": 12,
+                    "lordSign": "Scorpio",
+                    "padaSign": "Capricorn",
+                    "houseLord": "Mercury",
+                    "padaSignIndex": 9,
+                    "padaHouseFromLagna": 12,
+                    "name": "A8",
+                    "sign": "Capricorn"
+                  },
+                  {
+                    "code": "A9",
+                    "house": 1,
+                    "lordSign": "Sagittarius",
+                    "padaSign": "Aquarius",
+                    "houseLord": "Venus",
+                    "padaSignIndex": 10,
+                    "padaHouseFromLagna": 1,
+                    "name": "A9",
+                    "sign": "Aquarius"
+                  },
+                  {
+                    "code": "A10",
+                    "house": 8,
+                    "lordSign": "Libra",
+                    "padaSign": "Virgo",
+                    "houseLord": "Mars",
+                    "padaSignIndex": 5,
+                    "padaHouseFromLagna": 8,
+                    "name": "A10",
+                    "sign": "Virgo"
+                  },
+                  {
+                    "code": "A11",
+                    "house": 1,
+                    "lordSign": "Capricorn",
+                    "padaSign": "Aquarius",
+                    "houseLord": "Jupiter",
+                    "padaSignIndex": 10,
+                    "padaHouseFromLagna": 1,
+                    "name": "A11",
+                    "sign": "Aquarius"
+                  },
+                  {
+                    "code": "UL",
+                    "house": 8,
+                    "lordSign": "Scorpio",
+                    "padaSign": "Virgo",
+                    "houseLord": "Saturn",
+                    "padaSignIndex": 5,
+                    "padaHouseFromLagna": 8,
+                    "name": "UL",
+                    "sign": "Virgo"
+                  }
+                ]
+              },
+              "argalaAnalysis": {
+                "items": [
+                  {
+                    "netSupport": "Obstructed",
+                    "targetSign": "Aquarius",
+                    "targetHouse": 1,
+                    "supportingHouses": [
+                      {
+                        "house": 2,
+                        "label": "2nd (Sustenance)",
+                        "planets": []
+                      },
+                      {
+                        "house": 4,
+                        "label": "4th (Home/Base)",
+                        "planets": [
+                          "Moon"
+                        ]
+                      },
+                      {
+                        "house": 11,
+                        "label": "11th (Gains)",
+                        "planets": [
+                          "Sun",
+                          "Venus"
+                        ]
+                      },
+                      {
+                        "house": 5,
+                        "label": "5th (Creative/Followers)",
+                        "planets": []
+                      }
+                    ],
+                    "obstructingHouses": [
+                      {
+                        "house": 12,
+                        "label": "12th",
+                        "planets": [
+                          "Jupiter"
+                        ]
+                      },
+                      {
+                        "house": 10,
+                        "label": "10th",
+                        "planets": [
+                          "Mercury",
+                          "Saturn"
+                        ]
+                      },
+                      {
+                        "house": 3,
+                        "label": "3rd",
+                        "planets": [
+                          "Rahu"
+                        ]
+                      },
+                      {
+                        "house": 9,
+                        "label": "9th",
+                        "planets": [
+                          "Mars",
+                          "Ketu"
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "netSupport": "Balanced",
+                    "targetSign": "Leo",
+                    "targetHouse": 7,
+                    "supportingHouses": [
+                      {
+                        "house": 8,
+                        "label": "2nd (Sustenance)",
+                        "planets": []
+                      },
+                      {
+                        "house": 10,
+                        "label": "4th (Home/Base)",
+                        "planets": [
+                          "Mercury",
+                          "Saturn"
+                        ]
+                      },
+                      {
+                        "house": 5,
+                        "label": "11th (Gains)",
+                        "planets": []
+                      },
+                      {
+                        "house": 11,
+                        "label": "5th (Creative/Followers)",
+                        "planets": [
+                          "Sun",
+                          "Venus"
+                        ]
+                      }
+                    ],
+                    "obstructingHouses": [
+                      {
+                        "house": 6,
+                        "label": "12th",
+                        "planets": []
+                      },
+                      {
+                        "house": 4,
+                        "label": "10th",
+                        "planets": [
+                          "Moon"
+                        ]
+                      },
+                      {
+                        "house": 9,
+                        "label": "3rd",
+                        "planets": [
+                          "Mars",
+                          "Ketu"
+                        ]
+                      },
+                      {
+                        "house": 3,
+                        "label": "9th",
+                        "planets": [
+                          "Rahu"
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "netSupport": "Obstructed",
+                    "targetSign": "Scorpio",
+                    "targetHouse": 10,
+                    "supportingHouses": [
+                      {
+                        "house": 11,
+                        "label": "2nd (Sustenance)",
+                        "planets": [
+                          "Sun",
+                          "Venus"
+                        ]
+                      },
+                      {
+                        "house": 1,
+                        "label": "4th (Home/Base)",
+                        "planets": []
+                      },
+                      {
+                        "house": 8,
+                        "label": "11th (Gains)",
+                        "planets": []
+                      },
+                      {
+                        "house": 2,
+                        "label": "5th (Creative/Followers)",
+                        "planets": []
+                      }
+                    ],
+                    "obstructingHouses": [
+                      {
+                        "house": 9,
+                        "label": "12th",
+                        "planets": [
+                          "Mars",
+                          "Ketu"
+                        ]
+                      },
+                      {
+                        "house": 7,
+                        "label": "10th",
+                        "planets": []
+                      },
+                      {
+                        "house": 12,
+                        "label": "3rd",
+                        "planets": [
+                          "Jupiter"
+                        ]
+                      },
+                      {
+                        "house": 6,
+                        "label": "9th",
+                        "planets": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              "atmakarakaNavamsa": {
+                "karakamshaSign": "Cancer"
+              }
             },
             "legacyShadbalaExported": {
               "planets": [
@@ -64955,7 +66097,7 @@
         },
         "datasetManifest": {
           "schemaVersion": "v2.manifest.1.0",
-          "evaluatedAtUtc": "2026-11-28T09:20:21.163Z",
+          "evaluatedAtUtc": "2026-11-28T09:54:37.540Z",
           "inputFingerprint": "a8ffce3552a2724c30afad66",
           "minimumChartReadiness": {
             "ready": false,
@@ -64994,9 +66136,9 @@
             "available": 11,
             "internally_verified": 6,
             "independently_validated": 0,
-            "provisional": 4,
+            "provisional": 5,
             "incompatible": 0,
-            "unavailable": 10
+            "unavailable": 9
           },
           "entries": [
             {
@@ -65007,7 +66149,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:birthInstant.resolveCanonicalBirthInstant",
-              "acquiredAtUtc": "2026-11-28T09:20:21.163Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.540Z",
               "version": "v2.recalc.1.0",
               "dependencies": [],
               "missingDependencies": [],
@@ -65298,7 +66440,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:ashtakavargaReductions",
-              "acquiredAtUtc": "2026-11-28T09:20:21.163Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.540Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "ashtakavarga_bav_sav_prastara"
@@ -65360,9 +66502,9 @@
               "tier": "comprehensive_foundational_completeness",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
-              "canonicalStatus": "unavailable",
+              "canonicalStatus": "provisional",
               "source": "astroway:/vedic/jaimini/*",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-27T06:45:22.342Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions",
@@ -65371,7 +66513,7 @@
               "missingDependencies": [],
               "blockingForDownstream": [],
               "limitations": [
-                "All Jaimini endpoint buckets returned null/empty."
+                "Only 5/10 Jaimini dataset buckets populated."
               ]
             },
             {
@@ -65483,7 +66625,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:panchadhaMaitri",
-              "acquiredAtUtc": "2026-11-28T09:20:21.163Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.540Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -65502,7 +66644,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:vimshopakaBala",
-              "acquiredAtUtc": "2026-11-28T09:20:21.163Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.540Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_shodashavarga_16"
@@ -65521,7 +66663,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:dispositorGraph",
-              "acquiredAtUtc": "2026-11-28T09:20:21.163Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.540Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -65538,7 +66680,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "local:advancedAvasthas",
-              "acquiredAtUtc": "2026-11-28T09:20:21.163Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.540Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions",
@@ -65576,7 +66718,7 @@
               "referenceDateIso": "2026-11-27",
               "canonicalStatus": "available",
               "source": "freeastroapi:reference_date_dasha",
-              "acquiredAtUtc": "2026-11-28T09:20:21.163Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.540Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "canonical_birth_instant",
@@ -65764,7 +66906,7 @@
       "warning": "SYNTHETIC_SIMULATED_ASTROWAY_SHAPE — NOT a real AstroWay HTTP capture.",
       "layerCInput": {
         "contractVersion": "v2.layer_c_input.1.0",
-        "preparedAtUtc": "2026-11-28T09:20:21.183Z",
+        "preparedAtUtc": "2026-11-28T09:54:37.563Z",
         "sourceSchemaVersion": "v2.compiled_foundational_chart.1.0",
         "recalculationVersion": "2026.11.27-foundational.1",
         "inputFingerprint": "a8ffce3552a2724c30afad66",
@@ -65825,7 +66967,7 @@
             "vedic": "lahiri",
             "vedicValueDegrees": null,
             "kp": "Krishnamurti (KP)",
-            "kpValueDegrees": null
+            "kpValueDegrees": 23.56282085
           },
           "nodeConvention": {
             "requested": "mean",
@@ -65891,13 +67033,13 @@
               "dependencies": [
                 "canonical_birth_instant"
               ],
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
               "inputFingerprint": "a8ffce3552a2724c30afad66",
-              "completeness": "partial",
+              "completeness": "complete",
               "verificationStatus": "verified_provider",
-              "canonicalStatus": "provisional",
+              "canonicalStatus": "available",
               "limitations": [
                 "AstroWay ChartInput v2.383.19 does not expose an explicit nodeType (Mean vs True Node) toggle."
               ],
@@ -65932,7 +67074,11 @@
                     "dignity": "Friendly",
                     "avastha": "Kumara",
                     "is_combust": false,
-                    "speed_deg_per_day": 1.018
+                    "latitude_deg": 0.0001,
+                    "distance_au": 0.9835,
+                    "speed_deg_per_day": 1.018,
+                    "declination": -23.41,
+                    "right_ascension": 273.32
                   },
                   {
                     "name": "Moon",
@@ -65946,7 +67092,11 @@
                     "dignity": "Exalted",
                     "avastha": "Yuva",
                     "is_combust": false,
-                    "speed_deg_per_day": 13.4
+                    "latitude_deg": -1.85,
+                    "distance_au": 0.00258,
+                    "speed_deg_per_day": 13.41,
+                    "declination": 20.12,
+                    "right_ascension": 64.91
                   },
                   {
                     "name": "Mars",
@@ -65959,7 +67109,12 @@
                     "is_retrograde": false,
                     "dignity": "Neutral",
                     "avastha": "Yuva",
-                    "is_combust": false
+                    "is_combust": false,
+                    "latitude_deg": 0.85,
+                    "distance_au": 1.91,
+                    "speed_deg_per_day": 0.612,
+                    "declination": -12.14,
+                    "right_ascension": 214.11
                   },
                   {
                     "name": "Mercury",
@@ -65972,7 +67127,12 @@
                     "is_retrograde": false,
                     "dignity": "Neutral",
                     "avastha": "Kumara",
-                    "is_combust": false
+                    "is_combust": false,
+                    "latitude_deg": 1.15,
+                    "distance_au": 1.38,
+                    "speed_deg_per_day": 1.48,
+                    "declination": -20.89,
+                    "right_ascension": 250.92
                   },
                   {
                     "name": "Jupiter",
@@ -65985,7 +67145,12 @@
                     "is_retrograde": false,
                     "dignity": "Debilitated",
                     "avastha": "Kumara",
-                    "is_combust": false
+                    "is_combust": false,
+                    "latitude_deg": -0.62,
+                    "distance_au": 5.79,
+                    "speed_deg_per_day": 0.214,
+                    "declination": -17.34,
+                    "right_ascension": 318.22
                   },
                   {
                     "name": "Venus",
@@ -65998,7 +67163,12 @@
                     "is_retrograde": false,
                     "dignity": "Neutral",
                     "avastha": "Bala",
-                    "is_combust": true
+                    "is_combust": true,
+                    "latitude_deg": 0.34,
+                    "distance_au": 1.69,
+                    "speed_deg_per_day": 1.258,
+                    "declination": -23.18,
+                    "right_ascension": 266.85
                   },
                   {
                     "name": "Saturn",
@@ -66011,7 +67181,12 @@
                     "is_retrograde": false,
                     "dignity": "Neutral",
                     "avastha": "Vriddha",
-                    "is_combust": false
+                    "is_combust": false,
+                    "latitude_deg": 1.82,
+                    "distance_au": 10.61,
+                    "speed_deg_per_day": 0.095,
+                    "declination": -18.71,
+                    "right_ascension": 243.45
                   },
                   {
                     "name": "Rahu",
@@ -66022,7 +67197,12 @@
                     "degree_in_sign": 12.5352,
                     "house": 6,
                     "is_retrograde": true,
-                    "dignity": "Neutral"
+                    "dignity": "Neutral",
+                    "latitude_deg": 0,
+                    "distance_au": 0.00257,
+                    "speed_deg_per_day": -0.053,
+                    "declination": 13.85,
+                    "right_ascension": 33.42
                   },
                   {
                     "name": "Ketu",
@@ -66033,7 +67213,12 @@
                     "degree_in_sign": 12.5352,
                     "house": 12,
                     "is_retrograde": true,
-                    "dignity": "Neutral"
+                    "dignity": "Neutral",
+                    "latitude_deg": 0,
+                    "distance_au": 0.00257,
+                    "speed_deg_per_day": -0.053,
+                    "declination": -13.85,
+                    "right_ascension": 213.42
                   }
                 ],
                 "houses": [],
@@ -68192,7 +69377,28 @@
                 },
                 "yogas": {
                   "summary": {
-                    "parashara": null,
+                    "parashara": {
+                      "gajakesari": {
+                        "present": false,
+                        "contributingPlanets": [
+                          "Moon",
+                          "Jupiter"
+                        ],
+                        "details": [
+                          "Synthetic 6/8"
+                        ]
+                      },
+                      "dhana": {
+                        "present": true,
+                        "contributingPlanets": [
+                          "Jupiter",
+                          "Mercury"
+                        ],
+                        "details": [
+                          "Synthetic Dhana"
+                        ]
+                      }
+                    },
                     "jaiminiFull": null,
                     "jaiminiBasic": null,
                     "kundliYogas": {
@@ -68203,57 +69409,80 @@
                     },
                     "counts": {
                       "totalEvaluatedDetectors": 2,
-                      "totalActiveYogas": 2,
+                      "totalActiveYogas": 1,
                       "parasharaEvaluated": 2,
-                      "parasharaActive": 2,
+                      "parasharaActive": 1,
                       "jaiminiEvaluated": 0,
                       "jaiminiActive": 0
                     },
                     "evaluatedItems": [
                       {
-                        "id": "kundli_gajakesari_yoga",
-                        "name": "Gajakesari Yoga",
+                        "id": "parashara_dhana",
+                        "name": "Dhana Yoga",
                         "school": "parashara",
-                        "category": "kundli_summary",
-                        "endpoint": "/vedic/kundli",
-                        "present": true
+                        "category": "dhana",
+                        "endpoint": "/vedic/yogas/parashara/full",
+                        "present": true,
+                        "contributingPlanets": [
+                          "Jupiter",
+                          "Mercury"
+                        ],
+                        "details": [
+                          "Synthetic Dhana"
+                        ]
                       },
                       {
-                        "id": "kundli_budhaditya_check",
-                        "name": "Budhaditya Check",
+                        "id": "parashara_gajakesari",
+                        "name": "Gajakesari Yoga",
                         "school": "parashara",
-                        "category": "kundli_summary",
-                        "endpoint": "/vedic/kundli",
-                        "present": true
+                        "category": "gajakesari",
+                        "endpoint": "/vedic/yogas/parashara/full",
+                        "present": false,
+                        "contributingPlanets": [
+                          "Moon",
+                          "Jupiter"
+                        ],
+                        "details": [
+                          "Synthetic 6/8"
+                        ]
                       }
                     ]
                   },
                   "items": [
                     {
-                      "id": "kundli_gajakesari_yoga",
-                      "name": "Gajakesari Yoga",
+                      "id": "parashara_dhana",
+                      "name": "Dhana Yoga",
                       "school": "parashara",
-                      "category": "kundli_summary",
-                      "endpoint": "/vedic/kundli",
-                      "present": true
-                    },
-                    {
-                      "id": "kundli_budhaditya_check",
-                      "name": "Budhaditya Check",
-                      "school": "parashara",
-                      "category": "kundli_summary",
-                      "endpoint": "/vedic/kundli",
-                      "present": true
+                      "category": "dhana",
+                      "endpoint": "/vedic/yogas/parashara/full",
+                      "present": true,
+                      "contributingPlanets": [
+                        "Jupiter",
+                        "Mercury"
+                      ],
+                      "details": [
+                        "Synthetic Dhana"
+                      ]
                     }
                   ],
                   "metadata": {
-                    "source": "/vedic/kundli#yogas",
+                    "source": "/vedic/yogas/parashara/full",
                     "sources": [
+                      "/vedic/yogas/parashara/full",
                       "/vedic/kundli#yogas"
                     ]
                   }
                 },
-                "panchang": null,
+                "panchang": {
+                  "vara": "Wednesday",
+                  "tithi": "Shukla Chaturdashi",
+                  "nakshatra": "Rohini",
+                  "yoga": "Shubha",
+                  "karana": "Vanija",
+                  "sunrise": "06:14:22",
+                  "sunset": "17:01:48",
+                  "evaluationMode": "moment"
+                },
                 "vimshottariDasha": {
                   "initial": {
                     "initialPlanetName": "Moon",
@@ -68579,13 +69808,13 @@
               "version": "v2.master.1.0",
               "conventions": {
                 "ayanamsha": "kp",
-                "ayanamshaValueDeg": null,
+                "ayanamshaValueDeg": 23.56282085,
                 "houseSystem": "placidus"
               },
               "dependencies": [
                 "canonical_birth_instant"
               ],
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
               "inputFingerprint": "a8ffce3552a2724c30afad66",
@@ -68597,7 +69826,7 @@
                 "ayanamsha": {
                   "id": "kp",
                   "name": "Krishnamurti (KP)",
-                  "valueDegrees": null
+                  "valueDegrees": 23.56282085
                 },
                 "angles": {
                   "ascendant": {
@@ -69226,7 +70455,7 @@
               "dependencies": [
                 "canonical_birth_instant"
               ],
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
               "inputFingerprint": "a8ffce3552a2724c30afad66",
@@ -69272,6 +70501,51 @@
                     "is_retrograde": false
                   },
                   {
+                    "name": "Mars",
+                    "longitude": 216.26924084,
+                    "house": 10,
+                    "raw_name": "Mars",
+                    "abs_pos": 216.26924084,
+                    "sign": "Scorpio",
+                    "is_retrograde": false
+                  },
+                  {
+                    "name": "Mercury",
+                    "longitude": 253.11894084,
+                    "house": 12,
+                    "raw_name": "Mercury",
+                    "abs_pos": 253.11894084,
+                    "sign": "Sagittarius",
+                    "is_retrograde": false
+                  },
+                  {
+                    "name": "Jupiter",
+                    "longitude": 316.79324084,
+                    "house": 2,
+                    "raw_name": "Jupiter",
+                    "abs_pos": 316.79324084,
+                    "sign": "Aquarius",
+                    "is_retrograde": false
+                  },
+                  {
+                    "name": "Venus",
+                    "longitude": 266.96164084,
+                    "house": 12,
+                    "raw_name": "Venus",
+                    "abs_pos": 266.96164084,
+                    "sign": "Sagittarius",
+                    "is_retrograde": false
+                  },
+                  {
+                    "name": "Saturn",
+                    "longitude": 244.41604084,
+                    "house": 12,
+                    "raw_name": "Saturn",
+                    "abs_pos": 244.41604084,
+                    "sign": "Sagittarius",
+                    "is_retrograde": false
+                  },
+                  {
                     "name": "Uranus",
                     "longitude": 259.1,
                     "house": 1,
@@ -69313,18 +70587,38 @@
                     "planets": [
                       {
                         "name": "Sun",
-                        "domicile": false,
-                        "peregrine": true
+                        "dignity": "Peregrine",
+                        "score": 0
                       },
                       {
                         "name": "Moon",
-                        "domicile": false,
-                        "peregrine": true
+                        "dignity": "Peregrine",
+                        "score": 0
+                      },
+                      {
+                        "name": "Mars",
+                        "dignity": "Domicile",
+                        "score": 5
+                      },
+                      {
+                        "name": "Mercury",
+                        "dignity": "Detriment",
+                        "score": -5
                       },
                       {
                         "name": "Jupiter",
-                        "domicile": false,
-                        "peregrine": true
+                        "dignity": "Peregrine",
+                        "score": 0
+                      },
+                      {
+                        "name": "Venus",
+                        "dignity": "Peregrine",
+                        "score": 0
+                      },
+                      {
+                        "name": "Saturn",
+                        "dignity": "Peregrine",
+                        "score": 0
                       }
                     ]
                   }
@@ -69343,7 +70637,7 @@
               "dependencies": [
                 "canonical_birth_instant"
               ],
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
               "inputFingerprint": "a8ffce3552a2724c30afad66",
@@ -69366,49 +70660,92 @@
                   "Sun": {
                     "raw_name": "Sun",
                     "longitude": 249.4352,
+                    "latitude_deg": 0.0001,
+                    "distance_au": 0.9835,
                     "speed_deg_per_day": 1.018,
-                    "is_retrograde": false
+                    "is_retrograde": false,
+                    "declination": -23.41,
+                    "right_ascension": 273.32
                   },
                   "Moon": {
                     "raw_name": "Moon",
                     "longitude": 43.3989,
-                    "speed_deg_per_day": 13.4,
-                    "is_retrograde": false
+                    "latitude_deg": -1.85,
+                    "distance_au": 0.00258,
+                    "speed_deg_per_day": 13.41,
+                    "is_retrograde": false,
+                    "declination": 20.12,
+                    "right_ascension": 64.91
                   },
                   "Mars": {
                     "raw_name": "Mars",
                     "longitude": 192.608,
-                    "is_retrograde": false
+                    "latitude_deg": 0.85,
+                    "distance_au": 1.91,
+                    "speed_deg_per_day": 0.612,
+                    "is_retrograde": false,
+                    "declination": -12.14,
+                    "right_ascension": 214.11
                   },
                   "Mercury": {
                     "raw_name": "Mercury",
                     "longitude": 229.4577,
-                    "is_retrograde": false
+                    "latitude_deg": 1.15,
+                    "distance_au": 1.38,
+                    "speed_deg_per_day": 1.48,
+                    "is_retrograde": false,
+                    "declination": -20.89,
+                    "right_ascension": 250.92
                   },
                   "Jupiter": {
                     "raw_name": "Jupiter",
                     "longitude": 293.132,
-                    "is_retrograde": false
+                    "latitude_deg": -0.62,
+                    "distance_au": 5.79,
+                    "speed_deg_per_day": 0.214,
+                    "is_retrograde": false,
+                    "declination": -17.34,
+                    "right_ascension": 318.22
                   },
                   "Venus": {
                     "raw_name": "Venus",
                     "longitude": 243.3004,
-                    "is_retrograde": false
+                    "latitude_deg": 0.34,
+                    "distance_au": 1.69,
+                    "speed_deg_per_day": 1.258,
+                    "is_retrograde": false,
+                    "declination": -23.18,
+                    "right_ascension": 266.85
                   },
                   "Saturn": {
                     "raw_name": "Saturn",
                     "longitude": 220.7548,
-                    "is_retrograde": false
+                    "latitude_deg": 1.82,
+                    "distance_au": 10.61,
+                    "speed_deg_per_day": 0.095,
+                    "is_retrograde": false,
+                    "declination": -18.71,
+                    "right_ascension": 243.45
                   },
                   "Rahu": {
                     "raw_name": "Mean Node",
                     "longitude": 12.5352,
-                    "is_retrograde": true
+                    "latitude_deg": 0,
+                    "distance_au": 0.00257,
+                    "speed_deg_per_day": -0.053,
+                    "is_retrograde": true,
+                    "declination": 13.85,
+                    "right_ascension": 33.42
                   },
                   "Ketu": {
                     "raw_name": "South Node",
                     "longitude": 192.5352,
-                    "is_retrograde": true
+                    "latitude_deg": 0,
+                    "distance_au": 0.00257,
+                    "speed_deg_per_day": -0.053,
+                    "is_retrograde": true,
+                    "declination": -13.85,
+                    "right_ascension": 213.42
                   }
                 },
                 "astrology": {
@@ -69431,7 +70768,7 @@
               "canonical_birth_instant",
               "vedic_d1_positions"
             ],
-            "acquiredAtUtc": null,
+            "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
             "temporalScope": "natal_invariant",
             "referenceDateIso": null,
             "inputFingerprint": "a8ffce3552a2724c30afad66",
@@ -69460,13 +70797,7 @@
               },
               "unavailableClassicalSubcomponents": [
                 "Vimshopaka Bala (Shadvarga / Saptavarga / Dashavarga / Shodashavarga — not in AstroWay OpenAPI)",
-                "Panchadha Maitri (Five-fold Compound Friendship — not in AstroWay OpenAPI)",
-                "shadbala_sthana (not yet acquired)",
-                "shadbala_dig (not yet acquired)",
-                "shadbala_kala (not yet acquired)",
-                "shadbala_cheshta (not yet acquired)",
-                "shadbala_naisargika (not yet acquired)",
-                "shadbala_drik (not yet acquired)"
+                "Panchadha Maitri (Five-fold Compound Friendship — not in AstroWay OpenAPI)"
               ],
               "perPlanet": [
                 {
@@ -70009,7 +71340,10 @@
                     "saptavargajaNatural": 142.5,
                     "saptavargajaPanchadha": 132.5,
                     "saptavargajaDeltaPanchadhaMinusNatural": -10,
-                    "providerSthanaSubcomponents": null,
+                    "providerSthanaSubcomponents": {
+                      "planetName": "Sun",
+                      "total": 222.31
+                    },
                     "explanation": "Placidus cusp house=H1 (60V) vs Whole-Sign H2 (30V) | Saptavargaja Panchadha vs Natural friendship delta=-10V | Observed Provider − Legacy Local Sthana=-14.99V"
                   },
                   {
@@ -70023,7 +71357,10 @@
                     "saptavargajaNatural": 187.5,
                     "saptavargajaPanchadha": 115,
                     "saptavargajaDeltaPanchadhaMinusNatural": -72.5,
-                    "providerSthanaSubcomponents": null,
+                    "providerSthanaSubcomponents": {
+                      "planetName": "Moon",
+                      "total": 214.03
+                    },
                     "explanation": "Placidus cusp house=H6 (15V) vs Whole-Sign H7 (60V) | Saptavargaja Panchadha vs Natural friendship delta=-72.5V | Observed Provider − Legacy Local Sthana=-89.97V"
                   },
                   {
@@ -70037,7 +71374,10 @@
                     "saptavargajaNatural": 135,
                     "saptavargajaPanchadha": 135,
                     "saptavargajaDeltaPanchadhaMinusNatural": 0,
-                    "providerSthanaSubcomponents": null,
+                    "providerSthanaSubcomponents": {
+                      "planetName": "Mars",
+                      "total": 189.87
+                    },
                     "explanation": "Placidus cusp house=H11 (30V) vs Whole-Sign H12 (15V) | Observed Provider − Legacy Local Sthana=-15.03V"
                   },
                   {
@@ -70051,7 +71391,10 @@
                     "saptavargajaNatural": 157.5,
                     "saptavargajaPanchadha": 142.5,
                     "saptavargajaDeltaPanchadhaMinusNatural": -15,
-                    "providerSthanaSubcomponents": null,
+                    "providerSthanaSubcomponents": {
+                      "planetName": "Mercury",
+                      "total": 256.02
+                    },
                     "explanation": "Saptavargaja Panchadha vs Natural friendship delta=-15V | Observed Provider − Legacy Local Sthana=-14.98V"
                   },
                   {
@@ -70065,7 +71408,10 @@
                     "saptavargajaNatural": 135,
                     "saptavargajaPanchadha": 112.5,
                     "saptavargajaDeltaPanchadhaMinusNatural": -22.5,
-                    "providerSthanaSubcomponents": null,
+                    "providerSthanaSubcomponents": {
+                      "planetName": "Jupiter",
+                      "total": 126.04
+                    },
                     "explanation": "Saptavargaja Panchadha vs Natural friendship delta=-22.5V | Observed Provider − Legacy Local Sthana=-37.46V"
                   },
                   {
@@ -70079,7 +71425,10 @@
                     "saptavargajaNatural": 105,
                     "saptavargajaPanchadha": 101.25,
                     "saptavargajaDeltaPanchadhaMinusNatural": -3.75,
-                    "providerSthanaSubcomponents": null,
+                    "providerSthanaSubcomponents": {
+                      "planetName": "Venus",
+                      "total": 151.48
+                    },
                     "explanation": "Placidus cusp house=H1 (60V) vs Whole-Sign H2 (30V) | Saptavargaja Panchadha vs Natural friendship delta=-3.75V | Observed Provider − Legacy Local Sthana=-5.62V"
                   },
                   {
@@ -70093,7 +71442,10 @@
                     "saptavargajaNatural": 97.5,
                     "saptavargajaPanchadha": 80,
                     "saptavargajaDeltaPanchadhaMinusNatural": -17.5,
-                    "providerSthanaSubcomponents": null,
+                    "providerSthanaSubcomponents": {
+                      "planetName": "Saturn",
+                      "total": 214.33
+                    },
                     "explanation": "Placidus cusp house=H12 (15V) vs Whole-Sign H1 (60V) | Saptavargaja Panchadha vs Natural friendship delta=-17.5V | Observed Provider − Legacy Local Sthana=-33.77V"
                   }
                 ],
@@ -70108,8 +71460,11 @@
                 },
                 "kalaBalaRollupAudit": {
                   "abdaMasaVaraHoraCombined": true,
-                  "rawKalaItemsPresent": false,
-                  "fieldsObserved": [],
+                  "rawKalaItemsPresent": true,
+                  "fieldsObserved": [
+                    "planetName",
+                    "total"
+                  ],
                   "openApiKnownCaveats": [
                     "AstroWay /vedic/shadbala/kala exposes 6 fields and combines Abda, Masa, Vara, and Hora into a single `abdaMasaVaraHora` value.",
                     "AstroWay OpenAPI v2.383.19 explicitly notes Abda/Masa lords and Yuddha Bala remain open vs PyJHora 62-chart reference validation."
@@ -76211,7 +77566,7 @@
                   "Sun": {
                     "planet": "Sun",
                     "longitudeDeg": 249.4352,
-                    "latitudeDeg": null,
+                    "latitudeDeg": 0.0001,
                     "signIndex": 8,
                     "sign": "Sagittarius",
                     "degreeInSign": 9.4352,
@@ -76230,7 +77585,7 @@
                   "Moon": {
                     "planet": "Moon",
                     "longitudeDeg": 43.3989,
-                    "latitudeDeg": null,
+                    "latitudeDeg": -1.85,
                     "signIndex": 1,
                     "sign": "Taurus",
                     "degreeInSign": 13.3989,
@@ -76249,7 +77604,7 @@
                   "Mars": {
                     "planet": "Mars",
                     "longitudeDeg": 192.608,
-                    "latitudeDeg": null,
+                    "latitudeDeg": 0.85,
                     "signIndex": 6,
                     "sign": "Libra",
                     "degreeInSign": 12.608,
@@ -76268,7 +77623,7 @@
                   "Mercury": {
                     "planet": "Mercury",
                     "longitudeDeg": 229.4577,
-                    "latitudeDeg": null,
+                    "latitudeDeg": 1.15,
                     "signIndex": 7,
                     "sign": "Scorpio",
                     "degreeInSign": 19.4577,
@@ -76287,7 +77642,7 @@
                   "Jupiter": {
                     "planet": "Jupiter",
                     "longitudeDeg": 293.132,
-                    "latitudeDeg": null,
+                    "latitudeDeg": -0.62,
                     "signIndex": 9,
                     "sign": "Capricorn",
                     "degreeInSign": 23.132,
@@ -76306,7 +77661,7 @@
                   "Venus": {
                     "planet": "Venus",
                     "longitudeDeg": 243.3004,
-                    "latitudeDeg": null,
+                    "latitudeDeg": 0.34,
                     "signIndex": 8,
                     "sign": "Sagittarius",
                     "degreeInSign": 3.3004,
@@ -76325,7 +77680,7 @@
                   "Saturn": {
                     "planet": "Saturn",
                     "longitudeDeg": 220.7548,
-                    "latitudeDeg": null,
+                    "latitudeDeg": 1.82,
                     "signIndex": 7,
                     "sign": "Scorpio",
                     "degreeInSign": 10.7548,
@@ -76344,7 +77699,7 @@
                   "Rahu": {
                     "planet": "Rahu",
                     "longitudeDeg": 12.5352,
-                    "latitudeDeg": null,
+                    "latitudeDeg": 0,
                     "signIndex": 0,
                     "sign": "Aries",
                     "degreeInSign": 12.5352,
@@ -76363,7 +77718,7 @@
                   "Ketu": {
                     "planet": "Ketu",
                     "longitudeDeg": 192.5352,
-                    "latitudeDeg": null,
+                    "latitudeDeg": 0,
                     "signIndex": 6,
                     "sign": "Libra",
                     "degreeInSign": 12.5352,
@@ -76502,16 +77857,201 @@
               ]
             },
             "shadbalaSubcomponents": {
-              "sthana": null,
-              "dig": null,
-              "kala": null,
-              "cheshta": null,
-              "naisargika": null,
-              "drik": null
+              "sthana": {
+                "items": [
+                  {
+                    "planetName": "Sun",
+                    "total": 222.31
+                  },
+                  {
+                    "planetName": "Moon",
+                    "total": 214.03
+                  },
+                  {
+                    "planetName": "Mars",
+                    "total": 189.87
+                  },
+                  {
+                    "planetName": "Mercury",
+                    "total": 256.02
+                  },
+                  {
+                    "planetName": "Jupiter",
+                    "total": 126.04
+                  },
+                  {
+                    "planetName": "Venus",
+                    "total": 151.48
+                  },
+                  {
+                    "planetName": "Saturn",
+                    "total": 214.33
+                  }
+                ]
+              },
+              "dig": {
+                "items": [
+                  {
+                    "planetName": "Sun",
+                    "total": 24.27
+                  },
+                  {
+                    "planetName": "Moon",
+                    "total": 32.94
+                  },
+                  {
+                    "planetName": "Mars",
+                    "total": 43.21
+                  },
+                  {
+                    "planetName": "Mercury",
+                    "total": 58.58
+                  },
+                  {
+                    "planetName": "Jupiter",
+                    "total": 37.35
+                  },
+                  {
+                    "planetName": "Venus",
+                    "total": 33.68
+                  },
+                  {
+                    "planetName": "Saturn",
+                    "total": 1.48
+                  }
+                ]
+              },
+              "kala": {
+                "items": [
+                  {
+                    "planetName": "Sun",
+                    "total": 118.12
+                  },
+                  {
+                    "planetName": "Moon",
+                    "total": 110.05
+                  },
+                  {
+                    "planetName": "Mars",
+                    "total": 92.41
+                  },
+                  {
+                    "planetName": "Mercury",
+                    "total": 127.19
+                  },
+                  {
+                    "planetName": "Jupiter",
+                    "total": 155.21
+                  },
+                  {
+                    "planetName": "Venus",
+                    "total": 145.56
+                  },
+                  {
+                    "planetName": "Saturn",
+                    "total": 91.37
+                  }
+                ]
+              },
+              "cheshta": {
+                "items": [
+                  {
+                    "planetName": "Sun",
+                    "total": 1.03
+                  },
+                  {
+                    "planetName": "Moon",
+                    "total": 51.33
+                  },
+                  {
+                    "planetName": "Mars",
+                    "total": 23.31
+                  },
+                  {
+                    "planetName": "Mercury",
+                    "total": 27.01
+                  },
+                  {
+                    "planetName": "Jupiter",
+                    "total": 16.77
+                  },
+                  {
+                    "planetName": "Venus",
+                    "total": 2.97
+                  },
+                  {
+                    "planetName": "Saturn",
+                    "total": 10.94
+                  }
+                ]
+              },
+              "naisargika": {
+                "items": [
+                  {
+                    "planetName": "Sun",
+                    "total": 60
+                  },
+                  {
+                    "planetName": "Moon",
+                    "total": 51.42
+                  },
+                  {
+                    "planetName": "Mars",
+                    "total": 17.16
+                  },
+                  {
+                    "planetName": "Mercury",
+                    "total": 25.74
+                  },
+                  {
+                    "planetName": "Jupiter",
+                    "total": 34.26
+                  },
+                  {
+                    "planetName": "Venus",
+                    "total": 42.84
+                  },
+                  {
+                    "planetName": "Saturn",
+                    "total": 8.58
+                  }
+                ]
+              },
+              "drik": {
+                "items": [
+                  {
+                    "planetName": "Sun",
+                    "total": 8.39
+                  },
+                  {
+                    "planetName": "Moon",
+                    "total": -29.76
+                  },
+                  {
+                    "planetName": "Mars",
+                    "total": 12.77
+                  },
+                  {
+                    "planetName": "Mercury",
+                    "total": 13.85
+                  },
+                  {
+                    "planetName": "Jupiter",
+                    "total": -29.39
+                  },
+                  {
+                    "planetName": "Venus",
+                    "total": 9.93
+                  },
+                  {
+                    "planetName": "Saturn",
+                    "total": 15.21
+                  }
+                ]
+              }
             },
             "shadbalaSubcomponentsNormalized": {
-              "populatedBuckets": [],
-              "emptyBuckets": [
+              "populatedBuckets": [
                 "sthana",
                 "dig",
                 "kala",
@@ -76519,7 +78059,233 @@
                 "naisargika",
                 "drik"
               ],
-              "byPlanet": {}
+              "emptyBuckets": [],
+              "byPlanet": {
+                "Sun": {
+                  "sthana": {
+                    "planetName": "Sun",
+                    "total": 222.31,
+                    "planet": "Sun"
+                  },
+                  "dig": {
+                    "planetName": "Sun",
+                    "total": 24.27,
+                    "planet": "Sun"
+                  },
+                  "kala": {
+                    "planetName": "Sun",
+                    "total": 118.12,
+                    "planet": "Sun"
+                  },
+                  "cheshta": {
+                    "planetName": "Sun",
+                    "total": 1.03,
+                    "planet": "Sun"
+                  },
+                  "naisargika": {
+                    "planetName": "Sun",
+                    "total": 60,
+                    "planet": "Sun"
+                  },
+                  "drik": {
+                    "planetName": "Sun",
+                    "total": 8.39,
+                    "planet": "Sun"
+                  }
+                },
+                "Moon": {
+                  "sthana": {
+                    "planetName": "Moon",
+                    "total": 214.03,
+                    "planet": "Moon"
+                  },
+                  "dig": {
+                    "planetName": "Moon",
+                    "total": 32.94,
+                    "planet": "Moon"
+                  },
+                  "kala": {
+                    "planetName": "Moon",
+                    "total": 110.05,
+                    "planet": "Moon"
+                  },
+                  "cheshta": {
+                    "planetName": "Moon",
+                    "total": 51.33,
+                    "planet": "Moon"
+                  },
+                  "naisargika": {
+                    "planetName": "Moon",
+                    "total": 51.42,
+                    "planet": "Moon"
+                  },
+                  "drik": {
+                    "planetName": "Moon",
+                    "total": -29.76,
+                    "planet": "Moon"
+                  }
+                },
+                "Mars": {
+                  "sthana": {
+                    "planetName": "Mars",
+                    "total": 189.87,
+                    "planet": "Mars"
+                  },
+                  "dig": {
+                    "planetName": "Mars",
+                    "total": 43.21,
+                    "planet": "Mars"
+                  },
+                  "kala": {
+                    "planetName": "Mars",
+                    "total": 92.41,
+                    "planet": "Mars"
+                  },
+                  "cheshta": {
+                    "planetName": "Mars",
+                    "total": 23.31,
+                    "planet": "Mars"
+                  },
+                  "naisargika": {
+                    "planetName": "Mars",
+                    "total": 17.16,
+                    "planet": "Mars"
+                  },
+                  "drik": {
+                    "planetName": "Mars",
+                    "total": 12.77,
+                    "planet": "Mars"
+                  }
+                },
+                "Mercury": {
+                  "sthana": {
+                    "planetName": "Mercury",
+                    "total": 256.02,
+                    "planet": "Mercury"
+                  },
+                  "dig": {
+                    "planetName": "Mercury",
+                    "total": 58.58,
+                    "planet": "Mercury"
+                  },
+                  "kala": {
+                    "planetName": "Mercury",
+                    "total": 127.19,
+                    "planet": "Mercury"
+                  },
+                  "cheshta": {
+                    "planetName": "Mercury",
+                    "total": 27.01,
+                    "planet": "Mercury"
+                  },
+                  "naisargika": {
+                    "planetName": "Mercury",
+                    "total": 25.74,
+                    "planet": "Mercury"
+                  },
+                  "drik": {
+                    "planetName": "Mercury",
+                    "total": 13.85,
+                    "planet": "Mercury"
+                  }
+                },
+                "Jupiter": {
+                  "sthana": {
+                    "planetName": "Jupiter",
+                    "total": 126.04,
+                    "planet": "Jupiter"
+                  },
+                  "dig": {
+                    "planetName": "Jupiter",
+                    "total": 37.35,
+                    "planet": "Jupiter"
+                  },
+                  "kala": {
+                    "planetName": "Jupiter",
+                    "total": 155.21,
+                    "planet": "Jupiter"
+                  },
+                  "cheshta": {
+                    "planetName": "Jupiter",
+                    "total": 16.77,
+                    "planet": "Jupiter"
+                  },
+                  "naisargika": {
+                    "planetName": "Jupiter",
+                    "total": 34.26,
+                    "planet": "Jupiter"
+                  },
+                  "drik": {
+                    "planetName": "Jupiter",
+                    "total": -29.39,
+                    "planet": "Jupiter"
+                  }
+                },
+                "Venus": {
+                  "sthana": {
+                    "planetName": "Venus",
+                    "total": 151.48,
+                    "planet": "Venus"
+                  },
+                  "dig": {
+                    "planetName": "Venus",
+                    "total": 33.68,
+                    "planet": "Venus"
+                  },
+                  "kala": {
+                    "planetName": "Venus",
+                    "total": 145.56,
+                    "planet": "Venus"
+                  },
+                  "cheshta": {
+                    "planetName": "Venus",
+                    "total": 2.97,
+                    "planet": "Venus"
+                  },
+                  "naisargika": {
+                    "planetName": "Venus",
+                    "total": 42.84,
+                    "planet": "Venus"
+                  },
+                  "drik": {
+                    "planetName": "Venus",
+                    "total": 9.93,
+                    "planet": "Venus"
+                  }
+                },
+                "Saturn": {
+                  "sthana": {
+                    "planetName": "Saturn",
+                    "total": 214.33,
+                    "planet": "Saturn"
+                  },
+                  "dig": {
+                    "planetName": "Saturn",
+                    "total": 1.48,
+                    "planet": "Saturn"
+                  },
+                  "kala": {
+                    "planetName": "Saturn",
+                    "total": 91.37,
+                    "planet": "Saturn"
+                  },
+                  "cheshta": {
+                    "planetName": "Saturn",
+                    "total": 10.94,
+                    "planet": "Saturn"
+                  },
+                  "naisargika": {
+                    "planetName": "Saturn",
+                    "total": 8.58,
+                    "planet": "Saturn"
+                  },
+                  "drik": {
+                    "planetName": "Saturn",
+                    "total": 15.21,
+                    "planet": "Saturn"
+                  }
+                }
+              }
             },
             "ishtaKashtaPhala": {
               "items": [
@@ -76705,7 +78471,7 @@
                   "avastha": "Yuva",
                   "is_combust": false,
                   "is_retrograde": false,
-                  "speed_deg_per_day": 13.4
+                  "speed_deg_per_day": 13.41
                 },
                 "Mars": {
                   "name": "Mars",
@@ -76713,7 +78479,7 @@
                   "avastha": "Yuva",
                   "is_combust": false,
                   "is_retrograde": false,
-                  "speed_deg_per_day": null
+                  "speed_deg_per_day": 0.612
                 },
                 "Mercury": {
                   "name": "Mercury",
@@ -76721,7 +78487,7 @@
                   "avastha": "Kumara",
                   "is_combust": false,
                   "is_retrograde": false,
-                  "speed_deg_per_day": null
+                  "speed_deg_per_day": 1.48
                 },
                 "Jupiter": {
                   "name": "Jupiter",
@@ -76729,7 +78495,7 @@
                   "avastha": "Kumara",
                   "is_combust": false,
                   "is_retrograde": false,
-                  "speed_deg_per_day": null
+                  "speed_deg_per_day": 0.214
                 },
                 "Venus": {
                   "name": "Venus",
@@ -76737,7 +78503,7 @@
                   "avastha": "Bala",
                   "is_combust": true,
                   "is_retrograde": false,
-                  "speed_deg_per_day": null
+                  "speed_deg_per_day": 1.258
                 },
                 "Saturn": {
                   "name": "Saturn",
@@ -76745,7 +78511,7 @@
                   "avastha": "Vriddha",
                   "is_combust": false,
                   "is_retrograde": false,
-                  "speed_deg_per_day": null
+                  "speed_deg_per_day": 0.095
                 },
                 "Rahu": {
                   "name": "Rahu",
@@ -76753,7 +78519,7 @@
                   "avastha": null,
                   "is_combust": null,
                   "is_retrograde": true,
-                  "speed_deg_per_day": null
+                  "speed_deg_per_day": -0.053
                 },
                 "Ketu": {
                   "name": "Ketu",
@@ -76761,7 +78527,7 @@
                   "avastha": null,
                   "is_combust": null,
                   "is_retrograde": true,
-                  "speed_deg_per_day": null
+                  "speed_deg_per_day": -0.053
                 }
               },
               "hasAnyVedicCondition": true,
@@ -76770,24 +78536,530 @@
                 "planets": [
                   {
                     "name": "Sun",
-                    "domicile": false,
-                    "peregrine": true
+                    "dignity": "Peregrine",
+                    "score": 0
                   },
                   {
                     "name": "Moon",
-                    "domicile": false,
-                    "peregrine": true
+                    "dignity": "Peregrine",
+                    "score": 0
+                  },
+                  {
+                    "name": "Mars",
+                    "dignity": "Domicile",
+                    "score": 5
+                  },
+                  {
+                    "name": "Mercury",
+                    "dignity": "Detriment",
+                    "score": -5
                   },
                   {
                     "name": "Jupiter",
-                    "domicile": false,
-                    "peregrine": true
+                    "dignity": "Peregrine",
+                    "score": 0
+                  },
+                  {
+                    "name": "Venus",
+                    "dignity": "Peregrine",
+                    "score": 0
+                  },
+                  {
+                    "name": "Saturn",
+                    "dignity": "Peregrine",
+                    "score": 0
                   }
                 ]
               }
             },
-            "ashtakavargaBasic": null,
-            "ashtakavargaShodhana": null,
+            "ashtakavargaBasic": {
+              "sarva": [
+                28,
+                21,
+                25,
+                32,
+                35,
+                34,
+                31,
+                30,
+                20,
+                28,
+                24,
+                29
+              ],
+              "sarvaTotal": 337,
+              "planets": [
+                {
+                  "planetName": "Sun",
+                  "bindus": [
+                    3,
+                    4,
+                    5,
+                    5,
+                    5,
+                    5,
+                    5,
+                    4,
+                    2,
+                    4,
+                    3,
+                    3
+                  ]
+                },
+                {
+                  "planetName": "Moon",
+                  "bindus": [
+                    4,
+                    3,
+                    4,
+                    4,
+                    5,
+                    5,
+                    4,
+                    4,
+                    2,
+                    4,
+                    5,
+                    5
+                  ]
+                },
+                {
+                  "planetName": "Mars",
+                  "bindus": [
+                    4,
+                    4,
+                    2,
+                    4,
+                    3,
+                    4,
+                    5,
+                    5,
+                    1,
+                    3,
+                    2,
+                    2
+                  ]
+                },
+                {
+                  "planetName": "Mercury",
+                  "bindus": [
+                    5,
+                    3,
+                    5,
+                    4,
+                    8,
+                    3,
+                    5,
+                    6,
+                    5,
+                    3,
+                    4,
+                    3
+                  ]
+                },
+                {
+                  "planetName": "Jupiter",
+                  "bindus": [
+                    6,
+                    3,
+                    2,
+                    5,
+                    6,
+                    5,
+                    5,
+                    5,
+                    3,
+                    6,
+                    4,
+                    6
+                  ]
+                },
+                {
+                  "planetName": "Venus",
+                  "bindus": [
+                    3,
+                    2,
+                    4,
+                    6,
+                    5,
+                    7,
+                    3,
+                    3,
+                    4,
+                    5,
+                    4,
+                    6
+                  ]
+                },
+                {
+                  "planetName": "Saturn",
+                  "bindus": [
+                    3,
+                    2,
+                    3,
+                    4,
+                    3,
+                    5,
+                    4,
+                    3,
+                    3,
+                    3,
+                    2,
+                    4
+                  ]
+                }
+              ]
+            },
+            "ashtakavargaShodhana": {
+              "planets": [
+                {
+                  "planetName": "Sun",
+                  "planet": "Sun",
+                  "originalBav": [
+                    3,
+                    4,
+                    5,
+                    5,
+                    5,
+                    5,
+                    5,
+                    4,
+                    2,
+                    4,
+                    3,
+                    3
+                  ],
+                  "afterTrikonaShodhana": [
+                    1,
+                    0,
+                    2,
+                    2,
+                    3,
+                    1,
+                    2,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0
+                  ],
+                  "afterEkadhipatyaShodhana": [
+                    1,
+                    0,
+                    2,
+                    2,
+                    3,
+                    1,
+                    2,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0
+                  ],
+                  "rasiPinda": 88,
+                  "grahaPinda": 26,
+                  "shodhyaPinda": 114
+                },
+                {
+                  "planetName": "Moon",
+                  "planet": "Moon",
+                  "originalBav": [
+                    4,
+                    3,
+                    4,
+                    4,
+                    5,
+                    5,
+                    4,
+                    4,
+                    2,
+                    4,
+                    5,
+                    5
+                  ],
+                  "afterTrikonaShodhana": [
+                    2,
+                    0,
+                    0,
+                    0,
+                    3,
+                    2,
+                    0,
+                    0,
+                    0,
+                    1,
+                    1,
+                    1
+                  ],
+                  "afterEkadhipatyaShodhana": [
+                    2,
+                    0,
+                    0,
+                    0,
+                    3,
+                    2,
+                    0,
+                    0,
+                    0,
+                    1,
+                    1,
+                    1
+                  ],
+                  "rasiPinda": 82,
+                  "grahaPinda": 10,
+                  "shodhyaPinda": 92
+                },
+                {
+                  "planetName": "Mars",
+                  "planet": "Mars",
+                  "originalBav": [
+                    4,
+                    4,
+                    2,
+                    4,
+                    3,
+                    4,
+                    5,
+                    5,
+                    1,
+                    3,
+                    2,
+                    2
+                  ],
+                  "afterTrikonaShodhana": [
+                    3,
+                    1,
+                    0,
+                    2,
+                    2,
+                    1,
+                    3,
+                    3,
+                    0,
+                    0,
+                    0,
+                    0
+                  ],
+                  "afterEkadhipatyaShodhana": [
+                    0,
+                    1,
+                    0,
+                    2,
+                    2,
+                    1,
+                    3,
+                    3,
+                    0,
+                    0,
+                    0,
+                    0
+                  ],
+                  "rasiPinda": 88,
+                  "grahaPinda": 59,
+                  "shodhyaPinda": 147
+                },
+                {
+                  "planetName": "Mercury",
+                  "planet": "Mercury",
+                  "originalBav": [
+                    5,
+                    3,
+                    5,
+                    4,
+                    8,
+                    3,
+                    5,
+                    6,
+                    5,
+                    3,
+                    4,
+                    3
+                  ],
+                  "afterTrikonaShodhana": [
+                    0,
+                    0,
+                    1,
+                    1,
+                    3,
+                    0,
+                    1,
+                    3,
+                    0,
+                    0,
+                    0,
+                    0
+                  ],
+                  "afterEkadhipatyaShodhana": [
+                    0,
+                    0,
+                    1,
+                    1,
+                    3,
+                    0,
+                    1,
+                    3,
+                    0,
+                    0,
+                    0,
+                    0
+                  ],
+                  "rasiPinda": 73,
+                  "grahaPinda": 38,
+                  "shodhyaPinda": 111
+                },
+                {
+                  "planetName": "Jupiter",
+                  "planet": "Jupiter",
+                  "originalBav": [
+                    6,
+                    3,
+                    2,
+                    5,
+                    6,
+                    5,
+                    5,
+                    5,
+                    3,
+                    6,
+                    4,
+                    6
+                  ],
+                  "afterTrikonaShodhana": [
+                    3,
+                    0,
+                    0,
+                    0,
+                    3,
+                    2,
+                    3,
+                    0,
+                    0,
+                    3,
+                    2,
+                    1
+                  ],
+                  "afterEkadhipatyaShodhana": [
+                    3,
+                    0,
+                    0,
+                    0,
+                    3,
+                    2,
+                    3,
+                    0,
+                    0,
+                    3,
+                    2,
+                    1
+                  ],
+                  "rasiPinda": 131,
+                  "grahaPinda": 54,
+                  "shodhyaPinda": 185
+                },
+                {
+                  "planetName": "Venus",
+                  "planet": "Venus",
+                  "originalBav": [
+                    3,
+                    2,
+                    4,
+                    6,
+                    5,
+                    7,
+                    3,
+                    3,
+                    4,
+                    5,
+                    4,
+                    6
+                  ],
+                  "afterTrikonaShodhana": [
+                    0,
+                    0,
+                    1,
+                    3,
+                    2,
+                    5,
+                    0,
+                    0,
+                    1,
+                    3,
+                    1,
+                    3
+                  ],
+                  "afterEkadhipatyaShodhana": [
+                    0,
+                    0,
+                    1,
+                    3,
+                    2,
+                    5,
+                    0,
+                    0,
+                    1,
+                    3,
+                    1,
+                    3
+                  ],
+                  "rasiPinda": 136,
+                  "grahaPinda": 42,
+                  "shodhyaPinda": 178
+                },
+                {
+                  "planetName": "Saturn",
+                  "planet": "Saturn",
+                  "originalBav": [
+                    3,
+                    2,
+                    3,
+                    4,
+                    3,
+                    5,
+                    4,
+                    3,
+                    3,
+                    3,
+                    2,
+                    4
+                  ],
+                  "afterTrikonaShodhana": [
+                    0,
+                    0,
+                    1,
+                    1,
+                    0,
+                    3,
+                    2,
+                    0,
+                    0,
+                    1,
+                    0,
+                    1
+                  ],
+                  "afterEkadhipatyaShodhana": [
+                    0,
+                    0,
+                    1,
+                    1,
+                    0,
+                    3,
+                    2,
+                    0,
+                    0,
+                    1,
+                    0,
+                    1
+                  ],
+                  "rasiPinda": 58,
+                  "grahaPinda": 26,
+                  "shodhyaPinda": 84
+                }
+              ],
+              "hasTrikona": true,
+              "hasEkadhipatya": true,
+              "hasPinda": true
+            },
             "kpExtended": {
               "rulingPlanets": null,
               "ascSub": null,
@@ -76796,8 +79068,59 @@
             },
             "jaimini": {
               "karakas": null,
-              "charaKarakas": null,
-              "padas": null,
+              "charaKarakas": {
+                "items": [
+                  {
+                    "planet": "Jupiter",
+                    "karaka": "Atmakaraka (AK)",
+                    "degreeInSign": 23.132
+                  },
+                  {
+                    "planet": "Mercury",
+                    "karaka": "Amatyakaraka (AmK)",
+                    "degreeInSign": 19.4577
+                  },
+                  {
+                    "planet": "Moon",
+                    "karaka": "Bhratrukaraka (BK)",
+                    "degreeInSign": 13.4175
+                  },
+                  {
+                    "planet": "Mars",
+                    "karaka": "Matrukaraka (MK)",
+                    "degreeInSign": 12.608
+                  },
+                  {
+                    "planet": "Saturn",
+                    "karaka": "Putrakaraka (PK)",
+                    "degreeInSign": 10.7548
+                  },
+                  {
+                    "planet": "Sun",
+                    "karaka": "Gnatikaraka (GK)",
+                    "degreeInSign": 9.4416
+                  },
+                  {
+                    "planet": "Venus",
+                    "karaka": "Darakaraka (DK)",
+                    "degreeInSign": 3.3004
+                  }
+                ]
+              },
+              "padas": {
+                "items": [
+                  {
+                    "name": "AL",
+                    "sign": "Virgo",
+                    "house": 11
+                  },
+                  {
+                    "name": "UL",
+                    "sign": "Aquarius",
+                    "house": 4
+                  }
+                ]
+              },
               "upapada": null,
               "aspects": null,
               "drishtiRasi": null,
@@ -76805,17 +79128,66 @@
               "atmakarakaNavamsa": null,
               "argalaAnalysis": null,
               "yogas": null,
-              "populatedBucketsCount": 0,
-              "populatedBuckets": []
+              "populatedBucketsCount": 2,
+              "populatedBuckets": [
+                "charaKarakas",
+                "padas"
+              ]
             },
             "yogasAndDoshas": {
-              "yogasParashara": null,
+              "yogasParashara": {
+                "gajakesari": {
+                  "present": false,
+                  "contributingPlanets": [
+                    "Moon",
+                    "Jupiter"
+                  ],
+                  "details": [
+                    "Synthetic 6/8"
+                  ]
+                },
+                "dhana": {
+                  "present": true,
+                  "contributingPlanets": [
+                    "Jupiter",
+                    "Mercury"
+                  ],
+                  "details": [
+                    "Synthetic Dhana"
+                  ]
+                }
+              },
               "yogasJaimini": null,
-              "doshasParashara": null,
+              "doshasParashara": {
+                "mangalDosha": {
+                  "present": false
+                }
+              },
               "doshasKp": null,
               "normalizedYogas": {
                 "summary": {
-                  "parashara": null,
+                  "parashara": {
+                    "gajakesari": {
+                      "present": false,
+                      "contributingPlanets": [
+                        "Moon",
+                        "Jupiter"
+                      ],
+                      "details": [
+                        "Synthetic 6/8"
+                      ]
+                    },
+                    "dhana": {
+                      "present": true,
+                      "contributingPlanets": [
+                        "Jupiter",
+                        "Mercury"
+                      ],
+                      "details": [
+                        "Synthetic Dhana"
+                      ]
+                    }
+                  },
                   "jaiminiFull": null,
                   "jaiminiBasic": null,
                   "kundliYogas": {
@@ -76826,58 +79198,87 @@
                   },
                   "counts": {
                     "totalEvaluatedDetectors": 2,
-                    "totalActiveYogas": 2,
+                    "totalActiveYogas": 1,
                     "parasharaEvaluated": 2,
-                    "parasharaActive": 2,
+                    "parasharaActive": 1,
                     "jaiminiEvaluated": 0,
                     "jaiminiActive": 0
                   },
                   "evaluatedItems": [
                     {
-                      "id": "kundli_gajakesari_yoga",
-                      "name": "Gajakesari Yoga",
+                      "id": "parashara_dhana",
+                      "name": "Dhana Yoga",
                       "school": "parashara",
-                      "category": "kundli_summary",
-                      "endpoint": "/vedic/kundli",
-                      "present": true
+                      "category": "dhana",
+                      "endpoint": "/vedic/yogas/parashara/full",
+                      "present": true,
+                      "contributingPlanets": [
+                        "Jupiter",
+                        "Mercury"
+                      ],
+                      "details": [
+                        "Synthetic Dhana"
+                      ]
                     },
                     {
-                      "id": "kundli_budhaditya_check",
-                      "name": "Budhaditya Check",
+                      "id": "parashara_gajakesari",
+                      "name": "Gajakesari Yoga",
                       "school": "parashara",
-                      "category": "kundli_summary",
-                      "endpoint": "/vedic/kundli",
-                      "present": true
+                      "category": "gajakesari",
+                      "endpoint": "/vedic/yogas/parashara/full",
+                      "present": false,
+                      "contributingPlanets": [
+                        "Moon",
+                        "Jupiter"
+                      ],
+                      "details": [
+                        "Synthetic 6/8"
+                      ]
                     }
                   ]
                 },
                 "items": [
                   {
-                    "id": "kundli_gajakesari_yoga",
-                    "name": "Gajakesari Yoga",
+                    "id": "parashara_dhana",
+                    "name": "Dhana Yoga",
                     "school": "parashara",
-                    "category": "kundli_summary",
-                    "endpoint": "/vedic/kundli",
-                    "present": true
-                  },
-                  {
-                    "id": "kundli_budhaditya_check",
-                    "name": "Budhaditya Check",
-                    "school": "parashara",
-                    "category": "kundli_summary",
-                    "endpoint": "/vedic/kundli",
-                    "present": true
+                    "category": "dhana",
+                    "endpoint": "/vedic/yogas/parashara/full",
+                    "present": true,
+                    "contributingPlanets": [
+                      "Jupiter",
+                      "Mercury"
+                    ],
+                    "details": [
+                      "Synthetic Dhana"
+                    ]
                   }
                 ],
                 "metadata": {
-                  "source": "/vedic/kundli#yogas",
+                  "source": "/vedic/yogas/parashara/full",
                   "sources": [
+                    "/vedic/yogas/parashara/full",
                     "/vedic/kundli#yogas"
                   ]
                 }
               }
             },
-            "upagrahas": null,
+            "upagrahas": {
+              "items": [
+                {
+                  "name": "Gulika",
+                  "sign": "Capricorn",
+                  "house": 3,
+                  "degree": 291.5
+                },
+                {
+                  "name": "Mandi",
+                  "sign": "Capricorn",
+                  "house": 3,
+                  "degree": 289.2
+                }
+              ]
+            },
             "advancedDashas": {
               "vimshottariPrana": {
                 "initial": {
@@ -77206,18 +79607,38 @@
                 "planets": [
                   {
                     "name": "Sun",
-                    "domicile": false,
-                    "peregrine": true
+                    "dignity": "Peregrine",
+                    "score": 0
                   },
                   {
                     "name": "Moon",
-                    "domicile": false,
-                    "peregrine": true
+                    "dignity": "Peregrine",
+                    "score": 0
+                  },
+                  {
+                    "name": "Mars",
+                    "dignity": "Domicile",
+                    "score": 5
+                  },
+                  {
+                    "name": "Mercury",
+                    "dignity": "Detriment",
+                    "score": -5
                   },
                   {
                     "name": "Jupiter",
-                    "domicile": false,
-                    "peregrine": true
+                    "dignity": "Peregrine",
+                    "score": 0
+                  },
+                  {
+                    "name": "Venus",
+                    "dignity": "Peregrine",
+                    "score": 0
+                  },
+                  {
+                    "name": "Saturn",
+                    "dignity": "Peregrine",
+                    "score": 0
                   }
                 ]
               },
@@ -81374,7 +83795,7 @@
                 "Sun": {
                   "planet": "Sun",
                   "longitudeDeg": 249.4352,
-                  "latitudeDeg": null,
+                  "latitudeDeg": 0.0001,
                   "signIndex": 8,
                   "sign": "Sagittarius",
                   "degreeInSign": 9.4352,
@@ -81393,7 +83814,7 @@
                 "Moon": {
                   "planet": "Moon",
                   "longitudeDeg": 43.3989,
-                  "latitudeDeg": null,
+                  "latitudeDeg": -1.85,
                   "signIndex": 1,
                   "sign": "Taurus",
                   "degreeInSign": 13.3989,
@@ -81412,7 +83833,7 @@
                 "Mars": {
                   "planet": "Mars",
                   "longitudeDeg": 192.608,
-                  "latitudeDeg": null,
+                  "latitudeDeg": 0.85,
                   "signIndex": 6,
                   "sign": "Libra",
                   "degreeInSign": 12.608,
@@ -81431,7 +83852,7 @@
                 "Mercury": {
                   "planet": "Mercury",
                   "longitudeDeg": 229.4577,
-                  "latitudeDeg": null,
+                  "latitudeDeg": 1.15,
                   "signIndex": 7,
                   "sign": "Scorpio",
                   "degreeInSign": 19.4577,
@@ -81450,7 +83871,7 @@
                 "Jupiter": {
                   "planet": "Jupiter",
                   "longitudeDeg": 293.132,
-                  "latitudeDeg": null,
+                  "latitudeDeg": -0.62,
                   "signIndex": 9,
                   "sign": "Capricorn",
                   "degreeInSign": 23.132,
@@ -81469,7 +83890,7 @@
                 "Venus": {
                   "planet": "Venus",
                   "longitudeDeg": 243.3004,
-                  "latitudeDeg": null,
+                  "latitudeDeg": 0.34,
                   "signIndex": 8,
                   "sign": "Sagittarius",
                   "degreeInSign": 3.3004,
@@ -81488,7 +83909,7 @@
                 "Saturn": {
                   "planet": "Saturn",
                   "longitudeDeg": 220.7548,
-                  "latitudeDeg": null,
+                  "latitudeDeg": 1.82,
                   "signIndex": 7,
                   "sign": "Scorpio",
                   "degreeInSign": 10.7548,
@@ -81507,7 +83928,7 @@
                 "Rahu": {
                   "planet": "Rahu",
                   "longitudeDeg": 12.5352,
-                  "latitudeDeg": null,
+                  "latitudeDeg": 0,
                   "signIndex": 0,
                   "sign": "Aries",
                   "degreeInSign": 12.5352,
@@ -81526,7 +83947,7 @@
                 "Ketu": {
                   "planet": "Ketu",
                   "longitudeDeg": 192.5352,
-                  "latitudeDeg": null,
+                  "latitudeDeg": 0,
                   "signIndex": 6,
                   "sign": "Libra",
                   "degreeInSign": 12.5352,
@@ -82798,8 +85219,19 @@
             "localAshtakavargaAudit": {
               "available": true,
               "rulesTableValid": true,
-              "providerAshtakavargaPresent": false,
-              "comparisonWithProvider": null,
+              "providerAshtakavargaPresent": true,
+              "comparisonWithProvider": {
+                "comparedAgainstSource": "astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara",
+                "savMatched": true,
+                "bavMatched": true,
+                "prastaraCompared": false,
+                "prastaraMatched": null,
+                "exactAllCellsMatch": true,
+                "savDiffs": [],
+                "bavDiffs": [],
+                "prastaraDiffs": [],
+                "summary": "100% match vs astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara (all 12 SAV, 84 BAV cells exact)."
+              },
               "legacyComputeAudit": {
                 "withAscendantMatchedAll84BavCells": true,
                 "withAscendantMatchedAll12SavCells": true,
@@ -82817,7 +85249,7 @@
               "readyForPreferredAdoption": true,
               "notes": [
                 "Local Ashtakavarga (BAV, SAV=337, 7x8x12 Prastara) computed deterministically on canonical D1 and verified self-consistent.",
-                "No provider Ashtakavarga present on primary frame for side-by-side matrix diff."
+                "100% match vs astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara (all 12 SAV, 84 BAV cells exact)."
               ]
             },
             "ashtakavargaReductions": {
@@ -83227,6 +85659,124 @@
                 "Rasi Pinda and Graha Pinda summed using standard BPHS Ch. 71 Rasi Mana and Graha Mana constants."
               ]
             },
+            "providerOriginalAshtakavargaBackup": {
+              "sarvashtakavarga": [
+                28,
+                21,
+                25,
+                32,
+                35,
+                34,
+                31,
+                30,
+                20,
+                28,
+                24,
+                29
+              ],
+              "bhinnashtakavarga": {
+                "Sun": [
+                  3,
+                  4,
+                  5,
+                  5,
+                  5,
+                  5,
+                  5,
+                  4,
+                  2,
+                  4,
+                  3,
+                  3
+                ],
+                "Moon": [
+                  4,
+                  3,
+                  4,
+                  4,
+                  5,
+                  5,
+                  4,
+                  4,
+                  2,
+                  4,
+                  5,
+                  5
+                ],
+                "Mars": [
+                  4,
+                  4,
+                  2,
+                  4,
+                  3,
+                  4,
+                  5,
+                  5,
+                  1,
+                  3,
+                  2,
+                  2
+                ],
+                "Mercury": [
+                  5,
+                  3,
+                  5,
+                  4,
+                  8,
+                  3,
+                  5,
+                  6,
+                  5,
+                  3,
+                  4,
+                  3
+                ],
+                "Jupiter": [
+                  6,
+                  3,
+                  2,
+                  5,
+                  6,
+                  5,
+                  5,
+                  5,
+                  3,
+                  6,
+                  4,
+                  6
+                ],
+                "Venus": [
+                  3,
+                  2,
+                  4,
+                  6,
+                  5,
+                  7,
+                  3,
+                  3,
+                  4,
+                  5,
+                  4,
+                  6
+                ],
+                "Saturn": [
+                  3,
+                  2,
+                  3,
+                  4,
+                  3,
+                  5,
+                  4,
+                  3,
+                  3,
+                  3,
+                  2,
+                  4
+                ]
+              },
+              "prastharashtakavarga": {},
+              "totalPoints": 337
+            },
             "localAshtakavargaPreferred": true
           }
         },
@@ -83247,7 +85797,7 @@
         },
         "datasetManifest": {
           "schemaVersion": "v2.manifest.1.0",
-          "evaluatedAtUtc": "2026-11-28T09:20:21.181Z",
+          "evaluatedAtUtc": "2026-11-28T09:54:37.560Z",
           "inputFingerprint": "a8ffce3552a2724c30afad66",
           "minimumChartReadiness": {
             "ready": false,
@@ -83259,21 +85809,17 @@
           },
           "comprehensiveFoundationalCompleteness": {
             "ready": false,
-            "satisfiedCount": 10,
+            "satisfiedCount": 14,
             "totalCount": 23,
-            "completenessRatio": 0.4348,
+            "completenessRatio": 0.6087,
             "missingOrUnresolvedKeys": [
               "vedic_d5_panchamsha",
               "nakshatra_sub_divisions",
               "shadbala_major_6",
-              "shadbala_subcomponents",
               "bhavabala",
-              "parashari_yogas_doshas",
               "jaimini_karakas_arudhas_argala",
               "kp_significators",
               "alternative_dashas_natal",
-              "natal_panchang",
-              "upagrahas_aprakasha",
               "advanced_avasthas",
               "western_tropical_natal"
             ]
@@ -83284,12 +85830,12 @@
             "referenceDateIso": "2026-11-27"
           },
           "countsByStatus": {
-            "available": 8,
-            "internally_verified": 7,
+            "available": 13,
+            "internally_verified": 6,
             "independently_validated": 0,
             "provisional": 5,
             "incompatible": 0,
-            "unavailable": 11
+            "unavailable": 7
           },
           "entries": [
             {
@@ -83300,7 +85846,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:birthInstant.resolveCanonicalBirthInstant",
-              "acquiredAtUtc": "2026-11-28T09:20:21.179Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.557Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [],
               "missingDependencies": [],
@@ -83322,7 +85868,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "available",
               "source": "astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "canonical_birth_instant"
@@ -83345,7 +85891,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "available",
               "source": "astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "canonical_birth_instant",
@@ -83368,7 +85914,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "available",
               "source": "astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "canonical_birth_instant",
@@ -83388,7 +85934,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "astroway:/chart (telemetry fields)",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "canonical_birth_instant"
@@ -83405,7 +85951,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "available",
               "source": "astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -83424,7 +85970,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "unavailable",
               "source": "astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -83443,7 +85989,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "unavailable",
               "source": "astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -83462,7 +86008,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "reconciliation(astroway_v1 + legacy_local + bphs_ref)",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "canonical_birth_instant",
@@ -83483,9 +86029,9 @@
               "tier": "comprehensive_foundational_completeness",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
-              "canonicalStatus": "unavailable",
+              "canonicalStatus": "available",
               "source": "astroway:/vedic/shadbala/*",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "shadbala_major_6"
@@ -83494,9 +86040,7 @@
                 "shadbala_major_6"
               ],
               "blockingForDownstream": [],
-              "limitations": [
-                "Shadbala subcomponent payloads returned empty item arrays (zero-coercion guard)."
-              ]
+              "limitations": []
             },
             {
               "key": "ishta_kashta_phala",
@@ -83506,7 +86050,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "available",
               "source": "astroway:/vedic/shadbala/ishta-kashta",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "shadbala_major_6"
@@ -83527,7 +86071,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "astroway:/vedic/bhavabala",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "canonical_birth_instant",
@@ -83550,7 +86094,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "available",
               "source": "astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions"
@@ -83569,7 +86113,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:localAshtakavarga (preferred_canonical)",
-              "acquiredAtUtc": "2026-11-28T09:20:21.179Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.557Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions"
@@ -83587,9 +86131,9 @@
               "tier": "comprehensive_foundational_completeness",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
-              "canonicalStatus": "internally_verified",
-              "source": "local:ashtakavargaReductions",
-              "acquiredAtUtc": "2026-11-28T09:20:21.179Z",
+              "canonicalStatus": "available",
+              "source": "astroway:/vedic/ashtakavarga/shodhana",
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "ashtakavarga_bav_sav_prastara"
@@ -83627,9 +86171,9 @@
               "tier": "comprehensive_foundational_completeness",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
-              "canonicalStatus": "provisional",
+              "canonicalStatus": "available",
               "source": "astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions"
@@ -83639,9 +86183,7 @@
                 "ysi_yoga_strength",
                 "dsi_dosha_strength"
               ],
-              "limitations": [
-                "Dosha evaluation absent; only Yogas present."
-              ]
+              "limitations": []
             },
             {
               "key": "jaimini_karakas_arudhas_argala",
@@ -83649,9 +86191,9 @@
               "tier": "comprehensive_foundational_completeness",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
-              "canonicalStatus": "unavailable",
+              "canonicalStatus": "provisional",
               "source": "astroway:/vedic/jaimini/*",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions",
@@ -83660,7 +86202,7 @@
               "missingDependencies": [],
               "blockingForDownstream": [],
               "limitations": [
-                "All Jaimini endpoint buckets returned null/empty."
+                "Only 2/10 Jaimini dataset buckets populated."
               ]
             },
             {
@@ -83671,7 +86213,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "available",
               "source": "astroway:/vedic/kp/sub-lords + /planet-cuspal-position + /significators",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "canonical_birth_instant"
@@ -83691,7 +86233,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "unavailable",
               "source": "astroway:/vedic/kp/sub-lords + /planet-cuspal-position + /significators",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "kp_placidus_cusps_sublords"
@@ -83730,9 +86272,9 @@
               "tier": "comprehensive_foundational_completeness",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
-              "canonicalStatus": "unavailable",
+              "canonicalStatus": "available",
               "source": "astroway:/chart + /vedic/kundli + /vedic/varga/D* + /vedic/ashtakavarga/prastara",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "canonical_birth_instant",
@@ -83740,9 +86282,7 @@
               ],
               "missingDependencies": [],
               "blockingForDownstream": [],
-              "limitations": [
-                "Natal Panchang data unavailable."
-              ]
+              "limitations": []
             },
             {
               "key": "upagrahas_aprakasha",
@@ -83750,9 +86290,9 @@
               "tier": "comprehensive_foundational_completeness",
               "temporalScope": "natal_invariant",
               "referenceDateIso": null,
-              "canonicalStatus": "unavailable",
-              "source": "unavailable",
-              "acquiredAtUtc": null,
+              "canonicalStatus": "available",
+              "source": "astroway:/vedic/upagrahas",
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "canonical_birth_instant",
@@ -83760,9 +86300,7 @@
               ],
               "missingDependencies": [],
               "blockingForDownstream": [],
-              "limitations": [
-                "Upagraha dataset unavailable."
-              ]
+              "limitations": []
             },
             {
               "key": "panchadha_maitri",
@@ -83772,7 +86310,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:panchadhaMaitri",
-              "acquiredAtUtc": "2026-11-28T09:20:21.179Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.557Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions"
@@ -83791,7 +86329,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:vimshopakaBala",
-              "acquiredAtUtc": "2026-11-28T09:20:21.179Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.557Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_shodashavarga_16"
@@ -83810,7 +86348,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:dispositorGraph",
-              "acquiredAtUtc": "2026-11-28T09:20:21.179Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.557Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions"
@@ -83827,7 +86365,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "local:advancedAvasthas",
-              "acquiredAtUtc": "2026-11-28T09:20:21.179Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.557Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions",
@@ -83848,7 +86386,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "unavailable",
               "source": "astroway:/chart (zodiacType=tropical, houseSystem=P)",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "v2.master.1.0",
               "dependencies": [
                 "canonical_birth_instant"
@@ -83865,7 +86403,7 @@
               "referenceDateIso": "2026-11-27",
               "canonicalStatus": "available",
               "source": "astroway:reference_date_dasha",
-              "acquiredAtUtc": "2026-11-28T09:20:21.179Z",
+              "acquiredAtUtc": "2026-11-28T09:54:37.557Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "canonical_birth_instant",
@@ -83885,7 +86423,7 @@
               "referenceDateIso": "2026-11-27",
               "canonicalStatus": "unavailable",
               "source": "unavailable",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "canonical_birth_instant",
@@ -83905,7 +86443,7 @@
               "referenceDateIso": "2026-11-27",
               "canonicalStatus": "unavailable",
               "source": "unavailable",
-              "acquiredAtUtc": null,
+              "acquiredAtUtc": "2026-11-28T00:00:00.000Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "canonical_birth_instant",
@@ -83936,15 +86474,12 @@
             "ysi_yoga_strength": {
               "ready": false,
               "missingPrerequisites": [
-                "parashari_yogas_doshas",
                 "shadbala_major_6"
               ]
             },
             "dsi_dosha_strength": {
-              "ready": false,
-              "missingPrerequisites": [
-                "parashari_yogas_doshas"
-              ]
+              "ready": true,
+              "missingPrerequisites": []
             },
             "house_intelligence": {
               "ready": false,
@@ -83962,7 +86497,7 @@
         "readinessSummary": {
           "minimumChartReady": false,
           "comprehensiveFoundationalReady": false,
-          "comprehensiveCompletenessRatio": 0.4348,
+          "comprehensiveCompletenessRatio": 0.6087,
           "domainReadiness": {
             "phi_planetary_health": {
               "domain": "phi_planetary_health",
@@ -83992,27 +86527,21 @@
               "domain": "ysi_yoga_strength",
               "ready": false,
               "missingPrerequisites": [
-                "parashari_yogas_doshas",
                 "shadbala_major_6"
               ],
               "incompatiblePrerequisites": [],
               "provisionalInputs": [
-                "shadbala_major_6",
-                "parashari_yogas_doshas"
+                "shadbala_major_6"
               ],
               "recommendedDegradationBehavior": "withhold_or_return_insufficient_evidence"
             },
             "dsi_dosha_strength": {
               "domain": "dsi_dosha_strength",
-              "ready": false,
-              "missingPrerequisites": [
-                "parashari_yogas_doshas"
-              ],
+              "ready": true,
+              "missingPrerequisites": [],
               "incompatiblePrerequisites": [],
-              "provisionalInputs": [
-                "parashari_yogas_doshas"
-              ],
-              "recommendedDegradationBehavior": "withhold_or_return_insufficient_evidence"
+              "provisionalInputs": [],
+              "recommendedDegradationBehavior": "full_analytical_computation_allowed"
             },
             "house_intelligence": {
               "domain": "house_intelligence",

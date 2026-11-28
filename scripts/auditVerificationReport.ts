@@ -240,7 +240,7 @@ function buildDurableSyntheticFixtures() {
     id,
     endpoint,
     category,
-    httpMethod: 'POST',
+    method: 'POST',
     sanitizedRequest: {
       year: 1985,
       month: 12,
@@ -255,23 +255,27 @@ function buildDurableSyntheticFixtures() {
     },
     httpStatus: 200,
     ok: true,
-    durationMs: 12,
+    latencyMs: 12,
+    rateWaitMs: 0,
+    coordinationMode: 'isolate_memory_only',
+    payloadBytes: JSON.stringify(data ?? {}).length,
+    quotaAndMetaHeaders: {},
     attempts: 1,
-    acquiredAtUtc: '2026-11-28T00:00:00.000Z',
+    timestampUtc: '2026-11-28T00:00:00.000Z',
     declaredQuality: opts?.declaredQuality ?? 'green',
     rawResponse: { ok: true, data },
   });
 
   const bodies9 = [
-    { name: 'Sun', longitude: ref.lahiriSunLonDeg, dignity: 'Friendly', avastha: 'Kumara', isCombust: false },
-    { name: 'Moon', longitude: ref.lahiriMoonLonDeg, dignity: 'Exalted', avastha: 'Yuva', isCombust: false },
-    { name: 'Mars', longitude: 192.608, dignity: 'Neutral', avastha: 'Yuva', isCombust: false },
-    { name: 'Mercury', longitude: 229.4577, dignity: 'Neutral', avastha: 'Kumara', isCombust: false },
-    { name: 'Jupiter', longitude: 293.132, dignity: 'Debilitated', avastha: 'Kumara', isCombust: false },
-    { name: 'Venus', longitude: 243.3004, dignity: 'Neutral', avastha: 'Bala', isCombust: true },
-    { name: 'Saturn', longitude: 220.7548, dignity: 'Neutral', avastha: 'Vriddha', isCombust: false },
-    { name: 'Rahu', longitude: 12.5352, dignity: 'Neutral', isRetrograde: true },
-    { name: 'Ketu', longitude: 192.5352, dignity: 'Neutral', isRetrograde: true },
+    { name: 'Sun', longitude: ref.lahiriSunLonDeg, dignity: 'Friendly', avastha: 'Kumara', isCombust: false, speedLong: 1.018, latitude: 0.0001, declination: -23.41, rightAscension: 273.32, distance: 0.9835 },
+    { name: 'Moon', longitude: ref.lahiriMoonLonDeg, dignity: 'Exalted', avastha: 'Yuva', isCombust: false, speedLong: 13.41, latitude: -1.85, declination: 20.12, rightAscension: 64.91, distance: 0.00258 },
+    { name: 'Mars', longitude: 192.608, dignity: 'Neutral', avastha: 'Yuva', isCombust: false, speedLong: 0.612, latitude: 0.85, declination: -12.14, rightAscension: 214.11, distance: 1.91 },
+    { name: 'Mercury', longitude: 229.4577, dignity: 'Neutral', avastha: 'Kumara', isCombust: false, speedLong: 1.48, latitude: 1.15, declination: -20.89, rightAscension: 250.92, distance: 1.38 },
+    { name: 'Jupiter', longitude: 293.132, dignity: 'Debilitated', avastha: 'Kumara', isCombust: false, speedLong: 0.214, latitude: -0.62, declination: -17.34, rightAscension: 318.22, distance: 5.79 },
+    { name: 'Venus', longitude: 243.3004, dignity: 'Neutral', avastha: 'Bala', isCombust: true, speedLong: 1.258, latitude: 0.34, declination: -23.18, rightAscension: 266.85, distance: 1.69 },
+    { name: 'Saturn', longitude: 220.7548, dignity: 'Neutral', avastha: 'Vriddha', isCombust: false, speedLong: 0.095, latitude: 1.82, declination: -18.71, rightAscension: 243.45, distance: 10.61 },
+    { name: 'Rahu', longitude: 12.5352, dignity: 'Neutral', isRetrograde: true, speedLong: -0.053, latitude: 0.0, declination: 13.85, rightAscension: 33.42, distance: 0.00257 },
+    { name: 'Ketu', longitude: 192.5352, dignity: 'Neutral', isRetrograde: true, speedLong: -0.053, latitude: 0.0, declination: -13.85, rightAscension: 213.42, distance: 0.00257 },
   ];
 
   const vargaDivisions = [2, 3, 4, 7, 9, 10, 12, 16, 20, 24, 27, 30, 40, 45, 60];
@@ -291,12 +295,32 @@ function buildDurableSyntheticFixtures() {
     ])
   );
 
+  const syntheticAv = computeLocalAshtakavarga({
+    ascendantSignIndex: Math.floor(normalizeDeg(ref.lahiriAscendantDeg) / 30) % 12,
+    planetSignIndices: Object.fromEntries(
+      bodies9.slice(0, 7).map((b) => [b.name, Math.floor(normalizeDeg(b.longitude) / 30) % 12])
+    ) as Record<'Sun' | 'Moon' | 'Mars' | 'Mercury' | 'Jupiter' | 'Venus' | 'Saturn', number>,
+  })!;
+  const syntheticAvRed = computeAshtakavargaReductions(syntheticAv)!;
+
+  const shadbalaItems = [
+    { planetName: 'Sun', totalVirupa: 434.12, sthana: 222.31, dig: 24.27, kala: 118.12, cheshta: 1.03, naisargika: 60, drik: 8.39 },
+    { planetName: 'Moon', totalVirupa: 430.01, sthana: 214.03, dig: 32.94, kala: 110.05, cheshta: 51.33, naisargika: 51.42, drik: -29.76 },
+    { planetName: 'Mars', totalVirupa: 378.73, sthana: 189.87, dig: 43.21, kala: 92.41, cheshta: 23.31, naisargika: 17.16, drik: 12.77 },
+    { planetName: 'Mercury', totalVirupa: 508.39, sthana: 256.02, dig: 58.58, kala: 127.19, cheshta: 27.01, naisargika: 25.74, drik: 13.85 },
+    { planetName: 'Jupiter', totalVirupa: 340.24, sthana: 126.04, dig: 37.35, kala: 155.21, cheshta: 16.77, naisargika: 34.26, drik: -29.39 },
+    { planetName: 'Venus', totalVirupa: 386.46, sthana: 151.48, dig: 33.68, kala: 145.56, cheshta: 2.97, naisargika: 42.84, drik: 9.93 },
+    { planetName: 'Saturn', totalVirupa: 341.91, sthana: 214.33, dig: 1.48, kala: 91.37, cheshta: 10.94, naisargika: 8.58, drik: 15.21 },
+  ];
+
   const syntheticAwLayerA: LayerARawProviderRecord = {
-    schemaVersion: 'v2.layer_a.1.0',
+    schemaVersion: 'v2.raw.1.0',
     providerId: 'astroway',
     providerBaseUrl: 'https://sandbox.astroway.offline.fixture',
     capturedAtUtc: '2026-11-28T00:00:00.000Z',
-    canonicalBirthInstant: instant,
+    inputFingerprint: instant.inputFingerprint,
+    canonicalUtcIso: instant.utc.iso,
+    canonicalJulianDayUt: instant.utc.julianDayUt,
     acquisitionStatus: 'complete',
     missingDatasets: [],
     validationFailures: [],
@@ -309,7 +333,11 @@ function buildDurableSyntheticFixtures() {
           name: b.name === 'Rahu' ? 'Mean Node' : b.name === 'Ketu' ? 'South Node' : b.name,
           longitude: b.longitude,
           isRetrograde: Boolean(b.isRetrograde),
-          speedLong: b.name === 'Sun' ? 1.018 : b.name === 'Moon' ? 13.4 : undefined,
+          speedLong: b.speedLong,
+          latitude: b.latitude,
+          declination: b.declination,
+          rightAscension: b.rightAscension,
+          distance: b.distance,
         })),
       }),
       chart_tropical: makeAwCall('chart_tropical', '/chart', 'western', {
@@ -320,11 +348,11 @@ function buildDurableSyntheticFixtures() {
         planets: [
           { name: 'Sun', longitude: ref.tropicalSunLonDeg, house: 1 },
           { name: 'Moon', longitude: ref.tropicalMoonLonDeg, house: 6 },
-          { name: 'Mars', longitude: normalizeDeg(192.608 + ref.lahiriAyanamsaDeg), house: 10 },
-          { name: 'Mercury', longitude: normalizeDeg(229.4577 + ref.lahiriAyanamsaDeg), house: 12 },
-          { name: 'Jupiter', longitude: normalizeDeg(293.132 + ref.lahiriAyanamsaDeg), house: 2 },
-          { name: 'Venus', longitude: normalizeDeg(243.3004 + ref.lahiriAyanamsaDeg), house: 12 },
-          { name: 'Saturn', longitude: normalizeDeg(220.7548 + ref.lahiriAyanamsaDeg), house: 12 },
+          { name: 'Mars', longitude: normalizeDeg(192.608 + instant.astronomy.lahiriAyanamsaApproxDeg), house: 10 },
+          { name: 'Mercury', longitude: normalizeDeg(229.4577 + instant.astronomy.lahiriAyanamsaApproxDeg), house: 12 },
+          { name: 'Jupiter', longitude: normalizeDeg(293.132 + instant.astronomy.lahiriAyanamsaApproxDeg), house: 2 },
+          { name: 'Venus', longitude: normalizeDeg(243.3004 + instant.astronomy.lahiriAyanamsaApproxDeg), house: 12 },
+          { name: 'Saturn', longitude: normalizeDeg(220.7548 + instant.astronomy.lahiriAyanamsaApproxDeg), house: 12 },
           { name: 'Uranus', longitude: 259.1, house: 1 },
           { name: 'Neptune', longitude: 273.1, house: 1 },
           { name: 'Pluto', longitude: 216.8, house: 11 },
@@ -337,16 +365,33 @@ function buildDurableSyntheticFixtures() {
         yogas: { present: ['Gajakesari Yoga', 'Budhaditya Check'] },
         doshas: { present: [] },
       }),
-      shadbala_full: makeAwCall('shadbala_full', '/vedic/shadbala', 'shadbala', {
-        items: [
-          { planetName: 'Sun', totalVirupa: 434.12, sthana: 222.31, dig: 24.27, kala: 118.12, cheshta: 1.03, naisargika: 60, drik: 8.39 },
-          { planetName: 'Moon', totalVirupa: 430.01, sthana: 214.03, dig: 32.94, kala: 110.05, cheshta: 51.33, naisargika: 51.42, drik: -29.76 },
-          { planetName: 'Mars', totalVirupa: 378.73, sthana: 189.87, dig: 43.21, kala: 92.41, cheshta: 23.31, naisargika: 17.16, drik: 12.77 },
-          { planetName: 'Mercury', totalVirupa: 508.39, sthana: 256.02, dig: 58.58, kala: 127.19, cheshta: 27.01, naisargika: 25.74, drik: 13.85 },
-          { planetName: 'Jupiter', totalVirupa: 340.24, sthana: 126.04, dig: 37.35, kala: 155.21, cheshta: 16.77, naisargika: 34.26, drik: -29.39 },
-          { planetName: 'Venus', totalVirupa: 386.46, sthana: 151.48, dig: 33.68, kala: 145.56, cheshta: 2.97, naisargika: 42.84, drik: 9.93 },
-          { planetName: 'Saturn', totalVirupa: 341.91, sthana: 214.33, dig: 1.48, kala: 91.37, cheshta: 10.94, naisargika: 8.58, drik: 15.21 },
-        ],
+      vedic_panchang_full: makeAwCall('vedic_panchang_full', '/vedic/panchang/full', 'panchang', {
+        vara: 'Wednesday',
+        tithi: 'Shukla Chaturdashi',
+        nakshatra: 'Rohini',
+        yoga: 'Shubha',
+        karana: 'Vanija',
+        sunrise: '06:14:22',
+        sunset: '17:01:48',
+      }),
+      shadbala_full: makeAwCall('shadbala_full', '/vedic/shadbala', 'shadbala', { items: shadbalaItems }),
+      shadbala_sthana: makeAwCall('shadbala_sthana', '/vedic/shadbala/sthana', 'shadbala', {
+        items: shadbalaItems.map((x) => ({ planetName: x.planetName, total: x.sthana })),
+      }),
+      shadbala_dig: makeAwCall('shadbala_dig', '/vedic/shadbala/dig', 'shadbala', {
+        items: shadbalaItems.map((x) => ({ planetName: x.planetName, total: x.dig })),
+      }),
+      shadbala_kala: makeAwCall('shadbala_kala', '/vedic/shadbala/kala', 'shadbala', {
+        items: shadbalaItems.map((x) => ({ planetName: x.planetName, total: x.kala })),
+      }),
+      shadbala_cheshta: makeAwCall('shadbala_cheshta', '/vedic/shadbala/cheshta', 'shadbala', {
+        items: shadbalaItems.map((x) => ({ planetName: x.planetName, total: x.cheshta })),
+      }),
+      shadbala_naisargika: makeAwCall('shadbala_naisargika', '/vedic/shadbala/naisargika', 'shadbala', {
+        items: shadbalaItems.map((x) => ({ planetName: x.planetName, total: x.naisargika })),
+      }),
+      shadbala_drik: makeAwCall('shadbala_drik', '/vedic/shadbala/drik', 'shadbala', {
+        items: shadbalaItems.map((x) => ({ planetName: x.planetName, total: x.drik })),
       }),
       shadbala_ishta_kashta: makeAwCall('shadbala_ishta_kashta', '/vedic/shadbala/ishta-kashta', 'shadbala', {
         items: [
@@ -362,17 +407,59 @@ function buildDurableSyntheticFixtures() {
       bhavabala: makeAwCall('bhavabala', '/vedic/bhavabala', 'bhavabala', {
         houses: Array.from({ length: 12 }, (_, idx) => ({ house: idx + 1, totalVirupa: 420 + idx * 5 })),
       }, { declaredQuality: 'yellow' }),
+      ashtakavarga_basic: makeAwCall('ashtakavarga_basic', '/vedic/ashtakavarga', 'ashtakavarga', {
+        sarva: syntheticAv.sarvashtakavarga,
+        sarvaTotal: syntheticAv.totalPoints,
+        planets: Object.entries(syntheticAv.bhinnashtakavarga).map(([planetName, bindus]) => ({ planetName, bindus })),
+      }),
+      ashtakavarga_shodhana: makeAwCall('ashtakavarga_shodhana', '/vedic/ashtakavarga/shodhana', 'ashtakavarga', {
+        planets: Object.entries(syntheticAvRed.perPlanet).map(([planetName, vals]) => ({
+          planetName,
+          ...vals,
+        })),
+      }),
+      yogas_parashara_full: makeAwCall('yogas_parashara_full', '/vedic/yogas/parashara/full', 'yogas_doshas', {
+        gajakesari: { present: false, contributingPlanets: ['Moon', 'Jupiter'], details: ['Synthetic 6/8'] },
+        dhana: { present: true, contributingPlanets: ['Jupiter', 'Mercury'], details: ['Synthetic Dhana'] },
+      }),
+      doshas_parashara_full: makeAwCall('doshas_parashara_full', '/vedic/doshas/parashara/full', 'yogas_doshas', {
+        mangalDosha: { present: false },
+      }),
+      jaimini_chara_karakas: makeAwCall('jaimini_chara_karakas', '/vedic/jaimini/chara-karakas', 'jaimini', {
+        items: [
+          { planet: 'Jupiter', karaka: 'Atmakaraka (AK)', degreeInSign: 23.132 },
+          { planet: 'Mercury', karaka: 'Amatyakaraka (AmK)', degreeInSign: 19.4577 },
+          { planet: 'Moon', karaka: 'Bhratrukaraka (BK)', degreeInSign: 13.4175 },
+          { planet: 'Mars', karaka: 'Matrukaraka (MK)', degreeInSign: 12.608 },
+          { planet: 'Saturn', karaka: 'Putrakaraka (PK)', degreeInSign: 10.7548 },
+          { planet: 'Sun', karaka: 'Gnatikaraka (GK)', degreeInSign: 9.4416 },
+          { planet: 'Venus', karaka: 'Darakaraka (DK)', degreeInSign: 3.3004 },
+        ],
+      }),
+      jaimini_padas: makeAwCall('jaimini_padas', '/vedic/jaimini/padas', 'jaimini', {
+        items: [{ name: 'AL', sign: 'Virgo', house: 11 }, { name: 'UL', sign: 'Aquarius', house: 4 }],
+      }),
+      vedic_upagrahas: makeAwCall('vedic_upagrahas', '/vedic/upagrahas', 'natal_core', {
+        items: [
+          { name: 'Gulika', sign: 'Capricorn', house: 3, degree: 291.5 },
+          { name: 'Mandi', sign: 'Capricorn', house: 3, degree: 289.2 },
+        ],
+      }),
       kp_sub_lords: makeAwCall('kp_sub_lords', '/vedic/kp/sub-lords', 'kp', {
-        ayanamsa: ref.kpAyanamsaDeg,
+        ayanamsa: instant.astronomy.kpAyanamsaApproxDeg,
         method: 'placidus',
         cusps: ref.kpPlacidusCuspsDeg.map((deg, idx) => ({ house: idx + 1, longitude: deg })),
         planets: bodies9.map((b) => ({ grahaName: b.name, longitude: normalizeDeg(b.longitude + 0.1) })),
       }),
       western_essential_dignities: makeAwCall('western_essential_dignities', '/western/essential-dignities', 'hellenistic_traditional', {
         planets: [
-          { name: 'Sun', domicile: false, peregrine: true },
-          { name: 'Moon', domicile: false, peregrine: true },
-          { name: 'Jupiter', domicile: false, peregrine: true },
+          { name: 'Sun', dignity: 'Peregrine', score: 0 },
+          { name: 'Moon', dignity: 'Peregrine', score: 0 },
+          { name: 'Mars', dignity: 'Domicile', score: 5 },
+          { name: 'Mercury', dignity: 'Detriment', score: -5 },
+          { name: 'Jupiter', dignity: 'Peregrine', score: 0 },
+          { name: 'Venus', dignity: 'Peregrine', score: 0 },
+          { name: 'Saturn', dignity: 'Peregrine', score: 0 },
         ],
       }),
       dashas_vimshottari_prana: makeAwCall('dashas_vimshottari_prana', '/vedic/dashas/vimshottari/prana', 'dasha', {
@@ -412,13 +499,25 @@ function buildDurableSyntheticFixtures() {
       ...vargaCalls,
     },
     quotaAndPerformanceSummary: {
-      totalCalls: 24,
-      successfulCalls: 24,
+      plannedRequestsCount: 38,
+      totalCalls: 38,
+      actualHttpRequestsSent: 38,
+      successfulCalls: 38,
       failedCalls: 0,
       tierRestrictedCalls: 0,
       rateLimitedCalls: 0,
       unexecutedCalls: 0,
-      totalDurationMs: 120,
+      totalLatencyMs: 120,
+      totalRateWaitMs: 0,
+      totalPayloadBytes: 12288,
+      coordinationModesObserved: ['isolate_memory_only'],
+      quotaHeadersObserved: {
+        status: 'not_provided_by_provider',
+        observedHeadersByEndpoint: {},
+        remainingQuotaObserved: null,
+        rateLimitObserved: null,
+        note: 'Synthetic offline fixture',
+      },
       retryCount: 0,
     },
   };
@@ -852,6 +951,112 @@ async function main() {
     legacyPlacidusH12ErrorDeg: Number(circularDiffDeg(chris4Raw.western.cusps[11].longitude, chris4Ref.tropicalPlacidusCusps[11]).toFixed(4)),
   };
 
+  // Independent Nakshatra, Pada & KP Sub-Lord Verification on Chris 4 (10 bodies + 12 KP cusps)
+  const NAK_NAMES = [
+    'Ashwini', 'Bharani', 'Krittika', 'Rohini', 'Mrigashira', 'Ardra', 'Punarvasu', 'Pushya', 'Ashlesha',
+    'Magha', 'Purva Phalguni', 'Uttara Phalguni', 'Hasta', 'Chitra', 'Swati', 'Vishakha', 'Anuradha', 'Jyeshtha',
+    'Mula', 'Purva Ashadha', 'Uttara Ashadha', 'Shravana', 'Dhanishta', 'Shatabhisha', 'Purva Bhadrapada', 'Uttara Bhadrapada', 'Revati',
+  ];
+  const VIM_SEQ = ['Ketu', 'Venus', 'Sun', 'Moon', 'Mars', 'Rahu', 'Jupiter', 'Saturn', 'Mercury'];
+  const VIM_YRS: Record<string, number> = { Ketu: 7, Venus: 20, Sun: 6, Moon: 10, Mars: 7, Rahu: 18, Jupiter: 16, Saturn: 19, Mercury: 17 };
+  const indepNakAndSub = (lonDeg: number) => {
+    const lon = normalizeDeg(lonDeg);
+    const nakSpan = 360 / 27;
+    const padaSpan = 360 / 108;
+    const nakIdx = Math.floor(lon / nakSpan);
+    const pada = Math.floor((lon % nakSpan) / padaSpan) + 1;
+    const starLord = VIM_SEQ[nakIdx % 9];
+    const startIdx = VIM_SEQ.indexOf(starLord);
+    let posInNak = lon - nakIdx * nakSpan;
+    let subLord = starLord;
+    for (let i = 0; i < 9; i++) {
+      const candidate = VIM_SEQ[(startIdx + i) % 9];
+      const subSpan = nakSpan * (VIM_YRS[candidate] / 120);
+      if (posInNak < subSpan + 1e-9 || i === 8) {
+        subLord = candidate;
+        break;
+      }
+      posInNak -= subSpan;
+    }
+    return { nakshatra: NAK_NAMES[nakIdx], pada, starLord, subLord };
+  };
+
+  let nakBodiesVerified = 0;
+  let nakBodiesMatched = 0;
+  const nakBodyDiffs: string[] = [];
+  for (const p of chris4Raw.planets as Array<Record<string, unknown>>) {
+    const calc = indepNakAndSub(Number(p.longitude));
+    nakBodiesVerified++;
+    if (p.nakshatra === calc.nakshatra && p.pada === calc.pada && p.nakshatraLord === calc.starLord && p.subLord === calc.subLord) {
+      nakBodiesMatched++;
+    } else {
+      nakBodyDiffs.push(`${p.name}: export=${p.nakshatra}/P${p.pada}/${p.nakshatraLord}/${p.subLord} vs indep=${calc.nakshatra}/P${calc.pada}/${calc.starLord}/${calc.subLord}`);
+    }
+  }
+
+  let kpCuspsSubVerified = 0;
+  let kpCuspsSubMatched = 0;
+  const kpCuspDiffs: Array<{ house: number; legacyCuspDeg: number; indepPlacidusDeg: number; deltaDeg: number; legacySign: string; indepSign: string }> = [];
+  const legacyComputeCusps = computeKPPlacidusCusps(
+    '1985-12-25', '04:33:00', 5.5, 23.25572, 87.85691, rawPlanetsByName.get('Ascendant')!
+  );
+  for (let i = 0; i < 12; i++) {
+    const kc = chris4Raw.kp.cusps[i] as Record<string, unknown>;
+    const calc = indepNakAndSub(Number(kc.longitude));
+    kpCuspsSubVerified++;
+    if (kc.starLord === calc.starLord && kc.subLord === calc.subLord) kpCuspsSubMatched++;
+    const indepDeg = chris4Ref.kpPlacidusCuspsDeg[i];
+    const delta = Number(circularDiffDeg(Number(kc.longitude), indepDeg).toFixed(4));
+    kpCuspDiffs.push({
+      house: i + 1,
+      legacyCuspDeg: Number(Number(kc.longitude).toFixed(4)),
+      indepPlacidusDeg: Number(indepDeg.toFixed(4)),
+      deltaDeg: delta,
+      legacySign: SIGNS[Math.floor(normalizeDeg(Number(kc.longitude)) / 30) % 12],
+      indepSign: SIGNS[Math.floor(normalizeDeg(indepDeg) / 30) % 12],
+    });
+  }
+  const legacyH2Error = Number(circularDiffDeg(legacyComputeCusps[1].longitude, chris4Ref.kpPlacidusCuspsDeg[1]).toFixed(4));
+  const legacyH12Error = Number(circularDiffDeg(legacyComputeCusps[11].longitude, chris4Ref.kpPlacidusCuspsDeg[11]).toFixed(4));
+
+  // Independent Vimshottari Birth Balance Check on Chris 4 Moon (43.4175° Rohini)
+  const moonLonChris4 = rawPlanetsByName.get('Moon')!;
+  const nakSpanDeg = 360 / 27;
+  const moonNakStart = Math.floor(moonLonChris4 / nakSpanDeg) * nakSpanDeg;
+  const moonRemainingFraction = (moonNakStart + nakSpanDeg - moonLonChris4) / nakSpanDeg;
+  const moonRemainingYears = Number((moonRemainingFraction * 10).toFixed(4)); // Moon MD = 10y
+  const exportedMd0 = chris4Raw.vimshottari.timeline[0] as Record<string, unknown>;
+  const exportedEndMs = Date.parse(String(exportedMd0.endDate));
+  const birthMs = Date.parse(realChris4.instant.utc.iso);
+  const exportedRemainingYears = Number(((exportedEndMs - birthMs) / (365.2425 * 86400 * 1000)).toFixed(4));
+  const vimshottariBalanceDeltaYears = Number(Math.abs(moonRemainingYears - exportedRemainingYears).toFixed(4));
+
+  // Independent Jaimini Chara Karakas Check (7 classical planets sorted descending by degreeInSign)
+  const charaTitles = ['AK', 'AmK', 'BK', 'MK', 'PK', 'GK', 'DK'];
+  const indepKarakas = [...(chris4Raw.planets as Array<Record<string, unknown>>)]
+    .filter((p) => ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'].includes(String(p.name)))
+    .sort((a, b) => Number(b.degreeInSign) - Number(a.degreeInSign))
+    .map((p, idx) => ({ code: charaTitles[idx], planet: String(p.name), degreeInSign: Number(p.degreeInSign) }));
+  const exportedKarakas = (chris4Raw.jaimini.karakas as Array<Record<string, unknown>>);
+  const jaiminiKarakasMatched = indepKarakas.filter(
+    (ik, i) => exportedKarakas[i]?.planet === ik.planet && exportedKarakas[i]?.code === ik.code
+  ).length;
+
+  // Shadbala Reconciliation Detail Table (Provider shadBalaSummary vs Legacy Local shadbala.planets)
+  const shadbalaReconciliationSummary = Object.entries(chris4Raw.shadBalaSummary as Record<string, Record<string, unknown>>).map(
+    ([planet, prov]) => {
+      const loc = (chris4Raw.shadbala.planets as Array<Record<string, unknown>>).find((p) => p.planet === planet);
+      return {
+        planet,
+        providerRupas: Number(prov.shadbala_in_rupas),
+        providerMinReq: Number(prov.minimum_requirements),
+        bphsMinReq: BPHS_SHADBALA_MIN_RUPAS[planet],
+        legacyLocalRupas: loc ? Number(loc.totalRupas) : null,
+        deltaRupas: loc ? Number((Number(prov.shadbala_in_rupas) - Number(loc.totalRupas)).toFixed(2)) : null,
+      };
+    }
+  );
+
   // Compare Legacy Bhava Chalit (8/9 wrong shifts) vs True Sripati (0/9 shifts on Chris 4)
   const trueSripatiShifts = realChris4.layerBMaster.frames.bhavaChalit.data!.planets.filter((p) => p.shifted).length;
   const legacyChalitShifts = (chris4Raw.bhavaChalit.shifts as Array<Record<string, unknown>>).filter((s) => s.shifted).length;
@@ -877,7 +1082,7 @@ async function main() {
   const emptyMaster = buildLayerBMasterChartRecord({ instant: realChris4.instant, rawLayerA: null });
   chartsToAudit.push({ id: 'synthetic_empty_missing_inputs', origin: 'synthetic', source: emptyMaster });
 
-  // Synthetic Stress Case A: Incompatible Bhava Chalit Rejection + Zero-Coercion Null Shadbala Subcomponent
+  // Synthetic Stress Case A: Incompatible Bhava Chalit Rejection
   const stressIncompat = JSON.parse(JSON.stringify(realChris4.layerCInput)) as typeof realChris4.layerCInput;
   stressIncompat.natalInvariant.frames.bhavaChalit = {
     ...stressIncompat.natalInvariant.frames.bhavaChalit,
@@ -897,33 +1102,51 @@ async function main() {
     source: stressIncompat,
   });
 
-  // Synthetic Stress Case B: Retrograde + Combust + Graha Yuddha (Winner/Loser + Undetermined) + Gandanta + D1/D9 Contradiction + Parivartana
+  // Synthetic Stress Case B: Retrograde + Combust + Graha Yuddha (Winner/Loser/Undetermined) + Gandanta
   const stressWarAndRetro = JSON.parse(JSON.stringify(synthAw.layerCInput)) as typeof synthAw.layerCInput;
-  const warCond = (stressWarAndRetro.natalInvariant.providerExtendedDatasets?.planetaryDignityConditions as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-  const warBodyList = (warCond?.planetaryConditions ?? []) as Array<Record<string, unknown>>;
-  for (const row of warBodyList) {
-    if (row.name === 'Venus') {
-      row.isRetrograde = true;
-      row.isCombust = true;
-      row.sunSeparationDeg = 3.2;
-      row.combustionOrbDeg = 8.0;
-      row.inGrahaYuddha = true;
-      row.grahaYuddhaOpponent = 'Mars';
-      row.grahaYuddhaRole = 'winner';
-    } else if (row.name === 'Mars') {
-      row.inGrahaYuddha = true;
-      row.grahaYuddhaOpponent = 'Venus';
-      row.grahaYuddhaRole = 'loser';
-    } else if (row.name === 'Saturn') {
-      row.inGrahaYuddha = true;
-      row.grahaYuddhaOpponent = 'Jupiter';
-      row.grahaYuddhaRole = 'undetermined';
+  const applyStressConds = (byPlanetObj: Record<string, Record<string, unknown>> | undefined) => {
+    if (!byPlanetObj) return;
+    if (byPlanetObj.Venus) {
+      byPlanetObj.Venus.isRetrograde = true;
+      byPlanetObj.Venus.isCombust = true;
+      byPlanetObj.Venus.sunSeparationDeg = 3.2;
+      byPlanetObj.Venus.combustionOrbDeg = 8.0;
+      byPlanetObj.Venus.inGrahaYuddha = true;
+      byPlanetObj.Venus.grahaYuddhaOpponent = 'Mars';
+      byPlanetObj.Venus.grahaYuddhaRole = 'winner';
+      byPlanetObj.Venus.isGandanta = true;
     }
-  }
+    if (byPlanetObj.Mars) {
+      byPlanetObj.Mars.inGrahaYuddha = true;
+      byPlanetObj.Mars.grahaYuddhaOpponent = 'Venus';
+      byPlanetObj.Mars.grahaYuddhaRole = 'loser';
+    }
+    if (byPlanetObj.Saturn) {
+      byPlanetObj.Saturn.inGrahaYuddha = true;
+      byPlanetObj.Saturn.grahaYuddhaOpponent = 'Jupiter';
+      byPlanetObj.Saturn.grahaYuddhaRole = 'undetermined';
+    }
+  };
+  applyStressConds((stressWarAndRetro.natalInvariant.localModules?.localVedicConditions?.data as Record<string, unknown> | undefined)?.byPlanet as Record<string, Record<string, unknown>> | undefined);
+  applyStressConds((stressWarAndRetro.natalInvariant.providerExtendedDatasets?.localVedicConditions as Record<string, unknown> | undefined)?.byPlanet as Record<string, Record<string, unknown>> | undefined);
   chartsToAudit.push({
     id: 'synthetic_graha_yuddha_retro_combust_stress',
     origin: 'synthetic',
     source: stressWarAndRetro,
+  });
+
+  // Synthetic Stress Case C: D1 Debilitated vs D9 Exalted Divergence (No Auto-Cancellation)
+  const stressD1D9 = JSON.parse(JSON.stringify(synthAw.layerCInput)) as typeof synthAw.layerCInput;
+  const d9Div = stressD1D9.natalInvariant.frames.vedicLahiri.data?.vargas?.chartsByDivision?.D9 as Record<string, unknown> | undefined;
+  if (d9Div && Array.isArray(d9Div.planets)) {
+    d9Div.planets = (d9Div.planets as Array<Record<string, unknown>>).map((p) =>
+      p.name === 'Jupiter' ? { ...p, sign: 'Cancer', dignity: 'Exalted', house: 9 } : p
+    );
+  }
+  chartsToAudit.push({
+    id: 'synthetic_d1_d9_polarity_divergence',
+    origin: 'synthetic',
+    source: stressD1D9,
   });
 
   const strictProvBundle = {
@@ -957,6 +1180,37 @@ async function main() {
     const uniqExec = new Set(bA.k02State.ruleExecutionSummary.records.map((r) => r.executionId));
     assert(uniqExec.size === bA.k02State.ruleExecutionSummary.records.length, `${ch.id}: duplicate executionId`);
     assert(bA.k02State.ruleExecutionSummary.unregisteredRuleRejections === 0, `${ch.id}: unregistered rule`);
+
+    // Verify Jaimini Chara Karaka + Arudha Pada extraction on real Chris 4
+    if (ch.id === 'real_freeastroapi_chris4') {
+      const charaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'JAIMINI_CHARA_KARAKA');
+      const padaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'JAIMINI_ARUDHA_PADA');
+      assert(charaEvs.length === 7, `Chris 4 expected 7 JAIMINI_CHARA_KARAKA items, got ${charaEvs.length}`);
+      assert(padaEvs.length === 12, `Chris 4 expected 12 JAIMINI_ARUDHA_PADA items, got ${padaEvs.length}`);
+    }
+
+    // Verify Graha Yuddha + Retrogression + Combustion + Gandanta stress behavior
+    if (ch.id === 'synthetic_graha_yuddha_retro_combust_stress') {
+      const venusMods = bA.k02State.subjectStates.Venus.overlays.modification.modifiers.map((m) => m.modifierType);
+      assert(
+        venusMods.includes('retrograde') && venusMods.includes('combust') && venusMods.includes('graha_yuddha') && venusMods.includes('gandanta'),
+        `Stress case failed to surface Venus modifiers: ${venusMods.join(',')}`
+      );
+      const marsWar = bA.k02State.subjectStates.Mars.ruleExecutions.find((r) => r.ruleId === 'K02_VULNERABILITY_GRAHA_YUDDHA');
+      const satWar = bA.k02State.subjectStates.Saturn.ruleExecutions.find((r) => r.ruleId === 'K02_VULNERABILITY_GRAHA_YUDDHA');
+      assert(marsWar?.numericalResult === -1 && satWar?.numericalResult === -0.25, 'Graha Yuddha role scoring mismatch in stress case.');
+    }
+
+    // Verify D1/D9 divergence conflict preservation without auto-cancellation
+    if (ch.id === 'synthetic_d1_d9_polarity_divergence') {
+      const d1d9Conf = bA.k02State.subjectStates.Jupiter.overlays.conflict.conflicts.find(
+        (c) => c.conflictType === 'd1_d9_dignity_divergence'
+      );
+      assert(
+        Boolean(d1d9Conf) && d1d9Conf?.resolutionStatus === 'unresolved_preserved_for_k05_k07',
+        'D1 vs D9 polarity divergence conflict was not preserved.'
+      );
+    }
 
     // 3. PHI Exclusion & Empirical status guards
     const tempIds = new Set(bA.k01Repository.temporalEvidence.map((e) => e.evidenceId));
@@ -1003,6 +1257,7 @@ async function main() {
       origin: ch.origin,
       natalEvidence: bA.k01Repository.natalEvidence.length,
       temporalEvidence: bA.k01Repository.temporalEvidence.length,
+      jaiminiEvidence: bA.k01Repository.natalEvidence.filter((e) => e.observation.code.startsWith('JAIMINI_')).length,
       overlaps: bA.k01Repository.lineageGraph.overlapRelations.length,
       k02RuleEvaluations: bA.k02State.ruleExecutionSummary.totalEvaluations,
       countsByStatus: bA.k02State.ruleExecutionSummary.countsByStatus,
@@ -1015,6 +1270,9 @@ async function main() {
   assert(allMathFailures.length === 0, `K02 math recomputation failures: ${allMathFailures.join(' | ')}`);
   assert(vargaCellsChecked === 160 && vargaCellsMismatched === 0, `Varga mismatch: ${vargaDiffs.join(', ')}`);
   assert(bavMismatches === 0 && savMismatches === 0 && shodhanaValid, `AV mismatch bav=${bavMismatches} sav=${savMismatches}`);
+  assert(nakBodiesMatched === 10 && kpCuspsSubMatched === 12, `Nakshatra/KP Sub mismatch: bodies=${nakBodiesMatched}/10 (${nakBodyDiffs.join('; ')}), cusps=${kpCuspsSubMatched}/12`);
+  assert(jaiminiKarakasMatched === 7, `Jaimini Chara Karakas mismatch: ${jaiminiKarakasMatched}/7`);
+  assert(vimshottariBalanceDeltaYears < 0.005, `Vimshottari balance delta too large: ${vimshottariBalanceDeltaYears}`);
   assert(
     k02StrictChris4.ruleExecutionSummary.countsByStatus.excluded_by_provisional_gate > 0,
     'Strict non-provisional gate failed on Chris 4 real export.'
@@ -1031,10 +1289,26 @@ async function main() {
     area2_independentComputationalVerification: {
       julianDayDeltaDays: jdDeltaDays,
       chris4CoordinatesVsMeeusRef: coordDeltasChris4,
+      chris4NakshatraPadaSubLordsVerified: `${nakBodiesMatched}/${nakBodiesVerified}`,
+      chris4KpCuspsStarSubLordsVerified: `${kpCuspsSubMatched}/${kpCuspsSubVerified}`,
+      chris4LegacyKpPlacidusCuspErrors: {
+        jyotishMathLegacyH2ErrorDeg: legacyH2Error,
+        jyotishMathLegacyH12ErrorDeg: legacyH12Error,
+        perCuspComparison: kpCuspDiffs,
+      },
+      chris4VimshottariBalance: {
+        moonLongitudeDeg: moonLonChris4,
+        indepRemainingYears: moonRemainingYears,
+        exportedEndDate: exportedMd0.endDate,
+        exportedRemainingYears,
+        deltaYears: vimshottariBalanceDeltaYears,
+      },
+      chris4JaiminiCharaKarakasVerified: `${jaiminiKarakasMatched}/7`,
       chris4Vargas16Verified: `${vargaCellsChecked - vargaCellsMismatched}/${vargaCellsChecked}`,
       chris4AshtakavargaVerified: { bavCells: '84/84', savCells: '12/12', totalPoints: localAvChris4.totalPoints, shodhanaValid },
       chris4BhavaChalitComparison: { legacyChalitShifts, trueSripatiShifts },
-      chris4SunShadbalaMinThresholdGap: { providerRequiredRupas: 5.0, bphsRequiredRupas: 6.5 },
+      chris4ShadbalaReconciliation: shadbalaReconciliationSummary,
+      chris4BhavabalaNote: 'Absent in FreeAstroAPI exports (unavailable, zero coercion); exercised via synthetic_full_astroway_shape.',
       chris3LegacyTimezoneBugAscDeltaDeg: chris3AscDeltaDeg,
       k02MathSignalsIndependentlyRecomputed: totalK02SignalsRecomputed,
       k02MathDiscrepancies: allMathFailures.length,
