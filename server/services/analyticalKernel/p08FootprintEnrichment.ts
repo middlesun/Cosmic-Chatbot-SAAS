@@ -41,7 +41,6 @@ import {
   STRUCTURAL_REACHABILITY_EPISTEMIC_TAG,
   countUniqueReachableEntities,
   getDirectRelationships,
-  getOutgoingRelationships,
   type NigEpistemicReachabilityTag,
   type NigTraversalBounds,
 } from './graphTraversal';
@@ -131,6 +130,27 @@ export interface P08SubjectInfluenceFootprintEnrichment {
     configurationParticipation: number;
     crossDivisionalRelationships: number;
     qualifiedIndirectRelationships: number;
+  };
+  semanticCountBreakdown: {
+    totalTypedRelationshipRecords: number;
+    uniqueConnectedEntityCountAllFrames: number;
+    d1Lahiri: {
+      totalRelationshipRecords: number;
+      uniqueConnectedEntityCount: number;
+      uniqueGovernedHouseCount: number;
+      uniqueOccupiedHouseCount: number;
+      uniqueAspectedEntityCount: number;
+      uniqueAssociatedEntityCount: number;
+    };
+    byFrameRecordCounts: Record<string, number>;
+    distinctMechanismFamiliesPresent: NigRelationshipFamily[];
+    distinctIndependentContributionCountEstablished: false;
+    nonConflationGuarantees: {
+      crossFrameRecordCountNotEqualToD1HouseInfluences: true;
+      typedRelationshipRecordCountNotEqualToIndependentContributions: true;
+      structuralReachabilityNotEqualToActiveInfluence: true;
+      aggregateInfluenceScoreComputed: false;
+    };
   };
   epistemicSeparation: {
     structuralReachabilityStatus: 'structural_graph_reachability_only';
@@ -417,8 +437,53 @@ export function buildK04InfluenceFootprintEnrichment(
       excludeBlocked: true,
     });
 
-    // Ensure supplementary outgoing relationships if needed remain deterministic
-    void getOutgoingRelationships;
+    // Semantic count breakdown separating total records, unique entities, D1 vs divisional/other frames, and mechanism families
+    const uniqueConnectedAllFrames = new Set<string>();
+    const d1ConnectedEntities = new Set<string>();
+    const d1GovernedHouses = new Set<string>();
+    const d1OccupiedHouses = new Set<string>();
+    const d1AspectedEntities = new Set<string>();
+    const d1AssociatedEntities = new Set<string>();
+    const byFrameRecordCounts: Record<string, number> = {};
+    const mechanismFamilies = new Set<NigRelationshipFamily>();
+    let totalTypedRelationshipRecords = 0;
+    let d1RelationshipRecords = 0;
+
+    for (const edge of directRes.all) {
+      totalTypedRelationshipRecords += 1;
+      const counterpartyId =
+        edge.sourceEntityId === entityId ? edge.targetEntityId : edge.sourceEntityId;
+      uniqueConnectedAllFrames.add(counterpartyId);
+      byFrameRecordCounts[edge.chartFrame] = (byFrameRecordCounts[edge.chartFrame] ?? 0) + 1;
+      mechanismFamilies.add(edge.family);
+
+      if (edge.chartFrame === 'vedic_lahiri') {
+        d1RelationshipRecords += 1;
+        d1ConnectedEntities.add(counterpartyId);
+        if (
+          edge.family === 'governance' &&
+          edge.sourceEntityId === entityId &&
+          edge.targetEntityId.startsWith('house:')
+        ) {
+          d1GovernedHouses.add(edge.targetEntityId);
+        } else if (
+          edge.family === 'occupancy' &&
+          edge.sourceEntityId === entityId &&
+          edge.targetEntityId.startsWith('house:')
+        ) {
+          d1OccupiedHouses.add(edge.targetEntityId);
+        } else if (edge.family === 'aspect') {
+          d1AspectedEntities.add(counterpartyId);
+        } else if (edge.family === 'association') {
+          d1AssociatedEntities.add(counterpartyId);
+        }
+      }
+    }
+
+    const sortedFrameCounts: Record<string, number> = {};
+    for (const k of Object.keys(byFrameRecordCounts).sort()) {
+      sortedFrameCounts[k] = byFrameRecordCounts[k];
+    }
 
     subjectFootprints[subject] = {
       subject,
@@ -456,13 +521,34 @@ export function buildK04InfluenceFootprintEnrichment(
         crossDivisionalRelationships: crossDivisionalRelationships.length,
         qualifiedIndirectRelationships: indirectRecords.length,
       },
+      semanticCountBreakdown: {
+        totalTypedRelationshipRecords,
+        uniqueConnectedEntityCountAllFrames: uniqueConnectedAllFrames.size,
+        d1Lahiri: {
+          totalRelationshipRecords: d1RelationshipRecords,
+          uniqueConnectedEntityCount: d1ConnectedEntities.size,
+          uniqueGovernedHouseCount: d1GovernedHouses.size,
+          uniqueOccupiedHouseCount: d1OccupiedHouses.size,
+          uniqueAspectedEntityCount: d1AspectedEntities.size,
+          uniqueAssociatedEntityCount: d1AssociatedEntities.size,
+        },
+        byFrameRecordCounts: sortedFrameCounts,
+        distinctMechanismFamiliesPresent: Array.from(mechanismFamilies).sort() as NigRelationshipFamily[],
+        distinctIndependentContributionCountEstablished: false,
+        nonConflationGuarantees: {
+          crossFrameRecordCountNotEqualToD1HouseInfluences: true,
+          typedRelationshipRecordCountNotEqualToIndependentContributions: true,
+          structuralReachabilityNotEqualToActiveInfluence: true,
+          aggregateInfluenceScoreComputed: false,
+        },
+      },
       epistemicSeparation: {
         structuralReachabilityStatus: 'structural_graph_reachability_only',
         establishedInfluenceStatus: 'typed_natal_edges_only_no_arbitrary_weights',
         functionalDeliverabilityStatus: 'deferred_to_k08',
         configurationInteractionStatus: 'deferred_to_k05_k07',
         temporalActivationStatus: 'deferred_to_k09',
-        note: 'Separates direct relational facts from multi-hop structural reachability; domain deliverability and composite influence scoring remain deferred to K08.',
+        note: 'Separates direct relational facts, frame-specific entity counts, and multi-hop structural reachability; domain deliverability and composite influence scoring remain deferred to K08.',
       },
     };
   }

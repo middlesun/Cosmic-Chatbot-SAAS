@@ -513,8 +513,11 @@ export interface R04LagnaFunctionalSpecification {
   functionalMalefics: readonly PhiReadyPlanetName[];
   neutralOrMixed: readonly PhiReadyPlanetName[];
   marakaPlanets: readonly PhiReadyPlanetName[];
+  conditionalMarakaPlanets?: readonly PhiReadyPlanetName[];
   houseLordships: Readonly<Record<number, PhiReadyPlanetName>>;
   classicalCaveats: readonly string[];
+  coexistingResponsibilityNotes?: readonly string[];
+  classicalConventionNotes?: readonly string[];
 }
 
 export interface R04RequiredEvidenceSpec {
@@ -587,6 +590,7 @@ export interface K03LagnaAuthorityEnrichment {
   isLagnesha: boolean;
   isYogakaraka: boolean;
   isMaraka: boolean;
+  isConditionalMaraka?: boolean;
   isKendraLord: boolean;
   isTrikonaLord: boolean;
   isDusthanaLord: boolean;
@@ -666,7 +670,18 @@ export interface K03P05SubjectAuthorityProfile {
   dimension: 'authority';
   objectiveAuthorities: Record<AnalyticalObjectiveId, K03P05ObjectiveAuthorityEntry>;
   lagnaAuthority: K03LagnaAuthorityEnrichment | null;
+  /**
+   * Diagnostic summary only across this subject's evaluated CEAR records.
+   * MUST NEVER be treated as a universal planetary authority rank or fed into scoring/prioritization.
+   */
   overallHighestClassification: AuthorityClassification;
+  overallHighestClassificationDiagnosticMeta: {
+    diagnosticMetadataOnly: true;
+    notUniversalPlanetaryAuthority: true;
+    forbiddenAsScoringOrPrioritizationInput: true;
+    authorityRemainsObjectiveAndPropositionScoped: true;
+    note: string;
+  };
   provisionalCappedAny: boolean;
   unresolvedPrerequisites: string[];
   cearRecordIds: string[];
@@ -679,6 +694,25 @@ export type NaturalPlanetaryPolarity =
   | 'conditional_associated_mercury'
   | 'chhaya_graha_shadow_node'
   | 'non_planetary_reference';
+
+export type K03CoexistingResponsibilityCategory =
+  | 'supportive'
+  | 'constraining'
+  | 'conditional'
+  | 'house_specific';
+
+export interface K03CoexistingFunctionalResponsibility {
+  category: K03CoexistingResponsibilityCategory;
+  houses: number[];
+  label: string;
+  rationale: string;
+}
+
+export interface K03MethodologicalFunctionalQualification {
+  differsAcrossClassicalConventions: boolean;
+  conventionNotes: string[];
+  functionalBeneficDoesNotExcludeConditionalMaraka: true;
+}
 
 export interface K03P09FunctionalOrientationProfile {
   subject: PlanetaryStateSubjectName;
@@ -694,6 +728,8 @@ export interface K03P09FunctionalOrientationProfile {
   functionalMalefic: boolean | null;
   yogakaraka: boolean | null;
   maraka: boolean | null;
+  conditionalMaraka: boolean | null;
+  conditionalMarakaHouses: number[];
   neutralOrMixed: boolean | null;
   lagnesha: boolean | null;
   directHouseLordships: {
@@ -704,6 +740,8 @@ export interface K03P09FunctionalOrientationProfile {
     marakaHouses: number[];
     badhakaNote: string | null;
   };
+  coexistingResponsibilities: K03CoexistingFunctionalResponsibility[];
+  methodologicalQualifications: K03MethodologicalFunctionalQualification;
   naturalSignifications: {
     naturalPolarity: NaturalPlanetaryPolarity;
     basis: string;
@@ -800,6 +838,12 @@ export interface AnalyticalKernelK03AuthorityResult {
   sourceInputFingerprint: string;
   strictNonProvisional: boolean;
   policyConfiguration: K03PolicyConfiguration;
+  authorityScopeGuarantees: {
+    objectiveAndPropositionScoped: true;
+    crossObjectiveSummariesDiagnosticOnly: true;
+    overallHighestNotScoringInput: true;
+    ac5NeverSubstitutesForUnevaluatedOrIndeterminate: true;
+  };
   relationalContextApplied: boolean;
   cearRecords: ContextualEvidenceAuthorityRecord[];
   r04RegistrySnapshot: R04RuleRegistrySnapshot;

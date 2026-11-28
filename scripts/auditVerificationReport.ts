@@ -15,6 +15,7 @@ import path from 'node:path';
 import {
   buildAnalyticalEvidenceRepository,
   buildAnalyticalKernelK02Bundle,
+  buildAnalyticalKernelK03K04Bundle,
   BPHS_SHADBALA_MIN_RUPAS,
   evaluateK02FromRepository,
   exportRuleRegistrySnapshot,
@@ -1352,6 +1353,69 @@ async function main() {
     'Strict non-provisional gate failed on Chris 4 real export.'
   );
 
+  // Area 4: Independent K03/K04 5-Stage Pipeline, Registry & DCI Sum-of-Squares Audit
+  const regSnapAudit = exportRuleRegistrySnapshot();
+  assert(
+    regSnapAudit.totalRules === 19 &&
+      (regSnapAudit.r04TotalRules ?? 0) === 27 &&
+      (regSnapAudit.r07TotalModels ?? 0) === 9,
+    `Registry snapshot completeness mismatch: K02=${regSnapAudit.totalRules}, R04=${regSnapAudit.r04TotalRules}, R07=${regSnapAudit.r07TotalModels}`
+  );
+
+  const k03K04AuditMatrix: Array<Record<string, unknown>> = [];
+  for (const ch of chartsToAudit) {
+    const t0 = Date.now();
+    const fullA = buildAnalyticalKernelK03K04Bundle(ch.source);
+    const t1 = Date.now();
+    const fullB = buildAnalyticalKernelK03K04Bundle(ch.source);
+
+    const normFull = (x: unknown) =>
+      JSON.stringify(x, (k, v) =>
+        k === 'generatedAtUtc' || k === 'preparedAtUtc'
+          ? 'FIXED'
+          : k === 'durationMs' || k === 'totalDurationMs'
+          ? 0
+          : v
+      );
+    assert(normFull(fullA) === normFull(fullB), `${ch.id}: K01-K04 5-stage pipeline non-deterministic`);
+    assert(fullA.k03Pass1Authority.relationalContextApplied === false, `${ch.id}: K03 pass 1 must not use relationalContext`);
+    assert(fullA.k03Authority.relationalContextApplied === true, `${ch.id}: K03 pass 2 must apply relationalContext`);
+    assert(fullA.k04Relational.nig.verificationStats.duplicateIdCount === 0, `${ch.id}: NIG duplicate IDs`);
+    assert(fullA.k04Relational.nig.verificationStats.unresolvedEvidenceRefCount === 0, `${ch.id}: NIG unresolved evidence refs`);
+    assert(fullA.k04Relational.nig.verificationStats.danglingEndpointCount === 0, `${ch.id}: NIG dangling endpoints`);
+
+    // Independent DCI recomputation from terminalBasins (sum of squared proportions, zero renormalization)
+    const d1Frame = fullA.k04Relational.dispositorAnalysis.primaryD1Frame;
+    if (d1Frame && d1Frame.dci.expectedPopulationCount > 0 && d1Frame.dci.dci !== null) {
+      const indepDci = Number(
+        d1Frame.terminalBasins
+          .reduce(
+            (acc, b) => acc + (b.assignedEntities.length / d1Frame.dci.expectedPopulationCount) ** 2,
+            0
+          )
+          .toFixed(6)
+      );
+      assert(
+        Math.abs(indepDci - d1Frame.dci.dci) < 1e-6,
+        `${ch.id}: Independent DCI mismatch expected=${indepDci}, got=${d1Frame.dci.dci}`
+      );
+    }
+
+    k03K04AuditMatrix.push({
+      chartId: ch.id,
+      durationMs: Math.max(0, t1 - t0),
+      k03Pass1CearCount: fullA.k03Pass1Authority.cearRecords.length,
+      k03Pass2CearCount: fullA.k03Authority.cearRecords.length,
+      nigNodes: fullA.k04Relational.nig.verificationStats.totalNodes,
+      nigEdges: fullA.k04Relational.nig.verificationStats.totalEdges,
+      d1Dci: d1Frame?.dci.dci ?? null,
+      d1BasinCount: d1Frame?.terminalBasins.length ?? 0,
+      duplicateIdCount: fullA.k04Relational.nig.verificationStats.duplicateIdCount,
+      unresolvedEvidenceRefCount: fullA.k04Relational.nig.verificationStats.unresolvedEvidenceRefCount,
+      danglingEndpointCount: fullA.k04Relational.nig.verificationStats.danglingEndpointCount,
+    });
+  }
+
   const realAwRow = regressionSummary.find((r) => r.chartId === 'real_astroway_chris4');
   const synthAwRow = regressionSummary.find((r) => r.chartId === 'synthetic_full_astroway_shape');
   const freeAwRow = regressionSummary.find((r) => r.chartId === 'real_freeastroapi_chris4');
@@ -1406,9 +1470,19 @@ async function main() {
       k02MathDiscrepancies: allMathFailures.length,
     },
     area3_multiChartRegressionMatrix: regressionSummary,
+    area4_k03K04RelationalAndAuthorityAudit: {
+      registryCounts: {
+        k02Rules: regSnapAudit.totalRules,
+        r04Rules: regSnapAudit.r04TotalRules,
+        r07Models: regSnapAudit.r07TotalModels,
+      },
+      pipelineMatrix: k03K04AuditMatrix,
+    },
     area5_empiricalReadiness: {
       externalValidationAchieved: false,
       allSubjectsEmpiricalStatus: 'not_validated',
+      verificationTerminologyBoundary:
+        'External software/ephemeris comparisons establish computational agreement only; empirical predictive validity remains strictly not_validated.',
       k02StrictGateExcludedOnChris4: k02StrictChris4.ruleExecutionSummary.countsByStatus.excluded_by_provisional_gate,
     },
   });

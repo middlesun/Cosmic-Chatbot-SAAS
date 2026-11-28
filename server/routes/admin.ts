@@ -55,7 +55,7 @@ import {
   type V2DiagnosticProviderId,
 } from '../services/v2Engine';
 import {
-  buildAnalyticalKernelK02Bundle,
+  buildAnalyticalKernelK03K04Bundle,
   exportRuleRegistrySnapshot,
 } from '../services/analyticalKernel';
 import { sendClientInviteEmail, sendSupportReplyEmail } from '../services/email';
@@ -3536,11 +3536,58 @@ function assembleV2DiagnosticBundleResponse(params: {
   const layerBMaster = compiledFoundationalChart.layerBMaster;
   const layerC = compiledFoundationalChart.layerCShell;
   const layerCInputContract = prepareLayerCAnalyticalInput(compiledFoundationalChart);
-  const k02Bundle = buildAnalyticalKernelK02Bundle(layerCInputContract);
-  const analyticalEvidenceRepository = k02Bundle.k01Repository;
-  const k02PlanetaryStateIntelligence = k02Bundle.k02State;
+  const k01ToK04Bundle = buildAnalyticalKernelK03K04Bundle(layerCInputContract);
+  const analyticalEvidenceRepository = k01ToK04Bundle.k01Repository;
+  const k02PlanetaryStateIntelligence = k01ToK04Bundle.k02State;
+  const k03ContextualAuthority = k01ToK04Bundle.k03Authority;
+  const k04NatalIntelligenceGraph = k01ToK04Bundle.k04Relational.nig;
+  const k04DispositorAndDependency = {
+    engineVersion: k01ToK04Bundle.k04Relational.engineVersion,
+    dispositorEngineVersion: k01ToK04Bundle.k04Relational.dispositorEngineVersion,
+    p08EnrichmentVersion: k01ToK04Bundle.k04Relational.p08EnrichmentVersion,
+    sourceInputFingerprint: k01ToK04Bundle.sourceInputFingerprint,
+    generatedAtUtc: k01ToK04Bundle.k04Relational.generatedAtUtc,
+    dispositorAnalysis: k01ToK04Bundle.k04Relational.dispositorAnalysis,
+    p08InfluenceFootprint: k01ToK04Bundle.k04Relational.p08InfluenceFootprint,
+  };
+  const k01ToK04AnalyticalBundle = {
+    pipelineVersion: k01ToK04Bundle.pipelineVersion,
+    generatedAtUtc: k01ToK04Bundle.generatedAtUtc,
+    sourceInputFingerprint: k01ToK04Bundle.sourceInputFingerprint,
+    manifest: k01ToK04Bundle.manifest,
+    enrichmentProjection: k01ToK04Bundle.enrichmentProjection,
+    k03RelationalContextBridge: k01ToK04Bundle.k03RelationalContextBridge,
+    k03Pass1Summary: {
+      cearCount: k01ToK04Bundle.k03Pass1Authority.cearRecords.length,
+      relationalContextApplied: k01ToK04Bundle.k03Pass1Authority.relationalContextApplied,
+      independenceSummaries: k01ToK04Bundle.k03Pass1Authority.independenceSummaries,
+    },
+    k03Pass2Summary: {
+      cearCount: k01ToK04Bundle.k03Authority.cearRecords.length,
+      relationalContextApplied: k01ToK04Bundle.k03Authority.relationalContextApplied,
+      independenceSummaries: k01ToK04Bundle.k03Authority.independenceSummaries,
+    },
+  };
   const analyticalRuleRegistry = exportRuleRegistrySnapshot();
-  const verificationReport = compiledFoundationalChart.verification;
+  const verificationReport = {
+    ...compiledFoundationalChart.verification,
+    analyticalKernelVerification: {
+      pipelineVersion: k01ToK04Bundle.pipelineVersion,
+      manifest: k01ToK04Bundle.manifest,
+      k01LineageCycleCheckPassed: k01ToK04Bundle.k01Repository.lineageGraph.cycleCheckPassed,
+      k02RuleEvaluations: k01ToK04Bundle.k02State.ruleExecutionSummary.totalEvaluations,
+      k02UnregisteredRuleRejections:
+        k01ToK04Bundle.k02State.ruleExecutionSummary.unregisteredRuleRejections,
+      k03Pass1CearCount: k01ToK04Bundle.k03Pass1Authority.cearRecords.length,
+      k03Pass2CearCount: k01ToK04Bundle.k03Authority.cearRecords.length,
+      k03DoubleCountingGuardsApplied:
+        k01ToK04Bundle.k03Authority.independenceSummaries.doubleCountingGuardsApplied,
+      k04NigStats: k01ToK04Bundle.k04Relational.nig.verificationStats,
+      k04D1Dci: k01ToK04Bundle.k04Relational.dispositorAnalysis.primaryD1Frame?.dci ?? null,
+      externalValidationAchieved:
+        k01ToK04Bundle.k01Repository.sourceChart.externalValidationAchieved,
+    },
+  };
   const legacyVsV2Comparison = buildLegacyVsV2ComparisonReport({
     profileId: String(profile.id),
     profileName: String(profile.name || 'Unnamed Profile'),
@@ -3586,6 +3633,10 @@ function assembleV2DiagnosticBundleResponse(params: {
     layerCInputContract,
     analyticalEvidenceRepository,
     k02PlanetaryStateIntelligence,
+    k03ContextualAuthority,
+    k04NatalIntelligenceGraph,
+    k04DispositorAndDependency,
+    k01ToK04AnalyticalBundle,
     analyticalRuleRegistry,
     verificationReport,
     legacyVsV2Comparison,
@@ -3606,6 +3657,18 @@ function assembleV2DiagnosticBundleResponse(params: {
     ).length,
     k02PlanetaryStateIntelligenceBytes: v2TextEncoder.encode(
       JSON.stringify(sanitizedPayload.k02PlanetaryStateIntelligence)
+    ).length,
+    k03ContextualAuthorityBytes: v2TextEncoder.encode(
+      JSON.stringify(sanitizedPayload.k03ContextualAuthority)
+    ).length,
+    k04NatalIntelligenceGraphBytes: v2TextEncoder.encode(
+      JSON.stringify(sanitizedPayload.k04NatalIntelligenceGraph)
+    ).length,
+    k04DispositorAndDependencyBytes: v2TextEncoder.encode(
+      JSON.stringify(sanitizedPayload.k04DispositorAndDependency)
+    ).length,
+    k01ToK04AnalyticalBundleBytes: v2TextEncoder.encode(
+      JSON.stringify(sanitizedPayload.k01ToK04AnalyticalBundle)
     ).length,
     analyticalRuleRegistryBytes: v2TextEncoder.encode(
       JSON.stringify(sanitizedPayload.analyticalRuleRegistry)

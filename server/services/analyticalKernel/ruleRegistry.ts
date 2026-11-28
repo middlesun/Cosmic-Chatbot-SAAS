@@ -818,8 +818,8 @@ const RAW_K02_RULES: AnalyticalRuleDefinition[] = [
     provisionalPolicy: 'accept_with_provisional_cap',
     overlapHandlingPolicy: 'Separate NodalConditionProfile outside 7-planet PHI projection.',
     excludedK03ToK08Concerns: [
-      'Nodal agentic yoga / conjunction substitution (K05)',
-      'Rahu/Ketu Mahadasha karmic delivery (K06)',
+      'Nodal agentic yoga / conjunction substitution (K05 Interaction Intelligence)',
+      'Rahu/Ketu Mahadasha karmic delivery (K09 Temporal Intelligence)',
     ],
     mathModel: {
       modelId: 'nodal_condition_qualitative',
@@ -915,12 +915,14 @@ const RAW_K02_RULES: AnalyticalRuleDefinition[] = [
     overlapHandlingPolicy:
       'Exclude child/redundant metrics flagged as partial_mathematical_overlap or exact_duplicate from primary quantitative fields.',
     excludedK03ToK08Concerns: [
-      'K03 Contextual Evidence Authority Intelligence & Lagna-specific authority rules',
+      'K03 Contextual Evidence Authority & Lagna-specific authority rules',
       'K04 Relational Intelligence (Natal Intelligence Graph, Dispositor & Dependency Intelligence, P08 enrichment)',
-      'K05 Planetary interactions / Yogas',
-      'K06 Temporal Dasha / Gochar',
-      'K07 Conflict resolution',
-      'K08 Historical / Life-context outcomes',
+      'K05 Interaction Intelligence (planetary interactions / Yogas)',
+      'K06 Structural Intelligence',
+      'K07 Conflict Intelligence',
+      'K08 Deliverability Intelligence (life-context deliverability)',
+      'K09 Temporal Intelligence (Dasha / Gochar)',
+      'K10 Adjudication Intelligence',
     ],
     mathModel: {
       modelId: 'phi_overlap_deduplication_projection',
@@ -1170,6 +1172,7 @@ export function listRegisteredRules(): readonly AnalyticalRuleDefinition[] {
 
 export function exportRuleRegistrySnapshot(): AnalyticalRuleRegistrySnapshot {
   const r04 = exportR04RuleRegistrySnapshot();
+  const r07 = exportR07MathModelRegistrySnapshot();
   return {
     registryVersion: ANALYTICAL_RULE_REGISTRY_VERSION,
     totalRules: K02_RULE_LIST.length,
@@ -1177,6 +1180,9 @@ export function exportRuleRegistrySnapshot(): AnalyticalRuleRegistrySnapshot {
     r04RegistryVersion: r04.registryVersion,
     r04TotalRules: r04.totalRules,
     r04Rules: r04.rules,
+    r07RegistryVersion: r07.registryVersion,
+    r07TotalModels: r07.totalModels,
+    r07Models: r07.models,
   };
 }
 

@@ -23,3 +23,4 @@ export * from './natalIntelligenceGraph';
 export * from './graphTraversal';
 export * from './dispositorDependencyEngine';
 export * from './p08FootprintEnrichment';
+export * from './k03k04Pipeline';

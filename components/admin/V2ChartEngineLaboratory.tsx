@@ -158,6 +158,10 @@ interface V2DiagnosticRunResult {
       compiledFoundationalChartBytes?: number;
       analyticalEvidenceRepositoryBytes?: number;
       k02PlanetaryStateIntelligenceBytes?: number;
+      k03ContextualAuthorityBytes?: number;
+      k04NatalIntelligenceGraphBytes?: number;
+      k04DispositorAndDependencyBytes?: number;
+      k01ToK04AnalyticalBundleBytes?: number;
       analyticalRuleRegistryBytes?: number;
       verificationReportBytes: number;
       legacyVsV2ComparisonBytes: number;
@@ -348,6 +352,10 @@ interface V2DiagnosticRunResult {
   layerCInputContract?: Record<string, unknown>;
   analyticalEvidenceRepository?: Record<string, unknown> | null;
   k02PlanetaryStateIntelligence?: Record<string, unknown> | null;
+  k03ContextualAuthority?: Record<string, unknown> | null;
+  k04NatalIntelligenceGraph?: Record<string, unknown> | null;
+  k04DispositorAndDependency?: Record<string, unknown> | null;
+  k01ToK04AnalyticalBundle?: Record<string, unknown> | null;
   analyticalRuleRegistry?: Record<string, unknown> | null;
   verificationReport: {
     profileName: string;
@@ -1160,7 +1168,21 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
 
     const analyticalEvidenceRepository = result.analyticalEvidenceRepository ?? null;
     const k02PlanetaryStateIntelligence = result.k02PlanetaryStateIntelligence ?? null;
+    const k03ContextualAuthority = result.k03ContextualAuthority ?? null;
+    const k04NatalIntelligenceGraph = result.k04NatalIntelligenceGraph ?? null;
+    const k04DispositorAndDependency = result.k04DispositorAndDependency ?? null;
     const analyticalRuleRegistry = result.analyticalRuleRegistry ?? null;
+    const combinedK01ToK04Bundle = result.k01ToK04AnalyticalBundle
+      ? {
+          ...result.k01ToK04AnalyticalBundle,
+          analyticalRuleRegistry,
+          k01Repository: analyticalEvidenceRepository,
+          k02State: k02PlanetaryStateIntelligence,
+          k03Authority: k03ContextualAuthority,
+          k04Nig: k04NatalIntelligenceGraph,
+          k04DispositorAndDependency,
+        }
+      : null;
 
     const completeDiagnosticBundle = {
       bundleMetadata: result.bundleMetadata,
@@ -1175,6 +1197,10 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
       layerCInputContract: result.layerCInputContract ?? null,
       analyticalEvidenceRepository,
       k02PlanetaryStateIntelligence,
+      k03ContextualAuthority,
+      k04NatalIntelligenceGraph,
+      k04DispositorAndDependency,
+      k01ToK04AnalyticalBundle: result.k01ToK04AnalyticalBundle ?? null,
       analyticalRuleRegistry,
       verificationAndProvenance,
       legacyVsV2Comparison: result.legacyVsV2Comparison,
@@ -1185,6 +1211,10 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
       consolidatedFoundationalChart,
       analyticalEvidenceRepository,
       k02PlanetaryStateIntelligence,
+      k03ContextualAuthority,
+      k04NatalIntelligenceGraph,
+      k04DispositorAndDependency,
+      combinedK01ToK04Bundle,
       analyticalRuleRegistry,
       rawApiResponses,
       layerA: result.layerA,
@@ -1798,6 +1828,90 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
                 </button>
               )}
 
+              {downloadPayloads.k03ContextualAuthority && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    triggerJsonDownload(
+                      `${filePrefix}-k03-contextual-authority.json`,
+                      downloadPayloads.k03ContextualAuthority
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>
+                    K03 Contextual Authority JSON
+                    {result.runtimeTelemetry.artifactSizesBytes.k03ContextualAuthorityBytes
+                      ? ` (${formatKb(result.runtimeTelemetry.artifactSizesBytes.k03ContextualAuthorityBytes)})`
+                      : ''}
+                  </span>
+                </button>
+              )}
+
+              {downloadPayloads.k04NatalIntelligenceGraph && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    triggerJsonDownload(
+                      `${filePrefix}-k04-natal-intelligence-graph.json`,
+                      downloadPayloads.k04NatalIntelligenceGraph
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>
+                    K04 Natal Graph (NIG) JSON
+                    {result.runtimeTelemetry.artifactSizesBytes.k04NatalIntelligenceGraphBytes
+                      ? ` (${formatKb(result.runtimeTelemetry.artifactSizesBytes.k04NatalIntelligenceGraphBytes)})`
+                      : ''}
+                  </span>
+                </button>
+              )}
+
+              {downloadPayloads.k04DispositorAndDependency && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    triggerJsonDownload(
+                      `${filePrefix}-k04-dispositor-dependency.json`,
+                      downloadPayloads.k04DispositorAndDependency
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>
+                    K04 Dispositor &amp; DCI JSON
+                    {result.runtimeTelemetry.artifactSizesBytes.k04DispositorAndDependencyBytes
+                      ? ` (${formatKb(result.runtimeTelemetry.artifactSizesBytes.k04DispositorAndDependencyBytes)})`
+                      : ''}
+                  </span>
+                </button>
+              )}
+
+              {downloadPayloads.combinedK01ToK04Bundle && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    triggerJsonDownload(
+                      `${filePrefix}-k01-k04-analytical-bundle.json`,
+                      downloadPayloads.combinedK01ToK04Bundle
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#3D3830]/15 bg-[#FDFBF7] px-3 py-1.5 text-[11px] font-medium text-[#5C5449] hover:text-[#3D3830] hover:bg-[#F1ECE3] cursor-pointer"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>
+                    K01–K04 Bundle &amp; Manifest JSON
+                    {result.runtimeTelemetry.artifactSizesBytes.k01ToK04AnalyticalBundleBytes
+                      ? ` (${formatKb(result.runtimeTelemetry.artifactSizesBytes.k01ToK04AnalyticalBundleBytes)})`
+                      : ''}
+                  </span>
+                </button>
+              )}
+
               {downloadPayloads.analyticalRuleRegistry && (
                 <button
                   type="button"
@@ -1811,7 +1925,7 @@ const V2ChartEngineLaboratory: React.FC<V2ChartEngineLaboratoryProps> = ({ getAc
                 >
                   <Download className="h-3 w-3" />
                   <span>
-                    Analytical Rule Registry JSON
+                    Rule Registry (K02+R04+R07) JSON
                     {result.runtimeTelemetry.artifactSizesBytes.analyticalRuleRegistryBytes
                       ? ` (${formatKb(result.runtimeTelemetry.artifactSizesBytes.analyticalRuleRegistryBytes)})`
                       : ''}

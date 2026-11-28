@@ -45,6 +45,7 @@ import {
   type ContextualEvidenceAuthorityRecord,
   type EvaluateK03ContextualAuthorityOptions,
   type K03AuthorityMethodology,
+  type K03CoexistingFunctionalResponsibility,
   type K03EvidenceIndependenceClassification,
   type K03ExclusionAndLimitationRecord,
   type K03IndependenceSummary,
@@ -557,7 +558,9 @@ function buildTenDimensions(params: {
       temporalQuarantined
         ? `Reference-date dependent telemetry (${item.referenceDateIso ?? 'unspecified'}) quarantined from natal authority.`
         : 'Natal-invariant birth-chart observation valid for structural evaluation.',
-      temporalQuarantined ? ['Must remain isolated in temporal layer (K06) and never contaminate natal authority.'] : []
+      temporalQuarantined
+        ? ['Must remain isolated in temporal layer (K09 — Temporal Intelligence) and never contaminate natal authority.']
+        : []
     ),
   };
 }
@@ -1844,6 +1847,8 @@ export function evaluateK03ContextualAuthority(
         functionalMalefic: null,
         yogakaraka: null,
         maraka: null,
+        conditionalMaraka: null,
+        conditionalMarakaHouses: [],
         neutralOrMixed: null,
         lagnesha: null,
         directHouseLordships: {
@@ -1853,6 +1858,14 @@ export function evaluateK03ContextualAuthority(
           dusthanaHouses: [],
           marakaHouses: [],
           badhakaNote: null,
+        },
+        coexistingResponsibilities: [],
+        methodologicalQualifications: {
+          differsAcrossClassicalConventions: false,
+          conventionNotes: [
+            'Lagna sign is absent; BPHS Ch. 34 functional responsibilities remain unevaluated.',
+          ],
+          functionalBeneficDoesNotExcludeConditionalMaraka: true,
         },
         naturalSignifications: {
           ...natInfo,
@@ -1918,6 +1931,8 @@ export function evaluateK03ContextualAuthority(
         functionalMalefic: null,
         yogakaraka: null,
         maraka: null,
+        conditionalMaraka: null,
+        conditionalMarakaHouses: [],
         neutralOrMixed: null,
         lagnesha: subject === 'Ascendant' ? null : false,
         directHouseLordships: {
@@ -1927,6 +1942,30 @@ export function evaluateK03ContextualAuthority(
           dusthanaHouses: [],
           marakaHouses: [],
           badhakaNote: null,
+        },
+        coexistingResponsibilities: [
+          {
+            category: 'conditional',
+            houses: [],
+            label:
+              subject === 'Ascendant'
+                ? 'lagna_reference_via_lagnesha'
+                : 'contingent_nodal_agent_via_dispositor',
+            rationale:
+              subject === 'Ascendant'
+                ? `Ascendant acts as Lagna reference anchored through Lagnesha ${spec.lagnaLord}.`
+                : `${subject} reflects sign dispositor ${dispLord ?? 'unresolved'} and co-occupants rather than fixed Rashi lordship.`,
+          },
+        ],
+        methodologicalQualifications: {
+          differsAcrossClassicalConventions: subject !== 'Ascendant',
+          conventionNotes:
+            subject === 'Ascendant'
+              ? ['Ascendant is a reference point rather than a house-lord planet.']
+              : [
+                  'Classical conventions differ on Rahu/Ketu secondary sign lordships (Aquarius/Scorpio vs dispositor-only agentic transfer in K05 Interaction Intelligence).',
+                ],
+          functionalBeneficDoesNotExcludeConditionalMaraka: true,
         },
         naturalSignifications: {
           ...natInfo,
@@ -2002,6 +2041,11 @@ export function evaluateK03ContextualAuthority(
     const isFuncMalefic = spec.functionalMalefics.includes(planet);
     const isNeutral = spec.neutralOrMixed.includes(planet);
     const isMaraka = spec.marakaPlanets.includes(planet);
+    const isConditionalMaraka =
+      Boolean(spec.conditionalMarakaPlanets?.includes(planet)) ||
+      (!isMaraka && marakaHouses.length > 0);
+    const conditionalMarakaHouses =
+      isConditionalMaraka && marakaHouses.length > 0 ? [...marakaHouses] : [];
 
     const role: LagnaFunctionalRole = isYogakaraka
       ? 'yogakaraka'
@@ -2023,7 +2067,90 @@ export function evaluateK03ContextualAuthority(
       ? 'AC3'
       : 'AC1';
 
-    const planetCaveats = spec.classicalCaveats.filter((c) => c.includes(planet));
+    const coexistingResponsibilities: K03CoexistingFunctionalResponsibility[] = [];
+    if (isLagnesha) {
+      coexistingResponsibilities.push({
+        category: 'supportive',
+        houses: [1],
+        label: 'lagnesha_lagna_anchor',
+        rationale: `${planet} governs H1 (Lagna) for ${lagnaSign} Ascendant, anchoring bodily/constitutional direction.`,
+      });
+    }
+    const pureTrikonaHouses = trikonaHouses.filter((h) => h !== 1);
+    if (pureTrikonaHouses.length > 0) {
+      coexistingResponsibilities.push({
+        category: 'supportive',
+        houses: pureTrikonaHouses,
+        label: 'trikona_supportive_governance',
+        rationale: `${planet} governs supportive Trikona house(s) H${pureTrikonaHouses.join(', H')}.`,
+      });
+    }
+    const pureKendraHouses = kendraHouses.filter((h) => h !== 1);
+    if (pureKendraHouses.length > 0) {
+      const hasKendradhipati =
+        (natInfo.naturalPolarity === 'natural_benefic' || planet === 'Mercury') &&
+        !isYogakaraka &&
+        !isLagnesha;
+      coexistingResponsibilities.push({
+        category: hasKendradhipati ? 'conditional' : 'house_specific',
+        houses: pureKendraHouses,
+        label: hasKendradhipati ? 'kendra_with_kendradhipati_qualification' : 'kendra_governance',
+        rationale: hasKendradhipati
+          ? `${planet} governs Kendra house(s) H${pureKendraHouses.join(', H')}, attracting Kendradhipati Dosha qualification depending on strength and Trikona co-lordship.`
+          : `${planet} governs Kendra house(s) H${pureKendraHouses.join(', H')}.`,
+      });
+    }
+    if (dusthanaHouses.length > 0) {
+      coexistingResponsibilities.push({
+        category: 'constraining',
+        houses: dusthanaHouses,
+        label: 'dusthana_coexisting_responsibility',
+        rationale: `${planet} simultaneously governs Dusthana house(s) H${dusthanaHouses.join(', H')}${
+          isLagnesha || pureTrikonaHouses.length > 0
+            ? '; coexists alongside Lagna/Trikona authority without erasing Dusthana duties.'
+            : '.'
+        }`,
+      });
+    }
+    if (marakaHouses.length > 0) {
+      coexistingResponsibilities.push({
+        category: 'conditional',
+        houses: marakaHouses,
+        label: isMaraka ? 'primary_maraka_responsibility' : 'conditional_maraka_responsibility',
+        rationale: isMaraka
+          ? `${planet} carries primary Maraka responsibility via H${marakaHouses.join(', H')}.`
+          : `${planet} carries conditional Maraka responsibility via H${marakaHouses.join(', H')} (${
+              isFuncBenefic
+                ? 'functional benefic classification does NOT exclude conditional H2/H7 Maraka duties'
+                : 'subject to association, affliction, and timing activation in K05/K09'
+            }).`,
+      });
+    }
+    if (badhakaNote) {
+      coexistingResponsibilities.push({
+        category: 'conditional',
+        houses: [badhakaHouse],
+        label: 'badhaka_house_qualification',
+        rationale: badhakaNote,
+      });
+    }
+    const trishadayaOnly = ruledHouses.filter((h) => h === 3 || h === 11);
+    if (trishadayaOnly.length > 0) {
+      coexistingResponsibilities.push({
+        category: 'constraining',
+        houses: trishadayaOnly,
+        label: 'trishadaya_effort_or_desire_governance',
+        rationale: `${planet} governs Trishadaya house(s) H${trishadayaOnly.join(', H')}.`,
+      });
+    }
+
+    const planetCaveats = [
+      ...spec.classicalCaveats.filter((c) => c.includes(planet)),
+      ...(spec.coexistingResponsibilityNotes ?? []).filter((c) => c.includes(planet)),
+    ];
+    const conventionNotes = (spec.classicalConventionNotes ?? []).filter(
+      (c) => c.includes(planet) || coexistingResponsibilities.length > 1
+    );
 
     functionalOrientationProfiles[subject] = {
       subject,
@@ -2039,6 +2166,8 @@ export function evaluateK03ContextualAuthority(
       functionalMalefic: isFuncMalefic,
       yogakaraka: isYogakaraka,
       maraka: isMaraka,
+      conditionalMaraka: isConditionalMaraka,
+      conditionalMarakaHouses,
       neutralOrMixed: isNeutral,
       lagnesha: isLagnesha,
       directHouseLordships: {
@@ -2049,6 +2178,13 @@ export function evaluateK03ContextualAuthority(
         marakaHouses,
         badhakaNote,
       },
+      coexistingResponsibilities,
+      methodologicalQualifications: {
+        differsAcrossClassicalConventions:
+          conventionNotes.length > 0 || isConditionalMaraka || Boolean(badhakaNote) || dusthanaHouses.length > 0,
+        conventionNotes,
+        functionalBeneficDoesNotExcludeConditionalMaraka: true,
+      },
       naturalSignifications: {
         ...natInfo,
         nonConflationNote:
@@ -2057,8 +2193,10 @@ export function evaluateK03ContextualAuthority(
       functionalResponsibilities: {
         summary: `${planet} for ${lagnaSign} Lagna rules H${ruledHouses.join('/H')} -> ${role}${
           isLagnesha ? ' (Lagnesha)' : ''
-        }${isMaraka ? ' [Maraka flagged]' : ''}.`,
-        caveats: planetCaveats,
+        }${isMaraka ? ' [Primary Maraka]' : ''}${
+          isConditionalMaraka ? ` [Conditional Maraka H${conditionalMarakaHouses.join('/H')}]` : ''
+        }.`,
+        caveats: Array.from(new Set(planetCaveats)),
         roleSource: 'BPHS_CH34',
       },
       jaiminiKarakas: {
@@ -2159,6 +2297,7 @@ export function evaluateK03ContextualAuthority(
         isLagnesha: Boolean(p09.lagnesha),
         isYogakaraka: Boolean(p09.yogakaraka),
         isMaraka: Boolean(p09.maraka),
+        isConditionalMaraka: Boolean(p09.conditionalMaraka),
         isKendraLord: p09.directHouseLordships.kendraHouses.length > 0,
         isTrikonaLord: p09.directHouseLordships.trikonaHouses.length > 0,
         isDusthanaLord: p09.directHouseLordships.dusthanaHouses.length > 0,
@@ -2184,6 +2323,13 @@ export function evaluateK03ContextualAuthority(
       lagnaAuthority,
       overallHighestClassification:
         subjCears.length === 0 ? 'unevaluated' : qualifiedHighest === 'unevaluated' && subjCears.some((c) => c.authorityClassification === 'AC6') ? 'AC6' : qualifiedHighest,
+      overallHighestClassificationDiagnosticMeta: {
+        diagnosticMetadataOnly: true,
+        notUniversalPlanetaryAuthority: true,
+        forbiddenAsScoringOrPrioritizationInput: true,
+        authorityRemainsObjectiveAndPropositionScoped: true,
+        note: 'Summary metadata across evaluated CEAR records only; never treat as a universal planetary rank or input to scoring/prioritization.',
+      },
       provisionalCappedAny: allObjEntries.some((o) => o.provisionalCapped),
       unresolvedPrerequisites: Array.from(
         new Set([
@@ -2256,6 +2402,12 @@ export function evaluateK03ContextualAuthority(
     sourceInputFingerprint: repo.sourceChart.inputFingerprint,
     strictNonProvisional,
     policyConfiguration,
+    authorityScopeGuarantees: {
+      objectiveAndPropositionScoped: true,
+      crossObjectiveSummariesDiagnosticOnly: true,
+      overallHighestNotScoringInput: true,
+      ac5NeverSubstitutesForUnevaluatedOrIndeterminate: true,
+    },
     relationalContextApplied: Boolean(relationalContext),
     cearRecords,
     r04RegistrySnapshot: exportR04RuleRegistrySnapshot(),

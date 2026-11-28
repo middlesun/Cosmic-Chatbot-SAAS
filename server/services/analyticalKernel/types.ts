@@ -528,6 +528,9 @@ export interface AnalyticalRuleRegistrySnapshot {
   r04RegistryVersion?: string;
   r04TotalRules?: number;
   r04Rules?: R04AuthorityRuleDefinition[];
+  r07RegistryVersion?: string;
+  r07TotalModels?: number;
+  r07Models?: AnalyticalRuleDefinition['mathModel'][];
 }
 
 export interface RuleExecutionRecord {

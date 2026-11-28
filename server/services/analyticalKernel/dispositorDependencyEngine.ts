@@ -137,19 +137,25 @@ export interface K04DependencyRedundancyProperty {
   sharedTerminalBasinPeers: string[];
   alternativePathCountToTerminal: number;
   redundancyClassification:
-    | 'mutual_exchange_loop'
-    | 'cyclic_interdependence'
+    | 'topological_mutual_exchange_pair'
+    | 'topological_cyclic_co_membership'
     | 'multi_channel_with_nakshatra'
     | 'single_channel_chain'
     | 'unresolved';
+  redundancyEpistemicStatus: 'topological_path_observation_only';
+  functionalRedundancyEstablished: false;
+  strongerRedundancyDeferredTo: readonly ['K06', 'K08'];
 }
 
 export interface K04DependencyCriticalityProperty {
   synthesisStatus: 'partial';
   deferralStatus: 'deferred_pending_k05_k06_k08';
   deferredTo: readonly ['K05', 'K06', 'K08'];
+  strongerCriticalityDeferredTo: readonly ['K06', 'K08'];
+  epistemicCriticalityScope: 'topological_dependency_observation_only';
+  functionalBottleneckEstablished: false;
   isTerminalSinkMember: boolean;
-  isCycleBottleneck: boolean;
+  isTopologicalSinkWithInboundFeed: boolean;
   isUpstreamRelay: boolean;
   isLagneshInFrame: boolean;
   downstreamFeedCount: number;
@@ -794,26 +800,26 @@ function analyzeIsolatedFrameDispositors(
       !assignedBasin
         ? 'unresolved'
         : parivartanaPartners.length > 0
-        ? 'mutual_exchange_loop'
+        ? 'topological_mutual_exchange_pair'
         : scc?.isCycle
-        ? 'cyclic_interdependence'
+        ? 'topological_cyclic_co_membership'
         : nakEdge && nakEdge.targetEntityId !== directDispId
         ? 'multi_channel_with_nakshatra'
         : 'single_channel_chain';
 
-    // Criticality (explicitly partial & deferred to K05/K06/K08)
+    // Criticality (strictly topological observation only; functional bottlenecks/criticality deferred to K06 Structural & K08 Deliverability)
     const isTerminalSinkMember = Boolean(scc?.isTrueDispositorSink);
-    const isCycleBottleneck = isTerminalSinkMember && upstreamIds.length > 0;
+    const isTopologicalSinkWithInboundFeed = isTerminalSinkMember && upstreamIds.length > 0;
     const isUpstreamRelay = !isTerminalSinkMember && directDeps.length > 0;
     const structuralNotes: string[] = [];
     if (isTerminalSinkMember) {
       structuralNotes.push(
-        `Member of terminal ${assignedBasin?.terminalKind ?? 'sink'} basin (${assignedBasin?.sinkMembers.join(', ')}).`
+        `Member of topological terminal ${assignedBasin?.terminalKind ?? 'sink'} basin (${assignedBasin?.sinkMembers.join(', ')}).`
       );
     }
-    if (isCycleBottleneck) {
+    if (isTopologicalSinkWithInboundFeed) {
       structuralNotes.push(
-        `Structural sink receiving dependency feed from ${upstreamIds.length} upstream planet(s).`
+        `Topological terminal sink with inbound dependency feed from ${upstreamIds.length} upstream planet(s); does not independently establish functional bottleneck or vulnerability (deferred to K06 Structural Intelligence and K08 Deliverability Intelligence).`
       );
     }
     if (includesAscendant) {
@@ -887,18 +893,24 @@ function analyzeIsolatedFrameDispositors(
           sharedTerminalBasinPeers: sharedBasinPeers,
           alternativePathCountToTerminal: altPathCount,
           redundancyClassification,
+          redundancyEpistemicStatus: 'topological_path_observation_only',
+          functionalRedundancyEstablished: false,
+          strongerRedundancyDeferredTo: ['K06', 'K08'],
         },
         criticality: {
           synthesisStatus: 'partial',
           deferralStatus: 'deferred_pending_k05_k06_k08',
           deferredTo: ['K05', 'K06', 'K08'],
+          strongerCriticalityDeferredTo: ['K06', 'K08'],
+          epistemicCriticalityScope: 'topological_dependency_observation_only',
+          functionalBottleneckEstablished: false,
           isTerminalSinkMember,
-          isCycleBottleneck,
+          isTopologicalSinkWithInboundFeed,
           isUpstreamRelay,
           isLagneshInFrame: includesAscendant,
           downstreamFeedCount: upstreamIds.length,
           structuralNotes,
-          note: 'Topological dependency criticality only; functional deliverability synthesis is strictly deferred_pending_k05_k06_k08.',
+          note: 'Topological dependency graph observation only (terminal membership/concentration never independently establishes bottlenecks or vulnerability); stronger criticality assessments reserved for K06 Structural Intelligence and K08 Deliverability Intelligence.',
         },
       },
       epistemicTag: STRUCTURAL_REACHABILITY_EPISTEMIC_TAG,
@@ -1027,20 +1039,26 @@ function analyzeIsolatedFrameDispositors(
             : ascNakEdge && ascNakEdge.targetEntityId !== lagneshId
             ? 'multi_channel_with_nakshatra'
             : 'single_channel_chain',
+          redundancyEpistemicStatus: 'topological_path_observation_only',
+          functionalRedundancyEstablished: false,
+          strongerRedundancyDeferredTo: ['K06', 'K08'],
         },
         criticality: {
           synthesisStatus: 'partial',
           deferralStatus: 'deferred_pending_k05_k06_k08',
           deferredTo: ['K05', 'K06', 'K08'],
+          strongerCriticalityDeferredTo: ['K06', 'K08'],
+          epistemicCriticalityScope: 'topological_dependency_observation_only',
+          functionalBottleneckEstablished: false,
           isTerminalSinkMember: false,
-          isCycleBottleneck: false,
+          isTopologicalSinkWithInboundFeed: false,
           isUpstreamRelay: false,
           isLagneshInFrame: false,
           downstreamFeedCount: 0,
           structuralNotes: lagneshId
-            ? [`Ascendant structural foundation anchored via Lagnesh ${lagneshSubj ?? lagneshId}.`]
+            ? [`Ascendant topological anchor linked via Lagnesh ${lagneshSubj ?? lagneshId}.`]
             : ['Ascendant Lagnesh missing in vedic_lahiri frame.'],
-          note: 'Topological Lagna-Lagnesh anchor only; functional deliverability deferred_pending_k05_k06_k08.',
+          note: 'Topological Lagna-Lagnesh anchor only; stronger criticality & functional deliverability reserved for K06 Structural Intelligence and K08 Deliverability Intelligence.',
         },
       },
       epistemicTag: STRUCTURAL_REACHABILITY_EPISTEMIC_TAG,

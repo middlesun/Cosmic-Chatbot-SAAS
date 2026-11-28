@@ -1,6 +1,6 @@
 {
   "schemaVersion": "v2.offline_verification_fixtures.1.0",
-  "generatedAtUtc": "2026-11-28T12:08:22.896Z",
+  "generatedAtUtc": "2026-11-28T15:00:46.460Z",
   "privacyAndAccessControl": {
     "personalDataNotice": "PRIVATE_OFFLINE_FIXTURE_ONLY: Exact birth dates, birth times, and geographic coordinates remain personal data even after UUIDs, emails, and user IDs are removed. Keep strictly outside public/ and dist/ assets and restrict access to authorized repository verification workflows.",
     "publicServingProhibited": true,
@@ -29,7 +29,7 @@
       "astroWayPopulated": false,
       "layerCInput": {
         "contractVersion": "v2.layer_c_input.1.0",
-        "preparedAtUtc": "2026-11-28T12:08:22.772Z",
+        "preparedAtUtc": "2026-11-28T15:00:46.331Z",
         "sourceSchemaVersion": "v2.compiled_foundational_chart.1.0",
         "recalculationVersion": "v2.recalc.1.0",
         "inputFingerprint": "a8ffce3552a2724c30afad66",
@@ -21595,7 +21595,7 @@
         },
         "datasetManifest": {
           "schemaVersion": "v2.manifest.1.0",
-          "evaluatedAtUtc": "2026-11-28T12:08:22.757Z",
+          "evaluatedAtUtc": "2026-11-28T15:00:46.316Z",
           "inputFingerprint": "a8ffce3552a2724c30afad66",
           "minimumChartReadiness": {
             "ready": false,
@@ -21647,7 +21647,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:birthInstant.resolveCanonicalBirthInstant",
-              "acquiredAtUtc": "2026-11-28T12:08:22.752Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.309Z",
               "version": "v2.recalc.1.0",
               "dependencies": [],
               "missingDependencies": [],
@@ -21938,7 +21938,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:ashtakavargaReductions",
-              "acquiredAtUtc": "2026-11-28T12:08:22.752Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.309Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "ashtakavarga_bav_sav_prastara"
@@ -22123,7 +22123,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:panchadhaMaitri",
-              "acquiredAtUtc": "2026-11-28T12:08:22.752Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.309Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -22142,7 +22142,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:vimshopakaBala",
-              "acquiredAtUtc": "2026-11-28T12:08:22.752Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.309Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_shodashavarga_16"
@@ -22161,7 +22161,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:dispositorGraph",
-              "acquiredAtUtc": "2026-11-28T12:08:22.752Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.309Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -22178,7 +22178,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "local:advancedAvasthas",
-              "acquiredAtUtc": "2026-11-28T12:08:22.752Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.309Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions",
@@ -22216,7 +22216,7 @@
               "referenceDateIso": "2026-11-27",
               "canonicalStatus": "available",
               "source": "freeastroapi:reference_date_dasha",
-              "acquiredAtUtc": "2026-11-28T12:08:22.752Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.309Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "canonical_birth_instant",
@@ -22403,7 +22403,7 @@
       "astroWayPopulated": true,
       "layerCInput": {
         "contractVersion": "v2.layer_c_input.1.0",
-        "preparedAtUtc": "2026-11-28T12:08:22.896Z",
+        "preparedAtUtc": "2026-11-28T15:00:46.460Z",
         "sourceSchemaVersion": "v2.compiled_foundational_chart.1.0",
         "recalculationVersion": "2026.11.27-foundational.1",
         "inputFingerprint": "a8ffce3552a2724c30afad66",
@@ -54101,7 +54101,7 @@
         },
         "datasetManifest": {
           "schemaVersion": "v2.manifest.1.0",
-          "evaluatedAtUtc": "2026-11-28T12:08:22.880Z",
+          "evaluatedAtUtc": "2026-11-28T15:00:46.445Z",
           "inputFingerprint": "a8ffce3552a2724c30afad66",
           "minimumChartReadiness": {
             "ready": true,
@@ -54144,7 +54144,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:birthInstant.resolveCanonicalBirthInstant",
-              "acquiredAtUtc": "2026-11-28T12:08:22.877Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.440Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [],
               "missingDependencies": [],
@@ -54392,7 +54392,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:vedicDignityConditions",
-              "acquiredAtUtc": "2026-11-28T12:08:22.877Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.440Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions"
@@ -54435,7 +54435,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:ashtakavargaReductions",
-              "acquiredAtUtc": "2026-11-28T12:08:22.877Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.440Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "ashtakavarga_bav_sav_prastara"
@@ -54608,7 +54608,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:panchadhaMaitri",
-              "acquiredAtUtc": "2026-11-28T12:08:22.877Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.440Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions"
@@ -54627,7 +54627,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:vimshopakaBala",
-              "acquiredAtUtc": "2026-11-28T12:08:22.877Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.440Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_shodashavarga_16"
@@ -54646,7 +54646,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:dispositorGraph",
-              "acquiredAtUtc": "2026-11-28T12:08:22.877Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.440Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions"
@@ -54663,7 +54663,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "local:advancedAvasthas",
-              "acquiredAtUtc": "2026-11-28T12:08:22.877Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.440Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions",
@@ -54701,7 +54701,7 @@
               "referenceDateIso": "2026-11-27",
               "canonicalStatus": "available",
               "source": "astroway:reference_date_dasha",
-              "acquiredAtUtc": "2026-11-28T12:08:22.877Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.440Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "canonical_birth_instant",
@@ -54877,7 +54877,7 @@
       "astroWayPopulated": false,
       "layerCInput": {
         "contractVersion": "v2.layer_c_input.1.0",
-        "preparedAtUtc": "2026-11-28T12:08:22.793Z",
+        "preparedAtUtc": "2026-11-28T15:00:46.362Z",
         "sourceSchemaVersion": "v2.compiled_foundational_chart.1.0",
         "recalculationVersion": "v2.recalc.1.0",
         "inputFingerprint": "99a9185ce2cc7bb11257b9dc",
@@ -76313,7 +76313,7 @@
         },
         "datasetManifest": {
           "schemaVersion": "v2.manifest.1.0",
-          "evaluatedAtUtc": "2026-11-28T12:08:22.782Z",
+          "evaluatedAtUtc": "2026-11-28T15:00:46.339Z",
           "inputFingerprint": "99a9185ce2cc7bb11257b9dc",
           "minimumChartReadiness": {
             "ready": false,
@@ -76365,7 +76365,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:birthInstant.resolveCanonicalBirthInstant",
-              "acquiredAtUtc": "2026-11-28T12:08:22.782Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.339Z",
               "version": "v2.recalc.1.0",
               "dependencies": [],
               "missingDependencies": [],
@@ -76656,7 +76656,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:ashtakavargaReductions",
-              "acquiredAtUtc": "2026-11-28T12:08:22.782Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.339Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "ashtakavarga_bav_sav_prastara"
@@ -76841,7 +76841,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:panchadhaMaitri",
-              "acquiredAtUtc": "2026-11-28T12:08:22.782Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.339Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -76860,7 +76860,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:vimshopakaBala",
-              "acquiredAtUtc": "2026-11-28T12:08:22.782Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.339Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_shodashavarga_16"
@@ -76879,7 +76879,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:dispositorGraph",
-              "acquiredAtUtc": "2026-11-28T12:08:22.782Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.339Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -76896,7 +76896,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "local:advancedAvasthas",
-              "acquiredAtUtc": "2026-11-28T12:08:22.782Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.339Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions",
@@ -76934,7 +76934,7 @@
               "referenceDateIso": "2026-11-27",
               "canonicalStatus": "available",
               "source": "freeastroapi:reference_date_dasha",
-              "acquiredAtUtc": "2026-11-28T12:08:22.782Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.339Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "canonical_birth_instant",
@@ -77117,7 +77117,7 @@
       "astroWayPopulated": false,
       "layerCInput": {
         "contractVersion": "v2.layer_c_input.1.0",
-        "preparedAtUtc": "2026-11-28T12:08:22.819Z",
+        "preparedAtUtc": "2026-11-28T15:00:46.381Z",
         "sourceSchemaVersion": "v2.compiled_foundational_chart.1.0",
         "recalculationVersion": "v2.recalc.1.0",
         "inputFingerprint": "a8ffce3552a2724c30afad66",
@@ -98589,7 +98589,7 @@
         },
         "datasetManifest": {
           "schemaVersion": "v2.manifest.1.0",
-          "evaluatedAtUtc": "2026-11-28T12:08:22.813Z",
+          "evaluatedAtUtc": "2026-11-28T15:00:46.377Z",
           "inputFingerprint": "a8ffce3552a2724c30afad66",
           "minimumChartReadiness": {
             "ready": false,
@@ -98641,7 +98641,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:birthInstant.resolveCanonicalBirthInstant",
-              "acquiredAtUtc": "2026-11-28T12:08:22.812Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.376Z",
               "version": "v2.recalc.1.0",
               "dependencies": [],
               "missingDependencies": [],
@@ -98932,7 +98932,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:ashtakavargaReductions",
-              "acquiredAtUtc": "2026-11-28T12:08:22.812Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.376Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "ashtakavarga_bav_sav_prastara"
@@ -99117,7 +99117,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:panchadhaMaitri",
-              "acquiredAtUtc": "2026-11-28T12:08:22.812Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.376Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -99136,7 +99136,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:vimshopakaBala",
-              "acquiredAtUtc": "2026-11-28T12:08:22.812Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.376Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_shodashavarga_16"
@@ -99155,7 +99155,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:dispositorGraph",
-              "acquiredAtUtc": "2026-11-28T12:08:22.812Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.376Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions"
@@ -99172,7 +99172,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "local:advancedAvasthas",
-              "acquiredAtUtc": "2026-11-28T12:08:22.812Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.376Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "vedic_d1_positions",
@@ -99210,7 +99210,7 @@
               "referenceDateIso": "2026-11-27",
               "canonicalStatus": "available",
               "source": "freeastroapi:reference_date_dasha",
-              "acquiredAtUtc": "2026-11-28T12:08:22.812Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.376Z",
               "version": "v2.recalc.1.0",
               "dependencies": [
                 "canonical_birth_instant",
@@ -99398,7 +99398,7 @@
       "warning": "SYNTHETIC_SIMULATED_ASTROWAY_SHAPE — NOT a real AstroWay HTTP capture.",
       "layerCInput": {
         "contractVersion": "v2.layer_c_input.1.0",
-        "preparedAtUtc": "2026-11-28T12:08:22.851Z",
+        "preparedAtUtc": "2026-11-28T15:00:46.416Z",
         "sourceSchemaVersion": "v2.compiled_foundational_chart.1.0",
         "recalculationVersion": "2026.11.27-foundational.1",
         "inputFingerprint": "a8ffce3552a2724c30afad66",
@@ -118361,7 +118361,7 @@
         },
         "datasetManifest": {
           "schemaVersion": "v2.manifest.1.0",
-          "evaluatedAtUtc": "2026-11-28T12:08:22.848Z",
+          "evaluatedAtUtc": "2026-11-28T15:00:46.413Z",
           "inputFingerprint": "a8ffce3552a2724c30afad66",
           "minimumChartReadiness": {
             "ready": true,
@@ -118408,7 +118408,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:birthInstant.resolveCanonicalBirthInstant",
-              "acquiredAtUtc": "2026-11-28T12:08:22.845Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.406Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [],
               "missingDependencies": [],
@@ -118675,7 +118675,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:localAshtakavarga (preferred_canonical)",
-              "acquiredAtUtc": "2026-11-28T12:08:22.845Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.406Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions"
@@ -118872,7 +118872,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:panchadhaMaitri",
-              "acquiredAtUtc": "2026-11-28T12:08:22.845Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.406Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions"
@@ -118891,7 +118891,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:vimshopakaBala",
-              "acquiredAtUtc": "2026-11-28T12:08:22.845Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.406Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_shodashavarga_16"
@@ -118910,7 +118910,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "internally_verified",
               "source": "local:dispositorGraph",
-              "acquiredAtUtc": "2026-11-28T12:08:22.845Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.406Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions"
@@ -118927,7 +118927,7 @@
               "referenceDateIso": null,
               "canonicalStatus": "provisional",
               "source": "local:advancedAvasthas",
-              "acquiredAtUtc": "2026-11-28T12:08:22.845Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.406Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "vedic_d1_positions",
@@ -118965,7 +118965,7 @@
               "referenceDateIso": "2026-11-27",
               "canonicalStatus": "available",
               "source": "astroway:reference_date_dasha",
-              "acquiredAtUtc": "2026-11-28T12:08:22.845Z",
+              "acquiredAtUtc": "2026-11-28T15:00:46.406Z",
               "version": "2026.11.27-foundational.1",
               "dependencies": [
                 "canonical_birth_instant",

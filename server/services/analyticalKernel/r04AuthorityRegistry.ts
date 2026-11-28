@@ -124,14 +124,14 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
       'subcomponent_double_counting_with_aggregate_forbidden',
     ],
     authorityClassification: {
-      defaultClass: 'AC3',
-      provisionalCapClass: 'AC3',
+      defaultClass: 'AC4',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'issue_register_provisional_gate_active',
-          resultingClass: 'AC3',
+          resultingClass: 'AC4',
           rationale:
-            'While shadbalaReconciliation.authoritativeDesignation is unassigned_pending_reconciliation (docs/SHADBALA_BHAVABALA_ISSUE_REGISTER.md), Layer 1 caps Shadbala at AC3 Significant (never AC1).',
+            'While shadbalaReconciliation.authoritativeDesignation is unassigned_pending_reconciliation (docs/SHADBALA_BHAVABALA_ISSUE_REGISTER.md), Layer 1 caps Shadbala at AC4/AC5 (never AC1/AC2/AC3).',
         },
         {
           conditionKey: 'shadbala_subcomponent_or_ishta_overlap_sibling',
@@ -183,7 +183,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'primary_bav_verified_internal',
@@ -240,7 +240,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'preferred_shodashvarga_scheme',
@@ -300,7 +300,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'usable_classical_dignity_or_verified_operating_condition',
@@ -353,7 +353,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'western_tropical_frame_isolated',
@@ -409,7 +409,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'usable_non_overlapping_intrinsic_evidence',
@@ -418,8 +418,8 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
         },
         {
           conditionKey: 'provisional_shadbala_or_avastha_contribution',
-          resultingClass: 'AC3',
-          rationale: 'Provisional Shadbala and Avastha entries remain capped at AC3 with explicit caveat.',
+          resultingClass: 'AC4',
+          rationale: 'Provisional Shadbala and Avastha entries remain capped at AC4/AC5 with explicit caveat.',
         },
       ],
     },
@@ -469,7 +469,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'clear_non_sandhi_lagna_definition',
@@ -529,13 +529,13 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'bhavabala_issue_register_provisional',
-          resultingClass: 'AC3',
+          resultingClass: 'AC4',
           rationale:
-            'BHAVABALA_HOUSE_STRENGTH is capped at AC3 provisional due to Issues #1 & #6 (madhyaLon basis & Shadbala lord dependencies).',
+            'BHAVABALA_HOUSE_STRENGTH is capped at AC4 provisional due to Issues #1 & #6 (madhyaLon basis & Shadbala lord dependencies).',
         },
         {
           conditionKey: 'incompatible_chalit_rejected',
@@ -589,7 +589,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'kp_sub_lord_verified_in_kp_placidus',
@@ -638,7 +638,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'parivartana_or_complete_present_configuration',
@@ -691,7 +691,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'verified_7_karaka_classical_assignment',
@@ -742,7 +742,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'verified_self_disposited_or_terminal_dispositor_chain',
@@ -797,7 +797,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC2',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'usable_d9_navamsa_or_vargottama',
@@ -806,8 +806,8 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
         },
         {
           conditionKey: 'provisional_d5_or_uncalibrated_varga',
-          resultingClass: 'AC3',
-          rationale: 'Uncalibrated D5 Panchamsha or provisional divisional variants cap strictly at AC3.',
+          resultingClass: 'AC4',
+          rationale: 'Uncalibrated D5 Panchamsha or provisional divisional variants cap strictly at AC4.',
         },
       ],
     },
@@ -875,7 +875,7 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
     ],
     authorityClassification: {
       defaultClass: 'AC4',
-      provisionalCapClass: 'AC3',
+      provisionalCapClass: 'AC4',
       conditionalRules: [
         {
           conditionKey: 'blocked_or_incompatible_dataset',
@@ -890,8 +890,8 @@ const CORE_R04_RULES: R04AuthorityRuleDefinition[] = [
         },
         {
           conditionKey: 'provisional_or_contested_convention',
-          resultingClass: 'AC3',
-          rationale: 'Provisional or convention-sensitive evidence (e.g., Issue #7 true vs mean node) stays bounded at AC3.',
+          resultingClass: 'AC4',
+          rationale: 'Provisional or convention-sensitive evidence (e.g., Issue #7 true vs mean node) stays bounded at AC4.',
         },
       ],
     },
@@ -926,11 +926,20 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Mercury', 'Venus', 'Saturn'],
     neutralOrMixed: ['Moon'],
     marakaPlanets: ['Venus', 'Mercury'],
+    conditionalMarakaPlanets: [],
     houseLordships: buildHouseLordshipsForLagna('Aries'),
     classicalCaveats: [
       'Mars (Lagnesha, H1/H8) acts primarily as Lagna Anchor/Benefic; H8 dusthana caveat applies to secondary matters.',
       'Jupiter rules auspicious H9 Trikona alongside H12; BPHS Ch. 34 treats Jupiter as auspicious via H9 and Sun+Jupiter association.',
       'Saturn rules H10+H11 (Kendra+Trishadaya/Badhaka); functional malefic for Aries Lagna.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Mars combines supportive H1 Lagna anchor with constraining H8 dusthana lordship (BPHS exempts Lagnesha from full H8 blemish).',
+      'Jupiter combines supportive H9 Trikona Moolatrikona with H12 Vyaya lordship.',
+      'Venus carries primary H2/H7 Maraka responsibility alongside H7 Kendradhipati.',
+    ],
+    classicalConventionNotes: [
+      'BPHS Ch. 34 treats Saturn (H10/H11) as malefic despite H10 Karma lordship; some schools treat Moon (H4) as mild benefic rather than strictly neutral.',
     ],
   },
   {
@@ -941,11 +950,21 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Jupiter', 'Moon', 'Mars'],
     neutralOrMixed: ['Venus'],
     marakaPlanets: ['Mars', 'Jupiter'],
+    conditionalMarakaPlanets: ['Mercury'],
     houseLordships: buildHouseLordshipsForLagna('Taurus'),
     classicalCaveats: [
-      'Saturn rules H9 Trikona and H10 Kendra — sole Yogakaraka for Taurus Lagna.',
+      'Saturn rules H9 Trikona and H10 Kendra — sole Yogakaraka for Taurus Lagna (also rules fixed-Lagna H9 Badhaka Capricorn).',
       'Venus is Lagnesha (H1/H6), giving primary Lagna authority mixed with H6 Roganadi caveat.',
       'Jupiter rules H8+H11 (most malefic per BPHS Ch. 34).',
+      'Mercury (H2/H5) acts as functional benefic via H5 Trikona alongside conditional H2 Dhana/Maraka responsibility.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Saturn holds Yogakaraka (H9+H10) alongside fixed-sign H9 Badhaka house governance.',
+      'Venus holds H1 Lagna support alongside H6 Moolatrikona disease/debt governance.',
+      'Mercury holds H5 Trikona support alongside conditional H2 Maraka responsibility.',
+    ],
+    classicalConventionNotes: [
+      'Classical authorities differ on fixed-Lagna H9 Badhaka impact on Yogakaraka Saturn and on whether Sun (H4 Kendra) is benefic or neutral.',
     ],
   },
   {
@@ -956,11 +975,20 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Mars', 'Jupiter', 'Sun'],
     neutralOrMixed: ['Saturn', 'Moon'],
     marakaPlanets: ['Jupiter', 'Moon'],
+    conditionalMarakaPlanets: ['Moon'],
     houseLordships: buildHouseLordshipsForLagna('Gemini'),
     classicalCaveats: [
       'Venus (H5 Trikona + H12) is the sole unqualified functional benefic alongside Lagnesha Mercury (H1/H4).',
-      'Jupiter (H7/H10) incurs Kendradhipati Dosha and Maraka lordship.',
+      'Jupiter (H7/H10) incurs Kendradhipati Dosha, Badhaka (mutable H7), and Maraka lordship.',
       'Saturn (H8/H9) combines H9 Trikona grace with H8 dusthana caveat.',
+      'Moon (H2) holds conditional Maraka status per BPHS Ch. 34.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Venus pairs H5 Trikona support with H12 Vyaya house governance.',
+      'Saturn pairs H9 Trikona Aquarius support with H8 Capricorn dusthana constraint.',
+    ],
+    classicalConventionNotes: [
+      'BPHS Ch. 34 classifies Moon (H2) and Saturn (H8/H9) as conditional/mixed; commentaries differ on whether H9 Moolatrikona Aquarius overrides H8 for Saturn.',
     ],
   },
   {
@@ -971,11 +999,20 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Venus', 'Mercury'],
     neutralOrMixed: ['Saturn', 'Sun'],
     marakaPlanets: ['Saturn', 'Sun'],
+    conditionalMarakaPlanets: ['Sun'],
     houseLordships: buildHouseLordshipsForLagna('Cancer'),
     classicalCaveats: [
       'Mars rules H5 Trikona and H10 Kendra — sole Yogakaraka for Cancer Lagna.',
-      'Jupiter rules H9 Trikona alongside H6 dusthana — primarily auspicious via H9 with H6 caveat.',
-      'Venus rules H4+H11 (Kendradhipati + Badhaka/Trishadaya malefic).',
+      'Jupiter rules H9 Trikona alongside H6 Moolatrikona dusthana — auspicious via H9 with coexisting H6 caveat.',
+      'Venus rules H4+H11 (Kendradhipati + movable-Lagna Badhaka/Trishadaya malefic).',
+      'Sun rules H2 Dhana/Maraka with classical luminary conditional-Maraka nuance.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Jupiter pairs H9 Trikona Pisces support with H6 Sagittarius Moolatrikona service/conflict duties.',
+      'Saturn pairs H7 Maraka/Kendra with H8 Dusthana.',
+    ],
+    classicalConventionNotes: [
+      'Commentaries differ on Sun (H2) as strict vs conditional Maraka for Cancer Lagna because Sun is a luminary without full Maraka killing potency unless afflicted.',
     ],
   },
   {
@@ -986,11 +1023,19 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Mercury', 'Venus', 'Saturn'],
     neutralOrMixed: ['Moon'],
     marakaPlanets: ['Saturn', 'Mercury'],
+    conditionalMarakaPlanets: ['Mercury'],
     houseLordships: buildHouseLordshipsForLagna('Leo'),
     classicalCaveats: [
-      'Mars rules H4 Kendra and H9 Trikona — sole Yogakaraka for Leo Lagna.',
-      'Jupiter rules H5 Trikona + H8 — auspicious via H5 with H8 caveat.',
-      'Saturn (H6/H7) is a primary Maraka and functional malefic.',
+      'Mars rules H4 Kendra and H9 Trikona — sole Yogakaraka for Leo Lagna (H9 Aries is also fixed-Lagna Badhaka).',
+      'Jupiter rules H5 Trikona + H8 — auspicious via H5 Moolatrikona with coexisting H8 caveat.',
+      'Saturn (H6/H7) is a primary Maraka and functional malefic; Mercury (H2/H11) holds conditional H2 Maraka alongside H11.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Jupiter blends H5 Trikona Moolatrikona benevolence with H8 Pisces Dusthana constraint.',
+      'Mars combines H4+H9 Yogakaraka status with fixed-sign H9 Badhaka house governance.',
+    ],
+    classicalConventionNotes: [
+      'Traditions vary on whether Mercury (H2/H11) acts mainly as Dhana-lord benefic or Trishadaya/conditional Maraka malefic for Leo.',
     ],
   },
   {
@@ -1001,11 +1046,19 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Mars', 'Jupiter', 'Moon'],
     neutralOrMixed: ['Saturn', 'Sun'],
     marakaPlanets: ['Jupiter', 'Mars'],
+    conditionalMarakaPlanets: ['Venus'],
     houseLordships: buildHouseLordshipsForLagna('Virgo'),
     classicalCaveats: [
-      'Venus rules H9 Trikona + H2 — primary functional benefic for Virgo Lagna.',
+      'Venus rules H9 Trikona + H2 — primary functional benefic via H9 while retaining conditional H2 Maraka/Dhana responsibility.',
       'Mars rules H3+H8 — most malefic for Virgo Lagna; Jupiter rules H4+H7 (Kendradhipati + Badhaka/Maraka).',
       'Saturn (H5/H6) blends H5 Trikona with H6 dusthana.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Venus holds H9 Trikona beneficence alongside conditional H2 Dhana/Maraka governance.',
+      'Saturn blends H5 Trikona creativity with H6 Moolatrikona adversity.',
+    ],
+    classicalConventionNotes: [
+      'Different Parashari commentators weigh H9 Moolatrikona Libra over H2 Libra-adjacent Maraka for Venus, while preserving H2 conditional Maraka duties in longevity/timing analysis.',
     ],
   },
   {
@@ -1016,11 +1069,20 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Jupiter', 'Sun', 'Mars'],
     neutralOrMixed: ['Moon'],
     marakaPlanets: ['Mars', 'Sun'],
+    conditionalMarakaPlanets: [],
     houseLordships: buildHouseLordshipsForLagna('Libra'),
     classicalCaveats: [
       'Saturn rules H4 Kendra and H5 Trikona — primary Yogakaraka for Libra Lagna.',
       'Jupiter rules H3+H6 — most malefic; Sun rules H11 (Badhaka for movable Libra Lagna).',
-      'Venus is Lagnesha (H1/H8), retaining Lagna anchor authority.',
+      'Venus is Lagnesha (H1/H8), retaining Lagna anchor authority with H8 caveat.',
+      'Mars rules H2+H7 (double Maraka) with classical BPHS Ch. 34 note regarding Mars status.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Venus holds H1 Lagna anchor alongside H8 Taurus governance.',
+      'Mercury holds H9 Trikona Gemini alongside H12 Virgo.',
+    ],
+    classicalConventionNotes: [
+      'BPHS Ch. 34 explicitly notes nuance on Mars (H2+H7) and Moon (H10) for Libra Lagna; some schools classify Moon as neutral-benefic.',
     ],
   },
   {
@@ -1031,11 +1093,21 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Mercury', 'Venus', 'Saturn'],
     neutralOrMixed: [],
     marakaPlanets: ['Venus', 'Mercury'],
+    conditionalMarakaPlanets: ['Jupiter'],
     houseLordships: buildHouseLordshipsForLagna('Scorpio'),
     classicalCaveats: [
-      'Jupiter (H2/H5) and Moon (H9) + Sun (H10) are classical benefics; Moon carries fixed-Lagna H9 Badhaka caveat.',
+      'Jupiter rules H2 (Sagittarius Moolatrikona, Dhana/Maraka Bhava) and H5 (Pisces, Trikona): functional benefic overall yet retains coexisting conditional H2 Maraka/Dhana responsibility.',
+      'Moon (H9 Trikona) + Sun (H10 Kendra) are classical benefics; Moon carries fixed-Lagna H9 Badhaka caveat.',
       'Mercury (H8/H11) is most malefic; Venus (H7/H12) is primary Maraka/malefic.',
-      'Mars (Lagnesha H1/H6) anchors Lagna despite H6 moolatrikona.',
+      'Mars (Lagnesha H1/H6) anchors Lagna despite H6 Aries Moolatrikona.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Jupiter holds coexisting H5 Trikona supportive beneficence AND H2 Dhana/conditional Maraka responsibility (functional benefic status does NOT exclude conditional H2 Maraka duties).',
+      'Moon pairs H9 Trikona dharma support with fixed-Lagna H9 Badhaka qualification.',
+      'Mars pairs H1 Lagna anchor support with H6 Moolatrikona adversarial/service constraint.',
+    ],
+    classicalConventionNotes: [
+      'Classical sources (BPHS Ch. 34 & Ch. 44) recognize Scorpio Jupiter as functional benefic via H5 while preserving differing conventions regarding the degree to which H5 lordship mitigates or coexists with H2 Sagittarius Moolatrikona Maraka potential.',
     ],
   },
   {
@@ -1046,11 +1118,19 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Venus', 'Saturn', 'Mercury'],
     neutralOrMixed: ['Moon'],
     marakaPlanets: ['Saturn', 'Mercury'],
+    conditionalMarakaPlanets: [],
     houseLordships: buildHouseLordshipsForLagna('Sagittarius'),
     classicalCaveats: [
-      'Sun (H9 Trikona) and Mars (H5 Trikona + H12) are primary functional benefics alongside Lagnesha Jupiter.',
-      'Venus (H6/H11) is most malefic; Mercury (H7/H10) incurs Kendradhipati & Badhaka/Maraka roles.',
+      'Sun (H9 Trikona) and Mars (H5 Trikona + H12) are primary functional benefics alongside Lagnesha Jupiter (H1/H4).',
+      'Venus (H6/H11) is most malefic; Mercury (H7/H10) incurs Kendradhipati & dual-sign Badhaka/Maraka roles.',
       'Moon rules H8; classical luminary Ashtamadhipati exemption makes it mixed/neutral rather than outright malefic.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Jupiter pairs H1 Lagna anchor with H4 Kendra Pisces (mild Kendradhipati qualification offset by Lagnesha status).',
+      'Mars pairs H5 Trikona Aries support with H12 Scorpio constraint.',
+    ],
+    classicalConventionNotes: [
+      'Authorities differ on Mars H5+H12 balance and whether Mercury H7/H10 Kendradhipati Dosha yields Maraka intensity before or after Saturn (H2/H3).',
     ],
   },
   {
@@ -1061,11 +1141,20 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Mars', 'Jupiter', 'Moon'],
     neutralOrMixed: ['Sun'],
     marakaPlanets: ['Moon', 'Mars'],
+    conditionalMarakaPlanets: ['Saturn'],
     houseLordships: buildHouseLordshipsForLagna('Capricorn'),
     classicalCaveats: [
       'Venus rules H5 Trikona and H10 Kendra — sole Yogakaraka for Capricorn Lagna.',
-      'Mercury rules H9 Trikona + H6 — auspicious via H9 with H6 caveat.',
+      'Mercury rules H9 Trikona + H6 — auspicious via H9 with H6 Moolatrikona caveat.',
+      'Saturn (Lagnesha H1 + H2) anchors Lagna while holding conditional H2 Maraka governance (exempted as Lagnesha per BPHS unless heavily afflicted).',
       'Jupiter (H3/H12) is functional malefic; Sun (H8) carries luminary H8 neutral caveat.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Saturn holds H1 Lagna anchor alongside conditional H2 Aquarius Moolatrikona Maraka governance.',
+      'Mercury holds H9 Trikona Virgo support alongside H6 Gemini constraint.',
+    ],
+    classicalConventionNotes: [
+      'Commentators debate whether Saturn H2 Moolatrikona introduces secondary Maraka capacity despite Lagnesha exemption, and whether Mars (H4/H11) acts as Badhaka-malefic or neutral.',
     ],
   },
   {
@@ -1076,11 +1165,19 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Jupiter', 'Moon', 'Mars'],
     neutralOrMixed: ['Sun', 'Mercury'],
     marakaPlanets: ['Jupiter', 'Sun'],
+    conditionalMarakaPlanets: ['Jupiter'],
     houseLordships: buildHouseLordshipsForLagna('Aquarius'),
     classicalCaveats: [
-      'Venus rules H4 Kendra and H9 Trikona — sole Yogakaraka for Aquarius Lagna (also Badhaka caveat if afflicted).',
-      'Saturn is Lagnesha (H1/H12); Jupiter (H2/H11) and Moon (H6) act as functional malefics.',
-      'Mercury (H5/H8) blends H5 Trikona with H8 dusthana.',
+      'Venus rules H4 Kendra and H9 Trikona — sole Yogakaraka for Aquarius Lagna (also fixed-Lagna H9 Badhaka caveat).',
+      'Saturn is Lagnesha (H1/H12); Jupiter (H2/H11) acts as Dhana/conditional Maraka & Trishadaya malefic; Moon (H6) is functional malefic.',
+      'Mercury (H5/H8) blends H5 Trikona with H8 Moolatrikona Virgo dusthana.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Venus pairs H4+H9 Yogakaraka support with fixed-sign H9 Libra Badhaka house responsibility.',
+      'Mercury pairs H5 Trikona Gemini with H8 Virgo Moolatrikona dusthana.',
+    ],
+    classicalConventionNotes: [
+      'Classical texts vary on Mars (H3/H10) and Mercury (H5/H8) for Aquarius Lagna and on Sun (H7) Maraka potency.',
     ],
   },
   {
@@ -1091,10 +1188,18 @@ const LAGNA_FUNCTIONAL_SPECS: readonly R04LagnaFunctionalSpecification[] = [
     functionalMalefics: ['Saturn', 'Venus', 'Sun', 'Mercury'],
     neutralOrMixed: [],
     marakaPlanets: ['Mercury', 'Saturn'],
+    conditionalMarakaPlanets: ['Mars'],
     houseLordships: buildHouseLordshipsForLagna('Pisces'),
     classicalCaveats: [
-      'Mars (H2/H9) and Moon (H5) are functional benefics alongside Lagnesha Jupiter (H1/H10).',
+      'Mars (H2/H9) and Moon (H5) are functional benefics alongside Lagnesha Jupiter (H1/H10); Mars retains conditional H2 Maraka/Dhana responsibility alongside H9 Trikona.',
       'Venus (H3/H8) and Saturn (H11/H12) are functional malefics; Mercury (H4/H7) carries Kendradhipati/Badhaka Maraka roles.',
+    ],
+    coexistingResponsibilityNotes: [
+      'Mars holds H9 Trikona Scorpio support alongside conditional H2 Aries Moolatrikona Maraka governance.',
+      'Jupiter holds H1 Lagna anchor alongside H10 Kendra Sagittarius.',
+    ],
+    classicalConventionNotes: [
+      'Classical commentaries differ on Mars H2/H9 conditional Maraka attenuation via H9 and on whether Lagnesha Jupiter H1/H10 incurs mild Kendradhipati qualification.',
     ],
   },
 ];
@@ -1124,7 +1229,7 @@ const LAGNA_FUNC_RULES: R04AuthorityRuleDefinition[] = LAGNA_FUNCTIONAL_SPECS.ma
   ],
   authorityClassification: {
     defaultClass: 'AC2',
-    provisionalCapClass: 'AC3',
+    provisionalCapClass: 'AC4',
     conditionalRules: [
       {
         conditionKey: 'yogakaraka_or_lagnesha_verified_non_sandhi_lagna',
@@ -1181,7 +1286,7 @@ const NON_CLASSICAL_LAGNA_GUARD_RULE: R04AuthorityRuleDefinition = {
   ],
   authorityClassification: {
     defaultClass: 'AC3',
-    provisionalCapClass: 'AC3',
+    provisionalCapClass: 'AC4',
     conditionalRules: [
       {
         conditionKey: 'ascendant_reference_anchor',
