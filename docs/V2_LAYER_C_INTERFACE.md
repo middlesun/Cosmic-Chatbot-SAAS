@@ -37,7 +37,8 @@
    - Example: If `bhava_chalit` is `incompatible` (e.g. KP Placidus start-cusp confusion) or `vimshopaka_bala` is `unavailable`, `assertLayerCPrerequisites` returns `{ ok: false, reasons: [...] }`.
 2. **Provisional (`provisional`):**
    - May only be consumed when explicitly opted in (`allowProvisional: true`) and must surface methodological uncertainty downstream.
-   - Example: `advanced_avasthas` (`Sayanaadi`/`Lajjitadi` awaiting fuller BPHS reconciliation), `shadbala_reconciliation` (while `authoritativeDesignation === 'unassigned_pending_reconciliation'`), or D5 Panchamsha (`calibrated: false`).
+   - Example: `shadbala_major_6` (while `shadbalaReconciliation.authoritativeDesignation === 'unassigned_pending_reconciliation'`), `bhavabala` (`x-quality = yellow` / upstream Shadbala & Bhava Madhya dependencies), `advanced_avasthas` (`Sayanaadi`/`Lajjitadi` awaiting fuller BPHS reconciliation), or D5 Panchamsha (`calibrated: false`).
+   - **Locked Issue Register:** All 8 unresolved Shadbala, Bhavabala, True Node, and Vimshottari precision discrepancies are tracked in `docs/SHADBALA_BHAVABALA_ISSUE_REGISTER.md`. Neither `shadbala_major_6` nor `bhavabala` may be used as decisive authority or silent scalar aggregation input ahead of K03 Contextual Evidence Authority Intelligence & K04 Relational Intelligence.
 3. **Usable Foundational States (`available`, `internally_verified`, `independently_validated`):**
    - `internally_verified`: Verified against CosmicCouncil's internal astronomical/BPHS solvers and/or cross-provider mathematical invariants (e.g., Local Ashtakavarga, Trikona/Ekadhipatya Reductions, Panchadha Maitri, Sripati Bhava Chalit).
    - `independently_validated`: Strictly reserved for datasets reconciled against an external classical reference (`JHora`, `PyJHora`, or `Swiss Ephemeris`). Internal solvers never self-promote to `independently_validated`.

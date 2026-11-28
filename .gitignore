@@ -26,3 +26,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Private diagnostic bundles, chart JSON exports & paste dumps (never serve publicly)
+public/assets/aistudio/*.json
+public/assets/aistudio/Paste_*
+v2-diag-*.json
+**/v2-diag-*.json

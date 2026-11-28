@@ -29,9 +29,9 @@ K01 decouples astrological evidence extraction, verification tracking, and linea
 | Core Type | Schema Role | Downstream Consumers |
 | :--- | :--- | :--- |
 | `AnalyticalEvidenceRepository` | Top-level immutable bundle containing `natalEvidence`, `temporalEvidence`, `rejectedOrBlockedFrames`, `lineageGraph`, `impactContracts`, `planetaryStates`, `familyInventory`, `frameInventory`, and deferred extension slots (`lifeContext`, `investigationFindings`). | All `K02`–`K10` capabilities, `PHI`, `YSI`, `DSI`, House Intelligence, Domain Matrices, AI Investigation Tools. |
-| `CanonicalEvidenceObject` | Atomic, deterministic observation (`ev_<32-hex>`) bound to a single `frame`, `family` (12 families), `subject`, `observation`, raw `measurements`, `ruleReference`, `sourceDatasets`, `lineage`, `temporalScope`, `verification`, and `sensitivity`. | `K02` (State), `K03` (Authority), `K04` (Relational), `K05` (Interaction), `K06` (Structural), `K07` (Conflict), `K08` (Deliverability), `K09` (Temporal). |
+| `CanonicalEvidenceObject` | Atomic, deterministic observation (`ev_<32-hex>`) bound to a single `frame`, `family` (12 families), `subject`, `observation`, raw `measurements`, `ruleReference`, `sourceDatasets`, `lineage`, `temporalScope`, `verification`, and `sensitivity`. | `K02` (State), `K03` (Contextual Evidence Authority Intelligence), `K04` (Relational Intelligence), `K05` (Interaction), `K06` (Structural), `K07` (Conflict), `K08` (Deliverability), `K09` (Temporal). |
 | `EvidenceImpactObject` | Contextual analytical evaluation contract (`imp_<24-hex>`) kept strictly separate from `CanonicalEvidenceObject` so raw observations remain invariant while rule-driven direction, justified magnitude, modifiers, and overlap status are layered cleanly. | `K05` (Interaction), `K07` (Conflict), `K10` (Adjudication), `PHI` / `YSI` / `DSI`. |
-| `PlanetaryStateRecord` | 10-dimension state model per celestial subject (`Sun`..`Ketu`, `Ascendant`): `capacity`, `integrity`, `stability`, `autonomy`, `authority`, `vulnerability`, `resilience`, `influenceFootprint`, `functionalOrientation`, `deliverability`. | `K02` State Intelligence, `PHI` Planetary Health Index, House Lord & Timing evaluators. |
+| `PlanetaryStateRecord` | 10-dimension state model per celestial subject (`Sun`..`Ketu`, `Ascendant`): `capacity`, `integrity`, `stability`, `autonomy`, `authority` (`K03`), `vulnerability`, `resilience`, `influenceFootprint` (`K04` P08 enrichment), `functionalOrientation` (`K03`), `deliverability` (`K08`). | `K02` State Intelligence, `K03` Contextual Authority, `K04` Relational Intelligence, `PHI` Planetary Health Index, House Lord & Timing evaluators. |
 
 ### Evidence Taxonomy (12 Families)
 
@@ -71,24 +71,36 @@ Future capabilities read **only** from `AnalyticalEvidenceRepository` (or its `L
 
 Each `CanonicalEvidenceObject` carries `verification: EvidenceVerificationMetadata`:
 
-- `computational`: `'verified_internal' | 'provider_reported' | 'provisional' | 'unverified' | 'incompatible' | 'unavailable'`
-- `methodological`: `'classical_standard' | 'provider_convention' | 'contested_or_uncalibrated' | 'incompatible_methodology' | 'unspecified'`
-- `empirical`: `'not_validated' | 'independently_validated_external'`
+- `computational`: `'verified_internal' | 'provider_reported' | 'provisional' | 'unverified' | 'incompatible' | 'unavailable'` — Tracks whether the numerical calculation matches CosmicCouncil's internal astronomical/BPHS checks, remains provider-reported/unverified, or has open calculation discrepancies.
+- `methodological`: `'classical_standard' | 'provider_convention' | 'contested_or_uncalibrated' | 'incompatible_methodology' | 'unspecified'` — Tracks which classical or provider convention produced the observation (e.g., BPHS `6.5R` vs `5.0R` Sun minimum, `mean` vs `true` node, Tara-Graha `0` vs `Ayana/Paksha` Cheshta).
+- `empirical`: `'not_validated' | 'independently_validated_external'` — Tracks external benchmark validation strictly separately from computational/methodological checks.
 - `propagatedTrust`: `'usable' | 'provisional' | 'blocked'`
+
+### Four-Way Analytical Separation (Never Collapse Into One Number)
+Downstream capabilities (`K02`–`K10`) must keep these four phenomenon classes distinct:
+1. **Computational Discrepancies:** Differences or suspected defects in numerical computation (e.g., legacy KP Placidus cusp errors, AstroWay Bhava `madhyaLon` / Kendradi Placidus vs Sripati divergence, or the 8 unresolved items in `docs/SHADBALA_BHAVABALA_ISSUE_REGISTER.md`).
+2. **Cross-Frame Contrasts:** Legitimate coordinate/house differences across isolated frames (`vedic_lahiri` Whole Sign vs `bhava_chalit` Sripati vs `kp_placidus` Placidus vs `western_tropical` Sayana). Preserved via `distinct_analytical_significance`.
+3. **Methodological Differences:** Competing classical or provider conventions within the same tradition (e.g., Sun `6.5` vs `5.0` Rupas, luminary Cheshta conventions, Kala Bala rollup, Mean vs True Node, `365.2425` vs `365.2422` Dasha year lengths).
+4. **Multidimensional Analytical Tensions:** Co-occurring opposing signals on the same subject (e.g., high Shadbala capacity alongside combustion or Graha Yuddha loss, or D1 debilitation alongside D9 exaltation/Vargottama).
+
+### Evidence Preservation & Provisional Gating (`SHADBALA_BHAVABALA_ISSUE_REGISTER.md`)
+- Original provider Shadbala components (`SHADBALA_SUBCOMPONENT_BUCKET`), Ishta/Kashta (`ISHTA_KASHTA_PHALA`), Ashtakavarga derivatives (`ASHTAKAVARGA_PRASTARA`, `ASHTAKAVARGA_BHINNA_BAV`, `ASHTAKAVARGA_SARVA_SAV_SIGN`, `ASHTAKAVARGA_SHODHANA_PINDA`), and all divisional observations (`VEDIC_VARGA_PLACEMENT` D1–D60) are always preserved in `natalEvidence` — overlap deduplication never deletes original observations.
+- Both `shadbala_major_6` and `bhavabala` remain explicitly **`provisional`** until resolved in external reconciliation (`docs/SHADBALA_BHAVABALA_ISSUE_REGISTER.md`), and must never be treated as decisive authority or fed into premature scalar score aggregation.
 
 ### Trust Propagation & Policy
 
 | Propagated Trust | Source `CanonicalDatasetState` | Consumer Rule (`K02`–`K10`, `PHI`/`YSI`/`DSI`) |
 | :--- | :--- | :--- |
 | **`usable`** | `available`, `internally_verified`, `independently_validated` | Eligible for primary rule evaluation (`available` carries `provider_convention` caveat; `internally_verified` reflects internal astronomical/BPHS solver checks). |
-| **`provisional`** | `provisional` | **Never silently promoted to `usable` or `verified_internal`.** Examples: supplementary `D5` (`calibrated: false`), `advancedAvasthas` (`Sayanaadi`/`Lajjitadi`), `shadbalaReconciliation` while `authoritativeDesignation === 'unassigned_pending_reconciliation'`, or missing `D60` schemes. Downstream consumers must either require an explicit `allowProvisional` gate or surface a methodological caveat. |
+| **`provisional`** | `provisional` | **Never silently promoted to `usable` or `verified_internal`.** Examples: `shadbala_major_6` (while `authoritativeDesignation === 'unassigned_pending_reconciliation'`), `bhavabala` (`x-quality = yellow` / upstream Shadbala & Bhava Madhya dependencies), supplementary `D5` (`calibrated: false`), `advancedAvasthas` (`Sayanaadi`/`Lajjitadi`), or missing `D60` schemes. Downstream consumers must either require an explicit `allowProvisional` gate or surface a methodological caveat. |
 | **`blocked`** | `unavailable`, `incompatible` | **Excluded from usable evidence extraction.** Surfaced explicitly in `repository.rejectedOrBlockedFrames` with `frame`, `datasetKey`, `canonicalStatus`, and `reason`. |
 
 ### Empirical Validation Invariant
 `verification.empirical = 'independently_validated_external'` is **never auto-claimed by CosmicCouncil's internal solvers** (`jyotishMath`, `computeLocalAshtakavarga`, `computeLocalSripatiBhavaChalit`, etc.). It may only appear when the upstream dataset manifest carries `canonicalStatus === 'independently_validated'` after reconciliation against an external reference engine (`JHora`, `PyJHora`, or `Swiss Ephemeris`).
 
-### Zero-Coercion Invariant
-Missing, `null`, `unavailable`, or `incompatible` values (e.g., absent Bhavabala houses, incomplete Vimshopaka vargas, missing Shadbala subcomponents `sthana_bala`/`dig_bala`, or `incompatible` Bhava Chalit) are **never coerced to `0`**. Measurements remain `null` or the dataset is withheld into `rejectedOrBlockedFrames`.
+### Zero-Coercion & Fixture Privacy Invariants
+- Missing, `null`, `unavailable`, or `incompatible` values (e.g., absent Bhavabala houses, incomplete Vimshopaka vargas, missing Shadbala subcomponents `sthana_bala`/`dig_bala`, or `incompatible` Bhava Chalit) are **never coerced to `0`**. Measurements remain `null` or the dataset is withheld into `rejectedOrBlockedFrames`.
+- Offline verification fixtures containing exact birth dates, times, and coordinates remain personal data even after UUIDs/emails are stripped, and must remain strictly outside `public/` and `dist/`.
 
 ---
 
@@ -123,7 +135,11 @@ K01 intentionally leaves rule adjudication and synthesis un-scored so `K02`–`K
    - `residualImpact` tracks `{ status: 'unevaluated_pending_k05_k07', note }` until K05 Interaction and K07 Conflict engines resolve cancellations/amplifications.
 2. **`PlanetaryStateRecord` (`repository.planetaryStates`):**
    - In K01 (`buildInitialPlanetaryStates`), dimensions backed by direct extracted facts (`capacity`, `integrity`, `stability`, `autonomy`, `vulnerability`, `influenceFootprint` when observations exist) carry `status: 'observed_direct_only'` and `directObservations[]` with per-observation `sourceEvidenceId` and `trust`.
-   - Synthesis-dependent dimensions (`authority`, `resilience`, `functionalOrientation`, `deliverability`, and any dimension without direct observations) remain strictly `status: 'unevaluated'` with an explicit `unevaluatedReason` pointing to the governing future capability (`K02`, `K03`, `K05`, `K08`).
+   - Synthesis-dependent dimensions remain strictly `status: 'unevaluated'` with an explicit `unevaluatedReason` pointing to the governing capability:
+     - `authority` (`P05`) & `functionalOrientation` (`P09`) -> **K03 (Contextual Evidence Authority Intelligence)** via registered Lagna-specific authority rules.
+     - `influenceFootprint` (`P08` relational/dispositor/signification enrichment) -> **K04 (Relational Intelligence)** (`Natal Intelligence Graph` & Dispositor/Dependency Intelligence).
+     - `resilience` (`P07`) -> **K05/K07** (Interaction & Conflict Resolution).
+     - `deliverability` (`P10`) -> **K08** (Deliverability Intelligence).
 3. **Repository Deferred Slots:**
    - `lifeContext`: `{ status: 'deferred', data: null }` for life-domain & chart-context framing.
    - `investigationFindings`: `{ status: 'deferred', data: [] }` for cross-capability adjudications (`K10`).

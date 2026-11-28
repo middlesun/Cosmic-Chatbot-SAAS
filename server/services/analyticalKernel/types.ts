@@ -13,6 +13,32 @@ import type {
   CanonicalDatasetState,
   TemporalScope,
 } from '../v2Engine/types';
+import type { R04AuthorityRuleDefinition } from './k03Types';
+
+export class UnregisteredRuleError extends Error {
+  ruleId: string;
+  expectedVersion?: string;
+
+  constructor(ruleId: string, expectedVersion?: string, actualVersion?: string) {
+    const msg = actualVersion
+      ? `Rule "${ruleId}" version mismatch: expected "${expectedVersion}", registered "${actualVersion}".`
+      : `Unregistered analytical rule "${ruleId}". Every rule execution must be explicitly registered in the authoritative registry.`;
+    super(msg);
+    this.name = 'UnregisteredRuleError';
+    this.ruleId = ruleId;
+    this.expectedVersion = expectedVersion;
+  }
+}
+
+export class UnregisteredMathModelError extends Error {
+  modelId: string;
+
+  constructor(modelId: string) {
+    super(`Unregistered K02 mathematical model "${modelId}".`);
+    this.name = 'UnregisteredMathModelError';
+    this.modelId = modelId;
+  }
+}
 
 export const ANALYTICAL_KERNEL_VERSION = 'k01.1.0' as const;
 export const REPOSITORY_SCHEMA_VERSION = 'k01.repository.1.0' as const;
@@ -499,6 +525,9 @@ export interface AnalyticalRuleRegistrySnapshot {
   registryVersion: string;
   totalRules: number;
   rules: AnalyticalRuleDefinition[];
+  r04RegistryVersion?: string;
+  r04TotalRules?: number;
+  r04Rules?: R04AuthorityRuleDefinition[];
 }
 
 export interface RuleExecutionRecord {

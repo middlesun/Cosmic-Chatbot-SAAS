@@ -25,7 +25,7 @@
 | Output Artifact | Role | Downstream Consumers |
 | :--- | :--- | :--- |
 | `AnalyticalKernelK02StateResult` | Top-level K02 state bundle containing `ruleRegistrySnapshot`, `subjectStates` (all 10 subjects), `impactContracts` (`EvidenceImpactObject[]`), `ruleExecutionSummary`, `phiReadyProjections` (7 classical planets), `nodalConditionProfiles` (`Rahu`, `Ketu`), and `ascendantConditionProfile` (`Ascendant`). | `K03`–`K10`, `PHI` Engine, Admin V2 Laboratory diagnostics. |
-| `K02SubjectStateRecord` | Per-subject `P01`–`P10` dimension evaluations (`signals[]`, `supportedEvidenceIds`, `impactIds`, `directObservations[]`, `deferredCapability`), three overlays (`conflict`, `modification`, `reliability`), `ruleExecutions[]`, and `emittedImpactIds[]`. | `K03` (Authority), `K05`/`K07` (Interaction & Conflict), `K08` (Deliverability), `K09` (Temporal), `PHI`. |
+| `K02SubjectStateRecord` | Per-subject `P01`–`P10` dimension evaluations (`signals[]`, `supportedEvidenceIds`, `impactIds`, `directObservations[]`, `deferredCapability`), three overlays (`conflict`, `modification`, `reliability`), `ruleExecutions[]`, and `emittedImpactIds[]`. | `K03` (Contextual Evidence Authority Intelligence; `P05`/`P09`), `K04` (Relational Intelligence; `P08` enrichment), `K05`/`K07` (Interaction & Conflict), `K08` (Deliverability), `K09` (Temporal), `PHI`. |
 | `EvidenceImpactObject[]` | Rule-driven, overlap-tagged impact contracts linked via `overlapMetadata` (`overlapGroupId`, `independenceStatus`) and `residualImpact: { status: 'unevaluated_pending_k05_k07' }`. | `K05`, `K07`, `K10`, `PHI` (post-resolution). |
 
 ---
@@ -84,9 +84,10 @@ Every state evaluation, mathematical model invocation, and `EvidenceImpactObject
    - Retrogression and conjunctions receive **no universal +/- scalar bonuses** in K02 (`normalizedValue: null`, `magnitude: { kind: 'unassigned_no_arbitrary_weight' }`).
    - All `EvidenceImpactObject`s retain `residualImpact.status === 'unevaluated_pending_k05_k07'` until `K05`/`K07` compute net cancellation/amplification.
 
-### Deferred `P05`, `P07`, `P09`, `P10` & `K09` Boundaries
-- **`P05 authority` (`deferredCapability: 'K03'`):** Reserved strictly for `K03` Lagna-specific house lordship authority (Kendra/Trikona/Dusthana ownership, Lagnesha authority).
-- **`P09 functionalOrientation` (`deferredCapability: 'K03'`):** Reserved strictly for `K03` Lagna-dependent functional benefic / malefic / Yogakaraka / Maraka status.
+### Deferred `P05`, `P07`, `P08`, `P09`, `P10` & `K09` Boundaries
+- **`P05 authority` (`deferredCapability: 'K03'`):** Reserved strictly for **K03 (Contextual Evidence Authority Intelligence)** — evaluates evidence authority (`CEAR` / `AC1`–`AC6` across Universal Integrity, Methodological Authority, and Individual Preference layers) and enriches `P05` via registered Lagna-specific house-lordship authority rules (`R04`).
+- **`P09 functionalOrientation` (`deferredCapability: 'K03'`):** Reserved strictly for **K03 (Contextual Evidence Authority Intelligence)** — enriches `P09` via registered Lagna-dependent functional benefic / malefic / Yogakaraka / Maraka authority rules (`R04`).
+- **`P08 influenceFootprint` (`K02` cross-frame baseline -> `K04` enrichment):** `K02` records factual cross-frame coordinates (`D1` / `Chalit` / `KP` / `Western`) without domain weighting; full natal relational, dispositor/dependency (`Tarjan SCC`, `DCI`), and multi-family footprint enrichment is owned by **K04 (Relational Intelligence)**.
 - **`P07 resilience` (`deferredCapability: 'K05'`):** K02 records factual recovery preconditions (`Vargottama`, `Parivartana`, `self_disposited` in `directObservations`) only; composite `Neecha-Bhanga` and affliction recovery belong to `K05`/`K07`.
 - **`P10 deliverability` (`deferredCapability: 'K08'`):** Reserved strictly for `K08` KP Sub-Lord promise confirmation, Bhava Chalit delivery checks, and timing fusion.
 - **`K09` Temporal Isolation:** K02 processes **`repo.natalEvidence` only** (`temporalScope === 'natal_invariant'`). Active Dashas, Gochar, KP Ruling Planets, and Profections remain quarantined in `repo.temporalEvidence` for `K09`.
@@ -103,21 +104,21 @@ Downstream `PHI` consumes `phiReadyProjections` (covering **strictly the 7 class
    - Preserve **all** `distinct_analytical_significance` observations (`preservedDistinctLensIds`) across D1, Nakshatra, D9, Chalit, KP, and Western frames.
 2. **Enforced `excludedBoundaries`:** Guarantees zero leakage of:
    - `temporalEvidence` (`excludedTemporalDashaGochar: true`, `temporalEvidenceCountExcluded`)
-   - `K03` Lagna/house authority (`excludedK03StructuralAuthority: true`)
-   - `K04` domain importance (`excludedDomainImportance: true`)
+   - `K03` Contextual Evidence Authority & Lagna/house authority (`excludedK03StructuralAuthority: true`)
+   - `K04` Relational Intelligence / domain-importance framing (`excludedDomainImportance: true` — schema key retained for backward compatibility)
    - `K08`/`lifeContext` historical outcomes (`excludedHistoricalOutcomes: true`)
    - `P08` house-ownership & broad signification noise (`VEDIC_D1_HOUSE_LORD_PLACEMENT`, `KP_FOUR_LEVEL_SIGNIFICATORS`, `JAIMINI_CHARA_KARAKA` counted in `unrelatedHouseFootprintEvidenceCountExcluded`)
    - Arbitrary `PHI` scalar weights (`excludedArbitraryWeights: true`).
 
-### Nodal & Ascendant Consumers (`K03`, `K06`, Relational)
-- **`nodalConditionProfiles.Rahu` & `.Ketu` (`NodalConditionProfile`):** Expose `shadbalaStatus: 'not_applicable_lunar_node'`, `nodeCalculationConvention` (`'mean' | 'true'`), D1/Nakshatra/D9/Chalit/KP/Western placements, `dispositorDependency`, `conjunctionAndAspectWitnesses`, operating conditions, and overlays for `K03`, `K05` (agentic substitution), and `K06` (Nodal Dashas).
-- **`ascendantConditionProfile` (`AscendantConditionProfile`):** Exposes `shadbalaStatus: 'not_applicable_ascendant'`, D1 Lagna coordinates & Nakshatra/Pada, D9 Vargottama status, KP Cusp 1 `starLord`/`subLord`, Western Ascendant, `lagnaLordReference` (`signLord` & dispositor chain), `sandhiAndTimeSensitivity`, and `reliabilityOverlay` for `K03` Lagna authority.
+### Nodal & Ascendant Consumers (`K03`, `K04`, `K05`, `K06`)
+- **`nodalConditionProfiles.Rahu` & `.Ketu` (`NodalConditionProfile`):** Expose `shadbalaStatus: 'not_applicable_lunar_node'`, `nodeCalculationConvention` (`'mean' | 'true'`), D1/Nakshatra/D9/Chalit/KP/Western placements, `dispositorDependency`, `conjunctionAndAspectWitnesses`, operating conditions, and overlays for `K03` (Contextual Evidence Authority), `K04` (Relational Intelligence — Natal Intelligence Graph & Dispositor/Dependency chains), `K05` (agentic substitution), and `K06` (Nodal Dashas).
+- **`ascendantConditionProfile` (`AscendantConditionProfile`):** Exposes `shadbalaStatus: 'not_applicable_ascendant'`, D1 Lagna coordinates & Nakshatra/Pada, D9 Vargottama status, KP Cusp 1 `starLord`/`subLord`, Western Ascendant, `lagnaLordReference` (`signLord` & dispositor chain), `sandhiAndTimeSensitivity`, and `reliabilityOverlay` for `K03` (Contextual Evidence Authority & Lagna rules) and `K04` (Relational Intelligence — Lagna/Lagnesha anchor).
 
 ---
 
-## 5. Epistemic Reliability, Provisional Gate & Zero-Coercion
+## 5. Epistemic Reliability, Verification Status Separation, Provisional Gate & Zero-Coercion
 
-- **`ReliabilityOverlay`:** Computes `overallTrust` (`'usable' | 'provisional' | 'blocked'`) and `confidenceCeiling` (`'insufficient_data' | 'capped_provisional' | 'moderate_provider_dependent' | 'high_internal'`).
-- **Provisional Non-Promotion:** Datasets like `D5` (`calibrated: false`), `advanced_avasthas`, and `shadbalaReconciliation` (`authoritativeDesignation === 'unassigned_pending_reconciliation'`) remain `provisional` and cap `confidenceCeiling = 'capped_provisional'`. Passing `{ strictNonProvisional: true }` gates them cleanly via `'excluded_by_provisional_gate'`.
-- **External Validation Boundary:** `externalValidationAchieved` stays `false` unless an upstream manifest confirms external reconciliation (`JHora` / `PyJHora` / `Swiss Ephemeris`).
+- **`ReliabilityOverlay` (Separated Verification Dimensions):** Keeps **`computational`** (`computationalFloor`), **`methodological`** (`methodologicalProfile`), and **`empirical`** (`empiricalStatus`) strictly distinct rather than conflating calculation discrepancies, cross-frame contrasts, methodological conventions, and multidimensional analytical tensions into a single status. Computes `overallTrust` (`'usable' | 'provisional' | 'blocked'`) and `confidenceCeiling` (`'insufficient_data' | 'capped_provisional' | 'moderate_provider_dependent' | 'high_internal'`).
+- **Provisional Non-Promotion & Issue Register:** Datasets tracked in `docs/SHADBALA_BHAVABALA_ISSUE_REGISTER.md` — specifically `shadbala_major_6` (`authoritativeDesignation === 'unassigned_pending_reconciliation'`) and `bhavabala` (`x-quality = yellow` / upstream dependencies) — along with `D5` (`calibrated: false`) and `advanced_avasthas`, remain `provisional` and cap `confidenceCeiling = 'capped_provisional'`. Passing `{ strictNonProvisional: true }` gates them cleanly via `'excluded_by_provisional_gate'`, while original provider Shadbala components, Ishta/Kashta, Ashtakavarga derivatives, and divisional observations remain preserved in K01 `natalEvidence`.
+- **External Validation Boundary:** `externalValidationAchieved` stays `false` (`empiricalStatus === 'not_validated'`) unless an upstream manifest confirms external reconciliation (`JHora` / `PyJHora` / `Swiss Ephemeris`).
 - **Zero-Coercion:** Missing metrics or frames remain `null` and emit `'blocked_missing_inputs'` or `'blocked_incompatible_frame'` with explicit `missingInputs` / `blockedDependencies` — never coerced to `0`.

@@ -6,8 +6,8 @@
  *  1. Overlap-deduplicated `PhiReadyPlanetProjection` strictly for the 7 classical planets (`Sun`..`Saturn`)
  *     while enforcing strict boundary exclusions against:
  *       - Temporal activation (`reference_date_dependent`, Dashas, Gochar, KP Ruling Planets)
- *       - Structural / Lagna authority (`K03` house lordships, Yogakaraka, functional benefic/malefic)
- *       - Domain importance (`K04`)
+ *       - Contextual Evidence Authority (`K03` Lagna-specific authority rules, house lordships, Yogakaraka, functional benefic/malefic)
+ *       - Relational graph synthesis & domain importance (`K04` Relational Intelligence / downstream domain framing)
  *       - Historical / life-context outcomes (`K08` / `lifeContext`)
  *       - Unrelated house-ownership & broad signification footprint (`P08`)
  *  2. Dedicated `NodalConditionProfile` for `Rahu` and `Ketu` (never forced into Shadbala/PHI).
@@ -97,7 +97,7 @@ function buildExcludedBoundaries(
     unrelatedHouseFootprintExcluded: true,
     temporalEvidenceCountExcluded: temporalExcludedCount,
     unrelatedHouseFootprintEvidenceCountExcluded: unrelatedHouseFootprintExcludedCount,
-    note: 'Strictly intrinsic planetary state projection for downstream PHI; excludes temporal activations, K03 Lagna/house authority, domain weights, historical outcomes, and P08 house-ownership noise.',
+    note: 'Strictly intrinsic planetary state projection for downstream PHI; excludes temporal activations, K03 Contextual Evidence Authority, K04 Relational Intelligence / domain weights, historical outcomes, and P08 house-ownership noise.',
   };
 }
 

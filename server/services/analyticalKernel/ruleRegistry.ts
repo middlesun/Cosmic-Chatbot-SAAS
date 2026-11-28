@@ -9,35 +9,15 @@
 import {
   ANALYTICAL_RULE_REGISTRY_VERSION,
   PLANETARY_STATE_SUBJECTS,
+  UnregisteredMathModelError,
+  UnregisteredRuleError,
   type AnalyticalRuleDefinition,
   type AnalyticalRuleRegistrySnapshot,
   type PlanetaryStateSubjectName,
 } from './types';
+import { exportR04RuleRegistrySnapshot } from './r04AuthorityRegistry';
 
-export class UnregisteredRuleError extends Error {
-  ruleId: string;
-  expectedVersion?: string;
-
-  constructor(ruleId: string, expectedVersion?: string, actualVersion?: string) {
-    const msg = actualVersion
-      ? `Rule "${ruleId}" version mismatch: expected "${expectedVersion}", registered "${actualVersion}".`
-      : `Unregistered K02 analytical rule "${ruleId}". Every K02 rule execution must be explicitly registered in ruleRegistry.ts.`;
-    super(msg);
-    this.name = 'UnregisteredRuleError';
-    this.ruleId = ruleId;
-    this.expectedVersion = expectedVersion;
-  }
-}
-
-export class UnregisteredMathModelError extends Error {
-  modelId: string;
-
-  constructor(modelId: string) {
-    super(`Unregistered K02 mathematical model "${modelId}".`);
-    this.name = 'UnregisteredMathModelError';
-    this.modelId = modelId;
-  }
-}
+export { UnregisteredMathModelError, UnregisteredRuleError };
 
 const CLASSICAL_SEVEN: PlanetaryStateSubjectName[] = [
   'Sun',
@@ -170,8 +150,8 @@ const RAW_K02_RULES: AnalyticalRuleDefinition[] = [
     overlapHandlingPolicy:
       'Use ASHTAKAVARGA_BHINNA_BAV natal sign bindus as primary signal; link Prastara/SAV/Pinda via partial_mathematical_overlap.',
     excludedK03ToK08Concerns: [
-      'Transit Kakshya / Gochar bindu triggering (K06)',
-      'Domain-specific house beneficence (K04)',
+      'Transit Kakshya / Gochar bindu triggering (K06/K09)',
+      'Contextual house authority & relational signification weighting (K03/K04)',
     ],
     mathModel: {
       modelId: 'bav_midpoint_4_deviation',
@@ -214,7 +194,7 @@ const RAW_K02_RULES: AnalyticalRuleDefinition[] = [
     overlapHandlingPolicy:
       'Treat multiple Vimshopaka schemes (Shadvarga, Saptavarga, Dashavarga, Shodashvarga) as partial_mathematical_overlap; select Shodashvarga > Dashavarga > Saptavarga > Shadvarga as representative.',
     excludedK03ToK08Concerns: [
-      'Final yoga fruition or domain authority (K03/K04)',
+      'Contextual evidence authority adjudication (K03) and relational dispositor synthesis (K04)',
     ],
     mathModel: {
       modelId: 'vimshopaka_20_ratio_tier',
@@ -409,7 +389,7 @@ const RAW_K02_RULES: AnalyticalRuleDefinition[] = [
       'distinct_analytical_significance relative to D1 longitude/placement; never collapse D1 and D9.',
     excludedK03ToK08Concerns: [
       'Automatic Neecha-Bhanga or affliction cancellation (forbidden in K02; K05/K07)',
-      'Marriage/Dharma domain interpretation (K04)',
+      'Contextual evidence authority (K03) and cross-frame relational graph synthesis (K04)',
     ],
     mathModel: {
       modelId: 'd1_d9_reinforcement_qualitative',
@@ -528,7 +508,7 @@ const RAW_K02_RULES: AnalyticalRuleDefinition[] = [
     provisionalPolicy: 'accept_with_provisional_cap',
     overlapHandlingPolicy: 'Reference MODIFIER_GRAHA_YUDDHA pair once per subject.',
     excludedK03ToK08Concerns: [
-      'Full war winner/loser karmic outcome in houses (K04/K05)',
+      'Contextual authority gating (K03), relational graph propagation (K04), and interaction resolution (K05)',
     ],
     mathModel: {
       modelId: 'surya_siddhanta_graha_yuddha_gate',
@@ -654,13 +634,13 @@ const RAW_K02_RULES: AnalyticalRuleDefinition[] = [
     },
     applicabilityBoundaries: [
       'Tracks house shifts between D1 Rashi vs Bhava Chalit vs KP Placidus without merging or overriding any frame.',
-      'Does NOT score domain/house importance (K03/K04).',
+      'Does NOT adjudicate contextual authority (K03) or construct full natal relational/dependency graphs (K04).',
     ],
     provisionalPolicy: 'accept_with_provisional_cap',
     overlapHandlingPolicy: 'Always keep distinct_analytical_significance across frames intact.',
     excludedK03ToK08Concerns: [
-      'Final house dominance adjudication (K03/K07)',
-      'KP 4-level house signification weighting (K03/K04)',
+      'Contextual evidence authority adjudication (K03/K07)',
+      'Natal Intelligence Graph & relational signification footprint enrichment (K04)',
     ],
     mathModel: {
       modelId: 'cross_frame_divergence_index',
@@ -935,8 +915,8 @@ const RAW_K02_RULES: AnalyticalRuleDefinition[] = [
     overlapHandlingPolicy:
       'Exclude child/redundant metrics flagged as partial_mathematical_overlap or exact_duplicate from primary quantitative fields.',
     excludedK03ToK08Concerns: [
-      'K03 Structural / Lagna authority & house lordships',
-      'K04 Domain importance',
+      'K03 Contextual Evidence Authority Intelligence & Lagna-specific authority rules',
+      'K04 Relational Intelligence (Natal Intelligence Graph, Dispositor & Dependency Intelligence, P08 enrichment)',
       'K05 Planetary interactions / Yogas',
       'K06 Temporal Dasha / Gochar',
       'K07 Conflict resolution',
@@ -958,15 +938,205 @@ const RAW_K02_RULES: AnalyticalRuleDefinition[] = [
   },
 ];
 
+export const R07_MATH_MODEL_REGISTRY_VERSION = 'k04.r07.1.0' as const;
+
+export interface R07SccNodeGroup {
+  sccId: string;
+  members: string[];
+  size: number;
+  hasSelfLoop: boolean;
+  isCycle: boolean;
+  sccType: 'self_loop' | 'mutual_cycle' | 'multi_node_cycle' | 'singleton_acyclic';
+  outgoingSccIds: string[];
+  isTerminalSink: boolean;
+  isTrueDispositorSink: boolean;
+}
+
+export interface R07TerminalBasinSummary {
+  basinId: string;
+  sinkSccId: string;
+  terminalKind: 'self_disposited' | 'cycle';
+  sinkMembers: string[];
+  assignedEntities: string[];
+  assignedCount: number;
+}
+
+export interface R07DciOutput {
+  dci: number | null;
+  isComplete: boolean;
+  renormalized: false;
+  expectedPopulation: number;
+  assignedPopulation: number;
+  missingPopulation: number;
+  proportionsByBasin: Record<string, number>;
+}
+
+export interface R07MathModelOutput {
+  uniqueEntities?: string[];
+  duplicateInputCount?: number;
+  reachableEntities?: string[];
+  visitedAllEntities?: string[];
+  depthByEntity?: Record<string, number>;
+  visitedLimitReached?: boolean;
+  truncatedByDepth?: boolean;
+  pathLength?: number | null;
+  shortestPath?: string[] | null;
+  sccs?: R07SccNodeGroup[];
+  cyclicSccCount?: number;
+  selfLoopCount?: number;
+  terminalSinkSccIds?: string[];
+  unresolvedLeafNodes?: string[];
+  basins?: R07TerminalBasinSummary[];
+  basinByEntity?: Record<string, string[]>;
+  unassignedEntities?: string[];
+  multiBasinEntities?: string[];
+  isComplete?: boolean;
+  dciOutput?: R07DciOutput;
+  items?: string[];
+  jaccard?: number;
+  intersectionSize?: number;
+  unionSize?: number;
+}
+
+export const R07_GRAPH_SET_MATH_MODELS: readonly AnalyticalRuleDefinition['mathModel'][] = deepFreeze([
+  {
+    modelId: 'unique_entity_counting',
+    modelType: 'categorical_lookup',
+    inputUnit: 'entity_id_collection',
+    outputUnit: 'unique_entity_count',
+    parameters: { deduplicatesMultiPathHits: true },
+    normalizationBounds: { min: 0, max: 10000 },
+    nullOrZeroBehavior: 'Empty input returns 0.',
+    formulaSummary: 'count = |Set(entities)|',
+  },
+  {
+    modelId: 'graph_reachability',
+    modelType: 'categorical_lookup',
+    inputUnit: 'directed_adjacency_list',
+    outputUnit: 'reachable_entity_count',
+    parameters: { defaultMaxDepth: 12, defaultMaxSteps: 256, cycleSafe: true },
+    normalizationBounds: { min: 0, max: 10000 },
+    nullOrZeroBehavior: 'Empty adjacency returns 0 reachable entities.',
+    formulaSummary: 'Bounded BFS over directed sorted adjacency respecting maxDepth and maxSteps.',
+  },
+  {
+    modelId: 'dependency_path_length',
+    modelType: 'categorical_lookup',
+    inputUnit: 'directed_adjacency_list',
+    outputUnit: 'edge_hops',
+    parameters: { defaultMaxDepth: 12, defaultMaxSteps: 256, cycleSafe: true },
+    normalizationBounds: { min: 0, max: 64 },
+    nullOrZeroBehavior: 'Unreachable target returns valid=false, normalizedValue=null.',
+    formulaSummary: 'Shortest directed hop distance from startNode to targetNode (or max reachable hop depth if targetNode omitted).',
+  },
+  {
+    modelId: 'scc_detection',
+    modelType: 'non_scalar_qualitative',
+    inputUnit: 'directed_adjacency_list',
+    outputUnit: 'scc_count',
+    parameters: { algorithm: 'tarjan_deterministic_scc', detectsSelfLoops: true },
+    normalizationBounds: { min: 0, max: 10000 },
+    nullOrZeroBehavior: 'Empty graph returns 0 SCCs.',
+    formulaSummary: 'Deterministic Tarjan SCC + condensation DAG detecting self-loops, mutual 2-cycles, multi-node cycles, and true terminal sinks.',
+  },
+  {
+    modelId: 'terminal_basin_assignment',
+    modelType: 'non_scalar_qualitative',
+    inputUnit: 'directed_adjacency_list',
+    outputUnit: 'assigned_entity_count',
+    parameters: { neverAssumeSingleFinalDispositor: true, marksMissingAsUnassigned: true },
+    normalizationBounds: { min: 0, max: 10000 },
+    nullOrZeroBehavior: 'Nodes with missing outgoing dependencies remain unassigned rather than coerced into synthetic basins.',
+    formulaSummary: 'Map each node via condensation DAG to its reachable true terminal sink SCC basin(s).',
+  },
+  {
+    modelId: 'dependency_concentration_dci',
+    modelType: 'threshold_ratio',
+    inputUnit: 'basin_entity_counts',
+    outputUnit: 'dci_concentration_index',
+    parameters: { forbidSilentRenormalizationOnIncomplete: true, formula: 'sum((count_i / expectedPopulation)^2)' },
+    normalizationBounds: { min: 0, max: 1 },
+    nullOrZeroBehavior: 'Incomplete basin assignment marks isComplete=false and divides by expectedPopulation (never renormalized to 1.0).',
+    formulaSummary: 'DCI = sum_i (count_i / expectedPopulation)^2',
+  },
+  {
+    modelId: 'set_intersection',
+    modelType: 'categorical_lookup',
+    inputUnit: 'two_entity_sets',
+    outputUnit: 'intersection_count',
+    parameters: { sortedDeterministic: true },
+    normalizationBounds: { min: 0, max: 10000 },
+    nullOrZeroBehavior: 'Disjoint sets return 0.',
+    formulaSummary: 'setA ∩ setB',
+  },
+  {
+    modelId: 'set_union',
+    modelType: 'categorical_lookup',
+    inputUnit: 'two_entity_sets',
+    outputUnit: 'union_count',
+    parameters: { sortedDeterministic: true },
+    normalizationBounds: { min: 0, max: 20000 },
+    nullOrZeroBehavior: 'Empty sets return 0.',
+    formulaSummary: 'setA ∪ setB',
+  },
+  {
+    modelId: 'jaccard_overlap',
+    modelType: 'threshold_ratio',
+    inputUnit: 'two_entity_sets',
+    outputUnit: 'jaccard_index',
+    parameters: { sortedDeterministic: true },
+    normalizationBounds: { min: 0, max: 1 },
+    nullOrZeroBehavior: 'Both empty sets return 0 overlap.',
+    formulaSummary: '|setA ∩ setB| / |setA ∪ setB|',
+  },
+]);
+
+export const R07_MATH_MODEL_BY_ID: Readonly<Record<string, AnalyticalRuleDefinition['mathModel']>> =
+  deepFreeze(Object.fromEntries(R07_GRAPH_SET_MATH_MODELS.map((m) => [m.modelId, m])));
+
+const FORBIDDEN_WEIGHTING_MODEL_PATTERNS = [
+  'composite_authority',
+  'universal_relationship_strength',
+  'relationship_weight',
+  'arbitrary_weight',
+  'scalar_phi_weight',
+  'composite_strength_score',
+] as const;
+
 export const K02_ANALYTICAL_RULES: Readonly<Record<string, AnalyticalRuleDefinition>> = deepFreeze(
   Object.fromEntries(RAW_K02_RULES.map((rule) => [rule.ruleId, rule]))
 );
 
 export const K02_RULE_LIST: readonly AnalyticalRuleDefinition[] = deepFreeze([...RAW_K02_RULES]);
 
-const MATH_MODEL_SPEC_BY_ID: ReadonlyMap<string, AnalyticalRuleDefinition['mathModel']> = new Map(
-  RAW_K02_RULES.map((rule) => [rule.mathModel.modelId, rule.mathModel])
-);
+const MATH_MODEL_SPEC_BY_ID: ReadonlyMap<string, AnalyticalRuleDefinition['mathModel']> = new Map([
+  ...RAW_K02_RULES.map((rule): [string, AnalyticalRuleDefinition['mathModel']] => [
+    rule.mathModel.modelId,
+    rule.mathModel,
+  ]),
+  ...R07_GRAPH_SET_MATH_MODELS.map((spec): [string, AnalyticalRuleDefinition['mathModel']] => [
+    spec.modelId,
+    spec,
+  ]),
+]);
+
+export function isR07MathModelRegistered(modelId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(R07_MATH_MODEL_BY_ID, modelId);
+}
+
+export function exportR07MathModelRegistrySnapshot(): {
+  registryVersion: typeof R07_MATH_MODEL_REGISTRY_VERSION;
+  totalModels: number;
+  modelIds: string[];
+  models: AnalyticalRuleDefinition['mathModel'][];
+} {
+  return {
+    registryVersion: R07_MATH_MODEL_REGISTRY_VERSION,
+    totalModels: R07_GRAPH_SET_MATH_MODELS.length,
+    modelIds: R07_GRAPH_SET_MATH_MODELS.map((m) => m.modelId),
+    models: R07_GRAPH_SET_MATH_MODELS.map((m) => ({ ...m })),
+  };
+}
 
 export function isRuleRegistered(ruleId: string): boolean {
   return Object.prototype.hasOwnProperty.call(K02_ANALYTICAL_RULES, ruleId);
@@ -999,10 +1169,14 @@ export function listRegisteredRules(): readonly AnalyticalRuleDefinition[] {
 }
 
 export function exportRuleRegistrySnapshot(): AnalyticalRuleRegistrySnapshot {
+  const r04 = exportR04RuleRegistrySnapshot();
   return {
     registryVersion: ANALYTICAL_RULE_REGISTRY_VERSION,
     totalRules: K02_RULE_LIST.length,
     rules: K02_RULE_LIST.map((r) => ({ ...r })),
+    r04RegistryVersion: r04.registryVersion,
+    r04TotalRules: r04.totalRules,
+    r04Rules: r04.rules,
   };
 }
 
@@ -1018,6 +1192,19 @@ export interface MathModelEvaluationContext {
   isGandanta?: boolean | null;
   isSelfDisposited?: boolean | null;
   inParivartana?: boolean | null;
+  // R07 Graph & Set Mathematical Model Context Inputs
+  entities?: readonly string[];
+  adjacency?: Readonly<Record<string, readonly string[]>>;
+  startNodes?: readonly string[];
+  targetNode?: string;
+  includeStartInReachable?: boolean;
+  maxDepth?: number;
+  maxSteps?: number;
+  basinCounts?: Readonly<Record<string, number>> | readonly number[];
+  totalExpectedPopulation?: number;
+  excludedOrMissingCount?: number;
+  setA?: readonly string[];
+  setB?: readonly string[];
 }
 
 export interface MathModelEvaluationResult {
@@ -1028,6 +1215,7 @@ export interface MathModelEvaluationResult {
   qualitativeClass: string | null;
   formulaTrace: string;
   reason: string;
+  r07Output?: R07MathModelOutput;
 }
 
 function clamp(v: number, min: number, max: number): number {
@@ -1038,19 +1226,167 @@ function round4(v: number): number {
   return Math.round(v * 10000) / 10000;
 }
 
+function round6(v: number): number {
+  return Math.round(v * 1000000) / 1000000;
+}
+
 function normToken(raw: string): string {
   return raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
 }
 
+function buildSortedAdjacency(
+  rawAdjacency: Readonly<Record<string, readonly string[]>>,
+  extraEntities: readonly string[] = []
+): { nodes: string[]; adj: Map<string, string[]> } {
+  const nodeSet = new Set<string>(extraEntities);
+  for (const [src, targets] of Object.entries(rawAdjacency)) {
+    nodeSet.add(src);
+    for (const tgt of targets ?? []) {
+      nodeSet.add(tgt);
+    }
+  }
+  const nodes = Array.from(nodeSet).sort((a, b) => a.localeCompare(b));
+  const adj = new Map<string, string[]>();
+  for (const n of nodes) {
+    const rawTargets = rawAdjacency[n] ?? [];
+    adj.set(n, Array.from(new Set(rawTargets)).sort((a, b) => a.localeCompare(b)));
+  }
+  return { nodes, adj };
+}
+
+function runDeterministicTarjanScc(
+  rawAdjacency: Readonly<Record<string, readonly string[]>>,
+  extraEntities: readonly string[] = []
+): {
+  nodes: string[];
+  adj: Map<string, string[]>;
+  sccs: R07SccNodeGroup[];
+  sccIdByNode: Map<string, string>;
+  unresolvedLeafNodes: string[];
+} {
+  const { nodes, adj } = buildSortedAdjacency(rawAdjacency, extraEntities);
+  let indexCounter = 0;
+  const indices = new Map<string, number>();
+  const lowlink = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const rawComponents: string[][] = [];
+
+  const strongConnect = (v: string) => {
+    indices.set(v, indexCounter);
+    lowlink.set(v, indexCounter);
+    indexCounter += 1;
+    stack.push(v);
+    onStack.add(v);
+
+    for (const w of adj.get(v) ?? []) {
+      if (!indices.has(w)) {
+        strongConnect(w);
+        lowlink.set(v, Math.min(lowlink.get(v)!, lowlink.get(w)!));
+      } else if (onStack.has(w)) {
+        lowlink.set(v, Math.min(lowlink.get(v)!, indices.get(w)!));
+      }
+    }
+
+    if (lowlink.get(v) === indices.get(v)) {
+      const comp: string[] = [];
+      while (stack.length > 0) {
+        const w = stack.pop()!;
+        onStack.delete(w);
+        comp.push(w);
+        if (w === v) break;
+      }
+      comp.sort((a, b) => a.localeCompare(b));
+      rawComponents.push(comp);
+    }
+  };
+
+  for (const n of nodes) {
+    if (!indices.has(n)) {
+      strongConnect(n);
+    }
+  }
+
+  // Sort components deterministically by first sorted member so sccIds never depend on traversal insertion order
+  rawComponents.sort((a, b) => (a[0] ?? '').localeCompare(b[0] ?? ''));
+
+  const sccIdByNode = new Map<string, string>();
+  const sccIdByCompIdx = rawComponents.map((comp, idx) => {
+    const id = `scc_${idx + 1}_${comp[0] ?? 'empty'}`;
+    for (const m of comp) {
+      sccIdByNode.set(m, id);
+    }
+    return id;
+  });
+
+  const sccs: R07SccNodeGroup[] = [];
+  const unresolvedLeafNodes: string[] = [];
+
+  for (let i = 0; i < rawComponents.length; i++) {
+    const members = rawComponents[i];
+    const sccId = sccIdByCompIdx[i];
+    const hasSelfLoop =
+      members.length === 1 && (adj.get(members[0]) ?? []).includes(members[0]);
+    const isCycle = members.length > 1 || hasSelfLoop;
+    const sccType: R07SccNodeGroup['sccType'] =
+      members.length > 2
+        ? 'multi_node_cycle'
+        : members.length === 2
+        ? 'mutual_cycle'
+        : hasSelfLoop
+        ? 'self_loop'
+        : 'singleton_acyclic';
+
+    const outgoingSet = new Set<string>();
+    for (const u of members) {
+      for (const w of adj.get(u) ?? []) {
+        const tgtScc = sccIdByNode.get(w);
+        if (tgtScc && tgtScc !== sccId) {
+          outgoingSet.add(tgtScc);
+        }
+      }
+    }
+    const outgoingSccIds = Array.from(outgoingSet).sort((a, b) => a.localeCompare(b));
+    const isTerminalSink = outgoingSccIds.length === 0;
+    const isTrueDispositorSink = isTerminalSink && isCycle;
+    if (isTerminalSink && !isCycle && members.length === 1) {
+      unresolvedLeafNodes.push(members[0]);
+    }
+
+    sccs.push({
+      sccId,
+      members,
+      size: members.length,
+      hasSelfLoop,
+      isCycle,
+      sccType,
+      outgoingSccIds,
+      isTerminalSink,
+      isTrueDispositorSink,
+    });
+  }
+
+  return { nodes, adj, sccs, sccIdByNode, unresolvedLeafNodes };
+}
+
 /**
  * Executes a registered mathematical model deterministically against raw input telemetry.
- * Throws `UnregisteredMathModelError` if `modelId` is not registered in `K02_ANALYTICAL_RULES`.
+ * Throws `UnregisteredMathModelError` if `modelId` is not registered in `K02_ANALYTICAL_RULES` or `R07_GRAPH_SET_MATH_MODELS`.
  */
 export function evaluateRuleMathModel(
   modelId: string,
   rawValue: number | string | boolean | null | undefined,
   context: MathModelEvaluationContext = {}
 ): MathModelEvaluationResult {
+  const lowered = normToken(modelId);
+  if (
+    FORBIDDEN_WEIGHTING_MODEL_PATTERNS.some((pat) => lowered.includes(pat)) &&
+    !MATH_MODEL_SPEC_BY_ID.has(modelId)
+  ) {
+    throw new UnregisteredMathModelError(
+      `${modelId} (forbidden composite authority or universal relationship-strength weighting model)`
+    );
+  }
   const spec = MATH_MODEL_SPEC_BY_ID.get(modelId);
   if (!spec) {
     throw new UnregisteredMathModelError(modelId);
@@ -1457,6 +1793,507 @@ export function evaluateRuleMathModel(
         qualitativeClass: trust,
         formulaTrace: `trustFloor(${trust}) = ${rank}`,
         reason: `Reliability trust floor "${trust}" (rank ${rank}).`,
+      };
+    }
+
+    // =========================================================================
+    // R07 Graph & Set Mathematical Models (K04 Relational Intelligence)
+    // =========================================================================
+    case 'unique_entity_counting': {
+      const rawEntities = context.entities ?? [];
+      const uniqueEntities = Array.from(new Set(rawEntities.filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b)
+      );
+      const duplicateInputCount = Math.max(0, rawEntities.length - uniqueEntities.length);
+      return {
+        modelId,
+        valid: true,
+        normalizedValue: uniqueEntities.length,
+        normalizedUnit: spec.outputUnit,
+        qualitativeClass: uniqueEntities.length === 0 ? 'empty_set' : 'deduplicated_count',
+        formulaTrace: `|Set(${rawEntities.length} inputs)| = ${uniqueEntities.length}`,
+        reason: `Counted ${uniqueEntities.length} unique entities (${duplicateInputCount} duplicate references collapsed).`,
+        r07Output: {
+          uniqueEntities,
+          duplicateInputCount,
+        },
+      };
+    }
+
+    case 'graph_reachability': {
+      const maxDepth = clamp(Math.floor(context.maxDepth ?? 12), 0, 64);
+      const maxSteps = clamp(Math.floor(context.maxSteps ?? 256), 1, 4096);
+      const { adj } = buildSortedAdjacency(context.adjacency ?? {}, context.entities ?? []);
+      const starts = Array.from(new Set(context.startNodes ?? [])).sort((a, b) =>
+        a.localeCompare(b)
+      );
+      const depthByEntity: Record<string, number> = {};
+      const startSet = new Set(starts);
+      const queue: Array<{ node: string; depth: number }> = [];
+
+      for (const s of starts) {
+        depthByEntity[s] = 0;
+        queue.push({ node: s, depth: 0 });
+      }
+
+      let steps = 0;
+      let visitedLimitReached = false;
+      let truncatedByDepth = false;
+      const reachableSet = new Set<string>();
+      if (context.includeStartInReachable) {
+        for (const s of starts) reachableSet.add(s);
+      }
+
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        const neighbors = adj.get(current.node) ?? [];
+        if (neighbors.length === 0) continue;
+
+        if (current.depth >= maxDepth) {
+          truncatedByDepth = true;
+          continue;
+        }
+
+        for (const next of neighbors) {
+          if (steps >= maxSteps) {
+            visitedLimitReached = true;
+            break;
+          }
+          steps += 1;
+          reachableSet.add(next);
+          if (depthByEntity[next] === undefined) {
+            depthByEntity[next] = current.depth + 1;
+            queue.push({ node: next, depth: current.depth + 1 });
+          }
+        }
+        if (visitedLimitReached) break;
+      }
+
+      const reachableEntities = Array.from(reachableSet).sort((a, b) => a.localeCompare(b));
+      const visitedAllEntities = Array.from(
+        new Set([...startSet, ...reachableEntities])
+      ).sort((a, b) => a.localeCompare(b));
+
+      return {
+        modelId,
+        valid: true,
+        normalizedValue: reachableEntities.length,
+        normalizedUnit: spec.outputUnit,
+        qualitativeClass:
+          visitedLimitReached || truncatedByDepth ? 'bounded_partial_reachability' : 'complete_reachability',
+        formulaTrace: `bfs(starts=${starts.length}, maxDepth=${maxDepth}, maxSteps=${maxSteps}) -> ${reachableEntities.length}`,
+        reason: `Reached ${reachableEntities.length} unique entities within maxDepth=${maxDepth}, steps=${steps}.`,
+        r07Output: {
+          reachableEntities,
+          visitedAllEntities,
+          depthByEntity,
+          visitedLimitReached,
+          truncatedByDepth,
+        },
+      };
+    }
+
+    case 'dependency_path_length': {
+      const start = context.startNodes?.[0];
+      if (!start) {
+        return {
+          modelId,
+          valid: false,
+          normalizedValue: null,
+          normalizedUnit: spec.outputUnit,
+          qualitativeClass: 'unavailable',
+          formulaTrace: 'missing_start_node',
+          reason: 'dependency_path_length requires a startNode.',
+          r07Output: { pathLength: null, shortestPath: null },
+        };
+      }
+      const maxDepth = clamp(Math.floor(context.maxDepth ?? 12), 0, 64);
+      const maxSteps = clamp(Math.floor(context.maxSteps ?? 256), 1, 4096);
+      const { adj } = buildSortedAdjacency(context.adjacency ?? {}, context.entities ?? []);
+      const target = context.targetNode;
+
+      if (target && target === start) {
+        return {
+          modelId,
+          valid: true,
+          normalizedValue: 0,
+          normalizedUnit: spec.outputUnit,
+          qualitativeClass: 'zero_hop_self',
+          formulaTrace: `dist(${start} -> ${target}) = 0`,
+          reason: `Source and target match (${start}); hop length = 0.`,
+          r07Output: { pathLength: 0, shortestPath: [start], visitedLimitReached: false, truncatedByDepth: false },
+        };
+      }
+
+      const visited = new Set<string>([start]);
+      const parent = new Map<string, string>();
+      const queue: Array<{ node: string; depth: number }> = [{ node: start, depth: 0 }];
+      let maxObservedDepth = 0;
+      let deepestNode = start;
+      let steps = 0;
+      let visitedLimitReached = false;
+      let truncatedByDepth = false;
+      let foundTargetDepth: number | null = null;
+
+      while (queue.length > 0) {
+        const cur = queue.shift()!;
+        if (cur.depth > maxObservedDepth) {
+          maxObservedDepth = cur.depth;
+          deepestNode = cur.node;
+        }
+        const neighbors = adj.get(cur.node) ?? [];
+        if (neighbors.length === 0) continue;
+        if (cur.depth >= maxDepth) {
+          truncatedByDepth = true;
+          continue;
+        }
+        for (const next of neighbors) {
+          if (steps >= maxSteps) {
+            visitedLimitReached = true;
+            break;
+          }
+          steps += 1;
+          if (!visited.has(next)) {
+            visited.add(next);
+            parent.set(next, cur.node);
+            if (target && next === target) {
+              foundTargetDepth = cur.depth + 1;
+              break;
+            }
+            queue.push({ node: next, depth: cur.depth + 1 });
+          }
+        }
+        if (foundTargetDepth !== null || visitedLimitReached) break;
+      }
+
+      if (target && foundTargetDepth === null) {
+        return {
+          modelId,
+          valid: false,
+          normalizedValue: null,
+          normalizedUnit: spec.outputUnit,
+          qualitativeClass: 'unreachable',
+          formulaTrace: `dist(${start} -> ${target}) = unreachable`,
+          reason: `No directed path from ${start} to ${target} within bounds (maxDepth=${maxDepth}, maxSteps=${maxSteps}).`,
+          r07Output: { pathLength: null, shortestPath: null, visitedLimitReached, truncatedByDepth },
+        };
+      }
+
+      const endNode = target ?? deepestNode;
+      const len = foundTargetDepth ?? maxObservedDepth;
+      const path: string[] = [];
+      let trace: string | undefined = endNode;
+      while (trace !== undefined) {
+        path.unshift(trace);
+        if (trace === start) break;
+        trace = parent.get(trace);
+      }
+
+      return {
+        modelId,
+        valid: true,
+        normalizedValue: len,
+        normalizedUnit: spec.outputUnit,
+        qualitativeClass: `hops_${len}`,
+        formulaTrace: `dist(${start} -> ${endNode}) = ${len}`,
+        reason: `Computed directed dependency path length ${len} from ${start} to ${endNode}.`,
+        r07Output: {
+          pathLength: len,
+          shortestPath: path,
+          visitedLimitReached,
+          truncatedByDepth,
+        },
+      };
+    }
+
+    case 'scc_detection': {
+      const { sccs, unresolvedLeafNodes } = runDeterministicTarjanScc(
+        context.adjacency ?? {},
+        context.entities ?? []
+      );
+      const cyclicSccCount = sccs.filter((s) => s.isCycle).length;
+      const selfLoopCount = sccs.filter((s) => s.hasSelfLoop).length;
+      const terminalSinkSccIds = sccs
+        .filter((s) => s.isTrueDispositorSink)
+        .map((s) => s.sccId);
+
+      return {
+        modelId,
+        valid: true,
+        normalizedValue: sccs.length,
+        normalizedUnit: spec.outputUnit,
+        qualitativeClass:
+          cyclicSccCount > 0 ? `sccs_${sccs.length}_cycles_${cyclicSccCount}` : `acyclic_${sccs.length}`,
+        formulaTrace: `tarjan_scc(total=${sccs.length}, cyclic=${cyclicSccCount}, trueSinks=${terminalSinkSccIds.length})`,
+        reason: `Detected ${sccs.length} SCCs (${cyclicSccCount} cyclic, ${selfLoopCount} self-loops, ${terminalSinkSccIds.length} true terminal sinks).`,
+        r07Output: {
+          sccs,
+          cyclicSccCount,
+          selfLoopCount,
+          terminalSinkSccIds,
+          unresolvedLeafNodes,
+        },
+      };
+    }
+
+    case 'terminal_basin_assignment': {
+      const { nodes, sccs, sccIdByNode } = runDeterministicTarjanScc(
+        context.adjacency ?? {},
+        context.entities ?? []
+      );
+      const sccById = new Map(sccs.map((s) => [s.sccId, s]));
+      const sinkBasinBySccId = new Map<string, R07TerminalBasinSummary>();
+
+      let basinIdx = 0;
+      for (const scc of sccs) {
+        if (!scc.isTrueDispositorSink) continue;
+        basinIdx += 1;
+        const basinId = `basin_${basinIdx}_${scc.hasSelfLoop ? 'self' : 'cycle'}_${scc.members[0]}`;
+        sinkBasinBySccId.set(scc.sccId, {
+          basinId,
+          sinkSccId: scc.sccId,
+          terminalKind: scc.hasSelfLoop && scc.size === 1 ? 'self_disposited' : 'cycle',
+          sinkMembers: [...scc.members],
+          assignedEntities: [],
+          assignedCount: 0,
+        });
+      }
+
+      // Memoized condensation DAG reachability from each SCC to true terminal sink basins
+      const reachableBasinsCache = new Map<string, string[]>();
+      const resolveSccBasins = (sccId: string, activeStack: Set<string>): string[] => {
+        if (reachableBasinsCache.has(sccId)) return reachableBasinsCache.get(sccId)!;
+        const sink = sinkBasinBySccId.get(sccId);
+        if (sink) {
+          const out = [sink.basinId];
+          reachableBasinsCache.set(sccId, out);
+          return out;
+        }
+        const scc = sccById.get(sccId);
+        if (!scc || scc.outgoingSccIds.length === 0 || activeStack.has(sccId)) {
+          reachableBasinsCache.set(sccId, []);
+          return [];
+        }
+        activeStack.add(sccId);
+        const found = new Set<string>();
+        for (const nextSccId of scc.outgoingSccIds) {
+          for (const bId of resolveSccBasins(nextSccId, activeStack)) {
+            found.add(bId);
+          }
+        }
+        activeStack.delete(sccId);
+        const out = Array.from(found).sort((a, b) => a.localeCompare(b));
+        reachableBasinsCache.set(sccId, out);
+        return out;
+      };
+
+      const basinByEntity: Record<string, string[]> = {};
+      const unassignedEntities: string[] = [];
+      const multiBasinEntities: string[] = [];
+      let assignedCount = 0;
+
+      for (const node of nodes) {
+        const sccId = sccIdByNode.get(node)!;
+        const basinIds = resolveSccBasins(sccId, new Set());
+        basinByEntity[node] = basinIds;
+        if (basinIds.length === 0) {
+          unassignedEntities.push(node);
+        } else {
+          assignedCount += 1;
+          if (basinIds.length > 1) {
+            multiBasinEntities.push(node);
+          } else {
+            const summary = Array.from(sinkBasinBySccId.values()).find(
+              (b) => b.basinId === basinIds[0]
+            );
+            if (summary) {
+              summary.assignedEntities.push(node);
+              summary.assignedCount += 1;
+            }
+          }
+        }
+      }
+
+      const basins = Array.from(sinkBasinBySccId.values()).map((b) => ({
+        ...b,
+        assignedEntities: [...b.assignedEntities].sort((a, b2) => a.localeCompare(b2)),
+      }));
+      const isComplete = unassignedEntities.length === 0 && multiBasinEntities.length === 0 && nodes.length > 0;
+
+      return {
+        modelId,
+        valid: true,
+        normalizedValue: assignedCount,
+        normalizedUnit: spec.outputUnit,
+        qualitativeClass: isComplete
+          ? basins.length === 1
+            ? 'complete_single_basin'
+            : 'complete_multi_basin'
+          : 'incomplete_basin_assignment',
+        formulaTrace: `basins=${basins.length}, assigned=${assignedCount}/${nodes.length}, unassigned=${unassignedEntities.length}`,
+        reason: `Assigned ${assignedCount}/${nodes.length} entities across ${basins.length} terminal basin(s) (${unassignedEntities.length} unassigned).`,
+        r07Output: {
+          sccs,
+          basins,
+          basinByEntity,
+          unassignedEntities,
+          multiBasinEntities,
+          isComplete,
+        },
+      };
+    }
+
+    case 'dependency_concentration_dci': {
+      const rawBasinCounts = context.basinCounts;
+      const entries: Array<[string, number]> = Array.isArray(rawBasinCounts)
+        ? rawBasinCounts.map((c, idx) => [`basin_${idx + 1}`, Number(c)])
+        : Object.entries(rawBasinCounts ?? {}).map(([k, v]) => [k, Number(v)]);
+
+      const validEntries = entries.filter(([, v]) => Number.isFinite(v) && v >= 0);
+      const assignedPopulation = validEntries.reduce((acc, [, v]) => acc + v, 0);
+      const explicitMissing =
+        typeof context.excludedOrMissingCount === 'number' &&
+        Number.isFinite(context.excludedOrMissingCount) &&
+        context.excludedOrMissingCount > 0
+          ? context.excludedOrMissingCount
+          : 0;
+      const expectedPopulation =
+        typeof context.totalExpectedPopulation === 'number' &&
+        Number.isFinite(context.totalExpectedPopulation) &&
+        context.totalExpectedPopulation > 0
+          ? context.totalExpectedPopulation
+          : typeof rawValue === 'number' && Number.isFinite(rawValue) && rawValue > 0
+          ? rawValue
+          : assignedPopulation + explicitMissing;
+
+      if (expectedPopulation <= 0 || validEntries.length === 0 && explicitMissing === 0) {
+        return {
+          modelId,
+          valid: false,
+          normalizedValue: null,
+          normalizedUnit: spec.outputUnit,
+          qualitativeClass: 'unavailable',
+          formulaTrace: 'empty_basin_population',
+          reason: 'No positive entity population provided for DCI calculation.',
+          r07Output: {
+            dciOutput: {
+              dci: null,
+              isComplete: false,
+              renormalized: false,
+              expectedPopulation: 0,
+              assignedPopulation: 0,
+              missingPopulation: 0,
+              proportionsByBasin: {},
+            },
+          },
+        };
+      }
+
+      const missingPopulation = Math.max(0, expectedPopulation - assignedPopulation);
+      const isComplete = missingPopulation === 0 && assignedPopulation > 0;
+      const proportionsByBasin: Record<string, number> = {};
+      let dciSum = 0;
+
+      // CRITICAL: Divide by expectedPopulation, NEVER silently renormalize by assignedPopulation when incomplete.
+      for (const [bId, count] of validEntries) {
+        const p = count / expectedPopulation;
+        proportionsByBasin[bId] = round6(p);
+        dciSum += p * p;
+      }
+
+      const dci = round6(dciSum);
+      const qualitativeClass = !isComplete
+        ? 'incomplete_non_renormalized'
+        : dci >= 0.999999
+        ? 'single_basin_monocentric'
+        : dci >= 0.5
+        ? 'concentrated_polycentric'
+        : 'dispersed_polycentric';
+
+      return {
+        modelId,
+        valid: true,
+        normalizedValue: dci,
+        normalizedUnit: spec.outputUnit,
+        qualitativeClass,
+        formulaTrace: `sum((c_i / ${expectedPopulation})^2) = ${dci} [isComplete=${isComplete}, renormalized=false]`,
+        reason: isComplete
+          ? `Computed complete DCI=${dci} across ${validEntries.length} basin(s) (${assignedPopulation}/${expectedPopulation} entities).`
+          : `Computed non-renormalized incomplete DCI=${dci} (${assignedPopulation}/${expectedPopulation} assigned, ${missingPopulation} missing).`,
+        r07Output: {
+          dciOutput: {
+            dci,
+            isComplete,
+            renormalized: false,
+            expectedPopulation,
+            assignedPopulation,
+            missingPopulation,
+            proportionsByBasin,
+          },
+        },
+      };
+    }
+
+    case 'set_intersection': {
+      const a = Array.from(new Set(context.setA ?? [])).sort((x, y) => x.localeCompare(y));
+      const bSet = new Set(context.setB ?? []);
+      const items = a.filter((x) => bSet.has(x));
+      return {
+        modelId,
+        valid: true,
+        normalizedValue: items.length,
+        normalizedUnit: spec.outputUnit,
+        qualitativeClass: items.length === 0 ? 'disjoint' : 'intersecting',
+        formulaTrace: `|setA ∩ setB| = ${items.length}`,
+        reason: `Computed set intersection of size ${items.length}.`,
+        r07Output: { items },
+      };
+    }
+
+    case 'set_union': {
+      const items = Array.from(
+        new Set([...(context.setA ?? []), ...(context.setB ?? [])])
+      ).sort((x, y) => x.localeCompare(y));
+      return {
+        modelId,
+        valid: true,
+        normalizedValue: items.length,
+        normalizedUnit: spec.outputUnit,
+        qualitativeClass: items.length === 0 ? 'empty' : 'union_computed',
+        formulaTrace: `|setA ∪ setB| = ${items.length}`,
+        reason: `Computed set union of size ${items.length}.`,
+        r07Output: { items },
+      };
+    }
+
+    case 'jaccard_overlap': {
+      const a = Array.from(new Set(context.setA ?? [])).sort((x, y) => x.localeCompare(y));
+      const b = Array.from(new Set(context.setB ?? [])).sort((x, y) => x.localeCompare(y));
+      const bSet = new Set(b);
+      const intersection = a.filter((x) => bSet.has(x));
+      const union = Array.from(new Set([...a, ...b]));
+      const jaccard = union.length === 0 ? 0 : round6(intersection.length / union.length);
+      return {
+        modelId,
+        valid: true,
+        normalizedValue: jaccard,
+        normalizedUnit: spec.outputUnit,
+        qualitativeClass:
+          union.length === 0
+            ? 'empty_sets'
+            : jaccard === 1
+            ? 'identical'
+            : jaccard === 0
+            ? 'disjoint'
+            : 'partial_overlap',
+        formulaTrace: `${intersection.length} / ${union.length || 1} = ${jaccard}`,
+        reason: `Computed Jaccard overlap ${jaccard} (${intersection.length}/${union.length}).`,
+        r07Output: {
+          items: intersection,
+          jaccard,
+          intersectionSize: intersection.length,
+          unionSize: union.length,
+        },
       };
     }
 

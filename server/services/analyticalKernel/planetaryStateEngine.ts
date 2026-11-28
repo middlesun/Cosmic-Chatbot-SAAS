@@ -389,16 +389,16 @@ export function evaluateK02PlanetaryStates(
           dimName,
           'deferred_to_downstream',
           'K03',
-          'Deferred to K03 Structural & Lagna Authority (no Lagna-lordship scoring in K02).',
-          ['K03: Lagna-specific house lordship authority, Kendra/Trikona/Dusthana placement authority']
+          'Deferred to K03 Contextual Evidence Authority Intelligence (no Lagna-lordship authority adjudication in K02).',
+          ['K03: Registered Lagna-specific house lordship authority, Kendra/Trikona/Dusthana placement authority']
         );
       } else if (dimName === 'functionalOrientation') {
         dimensions[dimName] = createEmptyK02Dimension(
           dimName,
           'deferred_to_downstream',
           'K03',
-          'Deferred to K03 Functional Orientation (no premature functional benefic/malefic verdicts in K02).',
-          ['K03: Lagna-specific functional benefic, functional malefic, and Yogakaraka classification']
+          'Deferred to K03 Contextual Evidence Authority Intelligence (no premature functional benefic/malefic verdicts in K02).',
+          ['K03: Registered Lagna-specific functional benefic, functional malefic, and Yogakaraka classification']
         );
       } else if (dimName === 'deliverability') {
         dimensions[dimName] = createEmptyK02Dimension(
@@ -1762,7 +1762,7 @@ export function evaluateK02PlanetaryStates(
         );
       }
       dimensions.influenceFootprint.limitations.push(
-        'Domain-specific house importance and benefic/malefic lordship authority are deferred to K03/K04.'
+        'Lagna-specific authority & functional orientation (P05/P09) are deferred to K03 Contextual Evidence Authority Intelligence; full natal relational/dispositor/signification footprint enrichment (P08) is deferred to K04 Relational Intelligence.'
       );
     }
 

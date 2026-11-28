@@ -12,6 +12,12 @@
  * Never mutates provider values, never averages conflicting datasets, and
  * keeps authoritativeDesignation = 'unassigned_pending_reconciliation' until
  * live reconciliation is inspected and approved.
+ *
+ * Alignment Note (Pre-K03/K04 Issue Register):
+ *   All 8 unresolved Shadbala, Bhavabala, Nodal, and Vimshottari discrepancies
+ *   are locked in `docs/SHADBALA_BHAVABALA_ISSUE_REGISTER.md`. This module stays
+ *   strictly observational/diagnostic (no Canonical Strength Calculation Engine)
+ *   while downstream `shadbala_major_6` and `bhavabala` remain `provisional`.
  */
 
 import {

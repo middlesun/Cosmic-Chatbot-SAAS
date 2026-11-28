@@ -39,13 +39,14 @@ const SYNTHESIS_UNAVAILABLE_REASONS: Record<PlanetaryStateDimensionName, string>
   stability: 'No direct stability or kinematics observations extracted.',
   autonomy: 'No direct dispositor autonomy observations extracted.',
   authority:
-    'Awaiting K03 Evidence Authority & planetary functional/temporal authority synthesis rules.',
+    'Awaiting K03 Contextual Evidence Authority Intelligence & Lagna-specific authority synthesis rules.',
   vulnerability: 'No direct combustion, boundary, war, or vulnerability observations extracted.',
   resilience:
     'Awaiting K02 State Intelligence & K05 Interaction recovery/cancellation rules.',
-  influenceFootprint: 'No direct house, cusp, or signification footprint observations extracted.',
+  influenceFootprint:
+    'No direct house, cusp, or signification footprint observations extracted (full P08 enrichment deferred to K04 Relational Intelligence).',
   functionalOrientation:
-    'Awaiting K02/K03 Lagna-specific benefic/malefic & yogakaraka orientation synthesis rules.',
+    'Awaiting K03 Contextual Evidence Authority Intelligence (Lagna-specific functional benefic/malefic & yogakaraka orientation rules).',
   deliverability:
     'Awaiting K08 Deliverability Intelligence (KP sub-lord, Bhava Chalit, and strength gating) rules.',
 };

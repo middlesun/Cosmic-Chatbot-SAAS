@@ -808,28 +808,28 @@ async function main() {
   // AREA 1: Real Exports + Durable Sanitized Offline Fixtures
   // --------------------------------------------------------------------------
   const chris4Raw = JSON.parse(
-    fs.readFileSync('public/assets/aistudio/chris-4-birth-chart_8e64429a.json', 'utf8')
+    fs.readFileSync('scripts/fixtures/charts/chris-4-birth-chart_8e64429a.json', 'utf8')
   );
   const chrisNewRaw = JSON.parse(
-    fs.readFileSync('public/assets/aistudio/chris-new-birth-chart_c00320ea.json', 'utf8')
+    fs.readFileSync('scripts/fixtures/charts/chris-new-birth-chart_c00320ea.json', 'utf8')
   );
   const chris3Raw = JSON.parse(
-    fs.readFileSync('public/assets/aistudio/chris-3-birth-chart_0f73e755.json', 'utf8')
+    fs.readFileSync('scripts/fixtures/charts/chris-3-birth-chart_0f73e755.json', 'utf8')
   );
 
   const realChris4 = adaptRealFreeAstroApiExport({
     fixtureId: 'real_freeastroapi_export_chris4',
-    sourceAssetFile: 'public/assets/aistudio/chris-4-birth-chart_8e64429a.json',
+    sourceAssetFile: 'scripts/fixtures/charts/chris-4-birth-chart_8e64429a.json',
     rawExportJson: chris4Raw,
   });
   const realChrisNew = adaptRealFreeAstroApiExport({
     fixtureId: 'real_freeastroapi_export_chrisnew',
-    sourceAssetFile: 'public/assets/aistudio/chris-new-birth-chart_c00320ea.json',
+    sourceAssetFile: 'scripts/fixtures/charts/chris-new-birth-chart_c00320ea.json',
     rawExportJson: chrisNewRaw,
   });
   const realChris3 = adaptRealFreeAstroApiExport({
     fixtureId: 'real_freeastroapi_export_chris3_legacy_tz_defect',
-    sourceAssetFile: 'public/assets/aistudio/chris-3-birth-chart_0f73e755.json',
+    sourceAssetFile: 'scripts/fixtures/charts/chris-3-birth-chart_0f73e755.json',
     rawExportJson: chris3Raw,
   });
 
@@ -857,12 +857,31 @@ async function main() {
   const realAwLayerCRawOnly = prepareLayerCAnalyticalInput(compiledRealAwRawOnly);
   const realAwLayerCHybrid = prepareLayerCAnalyticalInput(compiledRealAwHybrid);
 
+  // Guardrail: real_astroway_chris4 (preferLocalAshtakavarga: false) must never be silently substituted by hybrid local AV fallback
+  assert(
+    realAwLayerCRawOnly.natalInvariant.frames.vedicLahiri.data?.ashtakavarga == null &&
+      realAwLayerCRawOnly.datasetManifest.entries.find((e) => e.key === 'ashtakavarga_bav_sav_prastara')?.canonicalStatus === 'unavailable',
+    'real_astroway_chris4 raw-only capture unexpectedly promoted Ashtakavarga without preferLocalAshtakavarga.'
+  );
+  assert(
+    realAwLayerCHybrid.natalInvariant.localModules?.localAshtakavarga?.data?.totalPoints === 337 &&
+      realAwLayerCHybrid.datasetManifest.entries.find((e) => e.key === 'ashtakavarga_bav_sav_prastara')?.canonicalStatus !== 'unavailable',
+    'real_astroway_chris4_hybrid_local_av failed to attach local Ashtakavarga fallback.'
+  );
+
   const durableFixturesPayload = redactSecretsDeep({
     schemaVersion: 'v2.offline_verification_fixtures.1.0',
     generatedAtUtc: new Date().toISOString(),
+    privacyAndAccessControl: {
+      personalDataNotice:
+        'PRIVATE_OFFLINE_FIXTURE_ONLY: Exact birth dates, birth times, and geographic coordinates remain personal data even after UUIDs, emails, and user IDs are removed. Keep strictly outside public/ and dist/ assets and restrict access to authorized repository verification workflows.',
+      publicServingProhibited: true,
+      strippedIdentifiers: ['user_id', 'profile_id', 'email', 'uuid'],
+      retainedPersonalDataFields: ['birthDate', 'birthTime', 'timezone', 'latitude', 'longitude', 'city'],
+    },
     realAstroWayCapturePresentOnDisk: true,
     astroWayCacheBlockerNote:
-      'Sanitized real 72-endpoint AstroWay capture for Chris 4 is present on disk at scripts/fixtures/astroway-chris4-sanitized.json (68/72 OK, 3 HTTP 402 tier-restricted Ashtakavarga, 1 pre-fix HTTP 400 profections).',
+      'Sanitized real 72-endpoint AstroWay capture for Chris 4 is present on disk at scripts/fixtures/astroway-chris4-sanitized.json (68/72 OK, 3 HTTP 402 tier-restricted Ashtakavarga, 1 pre-fix HTTP 400 profections). Never silently substituted by hybrid local Ashtakavarga fallback.',
     fixtures: [
       {
         fixtureId: realChris4.fixtureId,
@@ -1223,16 +1242,25 @@ async function main() {
       const charaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'JAIMINI_CHARA_KARAKA');
       const padaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'JAIMINI_ARUDHA_PADA');
       const bhavaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'BHAVABALA_HOUSE_STRENGTH');
+      const sbSubEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'SHADBALA_SUBCOMPONENT_BUCKET');
+      const sbMajorEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'SHADBALA_MAJOR_SIX_BALA');
       const vargaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'VEDIC_VARGA_PLACEMENT');
       const ishtaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'ISHTA_KASHTA_PHALA');
       const dashaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'VIMSHOTTARI_NATAL_MAHADASHA');
       const ketuVargas = vargaEvs.filter((e) => e.subject.id === 'Ketu');
       assert(charaEvs.length === 8, `Real AstroWay Chris 4 expected 8 JAIMINI_CHARA_KARAKA items, got ${charaEvs.length}`);
       assert(padaEvs.length === 12, `Real AstroWay Chris 4 expected 12 JAIMINI_ARUDHA_PADA items, got ${padaEvs.length}`);
-      assert(bhavaEvs.length === 12, `Real AstroWay Chris 4 expected 12 BHAVABALA_HOUSE_STRENGTH items, got ${bhavaEvs.length}`);
+      assert(bhavaEvs.length === 12 && bhavaEvs.every((e) => e.verification.propagatedTrust === 'provisional'), `Real AstroWay Chris 4 expected 12 provisional BHAVABALA_HOUSE_STRENGTH items, got ${bhavaEvs.length}`);
+      assert(sbMajorEvs.length === 7 && sbMajorEvs.every((e) => e.verification.propagatedTrust === 'provisional'), `Real AstroWay Chris 4 expected 7 provisional SHADBALA_MAJOR_SIX_BALA items, got ${sbMajorEvs.length}`);
+      assert(sbSubEvs.length > 0, `Real AstroWay Chris 4 expected preserved SHADBALA_SUBCOMPONENT_BUCKET items, got ${sbSubEvs.length}`);
       assert(vargaEvs.length === 160 && ketuVargas.length === 16, `Real AstroWay Chris 4 expected 160 varga items (16 Ketu), got ${vargaEvs.length} (${ketuVargas.length} Ketu)`);
       assert(ishtaEvs.length === 7, `Real AstroWay Chris 4 expected 7 ISHTA_KASHTA_PHALA items, got ${ishtaEvs.length}`);
       assert(dashaEvs.length === 9, `Real AstroWay Chris 4 expected 9 VIMSHOTTARI_NATAL_MAHADASHA items, got ${dashaEvs.length}`);
+    }
+    if (ch.id === 'real_astroway_chris4_hybrid_local_av') {
+      const bavEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'ASHTAKAVARGA_BHINNA_BAV');
+      const shodhanaEvs = bA.k01Repository.natalEvidence.filter((e) => e.observation.code === 'ASHTAKAVARGA_SHODHANA_PINDA');
+      assert(bavEvs.length === 7 && shodhanaEvs.length === 7, `Hybrid Chris 4 expected preserved Ashtakavarga derivatives (7 BAV, 7 Shodhana), got ${bavEvs.length}/${shodhanaEvs.length}`);
     }
 
     // Verify Graha Yuddha + Retrogression + Combustion + Gandanta stress behavior

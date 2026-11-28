@@ -109,24 +109,51 @@ import {
 } from '../server/services/astrologyProviders/freeAstroApiRateLimiter';
 import { getNakshatraAndSubs, getVargaSignIndex, normalizeDeg, SIGNS } from '../server/services/jyotishMath';
 import {
+  ANALYTICAL_OBJECTIVE_IDS,
+  analyzeK04DispositorAndDependencies,
+  assertRegisteredR04Rule,
   assertRegisteredRule,
   BPHS_SHADBALA_MIN_RUPAS,
   buildAnalyticalEvidenceRepository,
   buildAnalyticalKernelK02Bundle,
+  buildK03RelationalContextFromDispositorAnalysis,
+  buildK04InfluenceFootprintEnrichment,
+  buildNatalIntelligenceGraph,
   CANONICAL_EVIDENCE_FRAMES,
   CanonicalEvidenceRegistry,
   CircularLineageError,
+  countUniqueReachableEntities,
+  DEFAULT_UNIVERSAL_INTEGRITY_POLICY,
+  detectSharedDependencies,
   evaluateK02FromRepository,
+  evaluateK03ContextualAuthority,
+  evaluateRuleMathModel,
   EVIDENCE_FAMILIES,
+  exportR07MathModelRegistrySnapshot,
   exportRuleRegistrySnapshot,
+  findAlternativeStructuralPaths,
+  findTypedPaths,
   formatPlanetEvidenceSummary,
   formatPlanetK02StateSummary,
+  getCycleMembership,
+  getDependencyChain,
+  getDirectRelationships,
+  getIncomingRelationships,
+  getOutgoingRelationships,
+  getTerminalBasinMembership,
+  isR07MathModelRegistered,
+  NIG_ENTITY_TYPES,
+  NIG_RELATIONSHIP_FAMILIES,
   PHI_READY_PLANETS,
   PLANETARY_STATE_DIMENSIONS,
   PLANETARY_STATE_SUBJECTS,
+  UnregisteredMathModelError,
   UnregisteredRuleError,
   type AnalyticalKernelK02StateResult,
+  type AnalyticalKernelK03AuthorityResult,
   type CanonicalEvidenceDraft,
+  type NatalIntelligenceGraph,
+  type NigRelationshipEdge,
 } from '../server/services/analyticalKernel';
 
 function loadLocalEnvFilesForCli(): { loadedFiles: string[] } {
@@ -560,7 +587,7 @@ async function runCompileChris4Cli(): Promise<void> {
   });
 
   // 7. Read-only comparison against Chris 4 legacy fixture
-  const chris4LegacyPath = path.resolve(process.cwd(), 'public/assets/aistudio/chris-4-birth-chart_8e64429a.json');
+  const chris4LegacyPath = path.resolve(process.cwd(), 'scripts/fixtures/charts/chris-4-birth-chart_8e64429a.json');
   const legacyChartJson = fs.existsSync(chris4LegacyPath)
     ? JSON.parse(fs.readFileSync(chris4LegacyPath, 'utf8'))
     : null;
@@ -4189,7 +4216,7 @@ async function main() {
   // Chris 4 stored profile coordinates consistency check (23.25572, 87.85691 vs Bardhaman centroid drift)
   const chris4JsonPath = path.resolve(
     process.cwd(),
-    'public/assets/aistudio/chris-4-birth-chart_8e64429a.json'
+    'scripts/fixtures/charts/chris-4-birth-chart_8e64429a.json'
   );
   if (fs.existsSync(chris4JsonPath)) {
     const chris4Json = JSON.parse(fs.readFileSync(chris4JsonPath, 'utf8'));
@@ -4366,9 +4393,9 @@ async function main() {
   // 4. Read-Only Existing Profile Defect Audit + Legacy vs V2 Comparison on Local Fixtures
   const profileAudits: unknown[] = [];
   for (const [id, filePath] of [
-    ['chris-3-bardhaman', 'public/assets/aistudio/chris-3-birth-chart_0f73e755.json'],
-    ['chris-4-bardhaman', 'public/assets/aistudio/chris-4-birth-chart_8e64429a.json'],
-    ['chris-new-kolkata', 'public/assets/aistudio/chris-new-birth-chart_c00320ea.json'],
+    ['chris-3-bardhaman', 'scripts/fixtures/charts/chris-3-birth-chart_0f73e755.json'],
+    ['chris-4-bardhaman', 'scripts/fixtures/charts/chris-4-birth-chart_8e64429a.json'],
+    ['chris-new-kolkata', 'scripts/fixtures/charts/chris-new-birth-chart_c00320ea.json'],
   ]) {
     const abs = path.resolve(process.cwd(), filePath);
     if (fs.existsSync(abs)) {
@@ -5302,6 +5329,848 @@ async function main() {
 
   console.log('\n' + formatPlanetK02StateSummary(chris4K02State, 'Jupiter'));
 
+  // 4d. K03 Contextual Evidence Authority Intelligence — Deterministic Verification Suite
+  console.log('\n--- K03 Contextual Evidence Authority Intelligence Verification Suite ---');
+  const k01FullJsonBefore = JSON.stringify(k02FullBundleA.k01Repository);
+  const k02FullJsonBefore = JSON.stringify(k02Full);
+  const k03FullA = evaluateK03ContextualAuthority(k02FullBundleA.k01Repository, k02Full);
+  const k03FullB = evaluateK03ContextualAuthority(k02FullBundleA.k01Repository, k02Full);
+  const k03Chris4 = evaluateK03ContextualAuthority(chris4Bundle.k01Repository, chris4Bundle.k02State);
+  const k03ProvDefault = evaluateK03ContextualAuthority(repoProvisional, k02ProvDefault);
+  const k03ProvStrict = evaluateK03ContextualAuthority(repoProvisional, k02ProvStrict, {
+    strictNonProvisional: true,
+  });
+  const k03IncompatChalit = evaluateK03ContextualAuthority(repoIncompatChalit, k02IncompatChalit);
+  const k03Empty = evaluateK03ContextualAuthority(repoEmpty, k02Empty);
+
+  const k03TestsPassed: string[] = [];
+
+  // K03 Test 1: Non-mutation of K01/K02 + Determinism
+  assert(
+    JSON.stringify(k02FullBundleA.k01Repository) === k01FullJsonBefore &&
+      JSON.stringify(k02Full) === k02FullJsonBefore,
+    'K03 Test 1 failed: K03 mutated K01 repository or K02 state.'
+  );
+  const stripK03Ts = (res: AnalyticalKernelK03AuthorityResult) => ({
+    ...res,
+    generatedAtUtc: 'FIXED',
+  });
+  assert(
+    JSON.stringify(stripK03Ts(k03FullA)) === JSON.stringify(stripK03Ts(k03FullB)),
+    'K03 Test 1 failed: K03 output is non-deterministic across consecutive runs.'
+  );
+  k03TestsPassed.push('1_non_mutation_and_determinism');
+
+  // K03 Test 2: All 10 objectives + Same evidenceId receives multiple distinct CEARs across objectives
+  for (const objId of ANALYTICAL_OBJECTIVE_IDS) {
+    assert(
+      Boolean(k03FullA.classificationsByObjective[objId]),
+      `K03 Test 2 failed: missing objective summary for ${objId}.`
+    );
+  }
+  const cearsByEvidence = new Map<string, typeof k03FullA.cearRecords>();
+  for (const cear of k03FullA.cearRecords) {
+    const arr = cearsByEvidence.get(cear.evidenceId) ?? [];
+    arr.push(cear);
+    cearsByEvidence.set(cear.evidenceId, arr);
+  }
+  const multiObjHouseLord = Array.from(cearsByEvidence.values()).find(
+    (arr) =>
+      arr.some((c) => c.objectiveId === 'house_governance' && c.authorityClassification === 'AC2') &&
+      arr.some((c) => c.objectiveId === 'planetary_health_evidence' && c.authorityClassification === 'AC6')
+  );
+  const multiObjD1Dignity = Array.from(cearsByEvidence.values()).find(
+    (arr) =>
+      arr.some(
+        (c) =>
+          c.objectiveId === 'planetary_dignity_and_positional_condition' &&
+          c.authorityClassification === 'AC1'
+      ) &&
+      arr.some((c) => c.objectiveId === 'planetary_health_evidence' && c.authorityClassification === 'AC2')
+  );
+  assert(
+    Boolean(multiObjHouseLord) && Boolean(multiObjD1Dignity),
+    'K03 Test 2 failed: expected same evidenceId to receive distinct CEAR classifications across different objectives.'
+  );
+  k03TestsPassed.push('2_same_evidence_multiple_distinct_cears');
+
+  // K03 Test 3: Methodological separation without fixed global hierarchy + Layer 1 immutability
+  const kpCusp1InGov = k03FullA.cearRecords.find(
+    (c) =>
+      c.objectiveId === 'house_governance' &&
+      c.applicableChartFrame === 'kp_placidus' &&
+      c.subject.id === 'KP_Cusp_1' &&
+      c.authorityClassification === 'AC2'
+  );
+  const kpCusp1InVarga = k03FullA.cearRecords.find(
+    (c) =>
+      c.objectiveId === 'divisional_condition' &&
+      c.applicableChartFrame === 'kp_placidus' &&
+      c.subject.id === 'KP_Cusp_1' &&
+      c.authorityClassification === 'AC6'
+  );
+  const westIsolated = k03FullA.cearRecords.some(
+    (c) =>
+      c.applicableChartFrame === 'western_tropical' &&
+      c.applicableMethodology === 'western_tropical' &&
+      c.authorityClassification === 'AC2'
+  );
+  let layer1TamperRejected = false;
+  try {
+    evaluateK03ContextualAuthority(k02FullBundleA.k01Repository, k02Full, {
+      universalIntegrityPolicy: {
+        ...DEFAULT_UNIVERSAL_INTEGRITY_POLICY,
+        forbidProvisionalDecisivePromotion: false as unknown as true,
+      },
+    });
+  } catch {
+    layer1TamperRejected = true;
+  }
+  assert(
+    Boolean(kpCusp1InGov) &&
+      Boolean(kpCusp1InVarga) &&
+      westIsolated &&
+      k03FullA.policyConfiguration.methodologicalAuthority.forbidFixedGlobalCrossSystemHierarchy ===
+        true &&
+      layer1TamperRejected,
+    'K03 Test 3 (Methodological Separation & Layer 1 Non-Override) failed.'
+  );
+  k03TestsPassed.push('3_methodological_separation_no_global_hierarchy');
+
+  // K03 Test 4: UnregisteredRuleError rejection on R04
+  let r04RejectedDirect = false;
+  try {
+    assertRegisteredR04Rule('R04_UNREGISTERED_SYNTHETIC_RULE');
+  } catch (err) {
+    if (err instanceof UnregisteredRuleError) r04RejectedDirect = true;
+    else throw err;
+  }
+  let r04RejectedEngineHook = false;
+  try {
+    evaluateK03ContextualAuthority(k02FullBundleA.k01Repository, k02Full, {
+      verifyRegisteredRuleIds: ['R04_UNKNOWN_ENGINE_HOOK'],
+    });
+  } catch (err) {
+    if (err instanceof UnregisteredRuleError) r04RejectedEngineHook = true;
+    else throw err;
+  }
+  const registeredR04Ids = new Set(k03FullA.r04RegistrySnapshot.rules.map((r) => r.ruleId));
+  const allCearRulesValid = k03FullA.cearRecords.every((c) =>
+    c.applicableRuleReferences.every((ref) => registeredR04Ids.has(ref.ruleId))
+  );
+  assert(
+    r04RejectedDirect && r04RejectedEngineHook && allCearRulesValid,
+    'K03 Test 4 (UnregisteredRuleError R04 Rejection) failed.'
+  );
+  k03TestsPassed.push('4_r04_unregistered_rule_rejection');
+
+  // K03 Test 5: Shadbala / Bhavabala / D5 / Advanced Avasthas provisional restriction (never AC1, AC6 under strict)
+  const provisionalObsCodes = new Set([
+    'SHADBALA_MAJOR_SIX_BALA',
+    'SHADBALA_SUBCOMPONENT_BUCKET',
+    'BHAVABALA_HOUSE_STRENGTH',
+    'VEDIC_VARGA_D5_PROVISIONAL',
+    'VEDIC_ADVANCED_AVASTHAS',
+  ]);
+  const natalByIdFull = new Map(
+    k02FullBundleA.k01Repository.natalEvidence.map((e) => [e.evidenceId, e])
+  );
+  const provCearsFull = k03FullA.cearRecords.filter((c) => {
+    const ev = natalByIdFull.get(c.evidenceId);
+    return (
+      ev &&
+      (provisionalObsCodes.has(ev.observation.code) ||
+        ev.verification.propagatedTrust === 'provisional')
+    );
+  });
+  const provByIdRepoProv = new Map(
+    repoProvisional.natalEvidence.map((e) => [e.evidenceId, e])
+  );
+  const defaultProvCears = k03ProvDefault.cearRecords.filter((c) => {
+    const ev = provByIdRepoProv.get(c.evidenceId);
+    return (
+      ev &&
+      (provisionalObsCodes.has(ev.observation.code) ||
+        ev.verification.propagatedTrust === 'provisional')
+    );
+  });
+  const strictProvCears = k03ProvStrict.cearRecords.filter((c) => {
+    const ev = provByIdRepoProv.get(c.evidenceId);
+    return (
+      ev &&
+      (provisionalObsCodes.has(ev.observation.code) ||
+        ev.verification.propagatedTrust === 'provisional')
+    );
+  });
+  assert(
+    provCearsFull.length > 0 &&
+      provCearsFull.every(
+        (c) =>
+          c.authorityClassification === 'AC4' ||
+          c.authorityClassification === 'AC5' ||
+          c.authorityClassification === 'AC6'
+      ) &&
+      defaultProvCears.length > 0 &&
+      defaultProvCears.every(
+        (c) =>
+          c.authorityClassification === 'AC4' ||
+          c.authorityClassification === 'AC5' ||
+          c.authorityClassification === 'AC6'
+      ) &&
+      strictProvCears.length > 0 &&
+      strictProvCears.every((c) => c.authorityClassification === 'AC6'),
+    'K03 Test 5 (Provisional Ceiling & Strict Exclusion) failed.'
+  );
+  k03TestsPassed.push('5_shadbala_bhavabala_provisional_restriction');
+
+  // K03 Test 6: Temporal quarantine, incompatible frame & missing/empty unevaluated handling
+  const temporalIdsFull = new Set(
+    k02FullBundleA.k01Repository.temporalEvidence.map((e) => e.evidenceId)
+  );
+  const temporalCears = k03FullA.cearRecords.filter((c) => temporalIdsFull.has(c.evidenceId));
+  assert(
+    temporalCears.length === k02FullBundleA.k01Repository.temporalEvidence.length &&
+      temporalCears.every((c) => c.authorityClassification === 'AC6') &&
+      k03IncompatChalit.cearRecords.some(
+        (c) =>
+          c.applicableChartFrame === 'bhava_chalit' && c.authorityClassification === 'AC6'
+      ) &&
+      k03Empty.unresolvedRequirements.some(
+        (u) =>
+          u.objectiveId === 'functional_orientation_by_lagna' &&
+          u.classification === 'unevaluated'
+      ) &&
+      k03Empty.functionalOrientationProfiles.Jupiter.status === 'unevaluated' &&
+      k03Empty.functionalOrientationProfiles.Jupiter.functionalBenefic === null,
+    'K03 Test 6 (Temporal Quarantine, Incompatible Frame & Missing Unevaluated) failed.'
+  );
+  k03TestsPassed.push('6_temporal_quarantine_and_missing_unevaluated');
+
+  // K03 Test 7: Overlap deduplication without erasing distinct analytical lenses
+  assert(
+    k03FullA.independenceSummaries.doubleCountingGuardsApplied > 0 &&
+      k03FullA.independenceSummaries.distinctLensesPreserved > 0 &&
+      k03FullA.cearRecords.some(
+        (c) =>
+          c.evidenceIndependenceInfo.independenceStatus === 'partial_mathematical_overlap' &&
+          c.evidenceIndependenceInfo.doubleCountingGuardApplied === true &&
+          c.authorityClassification === 'AC5'
+      ) &&
+      k03FullA.cearRecords.some(
+        (c) =>
+          c.objectiveId === 'divisional_condition' &&
+          c.evidenceIndependenceInfo.independenceStatus === 'distinct_analytical_significance' &&
+          c.authorityClassification === 'AC2'
+      ),
+    'K03 Test 7 (Overlap Deduplication Preserving Distinct Lenses) failed.'
+  );
+  k03TestsPassed.push('7_overlap_dedup_preserving_distinct_lenses');
+
+  // K03 Test 8: P09 Functional Orientation vs Natural Signification separation (Chris 4 Scorpio + Taurus Lagna)
+  const chris4P09 = k03Chris4.functionalOrientationProfiles;
+  const chris4AscSign = chris4P09.Jupiter.lagnaSign;
+  assert(
+    chris4AscSign === 'Scorpio' &&
+      chris4P09.Jupiter.functionalBenefic === true &&
+      chris4P09.Jupiter.yogakaraka === false &&
+      chris4P09.Jupiter.naturalSignifications.naturalPolarity === 'natural_benefic' &&
+      chris4P09.Jupiter.directHouseLordships.ruledHouses.join(',') === '2,5' &&
+      chris4P09.Venus.functionalMalefic === true &&
+      chris4P09.Venus.maraka === true &&
+      chris4P09.Venus.functionalBenefic === false &&
+      chris4P09.Venus.naturalSignifications.naturalPolarity === 'natural_benefic' &&
+      chris4P09.Sun.functionalBenefic === true &&
+      chris4P09.Sun.naturalSignifications.naturalPolarity === 'natural_malefic' &&
+      chris4P09.Mars.lagnesha === true &&
+      chris4P09.Rahu.role === 'contingent_nodal_agent' &&
+      chris4P09.Rahu.functionalBenefic === null &&
+      chris4P09.Ascendant.role === 'non_planetary_lagna_reference',
+    `K03 Test 8a (Chris 4 Scorpio Lagna P09 Separation) failed: lagna=${String(chris4AscSign)}`
+  );
+
+  // Switch Lagna to Taurus and confirm Saturn becomes Yogakaraka (natural malefic -> yogakaraka) and Jupiter becomes functional malefic
+  const taurusInput = JSON.parse(JSON.stringify(layerCInputFull)) as ReturnType<
+    typeof prepareLayerCAnalyticalInput
+  >;
+  const taurusVedic = taurusInput.natalInvariant.frames.vedicLahiri
+    .data as unknown as Record<string, unknown>;
+  taurusVedic.ascendant = {
+    ...((taurusVedic.ascendant as Record<string, unknown> | undefined) ?? {}),
+    sign: 'Taurus',
+    degree_in_sign: 12.5,
+    longitude: 42.5,
+  };
+  const taurusBundle = buildAnalyticalKernelK02Bundle(taurusInput);
+  const k03Taurus = evaluateK03ContextualAuthority(
+    taurusBundle.k01Repository,
+    taurusBundle.k02State
+  );
+  const taurusP09 = k03Taurus.functionalOrientationProfiles;
+  assert(
+    taurusP09.Saturn.lagnaSign === 'Taurus' &&
+      taurusP09.Saturn.yogakaraka === true &&
+      taurusP09.Saturn.functionalBenefic === true &&
+      taurusP09.Saturn.naturalSignifications.naturalPolarity === 'natural_malefic' &&
+      taurusP09.Saturn.directHouseLordships.ruledHouses.join(',') === '9,10' &&
+      taurusP09.Jupiter.functionalMalefic === true &&
+      taurusP09.Jupiter.naturalSignifications.naturalPolarity === 'natural_benefic',
+    'K03 Test 8b (Taurus Lagna Yogakaraka/Natural Separation) failed.'
+  );
+  k03TestsPassed.push('8_p09_functional_vs_natural_across_lagnas');
+
+  // K03 Test 9: Staged optional K04 relationalContext readiness (Pass 2 hook)
+  const k03Pass2Hook = evaluateK03ContextualAuthority(
+    k02FullBundleA.k01Repository,
+    k02Full,
+    {
+      relationalContext: {
+        k04EngineVersion: 'k04.1.0',
+        frame: 'vedic_lahiri',
+        dependencyConcentrationIndex: 1.0,
+        dispositorBasinCount: 1,
+        qualifiedRelationalEvidenceIds: [],
+        bySubject: {
+          Jupiter: {
+            subject: 'Jupiter',
+            signLord: 'Saturn',
+            terminalBasinId: 'basin_cycle_1',
+            terminalKind: 'cycle',
+            isInSccCycle: true,
+            sccMembers: ['Jupiter', 'Saturn', 'Mars', 'Venus'],
+            dependencyDepth: 1,
+            inboundDependentCount: 2,
+            parivartanaPartners: [],
+            evidenceIds: [],
+          },
+        },
+      },
+    }
+  );
+  const jupDispPass2 = k03Pass2Hook.cearRecords.find(
+    (c) =>
+      c.objectiveId === 'dispositor_dependency' &&
+      c.subject.id === 'Jupiter' &&
+      c.dimensionAssessments.structuralCriticality.qualitativeRating ===
+        'k04_relational_topology_linked'
+  );
+  assert(
+    k03Pass2Hook.relationalContextApplied === true && Boolean(jupDispPass2),
+    'K03 Test 9 (Optional K04 Relational Context Pass 2 Hook) failed.'
+  );
+  k03TestsPassed.push('9_staged_relational_context_hook');
+
+  console.log(`K03 Offline Verification Suite: ALL ${k03TestsPassed.length}/9 TESTS PASSED.`);
+
+  const k03AuthorityOutPath = path.join(outDir, 'chris4-k03-contextual-authority.json');
+  fs.writeFileSync(k03AuthorityOutPath, JSON.stringify(redactSecretsDeep(k03Chris4), null, 2), 'utf8');
+  console.log(`K03 Authority Artifact -> ${k03AuthorityOutPath}`);
+
+  // 4e. K04 Relational Intelligence (Phase 4: Natal Intelligence Graph) — Deterministic Verification Suite
+  console.log('\n--- K04 Natal Intelligence Graph (NIG) Verification Suite ---');
+  const k04FullA = buildNatalIntelligenceGraph(k02FullBundleA.k01Repository, { k03Result: k03FullA });
+  const k04FullB = buildNatalIntelligenceGraph(k02FullBundleA.k01Repository, { k03Result: k03FullA });
+  const k04Chris4 = buildNatalIntelligenceGraph(chris4Bundle.k01Repository, { k03Result: k03Chris4 });
+  const k04IncompatChalit = buildNatalIntelligenceGraph(repoIncompatChalit, {
+    k03Result: k03IncompatChalit,
+  });
+  const k04Empty = buildNatalIntelligenceGraph(repoEmpty);
+  const k04TestsPassed: string[] = [];
+
+  // K04 Test 1: Deterministic equality, zero duplicate relationship IDs, zero unresolved evidence refs, zero dangling endpoints
+  const stripK04Ts = (g: NatalIntelligenceGraph) => ({ ...g, generatedAtUtc: 'STRIPPED' });
+  assert(
+    JSON.stringify(stripK04Ts(k04FullA)) === JSON.stringify(stripK04Ts(k04FullB)),
+    'K04 Test 1 failed: NIG construction is non-deterministic across consecutive runs.'
+  );
+  assert(
+    k04FullA.verificationStats.duplicateIdCount === 0 &&
+      k04FullA.verificationStats.unresolvedEvidenceRefCount === 0 &&
+      k04FullA.verificationStats.danglingEndpointCount === 0 &&
+      k04FullA.edges.every((e) => /^rel_[0-9a-f]{32}$/.test(e.relationshipId) && e.direction === 'directed'),
+    `K04 Test 1 failed: integrity stats invalid (dup=${k04FullA.verificationStats.duplicateIdCount}, unres=${k04FullA.verificationStats.unresolvedEvidenceRefCount}, dang=${k04FullA.verificationStats.danglingEndpointCount}).`
+  );
+  k04TestsPassed.push('1_determinism_sha256_ids_zero_duplicates_and_refs');
+
+  // K04 Test 2: Coverage of entity types & all 11 implemented natal families + explicit temporal deferral
+  const presentEntityTypes = new Set(k04FullA.nodes.map((n) => n.entityType));
+  assert(
+    NIG_ENTITY_TYPES.every((t) => presentEntityTypes.has(t)) &&
+      NIG_RELATIONSHIP_FAMILIES.length === 12 &&
+      k04FullA.verificationStats.countsByFamily.occupancy > 0 &&
+      k04FullA.verificationStats.countsByFamily.governance > 0 &&
+      k04FullA.verificationStats.countsByFamily.dependency > 0 &&
+      k04FullA.verificationStats.countsByFamily.association > 0 &&
+      k04FullA.verificationStats.countsByFamily.aspect > 0 &&
+      k04FullA.verificationStats.countsByFamily.compatibility > 0 &&
+      k04FullA.verificationStats.countsByFamily.configuration_participation > 0 &&
+      k04FullA.verificationStats.countsByFamily.modification > 0 &&
+      k04FullA.verificationStats.countsByFamily.cross_frame_relationship > 0 &&
+      k04FullA.verificationStats.countsByFamily.functional_relationship > 0 &&
+      k04FullA.verificationStats.countsByFamily.evidence_lineage > 0 &&
+      k04FullA.verificationStats.countsByFamily.temporal_relationship === 0,
+    'K04 Test 2 failed: missing expected NIG entity types or relationship families.'
+  );
+  k04TestsPassed.push('2_entity_types_and_12_relationship_families');
+
+  // K04 Test 3: Strict Chart Frame Isolation (D1 vs D9 vs KP Placidus vs Western Tropical)
+  const d1DispEdges = k04FullA.edges.filter(
+    (e) => e.chartFrame === 'vedic_lahiri' && e.relationshipType === 'disposited_by_sign_lord'
+  );
+  const d9DispEdges = k04FullA.edges.filter(
+    (e) => e.chartFrame === 'vedic_lahiri:D9' && e.relationshipType === 'divisional_sign_dispositor'
+  );
+  const kpEdges = k04FullA.edges.filter((e) => e.chartFrame === 'kp_placidus');
+  const westEdges = k04FullA.edges.filter((e) => e.chartFrame === 'western_tropical');
+  const d1DispIdSet = new Set(d1DispEdges.map((e) => e.relationshipId));
+  assert(
+    d1DispEdges.length >= 7 &&
+      d9DispEdges.length >= 7 &&
+      d9DispEdges.every((e) => !d1DispIdSet.has(e.relationshipId)) &&
+      kpEdges.length > 0 &&
+      westEdges.length > 0 &&
+      k04FullA.projectionsByFrame['vedic_lahiri:D9']?.edgeCount > 0 &&
+      k04FullA.projectionsByFrame['vedic_lahiri']?.edgeCount > 0,
+    'K04 Test 3 failed: D1 vs D9 dispositors or multi-frame isolation check failed.'
+  );
+  k04TestsPassed.push('3_strict_chart_frame_isolation_d1_d9_kp_western');
+
+  // K04 Test 4: Explicit Configuration Entities & Participant Structures (deferred K05/K07 adjudication)
+  assert(
+    k04FullA.configurationParticipants.length > 0 &&
+      k04FullA.configurationParticipants.every(
+        (cfg) =>
+          cfg.configurationEntityId.startsWith('configuration:') &&
+          cfg.adjudicationStatus === 'participants_mapped_interaction_deferred_to_k05_k07'
+      ) &&
+      k04FullA.edges
+        .filter((e) => e.family === 'configuration_participation')
+        .every((e) => e.targetEntityId.startsWith('configuration:')),
+    'K04 Test 4 failed: configuration entities / deferred K05-K07 participant contracts invalid.'
+  );
+  k04TestsPassed.push('4_configuration_participants_deferred_k05_k07');
+
+  // K04 Test 5: Blocked Bhava Chalit omits Chalit edges & suppresses KP fallback
+  const blockedChalitEdges = k04IncompatChalit.edges.filter(
+    (e) =>
+      e.chartFrame === 'bhava_chalit' ||
+      e.relationshipType === 'chalit_house_shift_from_d1_rashi'
+  );
+  assert(
+    blockedChalitEdges.length === 0 &&
+      k04IncompatChalit.blockedFrameNotices.some(
+        (n) => n.frame === 'bhava_chalit' && n.fallbackSuppressed === true
+      ) &&
+      k04IncompatChalit.projections.natal.blockedFramesOmitted.includes('bhava_chalit'),
+    'K04 Test 5 failed: incompatible Bhava Chalit emitted Chalit edges or missed blockedFrameNotice.'
+  );
+  k04TestsPassed.push('5_blocked_bhava_chalit_no_kp_fallback');
+
+  // K04 Test 6: 4 Logical Projections & Strict Temporal/Private Exclusion + Empty Repository Safety
+  const k04StrictZero = buildNatalIntelligenceGraph({
+    ...repoEmpty,
+    natalEvidence: [],
+    temporalEvidence: [],
+    lineageGraph: {
+      ...repoEmpty.lineageGraph,
+      edges: [],
+      overlapRelations: [],
+      rootEvidenceIds: [],
+    },
+  });
+  assert(
+    k04FullA.projections.natal.status === 'implemented' &&
+      k04FullA.projections.natal.temporalEvidenceExcludedCount ===
+        k02FullBundleA.k01Repository.temporalEvidence.length &&
+      k04FullA.projections.functional_domain.status === 'partial_functional_roles_only' &&
+      k04FullA.projections.functional_domain.domainScoringDeferredTo === 'K08' &&
+      k04FullA.projections.temporal.status === 'deferred_to_k09' &&
+      k04FullA.projections.temporal.edgeIds.length === 0 &&
+      k04FullA.projections.private_investigative_contextual.status === 'deferred_and_isolated' &&
+      k04FullA.projections.private_investigative_contextual.edgeIds.length === 0 &&
+      k04FullA.verificationStats.temporalRelationshipEdgeCount === 0 &&
+      k04FullA.verificationStats.privateContextEdgeCount === 0 &&
+      k04Empty.edges.every((e) => e.family === 'evidence_lineage') &&
+      k04Empty.verificationStats.duplicateIdCount === 0 &&
+      k04Empty.verificationStats.unresolvedEvidenceRefCount === 0 &&
+      k04StrictZero.verificationStats.totalEdges === 0 &&
+      k04StrictZero.verificationStats.duplicateIdCount === 0,
+    'K04 Test 6 failed: 4 logical projections or temporal/private isolation invalid.'
+  );
+  k04TestsPassed.push('6_four_logical_projections_and_empty_repo_safety');
+
+  // K04 Test 7: Sanitized real Chris4 AstroWay fixture (`scripts/fixtures/astroway-chris4-sanitized.json`) verification
+  const sanitizedChris4Path = path.join(fixturesDir, 'astroway-chris4-sanitized.json');
+  assert(
+    fs.existsSync(sanitizedChris4Path),
+    `K04 Test 7 failed: missing private fixture ${sanitizedChris4Path}.`
+  );
+  const sanitizedChris4Bundle = JSON.parse(
+    fs.readFileSync(sanitizedChris4Path, 'utf8')
+  ) as {
+    canonicalInput: CanonicalBirthInput;
+    targetDateIso?: string;
+    layerA: LayerARawProviderRecord;
+  };
+  const sanitizedChris4Compiled = compileV2FoundationalChart({
+    instant: resolveCanonicalBirthInstant(sanitizedChris4Bundle.canonicalInput),
+    astroWayRaw: sanitizedChris4Bundle.layerA,
+    options: {
+      targetDateIso: sanitizedChris4Bundle.targetDateIso ?? '2026-11-27',
+      includeLocalModules: true,
+    },
+  });
+  const sanitizedChris4Repo = buildAnalyticalEvidenceRepository(sanitizedChris4Compiled);
+  const k04SanitizedChris4 = buildNatalIntelligenceGraph(sanitizedChris4Repo);
+  assert(
+    k04SanitizedChris4.verificationStats.totalEdges > 100 &&
+      k04SanitizedChris4.verificationStats.duplicateIdCount === 0 &&
+      k04SanitizedChris4.verificationStats.unresolvedEvidenceRefCount === 0 &&
+      k04SanitizedChris4.verificationStats.danglingEndpointCount === 0 &&
+      (k04SanitizedChris4.verificationStats.countsByFrame['vedic_lahiri'] ?? 0) > 0 &&
+      (k04SanitizedChris4.verificationStats.countsByFrame['vedic_lahiri:D9'] ?? 0) > 0 &&
+      k04Chris4.verificationStats.duplicateIdCount === 0 &&
+      k04Chris4.verificationStats.unresolvedEvidenceRefCount === 0,
+    `K04 Test 7 failed: real sanitized Chris4 AstroWay NIG validation failed (edges=${k04SanitizedChris4.verificationStats.totalEdges}, frames=${JSON.stringify(k04SanitizedChris4.verificationStats.countsByFrame)}).`
+  );
+  k04TestsPassed.push('7_real_sanitized_chris4_astroway_nig_verified');
+
+  console.log(`K04 Offline Verification Suite: ALL ${k04TestsPassed.length}/7 TESTS PASSED.`);
+
+  const k04NigOutPath = path.join(outDir, 'chris4-k04-natal-intelligence-graph.json');
+  fs.writeFileSync(k04NigOutPath, JSON.stringify(redactSecretsDeep(k04Chris4), null, 2), 'utf8');
+  console.log(`K04 NIG Artifact -> ${k04NigOutPath}`);
+
+  // 4f. K04 Relational Intelligence (Phase 5: Dispositor SCC, DCI, R07 Math Models, Graph Traversal & P08 Enrichment)
+  console.log('\n--- K04 Phase 5 Dispositor, Dependency, DCI, R07, Traversal & P08 Suite ---');
+  const k04Phase5Passed: string[] = [];
+
+  // Phase 5 Test 1: R07 Math Model Registry & Unregistered/Forbidden Weighting Rejection
+  const r07Snap = exportR07MathModelRegistrySnapshot();
+  const requiredR07Ids = [
+    'unique_entity_counting',
+    'graph_reachability',
+    'dependency_path_length',
+    'scc_detection',
+    'terminal_basin_assignment',
+    'dependency_concentration_dci',
+    'set_intersection',
+    'set_union',
+    'jaccard_overlap',
+  ];
+  let rejectedUnknownMath = false;
+  try {
+    evaluateRuleMathModel('unregistered_synthetic_math_model', 1);
+  } catch (err) {
+    if (err instanceof UnregisteredMathModelError) rejectedUnknownMath = true;
+    else throw err;
+  }
+  let rejectedWeightMath = false;
+  try {
+    evaluateRuleMathModel('composite_authority_universal_relationship_strength_weight', 1);
+  } catch (err) {
+    if (err instanceof UnregisteredMathModelError) rejectedWeightMath = true;
+    else throw err;
+  }
+  assert(
+    requiredR07Ids.every((id) => isR07MathModelRegistered(id) && r07Snap.modelIds.includes(id)) &&
+      rejectedUnknownMath &&
+      rejectedWeightMath,
+    'K04 Phase 5 Test 1 failed: R07 math models registration or forbidden weighting model rejection invalid.'
+  );
+  k04Phase5Passed.push('1_r07_math_registry_and_weight_model_rejection');
+
+  // Phase 5 Test 2: Organic Chris 4 D1 Dispositor Topology & DCI = 1.0 (FreeAstroAPI Export + Sanitized AstroWay)
+  const sanitizedChris4K02 = evaluateK02FromRepository(sanitizedChris4Repo);
+  const k04DispChris4Export = analyzeK04DispositorAndDependencies(k04Chris4, chris4K02State);
+  const k04DispChris4AstroWay = analyzeK04DispositorAndDependencies(
+    k04SanitizedChris4,
+    sanitizedChris4K02
+  );
+
+  const expectedChris4D1Map: Record<string, string> = {
+    'planet:Sun': 'planet:Jupiter',
+    'planet:Moon': 'planet:Venus',
+    'planet:Mars': 'planet:Venus',
+    'planet:Mercury': 'planet:Mars',
+    'planet:Jupiter': 'planet:Saturn',
+    'planet:Venus': 'planet:Jupiter',
+    'planet:Saturn': 'planet:Mars',
+    'planet:Rahu': 'planet:Mars',
+    'planet:Ketu': 'planet:Venus',
+  };
+  const expectedCycleMembers = ['planet:Jupiter', 'planet:Mars', 'planet:Saturn', 'planet:Venus'];
+  const expectedUpstream = ['planet:Ketu', 'planet:Mercury', 'planet:Moon', 'planet:Rahu', 'planet:Sun'];
+
+  for (const [label, res] of [
+    ['real_freeastroapi_export_chris4', k04DispChris4Export],
+    ['astroway-chris4-sanitized', k04DispChris4AstroWay],
+  ] as const) {
+    const d1 = res.primaryD1Frame;
+    assert(d1 !== null, `Chris 4 (${label}) missing primaryD1Frame analysis.`);
+    for (const [src, tgt] of Object.entries(expectedChris4D1Map)) {
+      assert(
+        d1.directDispositorByEntity[src] === tgt,
+        `Chris 4 (${label}) expected ${src} -> ${tgt}, got ${String(d1.directDispositorByEntity[src])}`
+      );
+    }
+    assert(
+      d1.selfDispositedEntities.length === 0 &&
+        d1.terminalBasins.length === 1 &&
+        d1.terminalBasins[0].terminalKind === 'cycle' &&
+        JSON.stringify(d1.terminalBasins[0].sinkMembers) === JSON.stringify(expectedCycleMembers) &&
+        JSON.stringify(d1.upstreamDependentEntities) === JSON.stringify(expectedUpstream) &&
+        d1.hasSingleFinalDispositor === false &&
+        d1.singleFinalDispositorEntityId === null &&
+        d1.dci.dci === 1.0 &&
+        d1.dci.isComplete === true &&
+        d1.dci.renormalized === false &&
+        d1.dci.expectedPopulationCount === 9 &&
+        d1.dci.assignedPopulationCount === 9 &&
+        d1.dci.interpretationLimitations ===
+          'Measures dependency concentration only; does not imply favorability, vulnerability, or predictive outcome',
+      `Chris 4 (${label}) D1 cycle/upstream/DCI assertion failed: dci=${JSON.stringify(d1.dci)}`
+    );
+  }
+  assert(
+    k04DispChris4Export.analyzedFrames.includes('vedic_lahiri') &&
+      k04DispChris4Export.analyzedFrames.includes('vedic_lahiri:D9') &&
+      k04DispChris4Export.frames['vedic_lahiri:D9'].dci.expectedPopulationCount === 9,
+    'Chris 4 frame isolation across D1 and D9 failed.'
+  );
+  k04Phase5Passed.push('2_chris4_organic_4_cycle_5_upstream_dci_1_0_both_fixtures');
+
+  // Phase 5 Test 3: 6 Dependency Properties across all 10 subjects & K03 Relational Context Bridge
+  const d1ProfilesChris4 = k04DispChris4Export.primaryD1Frame!.subjectProfiles;
+  for (const subj of PLANETARY_STATE_SUBJECTS) {
+    const prof = d1ProfilesChris4[subj];
+    assert(Boolean(prof), `Missing K04 dependency profile for ${subj}`);
+    assert(
+      prof!.properties.quality.strictlyNoScalarPropagation === true &&
+        prof!.properties.criticality.synthesisStatus === 'partial' &&
+        prof!.properties.criticality.deferralStatus === 'deferred_pending_k05_k06_k08' &&
+        prof!.properties.concentration.frameDci === 1.0 &&
+        prof!.epistemicTag.epistemicStatus === 'structural_graph_reachability_only',
+      `Dependency properties contract invalid for ${subj}`
+    );
+  }
+  assert(
+    d1ProfilesChris4.Jupiter?.properties.depth.hopsToTerminalBasin === 0 &&
+      d1ProfilesChris4.Sun?.properties.depth.hopsToTerminalBasin === 1 &&
+      d1ProfilesChris4.Ascendant?.directDispositorSubject === 'Mars' &&
+      d1ProfilesChris4.Ascendant?.properties.depth.hopsToTerminalBasin === 1,
+    'Chris 4 D1 dependency depths for Jupiter/Sun/Ascendant mismatch.'
+  );
+  const k03BridgeCtx = buildK03RelationalContextFromDispositorAnalysis(
+    k04DispChris4Export,
+    'vedic_lahiri'
+  );
+  assert(
+    k03BridgeCtx.dependencyConcentrationIndex === 1.0 &&
+      k03BridgeCtx.dispositorBasinCount === 1 &&
+      k03BridgeCtx.bySubject.Jupiter?.isInSccCycle === true &&
+      k03BridgeCtx.bySubject.Jupiter?.sccMembers.length === 4,
+    'K03 relational context bridge failed.'
+  );
+  k04Phase5Passed.push('3_six_dependency_properties_and_k03_bridge');
+
+  // Phase 5 Test 4: Synthetic Edge Cases (Self-Dispositor, Mutual Exchange + Multi-Basin DCI < 1.0, Incomplete Non-Renormalized DCI)
+  const cloneNigWithD1DispositorMap = (
+    base: NatalIntelligenceGraph,
+    overrideMap: Partial<Record<string, string | null>>
+  ): NatalIntelligenceGraph => {
+    const cloned = JSON.parse(JSON.stringify(base)) as NatalIntelligenceGraph;
+    for (const edge of cloned.edges) {
+      if (
+        edge.chartFrame === 'vedic_lahiri' &&
+        edge.relationshipType === 'disposited_by_sign_lord'
+      ) {
+        const nextTarget = overrideMap[edge.sourceEntityId];
+        if (nextTarget === null) {
+          edge.qualificationStatus = 'blocked';
+        } else if (typeof nextTarget === 'string') {
+          edge.targetEntityId = nextTarget;
+        }
+        cloned.edgesById[edge.relationshipId] = edge;
+      }
+    }
+    return cloned;
+  };
+
+  // 4a. Self-dispositor single final dispositor (Sun -> Sun, all others -> Sun)
+  const nigSelf = cloneNigWithD1DispositorMap(k04Chris4, {
+    'planet:Sun': 'planet:Sun',
+    'planet:Moon': 'planet:Sun',
+    'planet:Mars': 'planet:Sun',
+    'planet:Mercury': 'planet:Sun',
+    'planet:Jupiter': 'planet:Sun',
+    'planet:Venus': 'planet:Sun',
+    'planet:Saturn': 'planet:Sun',
+    'planet:Rahu': 'planet:Sun',
+    'planet:Ketu': 'planet:Sun',
+  });
+  const dispSelf = analyzeK04DispositorAndDependencies(nigSelf, chris4K02State, {
+    targetFrames: ['vedic_lahiri'],
+  }).primaryD1Frame!;
+  assert(
+    dispSelf.hasSingleFinalDispositor === true &&
+      dispSelf.singleFinalDispositorEntityId === 'planet:Sun' &&
+      JSON.stringify(dispSelf.selfDispositedEntities) === JSON.stringify(['planet:Sun']) &&
+      dispSelf.dci.dci === 1.0 &&
+      dispSelf.dci.isComplete === true,
+    'Synthetic self-dispositor single final dispositor test failed.'
+  );
+
+  // 4b. Mutual exchange (Sun <-> Moon, plus Mars -> Moon = 3) + Self-loop basin (Jupiter -> Jupiter, plus 5 others -> Jupiter = 6)
+  const nigMultiBasin = cloneNigWithD1DispositorMap(k04Chris4, {
+    'planet:Sun': 'planet:Moon',
+    'planet:Moon': 'planet:Sun',
+    'planet:Mars': 'planet:Moon',
+    'planet:Jupiter': 'planet:Jupiter',
+    'planet:Saturn': 'planet:Jupiter',
+    'planet:Venus': 'planet:Jupiter',
+    'planet:Mercury': 'planet:Jupiter',
+    'planet:Rahu': 'planet:Jupiter',
+    'planet:Ketu': 'planet:Jupiter',
+  });
+  const dispMulti = analyzeK04DispositorAndDependencies(nigMultiBasin, chris4K02State, {
+    targetFrames: ['vedic_lahiri'],
+  }).primaryD1Frame!;
+  const expectedMultiDci = Math.round(((3 / 9) ** 2 + (6 / 9) ** 2) * 1000000) / 1000000;
+  assert(
+    dispMulti.mutualDispositorPairs.length === 1 &&
+      dispMulti.multipleTerminalBasinsDetected === true &&
+      dispMulti.terminalBasins.length === 2 &&
+      dispMulti.hasSingleFinalDispositor === false &&
+      dispMulti.dci.isComplete === true &&
+      dispMulti.dci.dci === expectedMultiDci &&
+      dispMulti.dci.dci < 1.0,
+    `Synthetic multi-basin DCI test failed: got ${String(dispMulti.dci.dci)}, expected ${expectedMultiDci}`
+  );
+
+  // 4c. Incomplete dependency assignment (Mercury & Ketu blocked/missing => 7/9 assigned, DCI NOT silently renormalized to 1.0)
+  const nigIncomplete = cloneNigWithD1DispositorMap(k04Chris4, {
+    'planet:Mercury': null,
+    'planet:Ketu': null,
+  });
+  const dispIncomplete = analyzeK04DispositorAndDependencies(nigIncomplete, chris4K02State, {
+    targetFrames: ['vedic_lahiri'],
+  }).primaryD1Frame!;
+  const expectedIncompleteDci = Math.round(((7 / 9) ** 2) * 1000000) / 1000000;
+  assert(
+    dispIncomplete.dci.isComplete === false &&
+      dispIncomplete.dci.renormalized === false &&
+      dispIncomplete.dci.assignedPopulationCount === 7 &&
+      dispIncomplete.dci.missingPopulationCount === 2 &&
+      dispIncomplete.dci.dci === expectedIncompleteDci &&
+      dispIncomplete.dci.dci < 0.7 &&
+      dispIncomplete.unassignedOrMissingEntities.includes('planet:Mercury') &&
+      dispIncomplete.unassignedOrMissingEntities.includes('planet:Ketu'),
+    `Incomplete non-renormalized DCI test failed: got ${JSON.stringify(dispIncomplete.dci)}`
+  );
+  k04Phase5Passed.push('4_synthetic_self_mutual_multibasin_and_incomplete_non_renormalized_dci');
+
+  // Phase 5 Test 5: Bounded Cycle-Safe Graph Traversal Utilities (all 10 helpers)
+  const sunDirect = getDirectRelationships(k04Chris4, 'planet:Sun', { chartFrame: 'vedic_lahiri' });
+  const sunOut = getOutgoingRelationships(k04Chris4, 'planet:Sun', { chartFrame: 'vedic_lahiri' });
+  const jupIn = getIncomingRelationships(k04Chris4, 'planet:Jupiter', { chartFrame: 'vedic_lahiri' });
+  const jupChain = getDependencyChain(k04Chris4, 'planet:Jupiter', { chartFrame: 'vedic_lahiri' });
+  const jupCycle = getCycleMembership(k04Chris4, 'planet:Jupiter', { chartFrame: 'vedic_lahiri' });
+  const sunBasin = getTerminalBasinMembership(k04Chris4, 'planet:Sun', { chartFrame: 'vedic_lahiri' });
+  const typedPaths = findTypedPaths(k04Chris4, 'planet:Sun', 'planet:Mars', {
+    chartFrame: 'vedic_lahiri',
+    families: ['dependency'],
+    relationshipTypes: ['disposited_by_sign_lord'],
+    maxDepth: 6,
+  });
+  const altPaths = findAlternativeStructuralPaths(k04Chris4, 'planet:Sun', 'planet:Venus', {
+    chartFrame: 'vedic_lahiri',
+    families: ['dependency'],
+    relationshipTypes: ['disposited_by_sign_lord', 'disposited_by_nakshatra_lord'],
+    maxDepth: 6,
+  });
+  const sharedSunVenus = detectSharedDependencies(k04Chris4, 'planet:Sun', 'planet:Venus', {
+    chartFrame: 'vedic_lahiri',
+  });
+  const truncatedDepth = findTypedPaths(k04Chris4, 'planet:Sun', 'planet:Mars', {
+    chartFrame: 'vedic_lahiri',
+    families: ['dependency'],
+    relationshipTypes: ['disposited_by_sign_lord'],
+    maxDepth: 1,
+  });
+  const truncatedSteps = countUniqueReachableEntities(k04Chris4, 'planet:Sun', {
+    chartFrame: 'vedic_lahiri',
+    maxDepth: 4,
+    maxSteps: 1,
+  });
+  assert(
+    sunDirect.all.length > 0 &&
+      sunOut.length > 0 &&
+      jupIn.length > 0 &&
+      jupChain.cycleDetected === true &&
+      jupChain.cycleMembers.length === 4 &&
+      jupCycle.isInCycle === true &&
+      jupCycle.isTrueTerminalSink === true &&
+      sunBasin.basinStatus === 'single_basin' &&
+      typedPaths.paths.length >= 1 &&
+      typedPaths.shortestHopLength === 3 &&
+      altPaths.paths.length >= 1 &&
+      sharedSunVenus.sharedDependencyEntityIds.length === 4 &&
+      sharedSunVenus.jaccardOverlap === 1 &&
+      truncatedDepth.bounds.truncatedByDepth === true &&
+      truncatedDepth.paths.length === 0 &&
+      truncatedSteps.bounds.visitedLimitReached === true &&
+      truncatedSteps.uniqueCount <= 1 &&
+      typedPaths.epistemicTag.epistemicStatus === 'structural_graph_reachability_only' &&
+      typedPaths.epistemicTag.functionalDeliverabilityDeferredTo === 'K08',
+    'K04 Phase 5 Test 5 (Bounded Cycle-Safe Graph Traversal Utilities) failed.'
+  );
+  k04Phase5Passed.push('5_bounded_cycle_safe_graph_traversal_10_utilities');
+
+  // Phase 5 Test 6: Non-Mutating P08 Influence Footprint Enrichment
+  const k02BeforeSnapshot = JSON.stringify(chris4K02State);
+  const p08Enrichment = buildK04InfluenceFootprintEnrichment(
+    k04Chris4,
+    chris4K02State,
+    k04DispChris4Export
+  );
+  const k02AfterSnapshot = JSON.stringify(chris4K02State);
+  const jupP08 = p08Enrichment.subjectFootprints.Jupiter;
+  const ascP08 = p08Enrichment.subjectFootprints.Ascendant;
+  assert(
+    k02BeforeSnapshot === k02AfterSnapshot &&
+      p08Enrichment.epistemicBoundaries.mutatedK02State === false &&
+      jupP08.directOccupancy.length > 0 &&
+      jupP08.governance.length > 0 &&
+      jupP08.aspects.length > 0 &&
+      jupP08.dispositorDependencies.edges.length > 0 &&
+      Boolean(jupP08.dispositorDependencies.profilesByFrame.vedic_lahiri) &&
+      jupP08.crossDivisionalRelationships.length > 0 &&
+      jupP08.qualifiedIndirectRelationships.epistemicTag.epistemicStatus ===
+        'structural_graph_reachability_only' &&
+      jupP08.epistemicSeparation.functionalDeliverabilityStatus === 'deferred_to_k08' &&
+      ascP08.directOccupancy.length > 0 &&
+      ascP08.dispositorDependencies.edges.length > 0,
+    'K04 Phase 5 Test 6 (P08 Influence Footprint Enrichment & Non-Mutation) failed.'
+  );
+  k04Phase5Passed.push('6_p08_influence_footprint_enrichment_non_mutating');
+
+  console.log(`K04 Phase 5 Verification Suite: ALL ${k04Phase5Passed.length}/6 TESTS PASSED.`);
+
+  const k04Phase5OutPath = path.join(outDir, 'chris4-k04-dispositor-and-p08.json');
+  fs.writeFileSync(
+    k04Phase5OutPath,
+    JSON.stringify(
+      redactSecretsDeep({
+        dispositorAnalysis: k04DispChris4Export,
+        p08Enrichment,
+      }),
+      null,
+      2
+    ),
+    'utf8'
+  );
+  console.log(`K04 Phase 5 Artifact -> ${k04Phase5OutPath}`);
+
   // 5. Live Authenticated Verification (if FREE_ASTRO_API_KEY is configured)
   const apiKey = getFreeAstroApiKey();
   const liveSummaries: Array<Record<string, unknown>> = [];
@@ -5330,11 +6199,13 @@ async function main() {
         frameInventory: chris4K01Repo.frameInventory,
       },
       k02RegressionTestsPassed: k02TestsPassed,
+      k03VerificationTestsPassed: k03TestsPassed,
       k02MultiChartSummaries: {
         full16VargaMaster: k02Full.ruleExecutionSummary.countsByStatus,
         compiledHybrid: k02Hybrid.ruleExecutionSummary.countsByStatus,
         chris4: chris4K02State.ruleExecutionSummary.countsByStatus,
       },
+      k03IndependenceSummary: k03Chris4.independenceSummaries,
       regressionResults,
       profileAudits,
       readOnlySupabaseDiagnosticSql: READ_ONLY_SUPABASE_DIAGNOSTIC_SQL,
